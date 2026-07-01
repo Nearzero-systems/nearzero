@@ -1,0 +1,475 @@
+---
+import { format } from "date-fns";
+import { IS_COMMUNITY } from "@/lib/branding";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+import { badgeClassForHttpStatus } from "@/components/dashboard/analytics/logBadges";
+import type { ReqLogRecord } from "@/scripts/analytics-dashboard-client";
+
+interface Props {
+	request: Request;
+}
+
+const { request } = Astro.props;
+const api = createServerTrpcClient(request) as any;
+const sp = new URL(request.url).searchParams;
+
+const defaultTo = new Date();
+const defaultFrom = new Date();
+defaultFrom.setDate(defaultFrom.getDate() - 3);
+
+function ymd(d: Date) {
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, "0");
+	const day = String(d.getDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
+}
+
+const fromYmd = sp.get("from") ?? ymd(defaultFrom);
+const toYmd = sp.get("to") ?? ymd(defaultTo);
+const qParam = (sp.get("q") ?? "").trim();
+let pageIndex = Math.max(0, Number.parseInt(sp.get("page") ?? "0", 10) || 0);
+const pageSize = 10;
+const sortCol = sp.get("sort") ?? "";
+const sortDesc = (sp.get("ord") ?? "desc") !== "asc";
+const statusCsv = sp.get("status") ?? "";
+const sfParams = sp.getAll("sf");
+const statusFilter = statusCsv
+	? statusCsv.split(",").filter(Boolean)
+	: sfParams.filter(Boolean);
+
+const fromDate = new Date(`${fromYmd}T00:00:00`);
+const toDate = new Date(`${toYmd}T23:59:59.999`);
+
+const dateRangeIso = {
+	start: fromDate.toISOString(),
+	end: toDate.toISOString(),
+};
+
+let isActive = false;
+let logCleanup: { enabled: boolean; cronExpression: string | null } | null = null;
+let peekTotal: number | null = null;
+let stats: { hour: string; count: number }[] = [];
+let statsLogs: { data: ReqLogRecord[]; totalCount: number } = { data: [], totalCount: 0 };
+let loadFailed = false;
+
+try {
+	isActive = await api.settings.haveActivateRequests.query();
+	logCleanup = await api.settings.getLogCleanupStatus.query();
+	if (isActive) {
+		const peek = await api.settings.readStatsLogs.query({
+			page: { pageIndex: 0, pageSize: 1 },
+		});
+		peekTotal = peek.totalCount ?? 0;
+		[stats, statsLogs] = await Promise.all([
+			api.settings.readStats.query({ dateRange: dateRangeIso }),
+			api.settings.readStatsLogs.query({
+				page: { pageIndex, pageSize },
+				search: qParam || undefined,
+				status: statusFilter.length ? statusFilter : undefined,
+				sort: sortCol
+					? {
+							id: sortCol,
+							desc: sortDesc,
+						}
+					: undefined,
+				dateRange: dateRangeIso,
+			}),
+		]);
+	}
+} catch {
+	loadFailed = true;
+}
+
+const shouldShowWarning = isActive && (peekTotal ?? 0) === 0;
+const cronValue = logCleanup?.cronExpression || "0 0 * * *";
+
+function buildReqUrl(overrides: Record<string, string | number | undefined>) {
+	const u = new URL(Astro.url);
+	for (const [k, v] of Object.entries(overrides)) {
+		if (v === undefined || v === "") u.searchParams.delete(k);
+		else u.searchParams.set(k, String(v));
+	}
+	return u.pathname + u.search;
+}
+
+function sortHref(col: string) {
+	const nextDesc = sortCol === col ? !sortDesc : col === "time" ? true : false;
+	return buildReqUrl({ sort: col, ord: nextDesc ? "desc" : "asc", page: 0 });
+}
+
+const pageLogs = (statsLogs.data ?? []) as ReqLogRecord[];
+const totalCount = statsLogs.totalCount ?? 0;
+const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+pageIndex = Math.min(pageIndex, pageCount - 1);
+
+function formatDurationNanos(nanos: number) {
+	const ms = nanos / 1000000;
+	if (ms < 1) {
+		return `${(nanos / 1000).toFixed(2)} µs`;
+	}
+	if (ms < 1000) {
+		return `${ms.toFixed(2)} ms`;
+	}
+	return `${(ms / 1000).toFixed(2)} s`;
+}
+
+function formatStatusLabel(status: number) {
+	if (status === 0) return "N/A";
+	return String(status);
+}
+
+function chartSvg(statsIn: { hour: string; count: number }[]) {
+	if (!statsIn.length) {
+		return "";
+	}
+	const W = 800;
+	const H = 200;
+	const padL = 48;
+	const padR = 12;
+	const padT = 10;
+	const padB = 28;
+	const innerW = W - padL - padR;
+	const innerH = H - padT - padB;
+	const times = statsIn.map((s) => new Date(s.hour).getTime());
+	const counts = statsIn.map((s) => Number(s.count));
+	const t0 = Math.min(...times);
+	const t1 = Math.max(...times);
+	const cMax = Math.max(...counts, 1);
+	const xAt = (t: number) => padL + ((t - t0) / (t1 - t0 || 1)) * innerW;
+	const yAt = (c: number) => padT + innerH - (c / cMax) * innerH;
+	const lineD = statsIn
+		.map((_, i) => `${i === 0 ? "M" : "L"} ${xAt(times[i])} ${yAt(counts[i])}`)
+		.join(" ");
+	const areaD = `M ${xAt(times[0])} ${padT + innerH} ${statsIn
+		.map((_, i) => `L ${xAt(times[i])} ${yAt(counts[i])}`)
+		.join(" ")} L ${xAt(times[times.length - 1])} ${padT + innerH} Z`;
+	const gridLines = 4;
+	const grid: string[] = [];
+	for (let g = 0; g <= gridLines; g++) {
+		const yy = padT + (innerH * g) / gridLines;
+		grid.push(
+			`<line x1="${padL}" y1="${yy}" x2="${W - padR}" y2="${yy}" stroke="hsl(var(--border))" stroke-opacity="0.5" stroke-width="1" />`,
+		);
+	}
+	const xLabels = [0, Math.floor((statsIn.length - 1) / 2), statsIn.length - 1].filter(
+		(i, idx, a) => i >= 0 && a.indexOf(i) === idx,
+	);
+	const lbls = xLabels
+		.map((i) => {
+			const d = new Date(times[i]);
+			const tx = xAt(times[i]);
+			const lab = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+			return `<text x="${tx}" y="${H - 6}" text-anchor="middle" class="fill-muted-foreground" style="font-size:10px">${lab}</text>`;
+		})
+		.join("");
+	return `<svg viewBox="0 0 ${W} ${H}" class="w-full h-full overflow-hidden" preserveAspectRatio="none" role="img" aria-label="Request distribution">${grid.join("")}<path d="${areaD}" fill="hsl(var(--chart-1))" fill-opacity="0.4" stroke="none" /><path d="${lineD}" fill="none" stroke="hsl(var(--chart-1))" stroke-width="2" />${lbls}</svg>`;
+}
+
+const sortLinkClass = `${ST.actionBtn} inline-flex items-center gap-1 font-medium text-[var(--nz-text-muted)] hover:text-[var(--nz-text)]`;
+
+const priorities = [
+	{ label: "100–199", value: "info" },
+	{ label: "200–299", value: "success" },
+	{ label: "300–399", value: "redirect" },
+	{ label: "400–499", value: "client" },
+	{ label: "500–599", value: "server" },
+];
+
+const toggleTitle = isActive ? "Deactivate Analytics" : "Activate Analytics";
+const toggleDesc = "You will also need to restart Traefik to apply the changes";
+
+const chartMarkup = chartSvg(stats as { hour: string; count: number }[]);
+const pageLogsBootstrap = encodeURIComponent(JSON.stringify(pageLogs));
+---
+
+<div
+	class="nz-dashboard-content h-full min-h-0 w-full"
+	id="nz-analytics-root"
+	transition:animate="none"
+	data-is-active={isActive ? "true" : "false"}
+	data-logs={pageLogsBootstrap}
+>
+	<div class="nz-deployments-surface text-xs">
+		{
+			shouldShowWarning ? (
+				<div class="mx-3 mt-3 flex items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-[11px] text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300">
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="mt-0.5 shrink-0" aria-hidden="true">
+						<circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />
+					</svg>
+					<span>
+						When you activate, reload Traefik to apply the changes{
+							IS_COMMUNITY ? (
+								<>
+									{" "}— you can reload Traefik in{" "}
+									<a href="/dashboard/about-nearzero" class="font-medium underline-offset-2 hover:underline">About Nearzero</a>.
+								</>
+							) : (
+								"."
+							)
+						}
+					</span>
+				</div>
+			) : null
+		}
+
+		<div class="nz-deployments-toolbar">
+			<div class="nz-deployments-toolbar-primary">
+				<h1 class={ST.pageTitle}>Analytics</h1>
+			</div>
+			<div class="nz-domains-controls-row">
+				<div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+					<span class="shrink-0 text-xs font-medium text-[var(--nz-text)]">Log cleanup</span>
+					<span
+						class="inline-flex shrink-0 text-[var(--nz-text-muted)]"
+						title="At the scheduled time, the cleanup job keeps only the last 1000 entries in the access log file and signals Traefik to reopen its log files. Default: daily at midnight (0 0 * * *)."
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+					</span>
+					<input
+						id="nz-cron-input"
+						type="text"
+						placeholder="0 0 * * *"
+						value={cronValue}
+						class={`${ST.filterInput} max-w-[9rem]`}
+						required
+					/>
+					<button type="button" id="nz-cron-save" class={ST.filterBtn}>
+						Update schedule
+					</button>
+				</div>
+				<div class="nz-domains-controls-actions">
+					<button
+						type="button"
+						id="nz-req-toggle-open"
+						class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] shadow-none transition-colors hover:bg-[var(--nz-primary-hover)]"
+					>
+						{isActive ? "Deactivate" : "Activate"}
+					</button>
+				</div>
+			</div>
+		</div>
+
+		{
+			loadFailed ? (
+				<div class={ST.empty}>
+					<p class="font-medium text-[var(--nz-text)]">Could not load analytics</p>
+					<p class={ST.emptyText}>Try refreshing the page.</p>
+				</div>
+			) : !isActive ? (
+				<div class="nz-deployments-table-region">
+					<div class={ST.empty}>
+						<p class="font-medium text-[var(--nz-text)]">Analytics is not activated</p>
+						<p class={ST.emptyText}>
+							Activate analytics to see incoming traffic statistics and monitor your application&apos;s usage.
+							After activation, reload Traefik for the changes to take effect.
+						</p>
+						<button
+							type="button"
+							class="inline-flex h-8 items-center justify-center rounded-md bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] hover:bg-[var(--nz-primary-hover)]"
+							data-analytics-activate
+						>
+							Activate
+						</button>
+					</div>
+				</div>
+			) : (
+				<>
+					<form method="get" class="nz-domains-controls-row" id="nz-analytics-filter-form">
+						<input type="hidden" name="sort" value={sortCol} />
+						<input type="hidden" name="ord" value={sortDesc ? "desc" : "asc"} />
+						<input type="hidden" name="page" value="0" />
+						<div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+							<input
+								name="q"
+								type="search"
+								placeholder="Filter by hostname..."
+								value={qParam}
+								class={`${ST.filterSearch} max-w-[14rem]`}
+							/>
+							<span class="text-[10px] text-muted-foreground">Status</span>
+							{
+								priorities.map((p) => (
+									<label class="inline-flex cursor-pointer items-center gap-1 rounded-md border border-dashed border-[var(--nz-border)] px-2 py-1 text-[10px]">
+										<input
+											type="checkbox"
+											name="sf"
+											value={p.value}
+											checked={statusFilter.includes(p.value)}
+											class="rounded border-[var(--nz-border)]"
+										/>
+										{p.label}
+									</label>
+								))
+							}
+						</div>
+						<div class="nz-domains-controls-actions flex-wrap">
+							<input type="date" name="from" value={fromYmd} class={`${ST.filterInput} w-auto`} />
+							<span class="text-muted-foreground">–</span>
+							<input type="date" name="to" value={toYmd} class={`${ST.filterInput} w-auto`} />
+							<button type="submit" class={ST.filterBtn}>Apply filters</button>
+							<a href={buildReqUrl({ from: ymd(defaultFrom), to: ymd(defaultTo), page: 0, q: undefined, status: undefined })} class={ST.filterBtn}>
+								Last 3 days
+							</a>
+						</div>
+					</form>
+
+					<div class="nz-analytics-chart border-b border-[var(--nz-border)] px-3 py-3">
+						{
+							chartMarkup ? (
+								<div class="h-[200px] w-full" set:html={chartMarkup} />
+							) : (
+								<div class="flex h-[200px] items-center justify-center text-xs text-muted-foreground">
+									No chart data for this range
+								</div>
+							)
+						}
+					</div>
+
+					<div class="nz-deployments-table-region">
+						<div class="nz-deployments-table-scroll scrollbar-hide">
+							<div class={`${ST.tableWrap} border-0 rounded-none`}>
+								<table class={`${ST.table} nz-deployments-table w-full`}>
+									<thead class={ST.thead}>
+										<tr>
+											<th class={ST.th}>Level</th>
+											<th class={ST.th}>
+												<a href={sortHref("RequestPath")} class={sortLinkClass}>
+													Message
+													<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m7 15 5 5 5-5" /><path d="m7 9 5-5 5 5" /></svg>
+												</a>
+											</th>
+											<th class={ST.th}>
+												<a href={sortHref("time")} class={sortLinkClass}>
+													Time
+													<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m7 15 5 5 5-5" /><path d="m7 9 5-5 5 5" /></svg>
+												</a>
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{
+											pageLogs.length === 0 ? (
+												<tr class="nz-deployments-empty-row">
+													<td colspan="3" class="p-0">
+														<div class={ST.empty}>
+															<p class="font-medium text-[var(--nz-text)]">No request logs</p>
+															<p class={ST.emptyText}>Try adjusting your date range, search, or status filters.</p>
+														</div>
+													</td>
+												</tr>
+											) : (
+												pageLogs.map((log, idx) => {
+													const path =
+														typeof log.RequestPath === "string" ? log.RequestPath : "";
+													const method = String(log.RequestMethod ?? "");
+													const addr = String(log.RequestAddr ?? "");
+													const origin = Number(log.OriginStatus ?? 0);
+													const down = Number(log.DownstreamStatus ?? 0);
+													const st = origin || down;
+													const dur = Number(log.Duration ?? 0);
+													const client = String(log.ClientAddr ?? "");
+													const start = log.StartUTC;
+													return (
+														<tr class={`${ST.tr} nz-data-table-row cursor-pointer nz-req-row`} data-log-index={idx}>
+															<td class={ST.td}>{String(log.level ?? "")}</td>
+															<td class={ST.td}>
+																<div class="flex flex-col gap-1.5">
+																	<div class="flex flex-wrap items-center gap-2">
+																		<span class="font-medium">{method}</span>
+																		<span class="rounded-md bg-[var(--nz-bg-muted)] px-1.5 py-0.5 text-[10px]">{addr}</span>
+																		<span class="truncate">{path.length > 100 ? `${path.slice(0, 82)}...` : path}</span>
+																	</div>
+																	<div class="flex flex-wrap gap-2">
+																		<span class={badgeClassForHttpStatus(st)}>Status: {formatStatusLabel(st)}</span>
+																		<span class="inline-flex items-center rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">
+																			{formatDurationNanos(dur)}
+																		</span>
+																		<span class="text-[10px] text-muted-foreground">{client}</span>
+																	</div>
+																</div>
+															</td>
+															<td class={ST.tdMuted}>
+																{format(new Date(String(start)), "yyyy-MM-dd HH:mm:ss")}
+															</td>
+														</tr>
+													);
+												})
+											)
+										}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+
+					<div class={`nz-deployments-footer ${ST.footer}`}>
+						<span class={ST.total}>
+							{totalCount > 0
+								? `Showing ${Math.min(pageIndex * pageSize + 1, totalCount)}–${Math.min((pageIndex + 1) * pageSize, totalCount)} of ${totalCount}`
+								: "0 total"}
+						</span>
+						<div class="flex gap-2">
+							<a
+								href={pageIndex <= 0 ? undefined : buildReqUrl({ page: pageIndex - 1 })}
+								aria-disabled={pageIndex <= 0}
+								class={`inline-flex h-7 items-center justify-center rounded-md border border-input bg-background px-2 text-xs hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] ${pageIndex <= 0 ? "pointer-events-none opacity-50" : ""}`}
+							>
+								Previous
+							</a>
+							<a
+								href={pageIndex >= pageCount - 1 ? undefined : buildReqUrl({ page: pageIndex + 1 })}
+								aria-disabled={pageIndex >= pageCount - 1}
+								class={`inline-flex h-7 items-center justify-center rounded-md border border-input bg-background px-2 text-xs hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] ${pageIndex >= pageCount - 1 ? "pointer-events-none opacity-50" : ""}`}
+							>
+								Next
+							</a>
+						</div>
+					</div>
+				</>
+			)
+		}
+	</div>
+
+	<dialog id="nz-req-toggle-dialog" class="max-w-lg w-[calc(100%-2rem)] rounded-lg border bg-background p-6 shadow-lg [&::backdrop]:bg-black/50">
+		<div class="flex flex-col gap-3">
+			<h4 class="text-lg font-semibold">{toggleTitle}</h4>
+			<p class="text-sm text-muted-foreground">{toggleDesc}</p>
+			<div class="flex justify-end gap-2 pt-2">
+				<button type="button" class={ST.filterBtn} onclick="this.closest('dialog')?.close()">Cancel</button>
+				<button type="button" id="nz-req-toggle-confirm" class="inline-flex h-8 items-center justify-center rounded-md bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)]">
+					Confirm
+				</button>
+			</div>
+		</div>
+	</dialog>
+
+	<dialog id="nz-req-detail" class="sm:max-w-[740px] w-[calc(100%-1rem)] max-h-[90vh] overflow-y-auto rounded-lg border bg-background p-6 shadow-lg [&::backdrop]:bg-black/50">
+		<div class="flex flex-col gap-4">
+			<div>
+				<h4 class="text-lg font-semibold leading-none tracking-tight">Request log</h4>
+				<p class="text-sm text-muted-foreground">Details of the request log entry.</p>
+			</div>
+			<div class="max-h-[55vh] overflow-y-auto">
+				<div class={`${ST.tableWrap} border`}>
+					<div id="nz-req-detail-table" class="relative w-full overflow-auto"></div>
+				</div>
+			</div>
+			<button type="button" id="nz-req-download-json" class={`${ST.filterBtn} w-full justify-center`}>
+				Download as JSON
+			</button>
+			<button type="button" class={`${ST.actionBtn} self-end`} onclick="this.closest('dialog')?.close()">Close</button>
+		</div>
+	</dialog>
+</div>
+
+<script>
+	import { mountAnalyticsDashboard } from "@/scripts/mount-analytics-dashboard";
+	mountAnalyticsDashboard();
+
+	document.getElementById("nz-analytics-root")?.addEventListener("click", (event) => {
+		const target = event.target instanceof Element ? event.target : null;
+		if (!target?.closest("[data-analytics-activate]")) return;
+		document.getElementById("nz-req-toggle-open")?.click();
+	});
+</script>

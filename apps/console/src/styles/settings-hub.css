@@ -1,0 +1,2657 @@
+/* Settings hub: consistent text-xs density */
+.nz-settings-subnav {
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+/* Settings pages fill the main column edge-to-edge (no shell padding / card radius) */
+.nz-dashboard-shell:has(.nz-settings-layout) {
+	padding: 0 !important;
+	border-radius: 0 !important;
+	overflow: hidden !important;
+	height: 100%;
+	min-height: 0;
+}
+
+.nz-settings-layout {
+	gap: 0;
+	height: 100%;
+	min-height: 0;
+	background-color: var(--nz-grid-line, #eceef3);
+}
+
+.nz-settings-layout > .nz-settings-subnav,
+.nz-settings-layout > main {
+	overflow: hidden;
+	border-radius: 0 !important;
+}
+
+.nz-settings-subnav > nav {
+	min-height: 0;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.nz-settings-subnav__title {
+	display: flex;
+	align-items: center;
+}
+
+.nz-settings-subnav nav a,
+.nz-settings-subnav nav p {
+	font-size: 0.75rem !important;
+	line-height: 1.25rem !important;
+}
+
+.nz-settings-page-title {
+	font-size: 1rem !important;
+	line-height: 1.5rem !important;
+}
+
+.nz-settings-panel {
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	background-color: #ffffff;
+}
+
+/* Flat audit-style surfaces — no card elevation */
+.nz-settings-panel :is(input, select, textarea):not([type="checkbox"]):not(
+		[type="radio"]
+	) {
+	box-shadow: none !important;
+}
+
+.nz-settings-panel input:not([type="checkbox"]):not([type="radio"]),
+.nz-settings-panel select {
+	font-size: 0.75rem;
+	height: 2rem;
+	box-shadow: none !important;
+}
+
+.nz-settings-panel .rounded-md.border input,
+.nz-settings-panel .rounded-md.border select {
+	border-color: hsl(var(--input));
+}
+
+/* Tables — no shadows (override Tailwind/shadcn/WebKit) */
+.nz-settings-table-wrap,
+.nz-settings-table-wrap *,
+.nz-settings-panel .nz-settings-table-wrap,
+.nz-settings-panel table,
+.nz-settings-panel thead,
+.nz-settings-panel tbody,
+.nz-settings-panel tr,
+.nz-settings-panel th,
+.nz-settings-panel td,
+.nz-dashboard-content .nz-settings-panel .rounded-md.border {
+	box-shadow: none !important;
+	--tw-shadow: 0 0 #0000 !important;
+	--tw-shadow-colored: 0 0 #0000 !important;
+	--tw-ring-offset-shadow: 0 0 #0000 !important;
+	--tw-ring-shadow: 0 0 #0000 !important;
+	filter: none !important;
+}
+
+.nz-settings-table-wrap {
+	border: 1px solid #eceef3 !important;
+	border-radius: 0.375rem !important;
+	background-color: #ffffff !important;
+	overflow-x: auto;
+	overflow-y: visible;
+}
+
+.nz-settings-panel [class*="shadow-"] {
+	box-shadow: none !important;
+}
+
+.nz-settings-empty {
+	width: 100%;
+}
+
+/* Deployments / environment / project workspace — fill main column edge-to-edge */
+.nz-dashboard-shell:has(#nz-deployments-root),
+.nz-dashboard-shell:has(#nz-domains-root),
+.nz-dashboard-shell:has(#nz-servers-root),
+.nz-dashboard-shell:has(#nz-analytics-root),
+.nz-dashboard-shell:has(#nz-tasks-root),
+.nz-dashboard-shell:has(#nz-environment-root),
+.nz-dashboard-shell:has(#nz-project-workspace),
+.nz-dashboard-shell:has(#nz-app-import-page) {
+	padding: 0 !important;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.nz-dashboard-shell:has(#nz-app-deploy-root),
+.nz-dashboard-shell:has([data-compose-action-root="1"]) {
+	padding: 0 !important;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+#nz-app-deploy-root.nz-deployments-surface,
+#nz-app-deploy-root .nz-deployments-surface {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: none !important;
+	min-height: 0;
+	border: none;
+	border-radius: 0;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-agent-main-region:has(#nz-app-deploy-root),
+.nz-agent-main-region:has([data-compose-action-root="1"]) {
+	min-height: 0;
+	flex: 1;
+	overflow-x: hidden;
+	overflow-y: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.nz-agent-main-region:has(#nz-app-deploy-root) .nz-dashboard-content,
+.nz-agent-main-region:has([data-compose-action-root="1"]) .nz-dashboard-content {
+	height: auto;
+	min-height: 0;
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+}
+
+.nz-agent-main-region:has(#nz-app-deploy-root) .nz-dashboard-content > #nz-app-deploy-root,
+.nz-agent-main-region:has([data-compose-action-root="1"]) .nz-dashboard-content > [data-compose-action-root] {
+	flex: 0 0 auto;
+}
+
+#nz-deployments-root,
+#nz-domains-root,
+#nz-servers-root,
+#nz-analytics-root,
+#nz-tasks-root,
+#nz-environment-root {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	width: 100%;
+	max-width: none !important;
+	min-height: 100%;
+}
+
+#nz-domains-root,
+#nz-servers-root,
+#nz-analytics-root,
+#nz-domains-root *,
+#nz-servers-root *,
+#nz-analytics-root * {
+	view-transition-name: none !important;
+}
+
+#nz-environment-root .nz-environment-surface {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	width: 100%;
+	max-width: none !important;
+	min-height: 100%;
+	border: none;
+	border-radius: 0;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-environment-root .nz-environment-toolbar {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	padding: 0;
+}
+
+#nz-environment-root .nz-environment-toolbar-primary {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-environment-root .nz-environment-services-region {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+#nz-environment-root .nz-environment-services-scroll {
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior: contain;
+}
+
+#nz-environment-root .nz-environment-services-scroll .nz-settings-table-wrap {
+	width: max-content;
+	min-width: 100%;
+	border: none !important;
+	border-radius: 0 !important;
+	overflow: visible;
+}
+
+#nz-environment-root .nz-environment-services-table {
+	width: max-content;
+	min-width: 100%;
+	table-layout: auto;
+}
+
+#nz-environment-root .nz-environment-services-table td {
+	min-width: 6.5rem;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+#nz-environment-root .nz-environment-services-table td:first-child {
+	min-width: 11rem;
+}
+
+#nz-environment-root .nz-environment-services-table td:last-child {
+	min-width: 4rem;
+	white-space: nowrap;
+}
+
+#nz-environment-root .nz-environment-empty-state {
+	position: absolute;
+	inset: 2rem 0 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	pointer-events: none;
+	text-align: center;
+	z-index: 2;
+}
+
+/* Data table row hover — deployments + environment (token-safe in dark mode) */
+#nz-deployments-root .nz-deployments-table tbody tr.nz-data-table-row,
+#nz-domains-root .nz-deployments-table tbody tr.nz-data-table-row,
+#nz-servers-root .nz-deployments-table tbody tr.nz-data-table-row,
+#nz-analytics-root .nz-deployments-table tbody tr.nz-data-table-row,
+#nz-tasks-root .nz-deployments-table tbody tr.nz-data-table-row,
+#nz-environment-root .nz-environment-services-table tbody tr.nz-data-table-row {
+	transition: background-color 0.12s ease;
+}
+
+#nz-deployments-root .nz-deployments-table tbody tr.nz-data-table-row:hover,
+#nz-domains-root .nz-deployments-table tbody tr.nz-data-table-row:hover,
+#nz-servers-root .nz-deployments-table tbody tr.nz-data-table-row:hover,
+#nz-tasks-root .nz-deployments-table tbody tr.nz-data-table-row:hover,
+#nz-environment-root .nz-environment-services-table tbody tr.nz-data-table-row:hover {
+	background-color: var(--nz-bg-hover, #ececef) !important;
+}
+
+html.dark #nz-deployments-root .nz-deployments-table tbody tr.nz-data-table-row:hover td,
+html.dark #nz-domains-root .nz-deployments-table tbody tr.nz-data-table-row:hover td,
+html.dark #nz-servers-root .nz-deployments-table tbody tr.nz-data-table-row:hover td,
+html.dark #nz-tasks-root .nz-deployments-table tbody tr.nz-data-table-row:hover td,
+html.dark
+	#nz-deployments-root
+	.nz-deployments-table
+	tbody
+	tr.nz-data-table-row:hover
+	td
+	a,
+html.dark
+	#nz-tasks-root
+	.nz-deployments-table
+	tbody
+	tr.nz-data-table-row:hover
+	td
+	a,
+html.dark
+	#nz-deployments-root
+	.nz-deployments-table
+	tbody
+	tr.nz-data-table-row:hover
+	td
+	.font-medium,
+html.dark
+	#nz-tasks-root
+	.nz-deployments-table
+	tbody
+	tr.nz-data-table-row:hover
+	td
+	.font-medium,
+html.dark #nz-environment-root .nz-environment-services-table tbody tr.nz-data-table-row:hover td,
+html.dark
+	#nz-environment-root
+	.nz-environment-services-table
+	tbody
+	tr.nz-data-table-row:hover
+	td
+	a {
+	color: var(--nz-text) !important;
+}
+
+html.dark .nz-dashboard-content .nz-settings-table thead a:hover {
+	color: var(--nz-text) !important;
+}
+
+html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
+	background-color: var(--nz-bg-hover) !important;
+	color: var(--nz-text) !important;
+}
+
+#nz-deployments-root .nz-deployments-table-region,
+#nz-domains-root .nz-deployments-table-region,
+#nz-servers-root .nz-deployments-table-region,
+#nz-analytics-root .nz-deployments-table-region,
+#nz-tasks-root .nz-deployments-table-region {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+#nz-domains-root .nz-deployments-table-region.hidden,
+#nz-servers-root .nz-deployments-table-region.hidden {
+	display: none !important;
+}
+
+#nz-domains-root [data-domains-panel].hidden,
+#nz-servers-root [data-servers-panel].hidden {
+	display: none !important;
+}
+
+#nz-domains-root [data-domains-panel]:not(.hidden),
+#nz-servers-root [data-servers-panel]:not(.hidden) {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	width: 100%;
+	border-top: none;
+}
+
+#nz-domains-root .nz-domains-controls-row,
+#nz-servers-root .nz-domains-controls-row,
+#nz-analytics-root .nz-domains-controls-row,
+#nz-app-deploy-root .nz-domains-controls-row {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.5rem 0.75rem;
+	border-top: 1px solid var(--nz-border, #eceef3);
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-domains-root .nz-domains-tablist,
+#nz-servers-root .nz-domains-tablist,
+#nz-app-deploy-root .nz-domains-tablist {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 0.25rem;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+#nz-domains-root .nz-domains-controls-actions,
+#nz-servers-root .nz-domains-controls-actions,
+#nz-app-deploy-root .nz-domains-controls-actions {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+#nz-domains-root .nz-domains-tablist::-webkit-scrollbar,
+#nz-servers-root .nz-domains-tablist::-webkit-scrollbar,
+#nz-app-deploy-root .nz-domains-tablist::-webkit-scrollbar {
+	display: none;
+}
+
+#nz-domains-root .nz-domains-tab,
+#nz-servers-root .nz-domains-tab,
+#nz-app-deploy-root .nz-domains-tab {
+	flex-shrink: 0;
+	display: inline-flex;
+	height: 2rem;
+	align-items: center;
+	border: 0;
+	border-radius: 0.375rem;
+	background: transparent;
+	padding: 0 0.75rem;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+	color: var(--nz-text-muted, #6b7280);
+	cursor: pointer;
+	transition:
+		color 0.15s ease,
+		background-color 0.15s ease;
+}
+
+#nz-domains-root .nz-domains-tab:hover,
+#nz-servers-root .nz-domains-tab:hover,
+#nz-app-deploy-root .nz-domains-tab:hover {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+	color: var(--nz-text, #111827);
+}
+
+#nz-domains-root .nz-domains-tab--active,
+#nz-servers-root .nz-domains-tab--active,
+#nz-app-deploy-root .nz-domains-tab--active {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+	color: var(--nz-text, #111827);
+}
+
+#nz-domains-root #nz-domains-search-panel,
+#nz-servers-root #nz-servers-search-panel {
+	background-color: transparent !important;
+	box-shadow: none !important;
+}
+
+#nz-domains-root #nz-domains-search-panel input[type="search"],
+#nz-servers-root #nz-servers-search-panel input[type="search"] {
+	-webkit-appearance: none;
+	appearance: none;
+	background-color: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	cursor: text !important;
+	padding: 0 !important;
+	min-height: 0 !important;
+	height: auto !important;
+}
+
+#nz-domains-root #nz-domains-search-panel input[type="search"]::-webkit-search-decoration,
+#nz-domains-root #nz-domains-search-panel input[type="search"]::-webkit-search-cancel-button,
+#nz-servers-root #nz-servers-search-panel input[type="search"]::-webkit-search-decoration,
+#nz-servers-root #nz-servers-search-panel input[type="search"]::-webkit-search-cancel-button {
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+#nz-domains-root #nz-certificates-root {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	width: 100%;
+}
+
+#nz-servers-root #nz-ssh-keys-root {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	width: 100%;
+}
+
+#nz-domains-root #nz-certificates-root .nz-deployments-table-scroll {
+	flex: 1;
+	min-height: 0;
+}
+
+#nz-deployments-root .nz-deployments-table-scroll,
+#nz-domains-root .nz-deployments-table-scroll,
+#nz-servers-root .nz-deployments-table-scroll,
+#nz-analytics-root .nz-deployments-table-scroll,
+#nz-tasks-root .nz-deployments-table-scroll {
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior: contain;
+}
+
+#nz-deployments-root .nz-deployments-table-scroll .nz-settings-table-wrap,
+#nz-domains-root .nz-deployments-table-scroll .nz-settings-table-wrap,
+#nz-servers-root .nz-deployments-table-scroll .nz-settings-table-wrap {
+	width: 100%;
+	min-width: 0;
+	border: none !important;
+	border-radius: 0 !important;
+	overflow: hidden;
+	box-shadow: none !important;
+}
+#nz-tasks-root .nz-deployments-table-scroll .nz-settings-table-wrap {
+	width: max-content;
+	min-width: 100%;
+	border: none !important;
+	border-radius: 0 !important;
+	overflow: visible;
+}
+
+#nz-deployments-root .nz-deployments-table {
+	width: max-content;
+	min-width: 100%;
+	table-layout: auto;
+}
+
+#nz-domains-root .nz-deployments-table,
+#nz-servers-root .nz-deployments-table,
+#nz-analytics-root .nz-deployments-table,
+#nz-tasks-root .nz-deployments-table {
+	width: 100%;
+	min-width: 0;
+	table-layout: fixed;
+}
+
+#nz-deployments-root .nz-deployments-table th,
+#nz-deployments-root .nz-deployments-table td {
+	padding: 0.625rem 0.75rem;
+	vertical-align: middle;
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#nz-deployments-root .nz-deployments-table th {
+	height: auto;
+	font-weight: 500;
+}
+
+#nz-deployments-root .nz-deployments-table th a {
+	display: inline;
+}
+
+#nz-deployments-root .nz-deployments-table td:first-child {
+	min-width: 8rem;
+	max-width: 14rem;
+}
+
+#nz-deployments-root .nz-deployments-table th:nth-child(n + 2),
+#nz-deployments-root .nz-deployments-table td:nth-child(n + 2) {
+	width: 1%;
+	white-space: nowrap;
+}
+
+#nz-tasks-root .nz-deployments-table th,
+#nz-tasks-root .nz-deployments-table td {
+	min-width: 0;
+	max-width: none;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: middle;
+	text-align: left;
+}
+
+#nz-tasks-root .nz-deployments-table th:first-child,
+#nz-tasks-root .nz-deployments-table td:first-child {
+	min-width: 11rem;
+}
+
+#nz-tasks-root .nz-deployments-table th:nth-child(5),
+#nz-tasks-root .nz-deployments-table td:nth-child(5) {
+	width: 30%;
+	max-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+#nz-deployments-root .nz-deployments-table th:last-child,
+#nz-deployments-root .nz-deployments-table td:last-child {
+	white-space: nowrap;
+}
+
+#nz-tasks-root .nz-deployments-table th:last-child,
+#nz-tasks-root .nz-deployments-table td:last-child {
+	min-width: 14rem;
+	white-space: nowrap;
+}
+
+#nz-deployments-root .nz-deployments-table tbody tr.nz-deployments-row--clickable {
+	cursor: pointer;
+}
+
+#nz-deployments-root .nz-deployments-table td:last-child .flex,
+#nz-tasks-root .nz-deployments-table td:last-child .flex {
+	flex-wrap: nowrap;
+}
+
+#nz-deployments-root .nz-deployments-empty-row td,
+#nz-domains-root .nz-deployments-empty-row td,
+#nz-servers-root .nz-deployments-empty-row td,
+#nz-analytics-root .nz-deployments-empty-row td,
+#nz-tasks-root .nz-deployments-empty-row td {
+	width: 100%;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	vertical-align: middle;
+}
+
+#nz-domains-root .nz-deployments-empty-row,
+#nz-servers-root .nz-deployments-empty-row,
+#nz-analytics-root .nz-deployments-empty-row {
+	border-bottom: 0;
+}
+
+#nz-deployments-root .nz-deployments-empty-state,
+#nz-tasks-root .nz-deployments-empty-state {
+	position: absolute;
+	inset: 2rem 0 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	pointer-events: none;
+	text-align: center;
+	z-index: 2;
+}
+
+@media (max-width: 900px) {
+	#nz-deployments-root .nz-deployments-toolbar-secondary,
+	#nz-domains-root .nz-deployments-toolbar-secondary,
+	#nz-tasks-root .nz-deployments-toolbar-secondary {
+		justify-content: flex-start;
+	}
+}
+
+/* Projects page — same shell pattern as deployments */
+.nz-dashboard-shell:has(#nz-projects-root) {
+	padding: 0 !important;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+#nz-projects-root {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	width: 100%;
+	max-width: none !important;
+	min-height: 100%;
+}
+
+#nz-projects-root .nz-projects-surface,
+#nz-deployments-root .nz-deployments-surface,
+#nz-domains-root .nz-deployments-surface,
+#nz-servers-root .nz-deployments-surface,
+#nz-analytics-root .nz-deployments-surface,
+#nz-tasks-root .nz-deployments-surface,
+#nz-environment-root .nz-environment-surface {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	width: 100%;
+	max-width: none !important;
+	min-height: 100%;
+	border: none;
+	border-radius: 0;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-projects-root .nz-projects-toolbar,
+#nz-deployments-root .nz-deployments-toolbar,
+#nz-domains-root .nz-deployments-toolbar,
+#nz-servers-root .nz-deployments-toolbar,
+#nz-analytics-root .nz-deployments-toolbar,
+#nz-tasks-root .nz-deployments-toolbar,
+#nz-app-deploy-root .nz-deployments-toolbar {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	padding: 0;
+}
+
+#nz-domains-root .nz-deployments-toolbar-primary,
+#nz-servers-root .nz-deployments-toolbar-primary {
+	display: flex;
+}
+
+#nz-projects-root .nz-projects-toolbar-primary,
+#nz-deployments-root .nz-deployments-toolbar-primary,
+#nz-domains-root .nz-deployments-toolbar-primary,
+#nz-servers-root .nz-deployments-toolbar-primary,
+#nz-analytics-root .nz-deployments-toolbar-primary,
+#nz-tasks-root .nz-deployments-toolbar-primary,
+#nz-app-deploy-root .nz-deployments-toolbar-primary {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	align-items: center;
+	padding: 0.5rem 0.75rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-projects-root .nz-projects-toolbar-secondary,
+#nz-deployments-root .nz-deployments-toolbar-secondary,
+#nz-domains-root .nz-deployments-toolbar-secondary,
+#nz-tasks-root .nz-deployments-toolbar-secondary {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	border-top: 1px solid var(--nz-border, #eceef3);
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-projects-root .nz-projects-toolbar-form {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+#nz-deployments-root .nz-deployments-toolbar-form {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	flex-direction: column;
+}
+
+#nz-domains-root .nz-deployments-toolbar-form,
+#nz-tasks-root .nz-deployments-toolbar-form {
+	display: contents;
+}
+
+#nz-projects-root .nz-projects-toolbar-form .nz-projects-search,
+#nz-deployments-root .nz-deployments-toolbar-secondary .nz-deployments-search,
+#nz-domains-root .nz-deployments-toolbar-secondary .nz-deployments-search,
+#nz-tasks-root .nz-deployments-toolbar-secondary .nz-deployments-search {
+	flex: 1 1 12rem;
+	min-width: 10rem;
+	max-width: none !important;
+}
+
+#nz-projects-root .nz-projects-toolbar-form details {
+	position: relative;
+	flex-shrink: 0;
+}
+
+.nz-dashboard-content .nz-select-chevron-wrap {
+	position: relative;
+	display: inline-block;
+	flex-shrink: 0;
+	max-width: 100%;
+	vertical-align: middle;
+}
+
+.nz-dashboard-content .nz-select-chevron-wrap > select {
+	display: block !important;
+	width: 100%;
+	min-width: 0;
+	padding-right: 1.875rem !important;
+	box-sizing: border-box;
+}
+
+.nz-dashboard-content .nz-select-chevron-wrap__icon {
+	position: absolute;
+	top: 50%;
+	right: 0.5rem;
+	z-index: 1;
+	width: 0.875rem;
+	height: 0.875rem;
+	pointer-events: none;
+	transform: translateY(-50%);
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-tasks-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap:has(select[name="status"]),
+#nz-deployments-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap:has(select[name="status"]) {
+	min-width: 6.75rem;
+}
+
+#nz-tasks-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap:has(select[name="pageSize"]),
+#nz-deployments-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap:has(select[name="pageSize"]) {
+	min-width: 3.75rem;
+}
+
+#nz-projects-root .nz-projects-toolbar-form .nz-select-chevron-wrap {
+	min-width: 7.5rem;
+}
+
+#nz-projects-root .nz-projects-toolbar-form summary,
+#nz-projects-root .nz-projects-toolbar-form select,
+#nz-projects-root .nz-projects-toolbar-form summary,
+#nz-projects-root .nz-projects-toolbar-form select,
+#nz-deployments-root .nz-deployments-toolbar-secondary select,
+#nz-deployments-root .nz-deployments-toolbar-secondary input[type="search"],
+#nz-domains-root .nz-deployments-toolbar-secondary select,
+#nz-domains-root .nz-deployments-toolbar-secondary input[type="search"],
+#nz-tasks-root .nz-deployments-toolbar-secondary select,
+#nz-tasks-root .nz-deployments-toolbar-secondary input[type="search"] {
+	-webkit-appearance: none;
+	appearance: none;
+	color: var(--nz-text);
+	background-color: transparent;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+}
+
+#nz-projects-root .nz-projects-toolbar-form button#create-project-open,
+#nz-domains-root .nz-deployments-toolbar-secondary button#nz-dns-create-open,
+#nz-tasks-root .nz-deployments-toolbar-secondary button#create-project-open,
+#nz-tasks-root .nz-deployments-toolbar-secondary button#nz-task-create-open,
+#nz-tasks-root .nz-deployments-toolbar-secondary button[data-task-create] {
+	-webkit-appearance: none;
+	appearance: none;
+	background-color: var(--nz-primary, #111827);
+	border: 1px solid transparent;
+	border-radius: 0.375rem;
+	color: var(--nz-primary-fg, #ffffff);
+}
+
+#nz-projects-root .nz-projects-toolbar-form button#create-project-open:hover,
+#nz-domains-root .nz-deployments-toolbar-secondary button#nz-dns-create-open:hover,
+#nz-tasks-root .nz-deployments-toolbar-secondary button#create-project-open:hover,
+#nz-tasks-root .nz-deployments-toolbar-secondary button#nz-task-create-open:hover,
+#nz-tasks-root .nz-deployments-toolbar-secondary button[data-task-create]:hover {
+	background-color: var(--nz-primary-hover, #1f2937);
+}
+
+#nz-projects-root .nz-projects-content-region {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+#nz-projects-root .nz-projects-content-scroll {
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	width: 100%;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior: contain;
+}
+
+#nz-projects-root .nz-projects-empty-state:not(.hidden) {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	pointer-events: none;
+	text-align: center;
+	z-index: 2;
+}
+
+#nz-projects-root .nz-projects-empty-state.hidden {
+	display: none !important;
+}
+
+#nz-projects-root .nz-projects-footer,
+#nz-deployments-root .nz-deployments-footer,
+#nz-domains-root .nz-deployments-footer,
+#nz-servers-root .nz-deployments-footer,
+#nz-analytics-root .nz-deployments-footer,
+#nz-tasks-root .nz-deployments-footer {
+	width: 100%;
+	border-top: 1px solid var(--nz-border, #eceef3);
+	padding: 0.5rem 0.75rem;
+}
+
+@media (max-width: 900px) {
+	#nz-projects-root .nz-projects-toolbar-secondary,
+	#nz-projects-root .nz-projects-toolbar-form {
+		justify-content: flex-start;
+	}
+}
+
+/* Deployments detail — fixed shell; only the log viewport scrolls */
+#nz-deployments-root:has(.nz-deployment-detail-layout) .nz-deployments-surface {
+	min-height: 0;
+}
+
+#nz-deployments-root:has(.nz-deployment-detail-layout) .nz-deployments-toolbar {
+	flex-shrink: 0;
+}
+
+#nz-deployments-root .nz-deployment-detail-logs .nz-deployment-logs-head {
+	flex-shrink: 0;
+}
+
+#nz-deployments-root .nz-deployment-detail-toolbar {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+#nz-deployments-root .nz-deployment-detail-toolbar__start {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+#nz-deployments-root .nz-deployment-detail-toolbar__title {
+	margin: 0;
+	flex: 1 1 auto;
+	min-width: 0;
+	text-align: left;
+}
+
+#nz-deployments-root .nz-deployment-detail-toolbar__actions {
+	display: flex;
+	flex-shrink: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+#nz-deployments-root .nz-deployment-detail-toolbar__actions .nz-deployment-redeploy,
+#nz-deployments-root .nz-deployment-detail-toolbar__actions a,
+#nz-deployments-root .nz-deployment-detail-toolbar__actions button {
+	height: 1.75rem !important;
+	min-height: 0 !important;
+	padding: 0.25rem 0.5rem !important;
+	font-size: 0.75rem !important;
+	line-height: 1rem;
+}
+
+#nz-deployments-root .nz-deployment-detail-layout {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	height: 100%;
+	overflow: hidden;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-deployments-root .nz-deployment-detail-stack {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+	padding: 0.75rem;
+	overflow: hidden;
+}
+
+#nz-deployments-root .nz-deployment-detail-card {
+	display: flex;
+	flex: 0 1 auto;
+	flex-direction: column;
+	width: 100%;
+	min-height: 0;
+	max-height: 100%;
+	overflow: hidden;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-deployments-root
+	.nz-deployment-detail-card:has(.nz-deployment-detail-logs.is-expanded) {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+#nz-deployments-root .nz-deployment-detail__back {
+	display: inline-flex;
+	width: 1.5rem;
+	height: 1.5rem;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	border-radius: 0.25rem;
+	color: var(--nz-text-muted, #6b7280);
+	transition:
+		background-color 0.12s ease,
+		color 0.12s ease;
+}
+
+#nz-deployments-root .nz-deployment-detail__back:hover {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+	color: var(--nz-text, #111827);
+}
+
+#nz-deployments-root .nz-deployment-detail-card__meta {
+	flex-shrink: 0;
+	padding: 1rem 1.25rem 1.125rem;
+	border: 0;
+	border-radius: 0;
+	background-color: transparent;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	column-gap: 1.5rem;
+	row-gap: 1rem;
+	margin: 0;
+}
+
+@media (max-width: 900px) {
+	#nz-deployments-root .nz-app-deploy-meta__grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+#nz-deployments-root .nz-app-deploy-meta__item {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	min-width: 0;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__item--full {
+	grid-column: 1 / -1;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__item dt {
+	font-size: 0.6875rem;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-deployments-root .nz-app-deploy-meta__item dd {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.35rem;
+	color: var(--nz-text, #111827);
+	word-break: break-word;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	font-weight: 500;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__status-dot {
+	flex-shrink: 0;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 9999px;
+	background-color: var(--nz-text-muted, #9ca3af);
+}
+
+#nz-deployments-root .nz-app-deploy-meta__status-dot[data-state="done"] {
+	background-color: #10b981;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__status-dot[data-state="error"] {
+	background-color: #ef4444;
+}
+
+#nz-deployments-root .nz-app-deploy-meta__status-dot[data-state="running"] {
+	background-color: #f59e0b;
+}
+
+#nz-deployments-root .nz-deployment-detail-logs {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	border-top: 1px solid var(--nz-border, #eceef3);
+	background-color: transparent;
+}
+
+#nz-deployments-root .nz-deployment-detail-logs.is-expanded {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+#nz-deployments-root .nz-deployment-logs-panel {
+	display: flex;
+	flex: 0 0 auto;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	border: 0;
+	background: transparent;
+}
+
+#nz-deployments-root .nz-deployment-detail-logs.is-expanded .nz-deployment-logs-panel {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+#nz-deployments-root .nz-deployment-logs-head {
+	display: flex;
+	flex-shrink: 0;
+	align-items: stretch;
+	justify-content: space-between;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	border-bottom: 0;
+	background-color: var(--nz-surface, #ffffff);
+	transition: background-color 0.12s ease;
+}
+
+#nz-deployments-root .nz-deployment-logs-head:hover {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+}
+
+#nz-deployments-root .nz-deployment-detail-logs.is-expanded .nz-deployment-logs-head {
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-deployments-root .nz-deployment-logs-toolbar-actions {
+	display: flex;
+	flex-shrink: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.375rem;
+	padding: 0.375rem 0.75rem 0.375rem 0;
+}
+
+#nz-deployments-root .nz-deployment-logs-search {
+	display: flex;
+	height: 1.75rem;
+	min-width: 0;
+	align-items: center;
+	gap: 0.375rem;
+	border-radius: 0.375rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	background: var(--nz-bg-elevated, #fff);
+	padding: 0 0.5rem;
+	font-size: 0.6875rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-deployments-root .nz-deployment-logs-search .nz-log-search-input {
+	width: 8.5rem;
+	min-width: 0;
+	border: 0;
+	background: transparent;
+	font-size: 0.6875rem;
+	color: var(--nz-text, #111827);
+	outline: none;
+}
+
+#nz-deployments-root .nz-deployment-logs-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	min-width: 0;
+	width: 100%;
+	margin: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: var(--nz-text, #111827);
+	text-align: left;
+	cursor: pointer;
+	padding: 0.5rem 0.75rem;
+	min-height: 2.25rem;
+}
+
+#nz-deployments-root .nz-deployment-logs-toggle:hover,
+#nz-deployments-root .nz-deployment-logs-toggle:focus-visible {
+	background: transparent;
+}
+
+#nz-deployments-root .nz-deployment-detail-logs.is-expanded .nz-deployment-logs-toggle {
+	width: auto;
+}
+
+#nz-deployments-root .nz-deployment-logs-head:has(.nz-deployment-logs-search:focus-within) {
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-deployments-root .nz-app-setting-panel__chevron {
+	flex-shrink: 0;
+	width: 0.875rem;
+	height: 0.875rem;
+	transition: transform 0.15s ease;
+}
+
+#nz-deployments-root .nz-app-setting-panel__title {
+	font-size: 0.8125rem;
+	font-weight: 500;
+}
+
+#nz-deployments-root .nz-deployment-logs-panel .nz-app-setting-panel__body:not(.hidden) {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	padding: 0;
+	margin: 0;
+}
+
+#nz-deployments-root .nz-deployment-logs-panel .nz-app-setting-panel__body.hidden {
+	display: none !important;
+}
+
+#nz-deployments-root .nz-deployment-logs-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+	overflow: auto;
+	overscroll-behavior: contain;
+	background: var(--nz-bg-muted, #f7f7f8);
+}
+
+#nz-deployments-root .nz-deployment-logs-output {
+	min-width: max-content;
+	padding: 0.5rem 0.625rem 0.75rem;
+	font-family:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+		"Courier New", monospace;
+	font-size: 0.6875rem;
+	line-height: 1.35rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+/* Agent settings — aligned with Nearzero settings / service panels */
+#nz-agent-settings-root.nz-agent-settings {
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+}
+
+#nz-agent-settings-root .nz-agent-settings__lead {
+	margin: 0 0 1rem;
+	max-width: 52rem;
+	font-size: 0.75rem;
+	line-height: 1.35rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-settings-layout .nz-settings-content {
+	min-height: 0;
+}
+
+#nz-agent-settings-root .nz-agent-settings-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	width: 100%;
+	min-width: 0;
+	padding-bottom: 0.25rem;
+}
+
+#nz-agent-settings-root .nz-agent-settings-card {
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card--production {
+	border-color: var(--nz-border, #eceef3);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__header {
+	padding: 1rem 1.25rem 0;
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__eyebrow {
+	margin: 0 0 0.375rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--nz-danger, #dc2626);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__title-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__title {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__desc {
+	margin: 0.375rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.35rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__note {
+	margin: 0.5rem 0 0;
+	font-size: 0.6875rem;
+	line-height: 1.35rem;
+	color: var(--nz-danger, #dc2626);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__body {
+	padding: 0.75rem 1.25rem 1rem;
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__body--list {
+	padding-top: 0.25rem;
+	padding-bottom: 0;
+}
+
+#nz-agent-settings-root .nz-agent-settings-row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.625rem 0;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__body--list .nz-agent-settings-row:last-child {
+	border-bottom: none;
+}
+
+#nz-agent-settings-root .nz-agent-settings-row__text {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+#nz-agent-settings-root .nz-agent-settings-row__title {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+}
+
+#nz-agent-settings-root .nz-agent-settings-row__desc {
+	margin: 0.125rem 0 0;
+	font-size: 0.75rem;
+	line-height: 1.35rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-agent-settings-root .nz-agent-settings-confirm {
+	margin-top: 0.5rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-agent-settings-root .nz-agent-settings-confirm__label {
+	display: block;
+	margin-bottom: 0.375rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-agent-settings-root .nz-agent-settings-confirm__label code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.6875rem;
+	color: var(--nz-text, #111827);
+}
+
+#nz-agent-settings-root .nz-agent-settings-field {
+	display: block;
+	width: 100%;
+	min-width: 0;
+}
+
+#nz-agent-settings-root .nz-agent-settings-field__label {
+	display: block;
+	margin-bottom: 0.375rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-agent-settings-root .nz-agent-settings-card__footer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 1rem 1.25rem 1.25rem;
+	border-top: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-agent-settings-root .nz-agent-settings-status {
+	margin: 0;
+	flex: 1 1 100%;
+	font-size: 0.6875rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-agent-settings-root .nz-agent-settings-status:empty {
+	display: none;
+}
+
+#nz-agent-settings-root .nz-agent-settings__badge {
+	display: inline-flex;
+	align-items: center;
+	border-radius: 999px;
+	border: 1px solid var(--nz-border, #eceef3);
+	background: var(--nz-bg-muted, #f7f7f8);
+	padding: 0.125rem 0.5rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	color: var(--nz-text-muted, #6b7280);
+	white-space: nowrap;
+}
+
+#nz-agent-settings-root .nz-agent-settings__badge--ok {
+	border-color: #a7f3d0;
+	background: #ecfdf5;
+	color: #047857;
+}
+
+#nz-agent-settings-root .nz-agent-settings__code {
+	margin: 0 0.125rem;
+	border-radius: 0.25rem;
+	background: var(--nz-bg-muted, #f7f7f8);
+	padding: 0.0625rem 0.25rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.6875rem;
+	color: var(--nz-text, #111827);
+}
+
+/* iOS-style toggle — agent settings, notification modal, task form, etc. */
+#nz-agent-settings-root .nz-app-switch,
+#nz-notifications-form-dialog .nz-app-switch,
+#nz-task-form-dialog .nz-app-switch {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	cursor: pointer;
+	user-select: none;
+}
+
+#nz-agent-settings-root .nz-app-switch__input,
+#nz-notifications-form-dialog .nz-app-switch__input,
+#nz-task-form-dialog .nz-app-switch__input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+#nz-agent-settings-root .nz-app-switch__track,
+#nz-notifications-form-dialog .nz-app-switch__track,
+#nz-task-form-dialog .nz-app-switch__track {
+	position: relative;
+	display: inline-flex;
+	flex-shrink: 0;
+	width: 1.75rem;
+	height: 1rem;
+	border-radius: 9999px;
+	background-color: var(--nz-border-strong, #d1d5db);
+	transition: background-color 0.18s ease;
+}
+
+#nz-agent-settings-root .nz-app-switch__thumb,
+#nz-notifications-form-dialog .nz-app-switch__thumb,
+#nz-task-form-dialog .nz-app-switch__thumb {
+	position: absolute;
+	top: 50%;
+	left: 0.125rem;
+	width: 0.75rem;
+	height: 0.75rem;
+	border-radius: 9999px;
+	background-color: #ffffff;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+	transform: translateY(-50%);
+	transition: transform 0.18s ease;
+}
+
+#nz-agent-settings-root .nz-app-switch__input:checked + .nz-app-switch__track,
+#nz-notifications-form-dialog .nz-app-switch__input:checked + .nz-app-switch__track,
+#nz-task-form-dialog .nz-app-switch__input:checked + .nz-app-switch__track {
+	background-color: var(--nz-primary, #111827);
+}
+
+#nz-agent-settings-root
+	.nz-app-switch__input:checked
+	+ .nz-app-switch__track
+	.nz-app-switch__thumb,
+#nz-notifications-form-dialog
+	.nz-app-switch__input:checked
+	+ .nz-app-switch__track
+	.nz-app-switch__thumb,
+#nz-task-form-dialog
+	.nz-app-switch__input:checked
+	+ .nz-app-switch__track
+	.nz-app-switch__thumb {
+	transform: translate(0.75rem, -50%);
+}
+
+#nz-task-form-dialog .nz-task-form-enabled-row {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.75rem 0.875rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-bg-muted, #f9fafb);
+}
+
+#nz-task-form-dialog .nz-task-form-enabled-row__text {
+	min-width: 0;
+	flex: 1;
+}
+
+#nz-task-form-dialog .nz-task-form-enabled-row__title {
+	margin: 0;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+	color: var(--nz-text, #111827);
+}
+
+#nz-task-form-dialog .nz-task-form-enabled-row__desc {
+	margin: 0.125rem 0 0;
+	font-size: 0.6875rem;
+	line-height: 1.25rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-agent-settings-root .nz-app-switch__input:focus-visible + .nz-app-switch__track,
+#nz-notifications-form-dialog .nz-app-switch__input:focus-visible + .nz-app-switch__track,
+#nz-task-form-dialog .nz-app-switch__input:focus-visible + .nz-app-switch__track {
+	outline: 2px solid var(--nz-primary, #111827);
+	outline-offset: 2px;
+}
+
+/* About Nearzero — platform meta + metrics */
+.nz-about-nearzero {
+	display: flex;
+	flex-direction: column;
+	gap: 1.5rem;
+}
+
+.nz-about-nearzero__meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 1rem 2rem;
+	padding: 1rem 1.25rem 1.125rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-about-nearzero__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, max-content));
+	justify-content: start;
+	column-gap: 3rem;
+	row-gap: 1rem;
+	margin: 0;
+}
+
+.nz-about-nearzero__controls {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 1rem;
+}
+
+@media (max-width: 640px) {
+	.nz-about-nearzero__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+.nz-about-nearzero__item {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	min-width: 0;
+}
+
+.nz-about-nearzero__item dt {
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-about-nearzero__item dd {
+	margin: 0;
+}
+
+.nz-about-nearzero__value {
+	font-size: 0.8125rem;
+	line-height: 1.35rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+	word-break: break-word;
+}
+
+.nz-about-nearzero__value--ip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.nz-about-nearzero__copy {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.5rem;
+	height: 1.5rem;
+	flex-shrink: 0;
+	border: 0;
+	border-radius: 0.25rem;
+	background: transparent;
+	color: var(--nz-text-muted, #6b7280);
+	cursor: pointer;
+	transition:
+		background-color 0.12s ease,
+		color 0.12s ease;
+}
+
+.nz-about-nearzero__copy:hover {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+	color: var(--nz-text, #111827);
+}
+
+.nz-about-nearzero__error {
+	padding: 0.75rem 1rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-bg-muted, #f7f7f8);
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-about-nearzero__metrics {
+	padding-top: 0.25rem;
+	border-top: 1px solid var(--nz-border, #eceef3);
+}
+
+.nz-about-nearzero__metrics--primary {
+	padding-top: 0;
+	border-top: 0;
+}
+
+.nz-about-nearzero__metrics-title {
+	margin: 0 0 1rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring {
+	min-width: 0;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring__state {
+	display: flex;
+	min-height: 18rem;
+	width: 100%;
+	align-items: center;
+	justify-content: center;
+	padding: 1rem;
+	font-size: 0.8125rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring__state.hidden {
+	display: none;
+}
+
+.nz-monitoring__state--error {
+	min-height: 20rem;
+}
+
+.nz-monitoring__error-card {
+	max-width: 34rem;
+	padding: 1.25rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-surface, #ffffff);
+	text-align: center;
+}
+
+.nz-monitoring__error-title {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring__error-message {
+	margin: 0.5rem 0 0;
+	white-space: pre-line;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--nz-danger, #dc2626);
+}
+
+.nz-monitoring__error-url {
+	margin: 0.5rem 0 0;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+	word-break: break-all;
+}
+
+#nz-monitoring-content:not(.hidden) {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.nz-monitoring__header,
+.nz-monitoring-card,
+.nz-monitoring-panel,
+.nz-monitoring-chart {
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-surface, #ffffff);
+}
+
+.nz-monitoring__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 1rem 1.125rem;
+	background:
+		linear-gradient(135deg, rgba(17, 24, 39, 0.035), transparent 42%),
+		var(--nz-surface, #ffffff);
+}
+
+.nz-monitoring__intro {
+	min-width: 0;
+}
+
+.nz-monitoring__eyebrow {
+	margin: 0 0 0.25rem;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring__title {
+	margin: 0;
+	font-size: 1rem;
+	font-weight: 650;
+	letter-spacing: -0.02em;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring__description {
+	margin: 0.375rem 0 0;
+	max-width: 38rem;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring__controls {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.625rem;
+}
+
+.nz-monitoring__control {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring__select {
+	height: 2.25rem;
+	min-width: 7.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-surface, #ffffff);
+	padding: 0 2rem 0 0.75rem;
+	font-size: 0.75rem;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring__select:focus-visible {
+	outline: 2px solid var(--nz-primary, #111827);
+	outline-offset: 2px;
+}
+
+.nz-monitoring__cards {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 0.75rem;
+}
+
+.nz-monitoring-card {
+	min-width: 0;
+	padding: 1rem;
+}
+
+.nz-monitoring-card__label {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring-card__value {
+	margin: 0.5rem 0 0;
+	font-size: 1.25rem;
+	font-weight: 650;
+	line-height: 1.65rem;
+	letter-spacing: -0.02em;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring-card__hint {
+	margin: 0.625rem 0 0;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring-meter {
+	overflow: hidden;
+	height: 0.375rem;
+	margin-top: 0.875rem;
+	border-radius: 999px;
+	background: var(--nz-bg-muted, #f3f4f6);
+}
+
+.nz-monitoring-meter__fill {
+	display: block;
+	width: 0;
+	height: 100%;
+	border-radius: inherit;
+	background: var(--nz-primary, #111827);
+	transition: width 0.25s ease;
+}
+
+#nz-mon-mem-bar {
+	background: var(--nz-success, #059669);
+}
+
+#nz-mon-disk-bar {
+	background: var(--nz-warning, #f59e0b);
+}
+
+.nz-monitoring-panel {
+	padding: 1rem 1.125rem;
+}
+
+.nz-monitoring-panel__title,
+.nz-monitoring-chart h4 {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-monitoring-panel__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1rem;
+	margin-top: 1rem;
+}
+
+.nz-monitoring-detail {
+	min-width: 0;
+}
+
+.nz-monitoring-detail h4 {
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-monitoring-detail p {
+	margin: 0.375rem 0 0;
+	font-size: 0.8125rem;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+	word-break: break-word;
+}
+
+.nz-monitoring-detail__muted {
+	color: var(--nz-text-muted, #6b7280) !important;
+}
+
+.nz-monitoring__charts {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.75rem;
+}
+
+.nz-monitoring-chart {
+	min-width: 0;
+	padding: 1rem;
+}
+
+.nz-monitoring-chart canvas {
+	display: block;
+	width: 100%;
+	height: 12rem;
+	margin-top: 0.75rem;
+}
+
+@media (max-width: 1024px) {
+	.nz-monitoring__cards {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 768px) {
+	.nz-monitoring__header {
+		flex-direction: column;
+	}
+
+	.nz-monitoring__controls {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.nz-monitoring__charts,
+	.nz-monitoring-panel__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 560px) {
+	.nz-monitoring__cards {
+		grid-template-columns: 1fr;
+	}
+
+	.nz-monitoring__control {
+		width: 100%;
+		justify-content: space-between;
+	}
+
+	.nz-monitoring__select {
+		min-width: 9rem;
+	}
+}
+
+/* Git providers */
+.nz-git-providers__section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+.nz-git-providers__heading {
+	margin: 0;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-git-providers__chips {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+	.nz-git-providers__chips {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.nz-git-provider-chip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	min-height: 2.25rem;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-surface, #ffffff);
+	color: var(--nz-text, #111827);
+	font-size: 0.75rem;
+	font-weight: 500;
+	cursor: pointer;
+	transition:
+		border-color 0.12s ease,
+		background-color 0.12s ease;
+}
+
+.nz-git-provider-chip:hover {
+	border-color: var(--nz-border-strong, #d1d5db);
+	background: var(--nz-bg-hover, #f3f4f6);
+}
+
+.nz-git-provider-chip__icon {
+	display: inline-flex;
+	color: var(--nz-git-accent, #111827);
+}
+
+html.dark .nz-git-provider-chip[data-git-provider="github"] .nz-git-provider-chip__icon {
+	color: #fafafa;
+}
+
+.nz-git-providers__name-cell {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+.nz-git-providers__type {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+.nz-git-providers__type-dot {
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 9999px;
+	flex-shrink: 0;
+}
+
+.nz-git-providers__badge {
+	display: inline-flex;
+	align-items: center;
+	border-radius: 9999px;
+	border: 1px solid var(--nz-border, #eceef3);
+	padding: 0.125rem 0.5rem;
+	font-size: 0.625rem;
+	font-weight: 500;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-git-providers__badge--warn {
+	border-color: #fde68a;
+	background: #fffbeb;
+	color: #92400e;
+}
+
+.nz-git-providers__badge--info {
+	border-color: #bfdbfe;
+	background: #eff6ff;
+	color: #1d4ed8;
+}
+
+.nz-git-providers__actions {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.25rem;
+}
+
+.nz-git-providers__share-input {
+	width: 0.875rem;
+	height: 0.875rem;
+	cursor: pointer;
+}
+
+.nz-git-modal-callout {
+	margin: 0 0 0.75rem;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-bg-muted, #f7f7f8);
+	font-size: 0.6875rem;
+	line-height: 1.35rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-git-modal-callout--warn {
+	border-color: #fde68a;
+	background: #fffbeb;
+	color: #92400e;
+}
+
+.nz-git-modal-callout code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.625rem;
+}
+
+.nz-git-modal__stack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.875rem;
+}
+
+.nz-git-modal__checkbox {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.625rem;
+	margin: 0;
+	cursor: pointer;
+}
+
+.nz-git-modal__checkbox input[type="checkbox"] {
+	margin-top: 0.125rem;
+	width: 1rem;
+	height: 1rem;
+	flex-shrink: 0;
+	cursor: pointer;
+	accent-color: var(--nz-text, #111827);
+}
+
+.nz-git-modal__checkbox-copy {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	min-width: 0;
+}
+
+.nz-git-modal__checkbox-label {
+	font-size: 0.8125rem;
+	font-weight: 500;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+}
+
+.nz-git-modal__checkbox-hint {
+	font-size: 0.6875rem;
+	line-height: 1.25rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-git-modal__note {
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.35rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-git-modal__link {
+	color: var(--nz-text, #111827);
+	font-weight: 500;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.nz-git-modal__link:hover {
+	color: var(--nz-text-muted, #6b7280);
+}
+
+/* Traefik file editor */
+.nz-traefik {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-height: 0;
+}
+
+.nz-traefik__callout {
+	padding: 0.625rem 0.875rem;
+	border: 1px solid #fde68a;
+	border-radius: 0.375rem;
+	background: #fffbeb;
+	font-size: 0.75rem;
+	line-height: 1.35rem;
+	color: #92400e;
+}
+
+.nz-traefik__error {
+	padding: 0.75rem 1rem;
+	border: 1px solid #fecaca;
+	border-radius: 0.375rem;
+	background: #fef2f2;
+	font-size: 0.75rem;
+	color: #b91c1c;
+}
+
+.nz-traefik__empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	min-height: min(50vh, 24rem);
+	text-align: center;
+}
+
+.nz-traefik__empty-title {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-traefik__empty-text {
+	margin: 0;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-traefik__layout {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+	min-height: min(70vh, 42rem);
+}
+
+@media (min-width: 1024px) {
+	.nz-traefik__layout {
+		flex-direction: row;
+		align-items: stretch;
+	}
+}
+
+.nz-traefik__sidebar {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-surface, #ffffff);
+}
+
+@media (min-width: 1024px) {
+	.nz-traefik__sidebar {
+		width: 16rem;
+		max-height: min(70vh, 42rem);
+	}
+}
+
+.nz-traefik__sidebar-label {
+	margin: 0;
+	padding: 0.625rem 0.75rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-traefik__tree {
+	flex: 1;
+	overflow: auto;
+	padding: 0.375rem;
+}
+
+.nz-traefik-tree__btn {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 0.5rem;
+	border: 0;
+	border-radius: 0.25rem;
+	background: transparent;
+	padding: 0.375rem 0.5rem;
+	font-size: 0.75rem;
+	color: var(--nz-text, #111827);
+	text-align: left;
+	cursor: pointer;
+}
+
+.nz-traefik-tree__btn:hover,
+.nz-traefik-tree__btn--active {
+	background: var(--nz-bg-hover, #f3f4f6);
+}
+
+.nz-traefik-tree__btn svg {
+	flex-shrink: 0;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-traefik__editor {
+	flex: 1;
+	min-width: 0;
+	min-height: min(50vh, 28rem);
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-surface, #ffffff);
+}
+
+.nz-traefik__placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	height: 100%;
+	min-height: inherit;
+	padding: 2rem;
+	text-align: center;
+}
+
+.nz-traefik__placeholder-title {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-traefik__placeholder-text {
+	margin: 0;
+	max-width: 20rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-traefik__form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	height: 100%;
+	padding: 0.875rem;
+}
+
+.nz-traefik__form-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem;
+}
+
+.nz-traefik__check {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	font-size: 0.75rem;
+	color: var(--nz-text, #111827);
+	cursor: pointer;
+}
+
+.nz-traefik__check-input {
+	width: 0.875rem;
+	height: 0.875rem;
+}
+
+.nz-traefik__textarea {
+	flex: 1;
+	min-height: 20rem;
+	width: 100%;
+	resize: vertical;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-bg-muted, #f7f7f8);
+	padding: 0.75rem;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.6875rem;
+	line-height: 1.4;
+	color: var(--nz-text, #111827);
+}
+
+.nz-traefik__form-error {
+	margin: 0;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid #fecaca;
+	border-radius: 0.375rem;
+	background: #fef2f2;
+	font-size: 0.6875rem;
+	color: #b91c1c;
+}
+
+.nz-traefik__form-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+/* Notification channels modal */
+#nz-notifications-root .nz-notif-providers {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 0.5rem;
+}
+
+@media (max-width: 768px) {
+	#nz-notifications-root .nz-notif-providers {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+#nz-notifications-root .nz-notif-provider-card {
+	display: flex;
+	min-height: 4.5rem;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-surface, #ffffff);
+	padding: 0.75rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	text-align: center;
+	color: var(--nz-text, #111827);
+	cursor: pointer;
+	transition:
+		border-color 0.12s ease,
+		background-color 0.12s ease;
+}
+
+#nz-notifications-root .nz-notif-provider-card:hover {
+	border-color: var(--nz-border-strong, #d1d5db);
+	background: var(--nz-bg-hover, #f3f4f6);
+}
+
+#nz-notifications-root .nz-notif-provider-card:has(:checked) {
+	border-width: 2px;
+	border-color: var(--nz-text, #111827);
+}
+
+#nz-notifications-root .nz-notif-section-title {
+	margin: 0 0 0.5rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-notifications-root .nz-notif-events {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+	#nz-notifications-root .nz-notif-events {
+		grid-template-columns: 1fr;
+	}
+}
+
+#nz-notifications-root .nz-notif-event-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-surface, #ffffff);
+}
+
+#nz-notifications-root .nz-notif-event-row__label {
+	font-size: 0.75rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+}
+
+#nz-notifications-root .nz-notif-event-row__hint {
+	margin: 0.125rem 0 0;
+	font-size: 0.6875rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-notifications-root .nz-notif-toggle-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.625rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+}
+
+#nz-notifications-form-dialog .nz-notif-form-error {
+	margin: 0;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid #fecaca;
+	border-radius: 0.375rem;
+	background: #fef2f2;
+	font-size: 0.6875rem;
+	color: #b91c1c;
+}
+
+#nz-notifications-form-dialog .nz-notif-form-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
+
+#nz-notifications-root .nz-notif-form-section {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+}
+
+/* Server cards — actions menu modal */
+#nz-servers-root .nz-server-card__header {
+	align-items: flex-start;
+}
+
+.nz-server-action-menu--dropdown {
+	display: flex;
+	flex-direction: column;
+	gap: 0.0625rem;
+	z-index: 200;
+}
+
+/*
+ * `.nz-server-action-menu--dropdown` (display:flex) and Tailwind's `.hidden`
+ * (display:none) have equal specificity, so which one wins depends on
+ * stylesheet load order — making the open/close toggle unreliable. This
+ * two-class selector (higher specificity) guarantees the menu is hidden while
+ * it carries the `hidden` class, regardless of CSS order.
+ */
+.nz-server-action-menu--dropdown.hidden {
+	display: none;
+}
+
+.nz-server-action-menu__section {
+	margin: 0.375rem 0.5rem 0.125rem;
+	padding: 0;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-server-action-menu__section:first-child {
+	margin-top: 0;
+}
+
+.nz-server-action-menu__divider {
+	height: 1px;
+	margin: 0.375rem 0;
+	background: var(--nz-border, #eceef3);
+}
+
+.nz-server-action-menu__btn {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: flex-start;
+	border: 0;
+	border-radius: 0.25rem;
+	background: transparent;
+	padding: 0.375rem 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+}
+
+.nz-server-action-menu__btn:hover:not(:disabled) {
+	background: var(--nz-bg-hover, #f3f4f6);
+}
+
+.nz-server-action-menu__btn--danger {
+	color: #b91c1c;
+}
+
+.nz-server-action-menu__btn--danger:hover:not(:disabled) {
+	background: #fef2f2;
+}
+
+.nz-server-action-menu__btn--disabled,
+.nz-server-action-menu__btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.nz-server-action-menu__row {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 0.125rem;
+}
+
+.nz-server-action-menu__row .nz-server-action-menu__btn {
+	flex: 1 1 auto;
+	width: auto;
+}

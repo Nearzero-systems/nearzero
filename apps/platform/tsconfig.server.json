@@ -1,0 +1,30 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"module": "ESNext",
+		"outDir": "dist/",
+		"target": "ESNext",
+		"lib": ["ESNext", "DOM"],
+		"jsx": "react-jsx",
+		"isolatedModules": false,
+		"noEmit": false,
+		"moduleResolution": "Node",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./*"],
+			"@nearzero/server/*": ["../../packages/server/src/*"],
+			"@nearzero/agent": ["../../packages/agent/src/index.ts"],
+			"@nearzero/agent/*": ["../../packages/agent/src/*"],
+			"@nearzero/trpc-openapi": ["../../packages/trpc-openapi/src/index.ts"]
+		}
+	},
+	"include": [
+		"./server/**/*",
+		"migration.ts",
+		"setup.ts",
+		"wait-for-postgres.ts",
+		"reset-password.ts",
+		"reset-2fa.ts",
+		"scripts/**/*"
+	]
+}

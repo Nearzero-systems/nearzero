@@ -1,0 +1,292 @@
+/**
+ * Nearzero dashboard content panel theme — scoped to .nz-dashboard-content.
+ * White panel, neutral tokens, compact controls. Inner card borders preserved.
+ */
+.nz-dashboard-content:has(#nz-app-deploy-root),
+.nz-dashboard-content:has([data-compose-action-root="1"]),
+.nz-dashboard-content:has([data-db-service-root="1"]) {
+	min-height: 0 !important;
+	height: auto;
+}
+
+.nz-dashboard-content {
+	--background: 0 0% 100%;
+	--foreground: 222 47% 11%;
+	--card: 0 0% 100%;
+	--card-foreground: 222 47% 11%;
+	--popover: 0 0% 100%;
+	--popover-foreground: 222 47% 11%;
+	--primary: 222 47% 11%;
+	--primary-foreground: 0 0% 98%;
+	--secondary: 220 14% 96%;
+	--secondary-foreground: 222 47% 11%;
+	--muted: 220 14% 96%;
+	--muted-foreground: 220 9% 46%;
+	--accent: 220 14% 96%;
+	--accent-foreground: 222 47% 11%;
+	--destructive: 0 72% 51%;
+	--destructive-foreground: 0 0% 98%;
+	--border: 220 16% 93%;
+	--input: 220 16% 93%;
+	--ring: 222 47% 11%;
+	--sidebar-background: 0 0% 100%;
+	--sidebar-foreground: 222 47% 11%;
+	--sidebar-primary: 222 47% 11%;
+	--sidebar-primary-foreground: 0 0% 98%;
+	--sidebar-accent: 220 14% 96%;
+	--sidebar-accent-foreground: 222 47% 11%;
+	--sidebar-border: 220 16% 93%;
+	--sidebar-ring: 220 16% 93%;
+	--nz-card-border: var(--nz-border, #eceef3);
+	background-color: var(--nz-surface, #ffffff);
+	color: var(--nz-text, #111827);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	width: 100%;
+	min-height: 100%;
+}
+
+/* Hide Nearzero chrome: breadcrumbs, server time, sidebar trigger row */
+.nz-dashboard-content header.flex.h-16,
+.nz-dashboard-content [data-sidebar="trigger"] {
+	display: none !important;
+}
+
+/*
+ * Flatten only the outer Nearzero page shell (bg-sidebar + shadow wrapper).
+ * Do NOT strip borders from inner cards (.border, Card, stat tiles, etc.).
+ */
+.nz-dashboard-content [class*="bg-sidebar"]:not(.border) {
+	background-color: #ffffff !important;
+	border: none !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+	padding: 0 !important;
+}
+
+.nz-dashboard-content
+	[class*="bg-sidebar"]:not(.border)
+	> .rounded-xl.bg-background:not(.border),
+.nz-dashboard-content
+	[class*="bg-sidebar"]:not(.border)
+	> [class*="rounded-xl"][class*="bg-background"]:not([class*="border"]) {
+	background-color: #ffffff !important;
+	border: none !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+}
+
+/* Border color token */
+.nz-dashboard-content .border,
+.nz-dashboard-content [class*="border-border"] {
+	border-color: var(--nz-card-border) !important;
+}
+
+/* Settings hub tables — flat, no elevation */
+.nz-dashboard-content .nz-settings-table-wrap,
+.nz-dashboard-content .nz-settings-table-wrap *,
+.nz-dashboard-content .nz-settings-table,
+.nz-dashboard-content .nz-settings-panel table,
+.nz-dashboard-content .nz-settings-panel .rounded-md.border {
+	box-shadow: none !important;
+	--tw-shadow: 0 0 #0000 !important;
+	--tw-shadow-colored: 0 0 #0000 !important;
+	filter: none !important;
+}
+
+/* INNER CARDS ONLY — home stat tiles (4-up grid) */
+.nz-dashboard-content .grid.gap-4 > .min-h-\[140px\].border {
+	border: 1px solid var(--nz-card-border) !important;
+	border-radius: 0.375rem !important;
+	box-shadow: none !important;
+}
+
+/* INNER CARDS ONLY — API key list rows */
+.nz-dashboard-content .flex.flex-col.gap-4 > .border.rounded-lg,
+.nz-dashboard-content .flex.flex-col.gap-2.p-4.border.rounded-lg {
+	border: 1px solid var(--nz-card-border) !important;
+	border-radius: 0.375rem !important;
+	box-shadow: none !important;
+}
+
+/* NO borders on outer shells or large section wrappers */
+.nz-dashboard-content [class*="bg-sidebar"],
+.nz-dashboard-content [class*="bg-sidebar"] .rounded-xl.bg-background,
+.nz-dashboard-content [class*="bg-sidebar"] [class*="shadow-md"],
+.nz-dashboard-content .rounded-xl.border.bg-background:not(.min-h-\[140px\]),
+.nz-dashboard-content [data-slot="card"] {
+	border: none !important;
+	box-shadow: none !important;
+}
+
+.nz-dashboard-content .text-muted-foreground {
+	color: #6b7280 !important;
+}
+
+/* Neutralize purple/violet accents */
+.nz-dashboard-content [class*="text-violet-"],
+.nz-dashboard-content [class*="bg-violet-"],
+.nz-dashboard-content [class*="border-violet-"],
+.nz-dashboard-content [class*="text-purple-"],
+.nz-dashboard-content [class*="bg-purple-"],
+.nz-dashboard-content [class*="border-purple-"] {
+	color: rgb(75 85 99) !important;
+	background-color: rgb(243 244 246 / 0.8) !important;
+	border-color: var(--nz-card-border) !important;
+}
+
+.nz-dashboard-content .bg-primary\/5,
+.nz-dashboard-content [class*="bg-primary/5"] {
+	background-color: #f7f7f8 !important;
+}
+
+/*
+ * Typography: text-xs for body copy.
+ * Headings (h1–h6) keep their component/Tailwind sizes.
+ */
+.nz-dashboard-content
+	*:not(:is(h1, h2, h3, h4, h5, h6, svg, path, circle, line, polyline, rect)) {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+}
+
+/* Buttons & link-buttons: text-xs px-2 py-1 rounded-md cursor-pointer */
+.nz-dashboard-content
+	:is(button, a[class*="inline-flex"], [role="button"]):not([role="menuitem"]):not(
+		[role="option"]
+	),
+#nz-project-workspace
+	:is(button, a[class*="inline-flex"], [role="button"]):not([role="menuitem"]):not(
+		[role="option"]
+	) {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	min-height: unset !important;
+	height: auto !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: pointer !important;
+	gap: 0.25rem !important;
+}
+
+.nz-dashboard-content button:disabled,
+.nz-dashboard-content [role="button"][aria-disabled="true"],
+#nz-project-workspace button:disabled,
+#nz-project-workspace [role="button"][aria-disabled="true"] {
+	cursor: not-allowed !important;
+}
+
+/* Preserve explicit zero-padding on icon-only controls */
+.nz-dashboard-content button[class*="px-0"],
+#nz-project-workspace button[class*="px-0"] {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+}
+
+.nz-dashboard-content button[class*="py-0"],
+#nz-project-workspace button[class*="py-0"] {
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+}
+
+/* Inputs & selects: text-xs px-2 py-1 rounded-md cursor-pointer */
+.nz-dashboard-content textarea,
+dialog textarea,
+.nz-modal__textarea {
+	resize: none !important;
+}
+
+.nz-dashboard-content input:not([type="checkbox"]):not([type="radio"]),
+.nz-dashboard-content select,
+.nz-dashboard-content textarea {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	min-height: unset !important;
+	height: auto !important;
+	padding-top: 0.25rem !important;
+	padding-bottom: 0.25rem !important;
+	padding-left: 0.5rem !important;
+	padding-right: 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: pointer !important;
+	border: 1px solid var(--nz-border, var(--nz-card-border)) !important;
+	background-color: var(--nz-bg-muted, #ffffff) !important;
+	color: var(--nz-text, #111827) !important;
+}
+
+input.nz-agent-message-input__field:not([type="checkbox"]):not([type="radio"]),
+.nz-dashboard-content input.nz-agent-message-input__field:not([type="checkbox"]):not([type="radio"]),
+.nz-dashboard-content input.nz-log-search-input:not([type="checkbox"]):not([type="radio"]) {
+	background-color: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	cursor: text !important;
+}
+
+.nz-dashboard-content input.nz-log-search-input:not([type="checkbox"]):not([type="radio"]) {
+	padding: 0 !important;
+}
+
+/* Teams & audit log filter bar — border only, no fill */
+.nz-dashboard-content .nz-settings-filter-bar input:not([type="checkbox"]):not([type="radio"]),
+.nz-dashboard-content .nz-settings-filter-bar select {
+	background-color: transparent !important;
+}
+
+/* Toolbar filters: bordered, no fill (match outlined controls) */
+.nz-dashboard-content .nz-projects-toolbar-secondary input[type="search"],
+.nz-dashboard-content .nz-projects-toolbar-secondary select,
+.nz-dashboard-content .nz-projects-toolbar-secondary #tag-filter-trigger,
+.nz-dashboard-content .nz-deployments-toolbar-secondary input[type="search"],
+.nz-dashboard-content .nz-deployments-toolbar-secondary select,
+.nz-dashboard-content .nz-domains-controls-row input:not([type="checkbox"]):not([type="radio"]),
+.nz-dashboard-content .nz-domains-controls-row select {
+	background-color: transparent !important;
+}
+
+.nz-dashboard-content .nz-projects-toolbar-secondary button#create-project-open {
+	background-color: var(--nz-primary, #111827) !important;
+	border-color: transparent !important;
+	color: var(--nz-primary-fg, #ffffff) !important;
+}
+
+.nz-dashboard-content .nz-projects-toolbar-secondary button#create-project-open:hover {
+	background-color: var(--nz-primary-hover, #1f2937) !important;
+}
+
+.nz-dashboard-content input[type="checkbox"],
+.nz-dashboard-content input[type="radio"] {
+	cursor: pointer !important;
+}
+
+.nz-dashboard-content input:disabled,
+.nz-dashboard-content select:disabled,
+.nz-dashboard-content textarea:disabled,
+.nz-dashboard-content input[readonly],
+.nz-dashboard-content textarea[readonly] {
+	cursor: not-allowed !important;
+}
+
+/* Primary buttons */
+.nz-dashboard-content button.bg-primary,
+.nz-dashboard-content a.bg-primary,
+.nz-dashboard-content [class*="bg-primary"]:not([class*="bg-primary/"]) {
+	background-color: var(--nz-primary, #111827) !important;
+	color: var(--nz-primary-fg, #ffffff) !important;
+}
+
+.nz-dashboard-content button.bg-primary:hover,
+.nz-dashboard-content a.bg-primary:hover,
+.nz-dashboard-content [class*="hover:bg-primary"]:hover {
+	background-color: var(--nz-primary-hover, #1f2937) !important;
+}
+
+/* Remove max-width constraints so content fills panel */
+.nz-dashboard-content [class*="max-w-"] {
+	max-width: none !important;
+}
+
+.nz-dashboard-content [class*="mx-auto"] {
+	margin-left: 0 !important;
+	margin-right: 0 !important;
+}

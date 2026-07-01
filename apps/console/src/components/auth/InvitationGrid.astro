@@ -1,0 +1,283 @@
+---
+import AuthGrid from "./AuthGrid.astro";
+import { authBtnClass, authMutedText } from "@/lib/auth-form-classes";
+import type { InvitationPreview } from "@/lib/invitation-types";
+
+interface Props {
+	token: string;
+	invitation: InvitationPreview | null;
+	loadError: string | null;
+	sessionEmail: string | null;
+	loginHref?: string;
+}
+
+const {
+	token,
+	invitation,
+	loadError,
+	sessionEmail,
+	loginHref = "/",
+} = Astro.props;
+
+const missingToken = !token;
+const invalid = missingToken || !!loadError || !invitation;
+const expired = invitation?.isExpired ?? false;
+const used = invitation ? invitation.status !== "pending" : false;
+const inviteValid = !invalid && !expired && !used && !!invitation;
+const emailMismatch =
+	!!sessionEmail &&
+	!!invitation &&
+	sessionEmail.toLowerCase() !== invitation.email.toLowerCase();
+const canAccept = inviteValid && !!sessionEmail && !emailMismatch;
+
+const organizationName = invitation?.organizationName?.trim() || "a workspace";
+const inviterName = invitation?.inviterName?.trim() || "A teammate";
+const roleLabel = invitation?.role ?? "member";
+
+const secondaryBtnClass =
+	"inline-flex w-full items-center justify-center rounded-md border border-[#e5e7eb] bg-white px-2 py-1 text-xs font-normal text-[#6b7280] transition-colors duration-200 hover:bg-[#f7f7f8] hover:text-[#111827] disabled:cursor-not-allowed disabled:opacity-70";
+---
+
+<div
+	id="nz-invitation-root"
+	data-token={token}
+	data-can-accept={canAccept ? "1" : "0"}
+	data-can-decline={canAccept ? "1" : "0"}
+	data-invitation-id={invitation?.id ?? ""}
+	data-organization-id={invitation?.organizationId ?? ""}
+	data-organization-slug={invitation?.organizationSlug ?? ""}
+>
+	<AuthGrid>
+		<div slot="c4" class="mx-auto flex h-full w-full max-w-[30rem] items-end justify-center pb-1 text-center">
+			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">
+				Join {organizationName}
+			</h1>
+		</div>
+		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
+			{missingToken ? (
+				<p class="text-sm text-[#991b1b]">Invalid invitation link.</p>
+			) : loadError ? (
+				<p class="text-sm text-[#991b1b]">{loadError}</p>
+			) : expired ? (
+				<p class="text-sm text-[#991b1b]">This invitation has expired.</p>
+			) : used ? (
+				<p class="text-sm text-[#991b1b]">This invitation has already been used.</p>
+			) : (
+				<p class={`text-sm leading-relaxed ${authMutedText}`}>
+					<span class="font-medium text-[#111827]">{inviterName}</span> invited you to join{" "}
+					<span class="font-medium text-[#111827]">{organizationName}</span> on Nearzero as{" "}
+					<span class="font-medium text-[#111827]">{roleLabel}</span>.
+				</p>
+			)}
+		</div>
+		<div slot="c10" class="mx-auto flex h-full w-full max-w-[30rem] flex-col justify-center gap-3">
+			{inviteValid && invitation ? (
+				<div class="flex flex-col gap-3 text-sm text-[#111827]">
+					<div>
+						<p class={`text-[10px] font-medium uppercase tracking-[0.14em] ${authMutedText}`}>Workspace</p>
+						<p class="mt-1 font-medium">{organizationName}</p>
+					</div>
+					<div>
+						<p class={`text-[10px] font-medium uppercase tracking-[0.14em] ${authMutedText}`}>Invited email</p>
+						<p class="mt-1">{invitation.email}</p>
+					</div>
+				</div>
+			) : null}
+		</div>
+		<div slot="c13" class="mx-auto flex h-full w-full max-w-[30rem] flex-col justify-center gap-2">
+			{emailMismatch && invitation ? (
+				<p class="text-center text-sm leading-relaxed text-[#991b1b]">
+					Sign in as {invitation.email} to accept this invitation.
+				</p>
+			) : null}
+
+			{canAccept ? (
+				<>
+					<button type="button" id="nz-invitation-accept" class={authBtnClass}>
+						Accept
+					</button>
+					<button type="button" id="nz-invitation-decline" class={secondaryBtnClass}>
+						Reject
+					</button>
+				</>
+			) : null}
+
+			{invalid && !missingToken ? (
+				<a href={loginHref} class={`${authBtnClass} text-center no-underline`}>Back to sign in</a>
+			) : null}
+		</div>
+		<div slot="c16" class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-3 text-center text-[11px] text-[#a3a3a3] sm:text-xs">
+			{emailMismatch ? (
+				<button
+					type="button"
+					id="nz-invitation-sign-out"
+					class="cursor-pointer border-0 bg-transparent text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]"
+				>
+					Sign out and use {invitation?.email}
+				</button>
+			) : (
+				<a href={loginHref} class="text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">
+					Back to sign in
+				</a>
+			)}
+		</div>
+	</AuthGrid>
+</div>
+
+<script>
+	import { authErrorMessage } from "@/lib/auth-form-classes";
+	import {
+		clearPendingInvitationToken,
+		persistPendingInvitationToken,
+	} from "@/lib/invitation-routes";
+	import { inviteMemberSetupPath } from "@/lib/onboarding-gates";
+	import { orgDashboardPath } from "@/lib/org-routes";
+	import { trpcQuery } from "@/lib/client-api";
+	import { showToast } from "@/scripts/ui";
+
+	const ACCEPTED_INVITE_ORG_ID_KEY = "nz-accepted-invitation-organization-id";
+
+	async function activateOrganization(organizationId: string) {
+		if (!organizationId) return;
+		await fetch("/api/auth/organization/set-active", {
+			method: "POST",
+			credentials: "include",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ organizationId }),
+		}).catch(() => undefined);
+	}
+
+	async function signOutToEntry() {
+		await fetch("/api/auth/sign-out", {
+			method: "POST",
+			credentials: "include",
+		}).catch(() => undefined);
+		window.location.href = "/";
+	}
+
+	function bindInvitation() {
+		const root = document.getElementById("nz-invitation-root");
+		if (!root || root.dataset.bound === "1") return;
+		root.dataset.bound = "1";
+
+		const token = root.dataset.token || "";
+		if (token) persistPendingInvitationToken(token);
+
+		const acceptBtn = document.getElementById("nz-invitation-accept");
+		const declineBtn = document.getElementById("nz-invitation-decline");
+		const invitationId = root.dataset.invitationId || root.dataset.token || "";
+		const organizationId = root.dataset.organizationId || "";
+		const organizationSlug = root.dataset.organizationSlug || "";
+
+		if (acceptBtn instanceof HTMLButtonElement && root.dataset.canAccept === "1") {
+			acceptBtn.addEventListener("click", async () => {
+				acceptBtn.disabled = true;
+				if (declineBtn instanceof HTMLButtonElement) declineBtn.disabled = true;
+				try {
+					const res = await fetch("/api/auth/organization/accept-invitation", {
+						method: "POST",
+						credentials: "include",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify({ invitationId }),
+					});
+					const data = await res.json().catch(() => ({}));
+					if (!res.ok) {
+						showToast(authErrorMessage(data, "Error accepting invitation"), "error");
+						return;
+					}
+					if (organizationId) {
+						sessionStorage.setItem(ACCEPTED_INVITE_ORG_ID_KEY, organizationId);
+						await activateOrganization(organizationId);
+					}
+					clearPendingInvitationToken();
+					showToast("Invitation accepted", "success");
+					const status = await trpcQuery<{
+						complete?: boolean;
+						inviteMemberProfileComplete?: boolean;
+					}>("user.onboardingStatus");
+					if (status?.complete) {
+						window.location.href = organizationSlug
+							? orgDashboardPath(organizationSlug, "/dashboard/agent")
+							: "/dashboard/agent";
+						return;
+					}
+					window.location.href = status?.inviteMemberProfileComplete
+						? inviteMemberSetupPath("role")
+						: inviteMemberSetupPath("profile");
+				} catch {
+					showToast("Error accepting invitation", "error");
+				} finally {
+					acceptBtn.disabled = false;
+					if (declineBtn instanceof HTMLButtonElement) declineBtn.disabled = false;
+				}
+			});
+		}
+
+		if (declineBtn instanceof HTMLButtonElement && root.dataset.canDecline === "1") {
+			declineBtn.addEventListener("click", async () => {
+				declineBtn.disabled = true;
+				if (acceptBtn instanceof HTMLButtonElement) acceptBtn.disabled = true;
+				try {
+					const res = await fetch("/api/invitation/decline", {
+						method: "POST",
+						credentials: "include",
+						headers: { "content-type": "application/json" },
+						body: JSON.stringify({ token: invitationId }),
+					});
+					const data = await res.json().catch(() => ({}));
+					if (!res.ok) {
+						const message =
+							typeof data?.message === "string" && data.message.trim()
+								? data.message
+								: "Could not decline this invitation";
+						showToast(message, "error");
+						return;
+					}
+					clearPendingInvitationToken();
+					showToast("Invitation declined", "success");
+					const status = await trpcQuery<{
+						complete?: boolean;
+						organizationSlug?: string | null;
+					}>("user.onboardingStatus").catch(() => null);
+					if (status?.complete) {
+						window.location.href = status.organizationSlug
+							? orgDashboardPath(status.organizationSlug, "/dashboard/agent")
+							: "/dashboard/agent";
+						return;
+					}
+					await signOutToEntry();
+				} catch (err) {
+					showToast(
+						err instanceof Error
+							? err.message
+							: "Could not decline this invitation",
+						"error",
+					);
+				} finally {
+					declineBtn.disabled = false;
+					if (acceptBtn instanceof HTMLButtonElement) acceptBtn.disabled = false;
+				}
+			});
+		}
+
+		const signOutBtn = document.getElementById("nz-invitation-sign-out");
+		if (signOutBtn instanceof HTMLButtonElement) {
+			signOutBtn.addEventListener("click", async () => {
+				signOutBtn.disabled = true;
+				try {
+					await fetch("/api/auth/sign-out", {
+						method: "POST",
+						credentials: "include",
+					});
+					window.location.reload();
+				} catch {
+					showToast("Could not sign out", "error");
+					signOutBtn.disabled = false;
+				}
+			});
+		}
+	}
+
+	bindInvitation();
+	document.addEventListener("astro:page-load", bindInvitation);
+</script>

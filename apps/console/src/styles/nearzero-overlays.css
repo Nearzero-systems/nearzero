@@ -1,0 +1,134 @@
+/**
+ * Nearzero overlay theme — dialogs, alert dialogs, dropdowns, selects.
+ * Scoped to .nz-app-shell (dashboard shell).
+ */
+/* Use theme --nz-card-border from nearzero-theme.css (light + dark). */
+
+/* Dropdown menus */
+.nz-app-shell [role="menu"] {
+	border-radius: 0.375rem !important;
+}
+
+.nz-app-shell [role="menuitem"],
+.nz-app-shell [role="menuitemcheckbox"],
+.nz-app-shell [role="menuitemradio"] {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: pointer !important;
+}
+
+/* Dialogs & alert dialogs — shell rounding */
+.nz-app-shell [role="dialog"],
+.nz-app-shell [role="alertdialog"] {
+	border-radius: 0.375rem !important;
+}
+
+/* Dialog / alert body copy (not titles) */
+.nz-app-shell [role="dialog"] label,
+.nz-app-shell [role="dialog"] [class*="text-muted"],
+.nz-app-shell [role="alertdialog"] [class*="text-muted"] {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+}
+
+/* Buttons inside overlays */
+.nz-app-shell [role="dialog"] :is(button, a)[class*="inline-flex"],
+.nz-app-shell [role="alertdialog"] button,
+.nz-app-shell dialog.nz-modal .nz-modal__btn {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	min-height: unset !important;
+	height: auto !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: pointer !important;
+}
+
+.nz-app-shell [role="dialog"] button:disabled,
+.nz-app-shell [role="alertdialog"] button:disabled {
+	cursor: not-allowed !important;
+}
+
+/* Inputs & select triggers inside dialogs */
+.nz-app-shell [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+.nz-app-shell [role="dialog"] textarea,
+.nz-app-shell [role="dialog"] button[role="combobox"] {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	min-height: unset !important;
+	height: auto !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	border-color: var(--nz-card-border) !important;
+}
+
+.nz-app-shell [role="dialog"] input:not([type="checkbox"]):not([type="radio"]),
+.nz-app-shell [role="dialog"] textarea {
+	cursor: text !important;
+}
+
+.nz-app-shell [role="dialog"] button[role="combobox"] {
+	cursor: pointer !important;
+}
+
+.nz-app-shell dialog.nz-modal :is(.nz-modal__input, .nz-modal__textarea) {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	min-height: unset !important;
+	height: auto !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: text !important;
+	border-color: var(--nz-card-border) !important;
+}
+
+.nz-app-shell dialog.nz-modal .nz-modal__select {
+	font-size: 0.75rem !important;
+	line-height: 1rem !important;
+	min-height: unset !important;
+	height: auto !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: pointer !important;
+	border-color: var(--nz-card-border) !important;
+}
+
+.nz-app-shell dialog.nz-modal :is(.nz-modal__input, .nz-modal__textarea, .nz-modal__select):is(
+		:focus,
+		:focus-visible
+	) {
+	outline: none !important;
+	border-color: var(--nz-border-strong) !important;
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--nz-text-muted) 35%, transparent) !important;
+}
+
+.nz-app-shell [role="dialog"] input:disabled,
+.nz-app-shell [role="dialog"] textarea:disabled {
+	cursor: not-allowed !important;
+}
+
+/* Select dropdown options */
+.nz-app-shell [role="listbox"] [role="option"] {
+	font-size: 0.75rem !important;
+	padding: 0.25rem 0.5rem !important;
+	border-radius: 0.375rem !important;
+	cursor: pointer !important;
+}
+
+/* Generate API Key modal — inner toggle cards only, not outer section wrappers */
+.nz-app-shell [role="dialog"] .space-y-4.rounded-lg.border.p-4 {
+	border: none !important;
+	padding: 0 !important;
+}
+
+.nz-app-shell
+	[role="dialog"]
+	.flex.flex-row.items-center.justify-between.rounded-lg.border,
+.nz-app-shell
+	[role="dialog"]
+	.flex.flex-row.items-center.justify-between.rounded-md.border {
+	border: 1px solid var(--nz-card-border) !important;
+	border-radius: 0.375rem !important;
+}

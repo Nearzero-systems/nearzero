@@ -1,0 +1,15 @@
+# Cloudflare Pages configuration for Nearzero Console
+name = "nearzero-console"
+compatibility_date = "2024-01-01"
+
+# Pages configuration
+pages_build_output_dir = "./dist"
+
+# Environment variables
+[env.production]
+# Set your backend API URL
+# API_URL = "https://api.yourdomain.com"
+
+[env.preview]
+# Preview environment settings
+# API_URL = "https://api-preview.yourdomain.com"

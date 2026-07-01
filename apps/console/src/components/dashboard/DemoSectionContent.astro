@@ -1,0 +1,97 @@
+---
+import type { DemoSectionKey } from "./demoShared";
+import ApiKeysSection from "./ApiKeysSection.astro";
+import CronJobsSection from "./CronJobsSection.astro";
+import DeploymentsSection from "./DeploymentsSection.astro";
+import DomainsSection from "./DomainsSection.astro";
+import HelpSection from "./HelpSection.astro";
+import LogsSection from "./LogsSection.astro";
+import PlanSection from "./PlanSection.astro";
+import ProjectsSection from "./ProjectsSection.astro";
+import QueuesSection from "./QueuesSection.astro";
+import StorageSection from "./StorageSection.astro";
+import StorySection from "./StorySection.astro";
+import TasksSection from "./TasksSection.astro";
+
+interface Props {
+  activeSection: DemoSectionKey;
+  linkedVcsProviders?: string[];
+  githubImportConnected?: boolean;
+  gitlabImportConnected?: boolean;
+  bitbucketImportConnected?: boolean;
+  giteaImportConnected?: boolean;
+  projectsInitialView: "connect" | "import" | "inventory";
+  projectRows: any[];
+  storySteps: any[];
+  deployments: any[];
+  logRows: any[];
+  domainRows: any[];
+  glacierBucketRows: any[];
+  cronRows: any[];
+  taskRows: any[];
+  queueRows: any[];
+  apiKeyRows: any[];
+  docsRows: any[];
+  billing: {
+    currentPlan: {
+      key: string;
+      label: string;
+      detail: string;
+    };
+    invoices: any[];
+  };
+  projectsCount: number;
+  deploymentsCount: number;
+  domainsCount: number;
+  objectsCount: number;
+}
+
+const {
+  activeSection,
+  linkedVcsProviders = [],
+  githubImportConnected = false,
+  gitlabImportConnected = false,
+  bitbucketImportConnected = false,
+  giteaImportConnected = false,
+  projectsInitialView,
+  projectRows,
+  storySteps,
+  deployments,
+  logRows,
+  domainRows,
+  glacierBucketRows,
+  cronRows,
+  taskRows,
+  queueRows,
+  apiKeyRows,
+  docsRows,
+  billing,
+  projectsCount,
+  deploymentsCount,
+  domainsCount,
+  objectsCount,
+} = Astro.props;
+---
+
+{activeSection === "story" ? <StorySection steps={storySteps} /> : null}
+{activeSection === "projects" ? (
+    <ProjectsSection
+      projectRows={projectRows}
+      linkedVcsProviders={linkedVcsProviders}
+      githubImportConnected={githubImportConnected}
+      gitlabImportConnected={gitlabImportConnected}
+      bitbucketImportConnected={bitbucketImportConnected}
+      giteaImportConnected={giteaImportConnected}
+      projectsInitialView={projectsInitialView}
+    />
+  ) : null}
+{activeSection === "deployments" ? <DeploymentsSection deployments={deployments} /> : null}
+{activeSection === "logs" ? <LogsSection rows={logRows} /> : null}
+{activeSection === "domains" ? <DomainsSection domainRows={domainRows} /> : null}
+{activeSection === "storage" ? <StorageSection glacierBucketRows={glacierBucketRows} /> : null}
+{activeSection === "cron-jobs" ? <CronJobsSection rows={cronRows} /> : null}
+{activeSection === "tasks" ? <TasksSection rows={taskRows} /> : null}
+{activeSection === "queues" ? <QueuesSection rows={queueRows} /> : null}
+{activeSection === "api-keys" ? <ApiKeysSection rows={apiKeyRows} /> : null}
+{activeSection === "help" ? <HelpSection rows={docsRows} /> : null}
+{activeSection === "plan" ? <PlanSection billing={billing} /> : null}

@@ -1,0 +1,2052 @@
+---
+import { getFrameworkPresetDefaults, listFrameworkPresetOptions } from "@nearzero/spec";
+import { cardClass } from "./demoShared";
+import ProjectsConnectView from "./projects/ProjectsConnectView.astro";
+import ProjectsConfigureView from "./projects/ProjectsConfigureView.astro";
+import ProjectsDeployedView from "./projects/ProjectsDeployedView.astro";
+import ProjectsDeployingView from "./projects/ProjectsDeployingView.astro";
+import ProjectsImportView from "./projects/ProjectsImportView.astro";
+import ProjectsInventoryView from "./projects/ProjectsInventoryView.astro";
+import ProjectsLoadingView from "./projects/ProjectsLoadingView.astro";
+import { providerAccounts, providerOptions } from "./projects/shared";
+
+interface Props {
+  projectRows: any[];
+  linkedVcsProviders?: string[];
+  githubImportConnected?: boolean;
+  gitlabImportConnected?: boolean;
+  bitbucketImportConnected?: boolean;
+  giteaImportConnected?: boolean;
+  projectsInitialView: "connect" | "import" | "inventory";
+}
+
+const {
+  projectRows,
+  linkedVcsProviders = [],
+  githubImportConnected = false,
+  gitlabImportConnected = false,
+  bitbucketImportConnected = false,
+  giteaImportConnected = false,
+  projectsInitialView,
+} = Astro.props;
+const linkedVcsAttr = linkedVcsProviders.join(",");
+const hasGiteaImportConnection =
+  giteaImportConnected || linkedVcsProviders.includes("gitea");
+const showConnect = projectsInitialView === "connect";
+const showImport = projectsInitialView === "import";
+const showInventory = projectsInitialView === "inventory";
+const suppressImportToolbarInitially =
+  showImport &&
+  (githubImportConnected ||
+    gitlabImportConnected ||
+    bitbucketImportConnected ||
+    hasGiteaImportConnection);
+const presetDefaults = Object.fromEntries(
+  listFrameworkPresetOptions().map((option) => [
+    option.id,
+    getFrameworkPresetDefaults(option.id),
+  ]),
+);
+const projectLookup = Object.fromEntries(
+  projectRows
+    .filter((row) => row?.id && row?.repoProvider && row?.repoFull)
+    .map((row) => [
+      `${String(row.repoProvider).trim().toLowerCase()}:${String(row.repoFull)
+        .trim()
+        .toLowerCase()}`,
+      {
+        projectId: String(row.id).trim(),
+        projectName: String(row.name || "").trim(),
+        branch: String(row.repoBranch || "").trim(),
+      },
+    ]),
+);
+---
+
+<section
+  class={`${cardClass} min-h-[calc(100dvh-45px)] overflow-visible`}
+  data-project-flow-root
+  data-has-projects={projectRows.length > 0 ? "true" : "false"}
+  data-linked-vcs={linkedVcsAttr}
+  data-preset-defaults={JSON.stringify(presetDefaults)}
+  data-project-lookup={JSON.stringify(projectLookup)}
+  data-github-import-connected={githubImportConnected ? "true" : "false"}
+  data-gitlab-import-connected={gitlabImportConnected ? "true" : "false"}
+  data-bitbucket-import-connected={bitbucketImportConnected ? "true" : "false"}
+  data-gitea-import-connected={hasGiteaImportConnection ? "true" : "false"}
+  data-initial-view={projectsInitialView}
+>
+  <ProjectsConnectView providerOptions={providerOptions} visible={showConnect} />
+  <ProjectsLoadingView visible={false} />
+  <ProjectsInventoryView projectRows={projectRows} visible={showInventory} />
+  <ProjectsImportView
+    providerOptions={providerOptions}
+    providerAccounts={providerAccounts}
+    visible={showImport}
+    suppressImportToolbarInitially={suppressImportToolbarInitially}
+  />
+  <ProjectsConfigureView />
+  <ProjectsDeployingView />
+  <ProjectsDeployedView />
+</section>
+
+<script is:inline>
+  (() => {
+    const script = document.currentScript;
+    const root = script?.previousElementSibling;
+    if (!(root instanceof HTMLElement) || root.dataset.bound === "true") {
+      return;
+    }
+
+    const PRESET_DEFAULTS = JSON.parse(root.dataset.presetDefaults || "{}");
+    const PROJECT_LOOKUP = JSON.parse(root.dataset.projectLookup || "{}");
+
+    root.dataset.bound = "true";
+
+    const nzToast = (msg) => {
+      document.dispatchEvent(
+        new CustomEvent("nz-toast", {
+          bubbles: true,
+          detail: { message: String(msg || "").trim() },
+        }),
+      );
+    };
+
+    const repoListLoadFailedHtml = () =>
+      '<div class="px-4 py-6 text-sm text-[#6b7280]">Couldn\'t load repositories. Try again in a moment.</div>';
+
+    const repoLoadToastForHttp = (errMsg, status) => {
+      const lower = String(errMsg || "").toLowerCase();
+      if (status === 502 || status === 503 || status === 504) {
+        return "The service is temporarily unavailable. Try again shortly.";
+      }
+      if (/timeout|timed out/i.test(lower)) {
+        return "That took too long. Try again.";
+      }
+      if (/not reachable|could not reach|unreachable/i.test(lower)) {
+        return "Can't reach the server right now. Check your connection and try again.";
+      }
+      return "Something went wrong loading repositories. Try again.";
+    };
+
+    const views = Array.from(
+      root.querySelectorAll("[data-project-view]"),
+    ).filter((node) => node instanceof HTMLElement);
+
+    const providerPanels = Array.from(
+      root.querySelectorAll("[data-project-provider-panel]"),
+    ).filter((node) => node instanceof HTMLElement);
+
+    const configureProviderLabel = root.querySelector("[data-config-provider-label]");
+    const configureRepoFull = root.querySelector("[data-config-repo-full]");
+    const configureBranchSelect = root.querySelector("[data-config-branch-select]");
+    const configureResolvedSha = root.querySelector("[data-config-resolved-sha]");
+    const configureProjectName = root.querySelector("[data-config-project-name]");
+    const configurePresetSelect = root.querySelector("[data-config-preset-select]");
+    const configureHintsLoading = root.querySelector("[data-config-hints-loading]");
+    const configureRoot = root.querySelector("[data-config-root]");
+    const configureBuild = root.querySelector("[data-config-build]");
+    const configureOutput = root.querySelector("[data-config-output]");
+    const configureEnvTbody = root.querySelector("[data-config-env-tbody]");
+
+    const deployProjectName = root.querySelector("[data-deploy-project-name]");
+    const deployProviderLabel = root.querySelector("[data-deploy-provider-label]");
+    const deployRepoFull = root.querySelector("[data-deploy-repo-full]");
+    const deployBranch = root.querySelector("[data-deploy-branch]");
+    const deployPreset = root.querySelector("[data-deploy-preset]");
+
+    const deployedProjectName = root.querySelector("[data-deployed-project-name]");
+    const deployedProviderLabel = root.querySelector("[data-deployed-provider-label]");
+    const deployedRepoFull = root.querySelector("[data-deployed-repo-full]");
+    const deployedUrl = root.querySelector("[data-deployed-url]");
+    const deployedDeploymentId = root.querySelector("[data-deployed-deployment-id]");
+    const deployStatusLine = root.querySelector("[data-deploy-status-line]");
+    const deployDeploymentId = root.querySelector("[data-deploy-deployment-id]");
+    const deployLogsWrap = root.querySelector("[data-deploy-logs-wrap]");
+    const deployLogsLink = root.querySelector("[data-deploy-logs-link]");
+    const deployedLogsWrap = root.querySelector("[data-deployed-logs-wrap]");
+    const deployedLogsLink = root.querySelector("[data-deployed-logs-link]");
+
+    let deployPollTimer;
+    /** Survives full page reloads while on Projects; cleared when deploy finishes or fails. */
+    const NZ_DEPLOY_SESSION_KEY = "nz_projects_deploy_track";
+
+    const clearDeploySession = () => {
+      try {
+        sessionStorage.removeItem(NZ_DEPLOY_SESSION_KEY);
+      } catch (_) {}
+    };
+
+    const persistDeploySession = (deploymentId) => {
+      try {
+        sessionStorage.setItem(
+          NZ_DEPLOY_SESSION_KEY,
+          JSON.stringify({
+            deploymentId: String(deploymentId || "").trim(),
+            startedAt: Date.now(),
+            provider: String(activeProvider || "github").trim() || "github",
+            projectId: String(selectedRepo.projectId || "").trim(),
+            repo: {
+              name: String(selectedRepo.name || "").trim(),
+              full: String(selectedRepo.full || "").trim(),
+              branch: String(selectedRepo.branch || "main").trim() || "main",
+              preset: String(selectedRepo.preset || "Other").trim() || "Other",
+              root: String(selectedRepo.root || ".").trim() || ".",
+              build: String(selectedRepo.build || "").trim(),
+              output: String(selectedRepo.output || "dist").trim() || "dist",
+            },
+          }),
+        );
+      } catch (_) {}
+    };
+
+    let activeProvider = "github";
+    const IMPORT_PROVIDER_KEYS = ["github", "gitlab", "bitbucket", "gitea"];
+    const isImportProviderKey = (key) =>
+      IMPORT_PROVIDER_KEYS.includes(String(key || "").trim().toLowerCase());
+    const providerLabelFallback = (providerKey) => {
+      const normalized = String(providerKey || "").trim().toLowerCase();
+      if (normalized === "gitlab") return "GitLab";
+      if (normalized === "bitbucket") return "Bitbucket";
+      if (normalized === "gitea") return "Gitea";
+      return "GitHub";
+    };
+    let selectedRepo = {
+      projectId: "",
+      name: "",
+      full: "",
+      branch: "main",
+      preset: "Other",
+      suggestedType: "",
+      root: ".",
+      build: "",
+      output: "dist",
+      envKey: "",
+      envValue: "",
+      envEntries: [],
+      resolvedSha: "",
+    };
+
+    const repoLookupKey = (provider, repoFull) =>
+      `${String(provider || "github").trim().toLowerCase()}:${String(repoFull || "")
+        .trim()
+        .toLowerCase()}`;
+
+    const ensureEditableEnvRows = (entries) => {
+      const list = Array.isArray(entries)
+        ? entries
+            .map((entry) => ({
+              key: String(entry?.key || "").trim(),
+              value: String(entry?.value ?? ""),
+            }))
+            .filter((entry) => entry.key || entry.value)
+        : [];
+      if (
+        list.length === 0 ||
+        String(list[list.length - 1]?.key || "").trim() ||
+        String(list[list.length - 1]?.value || "").trim()
+      ) {
+        list.push({ key: "", value: "" });
+      }
+      return list;
+    };
+
+    const resolveKnownProjectId = () => {
+      const key = repoLookupKey(activeProvider, selectedRepo.full);
+      const entry = PROJECT_LOOKUP[key];
+      return typeof entry?.projectId === "string" ? entry.projectId.trim() : "";
+    };
+
+    let configureHintsTimer = null;
+
+    const clearDeployPoll = () => {
+      if (deployPollTimer != null) {
+        window.clearTimeout(deployPollTimer);
+        deployPollTimer = null;
+      }
+    };
+
+    const parseDotEnvText = (text) => {
+      const out = [];
+      const lines = String(text || "").split(/\r?\n/);
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || t.startsWith("#")) continue;
+        const eq = t.indexOf("=");
+        if (eq <= 0) continue;
+        const k = t.slice(0, eq).trim();
+        let v = t.slice(eq + 1).trim();
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1);
+        }
+        if (k) out.push({ key: k, value: v });
+      }
+      return out;
+    };
+
+    const collectEnvEntriesFromTable = () => {
+      if (!(configureEnvTbody instanceof HTMLElement)) return [];
+      const rows = configureEnvTbody.querySelectorAll("tr[data-config-env-row]");
+      const list = [];
+      rows.forEach((tr) => {
+        const ki = tr.querySelector("[data-env-row-key]");
+        const vi = tr.querySelector("[data-env-row-value]");
+        if (ki instanceof HTMLInputElement && vi instanceof HTMLInputElement) {
+          const key = ki.value.trim();
+          const value = vi.value;
+          if (key || value) list.push({ key, value });
+        }
+      });
+      return list;
+    };
+
+    const renderConfigureEnvTable = () => {
+      if (!(configureEnvTbody instanceof HTMLElement)) return;
+      let rows = ensureEditableEnvRows(selectedRepo.envEntries);
+      configureEnvTbody.innerHTML = "";
+      rows.forEach((row, idx) => {
+        const tr = document.createElement("tr");
+        tr.className = "";
+        tr.dataset.configEnvRow = "1";
+        const inp =
+          "font-sans w-full rounded-md border border-[#d9dbe3] bg-white px-2 py-1 text-xs text-[#111827] outline-none focus:border-[#bfc4d4]";
+        tr.innerHTML = `
+          <td class="pr-3 align-middle">
+            <input type="text" data-env-row-key class="${inp}" value="" autocomplete="off" aria-label="Variable name" />
+          </td>
+          <td class="pr-2 align-middle">
+            <input type="text" data-env-row-value class="${inp}" value="" autocomplete="off" aria-label="Value" />
+          </td>
+          <td class="w-8 shrink-0 align-middle text-center">
+            <button type="button" data-env-row-remove class="inline-flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-xs font-sans text-[#9ca3af] hover:text-[#111827]" aria-label="Remove row">×</button>
+          </td>
+        `;
+        const kEl = tr.querySelector("[data-env-row-key]");
+        const vEl = tr.querySelector("[data-env-row-value]");
+        if (kEl instanceof HTMLInputElement) kEl.value = row.key || "";
+        if (vEl instanceof HTMLInputElement) vEl.value = row.value || "";
+        const rm = tr.querySelector("[data-env-row-remove]");
+        if (rm instanceof HTMLElement) {
+          rm.addEventListener("click", () => {
+            selectedRepo.envEntries = ensureEditableEnvRows(
+              collectEnvEntriesFromTable().filter((_, i) => i !== idx),
+            );
+            renderConfigureEnvTable();
+          });
+        }
+        configureEnvTbody.appendChild(tr);
+      });
+    };
+
+    const populateBranchSelect = (branches, preferredBranch) => {
+      if (!(configureBranchSelect instanceof HTMLSelectElement)) return;
+      const prev = String(preferredBranch || selectedRepo.branch || "").trim();
+      configureBranchSelect.innerHTML = "";
+      const list = Array.isArray(branches) ? branches : [];
+      if (list.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = prev || "main";
+        opt.textContent = prev || "main";
+        opt.selected = true;
+        configureBranchSelect.appendChild(opt);
+        configureBranchSelect.disabled = true;
+        return;
+      }
+      configureBranchSelect.disabled = false;
+      let matched = false;
+      list.forEach((b) => {
+        const name = String(b?.name || "").trim();
+        if (!name) return;
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = b.default ? `${name} (default)` : name;
+        if (name === prev) {
+          opt.selected = true;
+          matched = true;
+        }
+        configureBranchSelect.appendChild(opt);
+      });
+      if (!matched && configureBranchSelect.options.length) {
+        configureBranchSelect.options[0].selected = true;
+        selectedRepo.branch = configureBranchSelect.value;
+      }
+    };
+
+    const applyRepoHintsToSelected = (data) => {
+      if (!data || data.ok !== true) return;
+      selectedRepo.resolvedSha = typeof data.resolvedSha === "string" ? data.resolvedSha : "";
+      const sig = Array.isArray(data.signals) ? data.signals : [];
+      if (sig.includes("no-package-json") || sig.includes("invalid-package-json")) {
+        return;
+      }
+      if (typeof data.preset === "string" && data.preset.trim()) {
+        selectedRepo.preset = data.preset.trim();
+      }
+      if (typeof data.suggestedType === "string" && data.suggestedType.trim()) {
+        selectedRepo.suggestedType = data.suggestedType.trim();
+      }
+      if (typeof data.suggestedBuild === "string" && data.suggestedBuild.trim()) {
+        selectedRepo.build = data.suggestedBuild.trim();
+      }
+      if (typeof data.suggestedOutput === "string" && data.suggestedOutput.trim()) {
+        selectedRepo.output = data.suggestedOutput.trim();
+      }
+    };
+
+    const fetchRepoHintsForConfigure = async () => {
+      if (!selectedRepo.full) return;
+      const ref = String(selectedRepo.branch || "main").trim() || "main";
+      const url = new URL("/api/workspace-vcs-repo-hints", window.location.href);
+      url.searchParams.set("provider", activeProvider);
+      url.searchParams.set("repo", selectedRepo.full);
+      url.searchParams.set("ref", ref);
+      setConfigureHintsLoading(true);
+      try {
+        const res = await fetch(url.toString(), { credentials: "include" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        applyRepoHintsToSelected(data);
+        syncRepoDataIntoViews();
+      } catch {
+        /* ignore */
+      } finally {
+        setConfigureHintsLoading(false);
+      }
+    };
+
+    const scheduleConfigureHints = () => {
+      window.clearTimeout(configureHintsTimer);
+      configureHintsTimer = window.setTimeout(() => {
+        void fetchRepoHintsForConfigure();
+      }, 380);
+    };
+
+    const refreshConfigureVcsMetadata = async () => {
+      if (!selectedRepo.full) return;
+      const bUrl = new URL("/api/workspace-vcs-branches", window.location.href);
+      bUrl.searchParams.set("provider", activeProvider);
+      bUrl.searchParams.set("repo", selectedRepo.full);
+      try {
+        const res = await fetch(bUrl.toString(), { credentials: "include" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok && Array.isArray(data.branches)) {
+          populateBranchSelect(data.branches, selectedRepo.branch);
+          selectedRepo.branch = configureBranchSelect.value || selectedRepo.branch;
+        } else {
+          populateBranchSelect([], selectedRepo.branch);
+        }
+      } catch {
+        populateBranchSelect([], selectedRepo.branch);
+      }
+      await fetchRepoHintsForConfigure();
+      syncRepoDataIntoViews();
+    };
+
+    const loadComposeDraftEnv = async () => {
+      try {
+        const res = await fetch("/api/workspace-compose-draft-env", { credentials: "include" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok && Array.isArray(data.entries) && data.entries.length) {
+          selectedRepo.envEntries = ensureEditableEnvRows(data.entries);
+        } else {
+          selectedRepo.envEntries = ensureEditableEnvRows([]);
+        }
+      } catch {
+        selectedRepo.envEntries = ensureEditableEnvRows([]);
+      }
+      renderConfigureEnvTable();
+    };
+
+    const loadProjectConfigEnv = async (projectId) => {
+      const pid = String(projectId || "").trim();
+      if (!pid) return false;
+      try {
+        const url = new URL("/api/console-project-config", window.location.href);
+        url.searchParams.set("id", pid);
+        url.searchParams.set("environment", "prod");
+        url.searchParams.set("reveal", "true");
+        const res = await fetch(url.toString(), { credentials: "include" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok !== true || !Array.isArray(data.entries)) {
+          return false;
+        }
+        selectedRepo.projectId = pid;
+        selectedRepo.envEntries = ensureEditableEnvRows(data.entries);
+        renderConfigureEnvTable();
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const loadConfigureEnvEntries = async () => {
+      const knownProjectId =
+        String(selectedRepo.projectId || "").trim() || resolveKnownProjectId();
+      if (knownProjectId) {
+        const loaded = await loadProjectConfigEnv(knownProjectId);
+        if (loaded) return;
+      }
+      await loadComposeDraftEnv();
+    };
+
+    const saveComposeDraftEnv = async () => {
+      selectedRepo.envEntries = collectEnvEntriesFromTable();
+      const entries = selectedRepo.envEntries.filter((r) => r.key);
+      try {
+        const res = await fetch("/api/workspace-compose-draft-env", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ entries }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          /* silent persist before deploy */
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const syncConfigureFormIntoSelectedRepo = () => {
+      if (configureProjectName instanceof HTMLInputElement) {
+        selectedRepo.name = configureProjectName.value.trim() || selectedRepo.name;
+      }
+      if (configureRoot instanceof HTMLInputElement) {
+        selectedRepo.root = configureRoot.value.trim() || ".";
+      }
+      if (configureBuild instanceof HTMLInputElement) {
+        selectedRepo.build = configureBuild.value;
+      }
+      if (configureOutput instanceof HTMLInputElement) {
+        selectedRepo.output = configureOutput.value.trim() || "dist";
+      }
+      if (configureBranchSelect instanceof HTMLSelectElement) {
+        selectedRepo.branch = configureBranchSelect.value || selectedRepo.branch;
+      }
+      selectedRepo.envEntries = collectEnvEntriesFromTable();
+      const first = selectedRepo.envEntries[0];
+      selectedRepo.envKey = first?.key || "";
+      selectedRepo.envValue = first?.value || "";
+    };
+
+    const animateView = (node) => {
+      if (!(node instanceof HTMLElement)) return;
+      node.classList.remove("project-view-enter");
+      requestAnimationFrame(() => {
+        node.classList.add("project-view-enter");
+      });
+    };
+
+    const isProviderImportConnected = (key) => {
+      if (key === "github") return root.dataset.githubImportConnected === "true";
+      if (key === "gitlab") return root.dataset.gitlabImportConnected === "true";
+      if (key === "bitbucket") return root.dataset.bitbucketImportConnected === "true";
+      if (key === "gitea") return root.dataset.giteaImportConnected === "true";
+      return false;
+    };
+
+    const hasAnyVcsImportConnected = () =>
+      IMPORT_PROVIDER_KEYS.some((key) => isProviderImportConnected(key));
+
+    const syncConnectBackNav = () => {
+      const el = root.querySelector("[data-project-connect-back]");
+      if (!(el instanceof HTMLElement)) return;
+      const on = root.dataset.connectBackFromImport === "true";
+      el.classList.toggle("hidden", !on);
+      el.setAttribute("aria-hidden", on ? "false" : "true");
+    };
+
+    const showView = (viewName) => {
+      if (viewName === "import" && !hasAnyVcsImportConnected()) {
+        root.dataset.connectBackFromImport = "";
+        viewName = "connect";
+      }
+      if (viewName !== "deploying") {
+        clearDeployPoll();
+      }
+      views.forEach((node) => {
+        const active = node.dataset.projectView === viewName;
+        node.classList.toggle("hidden", !active);
+        if (node.dataset.projectView === "loading") {
+          node.setAttribute("aria-busy", active ? "true" : "false");
+        }
+
+        if (active) {
+          const shouldFlex = viewName === "connect" || viewName === "loading";
+          node.classList.toggle("flex", shouldFlex);
+          node.classList.remove("grid");
+          animateView(node);
+        } else {
+          node.classList.remove("flex");
+          node.classList.remove("grid");
+        }
+      });
+      if (viewName === "import") {
+        /** Macrotask (not microtask): `queueMicrotask` can run before inline listeners finish registering in some dev/build orders, so the event was dropped and `fetch` never ran. */
+        window.setTimeout(() => {
+          root.dispatchEvent(
+            new CustomEvent("nz-vcs-import-open", {
+              bubbles: true,
+              detail: { provider: activeProvider },
+            }),
+          );
+        }, 0);
+      }
+      syncConnectBackNav();
+    };
+
+    root.addEventListener("nz-project-show-connect", (e) => {
+      root.dataset.connectBackFromImport = "";
+      const detail = (e && e.detail) || {};
+      const clearP = detail.clearProviderFromLinked;
+      if (isImportProviderKey(clearP)) {
+        const parts = String(root.dataset.linkedVcs || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .filter((p) => p !== clearP);
+        root.dataset.linkedVcs = parts.join(",");
+      }
+      if (detail.clearGithubFromLinked) {
+        const parts = String(root.dataset.linkedVcs || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .filter((p) => p !== "github");
+        root.dataset.linkedVcs = parts.join(",");
+      }
+      /** Opt out of navigating to Connect (three provider buttons); used by rare multi-step flows. */
+      if (detail.navigateToConnect === false) {
+        return;
+      }
+      showView("connect");
+    });
+
+    const showProviderPanel = (providerKey) => {
+      activeProvider = providerKey;
+      providerPanels.forEach((panel) => {
+        const match = panel.dataset.projectProviderPanel === providerKey;
+        panel.classList.toggle("hidden", !match);
+        panel.classList.toggle("grid", match);
+      });
+    };
+
+    const setText = (node, value) => {
+      if (node) node.textContent = value;
+    };
+
+    const setInputValue = (node, value) => {
+      if (node instanceof HTMLInputElement) {
+        node.value = value;
+      }
+    };
+
+    const applyDeploySessionSnapshot = (snapshot) => {
+      const provider = String(snapshot?.provider || "").trim();
+      if (provider) activeProvider = provider;
+      const repo = snapshot?.repo && typeof snapshot.repo === "object" ? snapshot.repo : {};
+      selectedRepo = {
+        ...selectedRepo,
+        projectId: String(snapshot?.projectId || selectedRepo.projectId || "").trim(),
+        name: String(repo.name || selectedRepo.name || "").trim(),
+        full: String(repo.full || selectedRepo.full || "").trim(),
+        branch: String(repo.branch || selectedRepo.branch || "main").trim() || "main",
+        preset: String(repo.preset || selectedRepo.preset || "Other").trim() || "Other",
+        root: String(repo.root || selectedRepo.root || ".").trim() || ".",
+        build: String(repo.build || selectedRepo.build || "").trim(),
+        output: String(repo.output || selectedRepo.output || "dist").trim() || "dist",
+      };
+    };
+
+    const hydrateSelectedRepoFromDeployment = (deployment, project) => {
+      const dep = deployment && typeof deployment === "object" ? deployment : {};
+      const proj = project && typeof project === "object" ? project : {};
+      const repo = proj.repo && typeof proj.repo === "object" ? proj.repo : {};
+      const provider = String(repo.provider || "").trim();
+      if (provider) activeProvider = provider;
+      const framework = String(
+        dep?.spec?.project?.framework ||
+          proj?.spec?.project?.framework ||
+          selectedRepo.preset ||
+          "Other",
+      ).trim() || "Other";
+      const output = String(
+        dep?.spec?.build?.output ||
+          dep?.spec?.assets?.publicDir ||
+          selectedRepo.output ||
+          "dist",
+      ).trim() || "dist";
+      selectedRepo = {
+        ...selectedRepo,
+        projectId: String(proj.id || selectedRepo.projectId || "").trim(),
+        name: String(proj.name || dep.name || selectedRepo.name || "").trim(),
+        full: String(repo.repo || selectedRepo.full || "").trim(),
+        branch: String(repo.branch || selectedRepo.branch || "main").trim() || "main",
+        preset: framework,
+        root: String(dep?.spec?.root || selectedRepo.root || ".").trim() || ".",
+        build: String(dep?.spec?.build?.command || selectedRepo.build || "").trim(),
+        output,
+      };
+      syncRepoDataIntoViews();
+    };
+
+    const emitPresetDisplay = (preset) => {
+      root.dispatchEvent(
+        new CustomEvent("nz-preset-display", {
+          detail: { preset: String(preset || "Other").trim() },
+        }),
+      );
+    };
+
+    const applyPresetDefaults = (preset) => {
+      const defaults =
+        PRESET_DEFAULTS[String(preset || "").trim()] || PRESET_DEFAULTS.Other;
+      if (!defaults) return;
+      selectedRepo.preset = String(defaults.label || "Other").trim() || "Other";
+      selectedRepo.suggestedType =
+        String(defaults.suggestedType || "").trim() || selectedRepo.suggestedType || "";
+      selectedRepo.build = String(defaults.suggestedBuild || "");
+      selectedRepo.output =
+        String(defaults.suggestedOutput || "dist").trim() || "dist";
+    };
+
+    const syncConfigurePresetSelect = () => {
+      if (!(configurePresetSelect instanceof HTMLSelectElement)) return;
+      const pv = String(selectedRepo.preset || "Other").trim();
+      let idx = -1;
+      for (let i = 0; i < configurePresetSelect.options.length; i += 1) {
+        if (configurePresetSelect.options[i].value === pv) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < 0) {
+        const pl = pv.toLowerCase();
+        for (let i = 0; i < configurePresetSelect.options.length; i += 1) {
+          const ov = configurePresetSelect.options[i].value.toLowerCase();
+          if (ov === pl || (pl.includes("next") && ov.includes("next"))) {
+            idx = i;
+            break;
+          }
+        }
+      }
+      if (idx < 0) {
+        for (let i = 0; i < configurePresetSelect.options.length; i += 1) {
+          if (configurePresetSelect.options[i].value === "Other") {
+            idx = i;
+            break;
+          }
+        }
+      }
+      if (idx >= 0) configurePresetSelect.selectedIndex = idx;
+      const v =
+        configurePresetSelect.options[configurePresetSelect.selectedIndex]?.value || "Other";
+      selectedRepo.preset = v;
+      emitPresetDisplay(v);
+    };
+
+    const setConfigureHintsLoading = (on) => {
+      if (!(configureHintsLoading instanceof HTMLElement)) return;
+      configureHintsLoading.classList.toggle("hidden", !on);
+      configureHintsLoading.setAttribute("aria-hidden", on ? "false" : "true");
+    };
+
+    const syncRepoDataIntoViews = () => {
+      setText(configureProviderLabel, providerLabelFromKey(activeProvider));
+      setText(configureRepoFull, selectedRepo.full);
+      if (configureBranchSelect instanceof HTMLSelectElement) {
+        const want = String(selectedRepo.branch || "").trim();
+        let found = false;
+        for (let i = 0; i < configureBranchSelect.options.length; i += 1) {
+          if (configureBranchSelect.options[i].value === want) {
+            configureBranchSelect.selectedIndex = i;
+            found = true;
+            break;
+          }
+        }
+        if (!found && want) {
+          let exists = false;
+          for (let j = 0; j < configureBranchSelect.options.length; j += 1) {
+            if (configureBranchSelect.options[j].value === want) {
+              exists = true;
+              break;
+            }
+          }
+          if (!exists) {
+            const opt = document.createElement("option");
+            opt.value = want;
+            opt.textContent = want;
+            opt.selected = true;
+            configureBranchSelect.appendChild(opt);
+          }
+        }
+      }
+      if (configureResolvedSha instanceof HTMLElement) {
+        const s = String(selectedRepo.resolvedSha || "").trim();
+        configureResolvedSha.textContent = s
+          ? `This branch currently points at commit ${s.slice(0, 7)}.`
+          : "";
+        configureResolvedSha.classList.toggle("hidden", !s);
+      }
+      setInputValue(configureProjectName, selectedRepo.name);
+      syncConfigurePresetSelect();
+      setInputValue(configureRoot, selectedRepo.root);
+      setInputValue(configureBuild, selectedRepo.build);
+      setInputValue(configureOutput, selectedRepo.output);
+      renderConfigureEnvTable();
+
+      setText(deployProjectName, selectedRepo.name);
+      setText(deployProviderLabel, providerLabelFromKey(activeProvider));
+      setText(deployRepoFull, selectedRepo.full);
+      setText(deployBranch, selectedRepo.branch);
+      setText(deployPreset, selectedRepo.preset);
+
+      setText(deployedProjectName, selectedRepo.name);
+      setText(deployedProviderLabel, providerLabelFromKey(activeProvider));
+      setText(deployedRepoFull, selectedRepo.full);
+      setText(deployedUrl, "—");
+      if (deployedDeploymentId instanceof HTMLElement) {
+        deployedDeploymentId.textContent = "";
+        deployedDeploymentId.classList.add("hidden");
+      }
+      if (deployedLogsWrap instanceof HTMLElement) deployedLogsWrap.classList.add("hidden");
+    };
+
+    const providerLabelFromKey = (providerKey) => {
+      const button = root.querySelector(
+        `[data-provider-key="${providerKey}"][data-provider-label]`,
+      );
+      return button instanceof HTMLElement
+        ? button.dataset.providerLabel || "GitHub"
+        : "GitHub";
+    };
+
+    const connectButtons = Array.from(
+      root.querySelectorAll("[data-project-connect]"),
+    );
+    connectButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", async () => {
+        root.dataset.connectBackFromImport = "";
+        const providerKey = button.dataset.providerKey || "github";
+        activeProvider = providerKey;
+
+        const baseApp = `${window.location.origin.replace(/\/$/, "")}/app`;
+        const callbackUrl = `${baseApp}?section=projects&nz_vcs_return=${encodeURIComponent(providerKey)}`;
+        const settingsUrl = new URL("/dashboard/settings/git-providers", window.location.origin);
+        settingsUrl.searchParams.set("connect", providerKey);
+        settingsUrl.searchParams.set("returnTo", callbackUrl);
+        window.location.href = settingsUrl.toString();
+      });
+    });
+
+    const openImportButtons = Array.from(
+      root.querySelectorAll("[data-project-open-import]"),
+    );
+    openImportButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        const linkedParts = String(root.dataset.linkedVcs || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (linkedParts.includes("github")) {
+          activeProvider = "github";
+        } else if (linkedParts.length) {
+          activeProvider = linkedParts[0];
+        }
+        showProviderPanel(activeProvider);
+        showView("import");
+      });
+    });
+
+    const backInventoryButtons = Array.from(
+      root.querySelectorAll("[data-project-back-inventory]"),
+    );
+    backInventoryButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        showView("inventory");
+      });
+    });
+
+    const connectBackButtons = Array.from(
+      root.querySelectorAll("[data-project-connect-back]"),
+    );
+    connectBackButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        root.dataset.connectBackFromImport = "";
+        showProviderPanel(activeProvider);
+        showView("import");
+      });
+    });
+
+    const repoSelectButtons = Array.from(
+      root.querySelectorAll("[data-project-repo-select]"),
+    );
+    const handleRepoSelection = (button) => {
+      if (!(button instanceof HTMLElement)) return;
+        activeProvider = button.dataset.providerKey || "github";
+        const repoFull = button.dataset.repoFull || "";
+        const knownProjectId =
+          String(PROJECT_LOOKUP[repoLookupKey(activeProvider, repoFull)]?.projectId || "").trim();
+        selectedRepo = {
+          projectId: knownProjectId,
+          name: button.dataset.repoName || "",
+          full: repoFull,
+          branch: button.dataset.repoBranch || "main",
+          preset: button.dataset.repoPreset || "Other",
+          suggestedType: "",
+          root: button.dataset.repoRoot || ".",
+          build: button.dataset.repoBuild || "",
+          output: button.dataset.repoOutput || "dist",
+          envKey: button.dataset.repoEnvKey || "",
+          envValue: button.dataset.repoEnvValue || "",
+          envEntries: [],
+          resolvedSha: "",
+        };
+        syncRepoDataIntoViews();
+        showView("loading");
+        void (async () => {
+          try {
+            await loadConfigureEnvEntries();
+            await refreshConfigureVcsMetadata();
+          } finally {
+            showView("configure");
+          }
+        })();
+    };
+
+    repoSelectButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        handleRepoSelection(button);
+      });
+    });
+
+    root.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const dynamicButton = target.closest("[data-project-repo-select]");
+      if (!(dynamicButton instanceof HTMLElement)) return;
+      if (repoSelectButtons.includes(dynamicButton)) return;
+      handleRepoSelection(dynamicButton);
+    });
+
+    const backImportButtons = Array.from(
+      root.querySelectorAll("[data-project-back-import]"),
+    );
+    backImportButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        showProviderPanel(activeProvider);
+        showView("import");
+      });
+    });
+
+    if (configureBranchSelect instanceof HTMLSelectElement) {
+      configureBranchSelect.addEventListener("change", () => {
+        selectedRepo.branch = configureBranchSelect.value;
+        syncRepoDataIntoViews();
+        scheduleConfigureHints();
+      });
+    }
+
+    if (configurePresetSelect instanceof HTMLSelectElement) {
+      configurePresetSelect.addEventListener("change", () => {
+        applyPresetDefaults(configurePresetSelect.value || "Other");
+        emitPresetDisplay(selectedRepo.preset);
+        syncRepoDataIntoViews();
+      });
+    }
+
+    root.addEventListener("paste", (event) => {
+      const t = event.target;
+      if (!(t instanceof HTMLElement)) return;
+      if (!t.closest('[data-project-view="configure"]')) return;
+      if (!t.closest("[data-config-env-panel]")) return;
+      const text = event.clipboardData?.getData("text/plain");
+      if (!text) return;
+      const parsed = parseDotEnvText(text);
+      if (!parsed.length) return;
+      event.preventDefault();
+      selectedRepo.envEntries = ensureEditableEnvRows(parsed);
+      renderConfigureEnvTable();
+    });
+
+    root.addEventListener("input", (event) => {
+      const t = event.target;
+      if (!(t instanceof HTMLElement)) return;
+      if (!t.closest('[data-project-view="configure"]')) return;
+      if (
+        t.matches(
+          "[data-config-project-name], [data-config-root], [data-config-build], [data-config-output], [data-env-row-key], [data-env-row-value]",
+        )
+      ) {
+        syncConfigureFormIntoSelectedRepo();
+      }
+    });
+
+    const setDeployingStatus = (message) => {
+      if (deployStatusLine instanceof HTMLElement) {
+        deployStatusLine.textContent = String(message || "").trim() || "…";
+      }
+    };
+
+    const showDeploymentIdLine = (id) => {
+      const sid = String(id || "").trim();
+      if (!(deployDeploymentId instanceof HTMLElement)) return;
+      if (!sid) {
+        deployDeploymentId.textContent = "";
+        deployDeploymentId.classList.add("hidden");
+        if (deployLogsWrap instanceof HTMLElement) deployLogsWrap.classList.add("hidden");
+        return;
+      }
+      deployDeploymentId.textContent = sid;
+      deployDeploymentId.classList.remove("hidden");
+      if (deployLogsWrap instanceof HTMLElement && deployLogsLink instanceof HTMLAnchorElement) {
+        deployLogsLink.href = `/app/deployments/${encodeURIComponent(sid)}`;
+        deployLogsWrap.classList.remove("hidden");
+      }
+    };
+
+    const setDeployedDeploymentMeta = (id) => {
+      const sid = String(id || "").trim();
+      if (!(deployedDeploymentId instanceof HTMLElement)) return;
+      if (!sid) {
+        deployedDeploymentId.textContent = "";
+        deployedDeploymentId.classList.add("hidden");
+        if (deployedLogsWrap instanceof HTMLElement) deployedLogsWrap.classList.add("hidden");
+        return;
+      }
+      deployedDeploymentId.textContent = `Deployment ID: ${sid}`;
+      deployedDeploymentId.classList.remove("hidden");
+      if (deployedLogsWrap instanceof HTMLElement && deployedLogsLink instanceof HTMLAnchorElement) {
+        deployedLogsLink.href = `/app/deployments/${encodeURIComponent(sid)}`;
+        deployedLogsWrap.classList.remove("hidden");
+      }
+    };
+
+    const scheduleDeployPoll = (deploymentId) => {
+      clearDeployPoll();
+      persistDeploySession(deploymentId);
+      const started = Date.now();
+      const maxMs = 120000;
+      let transientFailures = 0;
+      const maxTransientPollFailures = 6;
+      const tick = async () => {
+        try {
+          const res = await fetch(
+            `/api/console-deployment?id=${encodeURIComponent(deploymentId)}`,
+            { credentials: "include" },
+          );
+          const data = await res.json().catch(() => ({}));
+          const dep = data.deployment;
+          const project = data.project;
+          if (!res.ok || !dep) {
+            const retryable =
+              res.status === 404 ||
+              res.status === 502 ||
+              res.status === 503 ||
+              res.status === 504;
+            if (retryable && transientFailures < maxTransientPollFailures) {
+              transientFailures += 1;
+              setDeployingStatus(
+                `Syncing deployment status… (retry ${transientFailures}/${maxTransientPollFailures})`,
+              );
+              deployPollTimer = window.setTimeout(() => {
+                void tick();
+              }, 1200);
+              return;
+            }
+            throw new Error(data.error || "Could not load deployment status");
+          }
+          transientFailures = 0;
+          hydrateSelectedRepoFromDeployment(dep, project);
+          const status = String(dep.status || "").trim();
+          const url = String(
+            dep.visitUrl || dep.defaultUrl || dep.serviceUrl || "",
+          ).trim();
+          if (status === "ready") {
+            clearDeployPoll();
+            clearDeploySession();
+            setDeployingStatus(
+              url ? "Deployment is live." : "Deployment finished.",
+            );
+            setText(deployedUrl, url || "—");
+            setDeployedDeploymentMeta(deploymentId);
+            showView("deployed");
+            return;
+          }
+          if (status === "failed") {
+            clearDeployPoll();
+            clearDeploySession();
+            nzToast("Deployment failed.");
+            showView("configure");
+            return;
+          }
+          const elapsed = Date.now() - started;
+          let statusMsg = status
+            ? `Status: ${status}…`
+            : "Waiting for deployment status…";
+          if (
+            elapsed > 8000 &&
+            (status === "queued" || status === "building" || !status)
+          ) {
+            statusMsg +=
+              " Run the build worker in another terminal: bun run dev:worker (the deployer only runs after the build finishes).";
+          } else if (elapsed > 8000 && status === "deploying") {
+            statusMsg +=
+              " Run the deployer in another terminal: bun run dev:deployer.";
+          }
+          setDeployingStatus(statusMsg);
+          if (elapsed > maxMs) {
+            clearDeployPoll();
+            clearDeploySession();
+            setText(deployedUrl, "—");
+            setDeployedDeploymentMeta(deploymentId);
+            nzToast(
+              "Deployment is still in progress. Refresh the app or check the API for updates.",
+            );
+            showView("deployed");
+            return;
+          }
+          deployPollTimer = window.setTimeout(() => {
+            void tick();
+          }, 2500);
+        } catch (e) {
+          clearDeployPoll();
+          clearDeploySession();
+          nzToast(
+            String((e && e.message) || e || "").trim() ||
+              "Could not track deployment.",
+          );
+          showView("configure");
+        }
+      };
+      void tick();
+    };
+
+    const startDeployButtons = Array.from(
+      root.querySelectorAll("[data-project-start-deploy]"),
+    );
+    startDeployButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        clearDeployPoll();
+        syncConfigureFormIntoSelectedRepo();
+        void (async () => {
+          const name = String(selectedRepo.name || "").trim();
+          const full = String(selectedRepo.full || "").trim();
+          if (!name) {
+            nzToast("Enter a project name before deploying.");
+            return;
+          }
+          if (!full) {
+            nzToast("Choose a repository before deploying.");
+            return;
+          }
+          await saveComposeDraftEnv();
+          syncRepoDataIntoViews();
+          setDeployingStatus("Submitting deployment…");
+          showDeploymentIdLine("");
+          showView("deploying");
+          startDeployButtons.forEach((b) => {
+            if (b instanceof HTMLButtonElement) b.disabled = true;
+          });
+          try {
+            const envRows = collectEnvEntriesFromTable().filter((r) => r.key);
+            const res = await fetch("/api/console-deploy", {
+              method: "POST",
+              credentials: "include",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                provider: activeProvider,
+                repoFull: full,
+                branch: String(selectedRepo.branch || "main").trim() || "main",
+                commit: String(selectedRepo.resolvedSha || "").trim(),
+                projectId:
+                  String(selectedRepo.projectId || "").trim() ||
+                  resolveKnownProjectId(),
+                projectName: name,
+                preset: String(selectedRepo.preset || "Other").trim(),
+                suggestedType: String(selectedRepo.suggestedType || "").trim(),
+                root: String(selectedRepo.root || ".").trim() || ".",
+                buildCommand: String(selectedRepo.build || "").trim(),
+                outputDir: String(selectedRepo.output || "dist").trim() || "dist",
+                envEntries: envRows,
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(data.error || `Deploy failed (${res.status})`);
+            }
+            const depId = String(data.deploymentId || "").trim();
+            if (!depId) {
+              throw new Error("Missing deployment id in response");
+            }
+            const projectId = String(data.projectId || "").trim();
+            if (projectId) {
+              selectedRepo.projectId = projectId;
+              PROJECT_LOOKUP[repoLookupKey(activeProvider, full)] = {
+                projectId,
+                projectName: name,
+                branch: String(selectedRepo.branch || "main").trim() || "main",
+              };
+            }
+            showDeploymentIdLine(depId);
+            setDeployingStatus("Deployment queued. Waiting for status…");
+            scheduleDeployPoll(depId);
+          } catch (e) {
+            clearDeploySession();
+            nzToast(
+              String((e && e.message) || e || "").trim() ||
+                "Deploy could not be started.",
+            );
+            showView("configure");
+          } finally {
+            startDeployButtons.forEach((b) => {
+              if (b instanceof HTMLButtonElement) b.disabled = false;
+            });
+          }
+        })();
+      });
+    });
+
+    const finishButtons = Array.from(
+      root.querySelectorAll("[data-project-finish]"),
+    );
+    finishButtons.forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      button.addEventListener("click", () => {
+        showView("inventory");
+      });
+    });
+
+    let consumeVcsOAuthReturnIfPresent = () => false;
+
+    (function bindImportShell() {
+      const shell = root.querySelector("[data-project-import-shell]");
+      if (!(shell instanceof HTMLElement)) {
+        return;
+      }
+      if (shell.dataset.importUiBound === "true") {
+        return;
+      }
+      shell.dataset.importUiBound = "true";
+
+      let accountData = {};
+      let providerOptions = [];
+      try {
+        accountData = JSON.parse(shell.dataset.providerAccounts || "{}");
+      } catch {
+        accountData = {};
+      }
+      try {
+        providerOptions = JSON.parse(shell.dataset.providerOptions || "[]");
+      } catch {
+        providerOptions = [];
+      }
+
+      const labelNode = shell.querySelector("[data-project-account-label]");
+      const accountDetails = shell.querySelector("[data-project-account-details]");
+      const summaryEl = shell.querySelector("[data-project-account-summary]");
+      const accountItems = shell.querySelector("[data-project-account-items]");
+      const accountIcon = shell.querySelector("[data-project-account-icon]");
+      const accountIconPath = shell.querySelector("[data-project-account-icon-path]");
+      const searchInput = shell.querySelector("[data-project-search]");
+      const importToolbar = shell.querySelector("[data-project-import-toolbar]");
+      const repoList = shell.querySelector("[data-project-repo-list]");
+      const template = shell.querySelector("[data-project-row-template]");
+      const spinnerTemplate = shell.querySelector("[data-dashboard-loading-spinner]");
+      const FALLBACK_SPINNER_HTML = `<div class="flex min-h-[min(280px,42vh)] w-full items-center justify-center text-[#6b7280]" role="status" aria-live="polite"><span class="sr-only">Loading</span><svg viewBox="0 0 24 24" class="h-5 w-5 animate-spin" aria-hidden="true"><circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2" fill="none"></circle><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg></div>`;
+      const templateContentsToHtml = (tpl) => {
+        if (tpl instanceof HTMLTemplateElement) {
+          const wrap = document.createElement("div");
+          wrap.appendChild(tpl.content.cloneNode(true));
+          return wrap.innerHTML;
+        }
+        if (tpl instanceof HTMLElement) return tpl.innerHTML;
+        return "";
+      };
+      const getLoadingSpinnerHtml = () => {
+        const fromTpl = templateContentsToHtml(spinnerTemplate);
+        if (fromTpl.trim()) return fromTpl;
+        return FALLBACK_SPINNER_HTML;
+      };
+
+      const setImportToolbarVisible = (visible) => {
+        if (!(importToolbar instanceof HTMLElement)) return;
+        importToolbar.classList.toggle("hidden", !visible);
+        importToolbar.setAttribute("aria-hidden", visible ? "false" : "true");
+      };
+
+      let activeAccount = "";
+      let searchValue = "";
+
+      const escapeHtml = (value) =>
+        String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+      /** Safari / older runtimes: `AbortSignal.timeout` missing → throws before `fetch`, no network entry. */
+      function repoFetchAbortSignal(ms) {
+        try {
+          if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+            return AbortSignal.timeout(ms);
+          }
+        } catch (_) {}
+        const c = new AbortController();
+        window.setTimeout(function () {
+          c.abort();
+        }, ms);
+        return c.signal;
+      }
+
+      const providerLabelMap = {
+        github: "GitHub",
+        gitlab: "GitLab",
+        bitbucket: "Bitbucket",
+        gitea: "Gitea",
+      };
+
+      const providerIconMap = {
+        github: "GH",
+        gitlab: "GL",
+        bitbucket: "BB",
+        gitea: "GT",
+      };
+
+      /** GitHub “mark” logo (official path), `currentColor` for theming. */
+      const githubRepoRowIconSvg =
+        '<svg class="h-[18px] w-[18px] shrink-0" viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.245-22.243-5.42-22.243-24.634 0-5.42 1.963-9.89 5.052-13.357-.485-1.246-2.195-6.275.486-13.072 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.8.976 11.826.486 13.072 3.145 3.476 5.052 7.935 5.052 13.357 0 19.325-11.495 23.389-22.363 24.602 1.754 1.526 3.318 4.491 3.318 9.09 0 6.566-.08 11.847-.08 13.41 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z"/></svg>';
+
+      const getProviderMeta = (providerKey) =>
+        providerOptions.find((provider) => provider.key === providerKey) || providerOptions[0];
+
+      /** Colored brand icons for the import account dropdown (left of username). */
+      const importAccountMenuIconHtml = (providerKey) => {
+        if (providerKey === "github") {
+          return `<span class="inline-flex shrink-0 text-[#24292f]" aria-hidden="true">${githubRepoRowIconSvg}</span>`;
+        }
+        const meta = getProviderMeta(providerKey);
+        const accent = meta?.accent || "#111827";
+        const d = meta?.iconPath || "";
+        if (!d) return "";
+        return `<svg class="h-[18px] w-[18px] shrink-0" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path fill="${accent}" d="${d}"/></svg>`;
+      };
+
+      const listConnectedImportProviders = () =>
+        IMPORT_PROVIDER_KEYS.filter((key) => isProviderImportConnected(key));
+
+      const getAccounts = () => accountData[activeProvider] || [];
+
+      const getActiveAccount = () =>
+        getAccounts().find((item) => item.key === activeAccount) || getAccounts()[0];
+
+      const ensureAccount = () => {
+        const current = getActiveAccount();
+        if (current) activeAccount = current.key;
+        return current;
+      };
+
+      const applyImportToolbarProviderChrome = (providerKey) => {
+        const providerMeta = getProviderMeta(providerKey);
+        if (accountIcon instanceof SVGElement) {
+          accountIcon.style.color = providerMeta?.accent || "#24292f";
+        }
+        if (accountIconPath instanceof SVGPathElement) {
+          accountIconPath.setAttribute("d", providerMeta?.iconPath || "");
+        }
+      };
+
+      const closeAccountMenu = () => {
+        if (accountDetails instanceof HTMLDetailsElement) accountDetails.open = false;
+        if (summaryEl instanceof HTMLElement) summaryEl.setAttribute("aria-expanded", "false");
+      };
+
+      const getAllImportAccountRows = () => {
+        const rows = [];
+        for (const providerKey of IMPORT_PROVIDER_KEYS) {
+          if (!isProviderImportConnected(providerKey)) continue;
+          const accounts = accountData[providerKey] || [];
+          for (const account of accounts) {
+            rows.push({ providerKey, account });
+          }
+        }
+        return rows;
+      };
+
+      const renderAccounts = () => {
+        if (!(accountItems instanceof HTMLElement)) return;
+        accountItems.innerHTML = "";
+
+        const rows = getAllImportAccountRows();
+        rows.forEach(({ providerKey, account }) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className =
+            "font-sans flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-[#f7f7f8]";
+          const labelSafe = escapeHtml(account.label);
+          const isActive = providerKey === activeProvider && account.key === activeAccount;
+          button.innerHTML = `
+            <span class="flex min-w-0 flex-1 items-center gap-2.5">
+              ${importAccountMenuIconHtml(providerKey)}
+              <span class="truncate text-[#111827]">${labelSafe}</span>
+            </span>
+            <span class="${isActive ? "text-[#111827]" : "text-transparent"} shrink-0">✓</span>
+          `;
+          button.addEventListener("click", () => {
+            activeProvider = providerKey;
+            activeAccount = account.key;
+            applyImportToolbarProviderChrome(providerKey);
+            if (labelNode) labelNode.textContent = account.label;
+            renderAccounts();
+            renderRepos();
+            closeAccountMenu();
+          });
+          accountItems.appendChild(button);
+        });
+      };
+
+      const renderRepos = () => {
+        if (!(repoList instanceof HTMLElement)) return;
+
+        const account = ensureAccount();
+        if (!account) {
+          if (
+            isImportProviderKey(activeProvider)
+          ) {
+            if (!isProviderImportConnected(activeProvider)) {
+              root.dispatchEvent(
+                new CustomEvent("nz-project-show-connect", { bubbles: true, detail: {} }),
+              );
+              return;
+            }
+            repoList.innerHTML = getLoadingSpinnerHtml();
+          }
+          return;
+        }
+        const rowProto =
+          template instanceof HTMLTemplateElement
+            ? template.content.firstElementChild
+            : template instanceof HTMLElement
+              ? template.firstElementChild
+              : null;
+        if (!(rowProto instanceof HTMLElement)) {
+          repoList.innerHTML =
+            '<div class="px-4 py-6 text-sm text-[#9f3131]">Repository list UI failed to load. Refresh the page.</div>';
+          return;
+        }
+
+        applyImportToolbarProviderChrome(activeProvider);
+        if (labelNode) labelNode.textContent = account.label;
+
+        repoList.innerHTML = "";
+        const repoSource = Array.isArray(account.repos) ? account.repos : [];
+        const repos = repoSource.filter((repo) => {
+          if (!searchValue) return true;
+          return (
+            repo.name.toLowerCase().includes(searchValue) ||
+            repo.repo.toLowerCase().includes(searchValue)
+          );
+        });
+
+        if (repos.length === 0) {
+          const emptyCopy = searchValue
+            ? "No repositories match this search."
+            : "No repositories found for this account.";
+          repoList.innerHTML = `<div class="px-4 py-6 text-sm text-[#6b7280]">${emptyCopy}</div>`;
+          return;
+        }
+
+        repos.forEach((repo) => {
+          const fragment = rowProto.cloneNode(true);
+          if (!(fragment instanceof HTMLElement)) return;
+
+          const icon = fragment.querySelector("[data-row-icon]");
+          const name = fragment.querySelector("[data-row-name]");
+          const meta = fragment.querySelector("[data-row-meta]");
+          const action = fragment.querySelector("[data-project-repo-select]");
+
+          if (icon instanceof HTMLElement) {
+            if (activeProvider === "github") {
+              icon.className = "flex items-center justify-center text-[#24292f]";
+              icon.innerHTML = githubRepoRowIconSvg;
+            } else {
+              icon.className = "text-xs font-medium text-[#111827]";
+              icon.textContent = providerIconMap[activeProvider] || "GH";
+            }
+          }
+          if (name) name.textContent = repo.name;
+          if (meta) {
+            const stack = String(repo.stackLabel || "").trim();
+            meta.textContent = stack
+              ? `${stack} · ${repo.visibility} · ${repo.updatedLabel}`
+              : `${repo.visibility} · ${repo.updatedLabel}`;
+          }
+
+          if (action instanceof HTMLElement) {
+            action.dataset.providerKey = activeProvider;
+            action.dataset.providerLabel = providerLabelMap[activeProvider] || "GitHub";
+            action.dataset.repoKey = repo.key;
+            action.dataset.repoName = repo.name;
+            action.dataset.repoFull = repo.repo;
+            action.dataset.repoBranch = repo.branch;
+            action.dataset.repoPreset = repo.preset;
+            action.dataset.repoRoot = repo.rootDirectory;
+            action.dataset.repoBuild = repo.buildCommand;
+            action.dataset.repoOutput = repo.outputDirectory;
+            action.dataset.repoEnvKey = repo.envKey;
+            action.dataset.repoEnvValue = repo.envValue;
+          }
+
+          repoList.appendChild(fragment);
+        });
+      };
+
+      const setProvider = (providerKey) => {
+        if (
+          isImportProviderKey(providerKey) &&
+          !isProviderImportConnected(providerKey)
+        ) {
+          root.dispatchEvent(
+            new CustomEvent("nz-project-show-connect", { bubbles: true, detail: {} }),
+          );
+          return;
+        }
+        void loadAllConnectedImportRepos({ preferredProvider: providerKey });
+      };
+
+      if (accountDetails instanceof HTMLDetailsElement && summaryEl instanceof HTMLElement) {
+        accountDetails.addEventListener("toggle", () => {
+          summaryEl.setAttribute("aria-expanded", accountDetails.open ? "true" : "false");
+        });
+      }
+
+      document.addEventListener("click", (event) => {
+        if (!(accountDetails instanceof HTMLDetailsElement)) return;
+        const n = event.target;
+        if (n instanceof Node && accountDetails.contains(n)) return;
+        accountDetails.open = false;
+        summaryEl?.setAttribute("aria-expanded", "false");
+      });
+
+      if (searchInput instanceof HTMLInputElement) {
+        searchInput.addEventListener("input", () => {
+          searchValue = searchInput.value.trim().toLowerCase();
+          renderRepos();
+        });
+      }
+
+      shell.addEventListener("click", (event) => {
+        const el = event.target;
+        if (!(el instanceof Element)) return;
+        if (el.closest("[data-project-account-details] summary")) return;
+        const addAccount = el.closest("[data-project-account-add]");
+        if (addAccount instanceof HTMLElement) {
+          closeAccountMenu();
+          root.dataset.connectBackFromImport = "true";
+          showView("connect");
+          return;
+        }
+      });
+
+      let importReposLoadPromise = null;
+      /** Providers whose repo lists were loaded successfully this session (avoids refetch on every return to import). */
+      const importReposFetchedProviders = new Set();
+      /** Skip refetch after a reconnect toast until user re-links (avoids 401 spam while other providers work). */
+      const importReposSkipUntilRelink = new Set();
+
+      const providerImportCacheWarm = (p) => {
+        const rows = accountData[p];
+        return (
+          importReposFetchedProviders.has(p) &&
+          Array.isArray(rows) &&
+          rows.length > 0
+        );
+      };
+
+      /**
+       * Fetches repo lists for one VCS provider. Returns "reconnect" if the user must re-auth,
+       * "ok" if accounts were stored, otherwise "fail".
+       */
+      async function fetchProviderReposAccounts(fetchingProvider) {
+        const repoApiUrl = new URL(
+          `/api/workspace-vcs-repos?provider=${encodeURIComponent(fetchingProvider)}`,
+          window.location.href,
+        ).toString();
+        const clientTimeoutMs = 60_000;
+        try {
+          const res = await fetch(repoApiUrl, {
+            credentials: "include",
+            signal: repoFetchAbortSignal(clientTimeoutMs),
+          });
+          const data = await res.json().catch(() => ({}));
+
+          const importView = root.querySelector('[data-project-view="import"]');
+          const importVisible =
+            importView instanceof HTMLElement && !importView.classList.contains("hidden");
+
+          if (!res.ok) {
+            const errMsg = data?.error || "Could not load repositories.";
+            const code = data?.code;
+            const errStr = String(errMsg);
+            const needsReconnectGithub =
+              fetchingProvider === "github" &&
+              (code === "VCS_GITHUB_TOKEN_EXPIRED" ||
+                code === "VCS_GITHUB_DECRYPT_FAILED" ||
+                res.status === 401 ||
+                /not connected|expired|revoked|connect github|could not be decrypted|decrypt/i.test(
+                  errStr,
+                ));
+            const needsReconnectGitlab =
+              fetchingProvider === "gitlab" &&
+              (code === "VCS_GITLAB_TOKEN_EXPIRED" ||
+                code === "VCS_GITLAB_DECRYPT_FAILED" ||
+                res.status === 401 ||
+                /connect gitlab|gitlab is not connected|could not be decrypted|decrypt/i.test(
+                  errStr,
+                ));
+            const needsReconnectBitbucket =
+              fetchingProvider === "bitbucket" &&
+              (code === "VCS_BITBUCKET_TOKEN_EXPIRED" ||
+                code === "VCS_BITBUCKET_DECRYPT_FAILED" ||
+                res.status === 401 ||
+                /connect bitbucket|bitbucket is not connected|could not be decrypted|decrypt/i.test(
+                  errStr,
+                ));
+            const needsReconnectGitea =
+              fetchingProvider === "gitea" &&
+              (code === "VCS_GITEA_TOKEN_EXPIRED" ||
+                code === "VCS_GITEA_DECRYPT_FAILED" ||
+                res.status === 401 ||
+                /connect gitea|gitea is not connected|could not be decrypted|decrypt/i.test(
+                  errStr,
+                ));
+            if (
+              needsReconnectGithub ||
+              needsReconnectGitlab ||
+              needsReconnectBitbucket ||
+              needsReconnectGitea
+            ) {
+              const label = providerLabelFallback(fetchingProvider);
+              nzToast(`Your ${label} connection needs a refresh. Connect again to continue.`);
+              importReposSkipUntilRelink.add(fetchingProvider);
+              delete accountData[fetchingProvider];
+              importReposFetchedProviders.delete(fetchingProvider);
+              const clearGithubFromLinked =
+                fetchingProvider === "github" &&
+                (code === "VCS_GITHUB_TOKEN_EXPIRED" ||
+                  code === "VCS_GITHUB_DECRYPT_FAILED" ||
+                  (res.status === 400 &&
+                    /not connected for this account|github is not connected|connect github/i.test(
+                      errStr,
+                    )));
+              root.dispatchEvent(
+                new CustomEvent("nz-project-show-connect", {
+                  bubbles: true,
+                  detail: clearGithubFromLinked
+                    ? { clearGithubFromLinked }
+                    : { clearProviderFromLinked: fetchingProvider },
+                }),
+              );
+              return "reconnect";
+            }
+            if (importVisible) {
+              nzToast(repoLoadToastForHttp(errMsg, res.status));
+            }
+            return "fail";
+          }
+          if (data.provider === fetchingProvider && Array.isArray(data.accounts)) {
+            if (data.accounts.length > 0) {
+              accountData[fetchingProvider] = data.accounts;
+            } else {
+              const pl = providerLabelFallback(fetchingProvider);
+              accountData[fetchingProvider] = [
+                {
+                  key: `${fetchingProvider}-linked`,
+                  label: pl,
+                  repos: [],
+                },
+              ];
+            }
+            importReposFetchedProviders.add(fetchingProvider);
+            return "ok";
+          }
+          return "fail";
+        } catch (err) {
+          const importView = root.querySelector('[data-project-view="import"]');
+          const importVisible =
+            importView instanceof HTMLElement && !importView.classList.contains("hidden");
+          if (importVisible) {
+            const name = err && err.name;
+            const timedOut = name === "TimeoutError" || name === "AbortError";
+            nzToast(
+              timedOut
+                ? "Request timed out. Check that the API is running and try again."
+                : "Network error. Try again.",
+            );
+          }
+          return "fail";
+        }
+      }
+
+      function softRefreshImportReposUi() {
+        const importView = root.querySelector('[data-project-view="import"]');
+        const importVisible =
+          importView instanceof HTMLElement && !importView.classList.contains("hidden");
+        applyImportToolbarProviderChrome(activeProvider);
+        renderAccounts();
+        if (importVisible) renderRepos();
+        setImportToolbarVisible(true);
+      }
+
+      /**
+       * Loads repository lists for every connected import provider so the account menu can list
+       * GitHub, GitLab, and Bitbucket accounts together.
+       */
+      function loadAllConnectedImportRepos(opts) {
+        const preferredRaw =
+          opts && opts.preferredProvider && typeof opts.preferredProvider === "string"
+            ? opts.preferredProvider.trim()
+            : "";
+        const preferred =
+          isImportProviderKey(preferredRaw)
+            ? preferredRaw
+            : activeProvider;
+
+        if (!(repoList instanceof HTMLElement)) {
+          return Promise.resolve();
+        }
+
+        const connected = listConnectedImportProviders();
+        if (!connected.length) {
+          root.dispatchEvent(
+            new CustomEvent("nz-project-show-connect", { bubbles: true, detail: {} }),
+          );
+          return Promise.resolve();
+        }
+
+        if (importReposLoadPromise) {
+          return importReposLoadPromise;
+        }
+
+        const allProvidersAlreadyFetched =
+          connected.length > 0 && connected.every((p) => providerImportCacheWarm(p));
+
+        if (allProvidersAlreadyFetched) {
+          softRefreshImportReposUi();
+          return Promise.resolve();
+        }
+
+        setImportToolbarVisible(false);
+        repoList.innerHTML = getLoadingSpinnerHtml();
+
+        importReposLoadPromise = (async () => {
+          try {
+            const prevProvider = activeProvider;
+            const prevAccount = activeAccount;
+            let sawOk = false;
+            let sawFail = false;
+            for (const p of connected) {
+              if (importReposSkipUntilRelink.has(p)) {
+                continue;
+              }
+              if (providerImportCacheWarm(p)) {
+                sawOk = true;
+                continue;
+              }
+              const outcome = await fetchProviderReposAccounts(p);
+              if (outcome === "reconnect") {
+                sawFail = true;
+                continue;
+              }
+              if (outcome === "ok") sawOk = true;
+              if (outcome === "fail") sawFail = true;
+            }
+
+            const importView = root.querySelector('[data-project-view="import"]');
+            const importVisible =
+              importView instanceof HTMLElement && !importView.classList.contains("hidden");
+
+            const accountsFor = (p) => accountData[p] || [];
+
+            const pickProvider = () => {
+              if (
+                isImportProviderKey(prevProvider) &&
+                isProviderImportConnected(prevProvider) &&
+                accountsFor(prevProvider).some((a) => a.key === prevAccount)
+              ) {
+                return prevProvider;
+              }
+              if (
+                isImportProviderKey(preferred) &&
+                isProviderImportConnected(preferred) &&
+                accountsFor(preferred).length
+              ) {
+                return preferred;
+              }
+              for (const p of IMPORT_PROVIDER_KEYS) {
+                if (isProviderImportConnected(p) && accountsFor(p).length) {
+                  return p;
+                }
+              }
+              return null;
+            };
+
+            const picked = pickProvider();
+            if (!picked) {
+              if (importVisible) {
+                repoList.innerHTML =
+                  sawFail && !sawOk
+                    ? repoListLoadFailedHtml()
+                    : '<div class="px-4 py-6 text-sm text-[#6b7280]">No repositories returned.</div>';
+              }
+              return;
+            }
+
+            activeProvider = picked;
+            const list = accountsFor(picked);
+            const keep =
+              prevProvider === picked && list.some((a) => a.key === prevAccount)
+                ? list.find((a) => a.key === prevAccount)
+                : list[0];
+            if (keep?.key) activeAccount = keep.key;
+            applyImportToolbarProviderChrome(activeProvider);
+            if (labelNode && keep?.label) {
+              labelNode.textContent = keep.label;
+            }
+
+            renderAccounts();
+            if (importVisible) {
+              renderRepos();
+            }
+          } finally {
+            importReposLoadPromise = null;
+            setImportToolbarVisible(true);
+          }
+        })();
+
+        return importReposLoadPromise;
+      }
+
+      root?.addEventListener("nz-vcs-link-updated", (e) => {
+        const p = (e && e.detail && e.detail.provider) || activeProvider;
+        const pk = String(p || "github").trim() || "github";
+        if (isImportProviderKey(pk)) {
+          delete accountData[pk];
+          importReposFetchedProviders.delete(pk);
+          importReposSkipUntilRelink.delete(pk);
+        }
+        setProvider(pk);
+      });
+
+      root.addEventListener("nz-vcs-import-open", (event) => {
+        const d = event && event.detail;
+        const providerKey = String(d?.provider || "github").trim() || "github";
+        setProvider(providerKey);
+      });
+
+      const bootstrapImportIfVisible = () => {
+        const importEl = root.querySelector('[data-project-view="import"]');
+        if (!(importEl instanceof HTMLElement)) {
+          return;
+        }
+        if (importEl.classList.contains("hidden")) {
+          return;
+        }
+        if (!hasAnyVcsImportConnected()) {
+          root.dispatchEvent(
+            new CustomEvent("nz-project-show-connect", { bubbles: true, detail: {} }),
+          );
+          return;
+        }
+        const preferred =
+          isImportProviderKey(activeProvider) && isProviderImportConnected(activeProvider)
+            ? activeProvider
+            : listConnectedImportProviders()[0] || "github";
+        void loadAllConnectedImportRepos({ preferredProvider: preferred });
+      };
+
+      const importPanel = root.querySelector('[data-project-view="import"]');
+      if (importPanel instanceof HTMLElement) {
+        const hadHiddenClass = (classAttr) =>
+          /(?:^|\s)hidden(?:\s|$)/.test(String(classAttr || ""));
+        const mo = new MutationObserver((mutations) => {
+          let becameVisible = false;
+          for (const m of mutations) {
+            if (m.type !== "attributes" || m.attributeName !== "class") continue;
+            if (m.target !== importPanel) continue;
+            const wasHidden = hadHiddenClass(m.oldValue);
+            const nowHidden = importPanel.classList.contains("hidden");
+            if (wasHidden && !nowHidden) becameVisible = true;
+          }
+          if (!becameVisible) return;
+          if (!hasAnyVcsImportConnected()) {
+            root.dispatchEvent(
+              new CustomEvent("nz-project-show-connect", { bubbles: true, detail: {} }),
+            );
+            return;
+          }
+          const preferred =
+            isImportProviderKey(activeProvider) && isProviderImportConnected(activeProvider)
+              ? activeProvider
+              : listConnectedImportProviders()[0] || "github";
+          void loadAllConnectedImportRepos({ preferredProvider: preferred });
+        });
+        mo.observe(importPanel, {
+          attributes: true,
+          attributeFilter: ["class"],
+          attributeOldValue: true,
+        });
+      }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          bootstrapImportIfVisible();
+        });
+      });
+      window.setTimeout(bootstrapImportIfVisible, 0);
+      window.setTimeout(bootstrapImportIfVisible, 400);
+
+      document.addEventListener("astro:page-load", () => {
+        window.setTimeout(bootstrapImportIfVisible, 0);
+      });
+
+      function forceLiveRepoFetchIfImportVisible() {
+        const imp = root.querySelector('[data-project-view="import"]');
+        if (!(imp instanceof HTMLElement) || imp.classList.contains("hidden")) return;
+        if (!hasAnyVcsImportConnected()) return;
+        const preferred =
+          isImportProviderKey(activeProvider) &&
+          isProviderImportConnected(activeProvider)
+            ? activeProvider
+            : listConnectedImportProviders()[0] || "github";
+        void loadAllConnectedImportRepos({ preferredProvider: preferred });
+      }
+      window.setTimeout(forceLiveRepoFetchIfImportVisible, 0);
+      window.setTimeout(forceLiveRepoFetchIfImportVisible, 100);
+      document.addEventListener("astro:after-swap", () => {
+        window.setTimeout(forceLiveRepoFetchIfImportVisible, 0);
+      });
+
+      consumeVcsOAuthReturnIfPresent = () => {
+        try {
+          const url = new URL(window.location.href);
+          const ret = String(url.searchParams.get("nz_vcs_return") || "")
+            .trim()
+            .toLowerCase();
+          if (!isImportProviderKey(ret)) {
+            return false;
+          }
+          url.searchParams.delete("nz_vcs_return");
+          const next = `${url.pathname}${url.search}${url.hash}`;
+          window.history.replaceState({}, "", next || url.pathname);
+
+          importReposSkipUntilRelink.delete(ret);
+          delete accountData[ret];
+          importReposFetchedProviders.delete(ret);
+
+          root.dataset[`${ret}ImportConnected`] = "true";
+          const linkedParts = String(root.dataset.linkedVcs || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (!linkedParts.includes(ret)) {
+            linkedParts.push(ret);
+            root.dataset.linkedVcs = linkedParts.join(",");
+          }
+
+          activeProvider = ret;
+          showProviderPanel(ret);
+          showView("import");
+          void loadAllConnectedImportRepos({ preferredProvider: ret });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+    })();
+
+    const linked = String(root.dataset.linkedVcs || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const hasLinkedVcs = linked.length > 0;
+    const initialRaw = String(root.dataset.initialView || "").trim();
+    let initial = "connect";
+    if (initialRaw === "connect" || initialRaw === "import" || initialRaw === "inventory") {
+      initial = initialRaw;
+    } else {
+      const hasProjects = root.dataset.hasProjects === "true";
+      if (hasProjects) initial = "inventory";
+      else if (hasAnyVcsImportConnected()) initial = "import";
+    }
+
+    const resumeDeploySessionIfPresent = () => {
+      try {
+        const raw = sessionStorage.getItem(NZ_DEPLOY_SESSION_KEY);
+        if (!raw) return false;
+        const o = JSON.parse(raw);
+        const depId = String(o.deploymentId || "").trim();
+        const startedAt = Number(o.startedAt) || 0;
+        if (!depId) {
+          clearDeploySession();
+          return false;
+        }
+        if (Date.now() - startedAt > 86400000) {
+          clearDeploySession();
+          return false;
+        }
+        applyDeploySessionSnapshot(o);
+        syncRepoDataIntoViews();
+        showDeploymentIdLine(depId);
+        setDeployingStatus("Resuming deployment status…");
+        showView("deploying");
+        scheduleDeployPoll(depId);
+        return true;
+      } catch {
+        clearDeploySession();
+        return false;
+      }
+    };
+
+    if (!resumeDeploySessionIfPresent()) {
+      if (!consumeVcsOAuthReturnIfPresent()) {
+        showView(initial);
+      }
+    }
+    if (hasLinkedVcs && linked.includes(activeProvider) === false) {
+      activeProvider = linked[0] || "github";
+    }
+    showProviderPanel(activeProvider);
+    syncRepoDataIntoViews();
+  })();
+</script>
+
+<style>
+  .project-view-enter {
+    animation: project-view-enter 0.28s ease both;
+  }
+
+  @keyframes project-view-enter {
+    0% {
+      opacity: 0;
+      filter: blur(10px);
+      transform: translateY(8px);
+    }
+    100% {
+      opacity: 1;
+      filter: blur(0);
+      transform: translateY(0);
+    }
+  }
+</style>

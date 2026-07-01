@@ -1,0 +1,64 @@
+---
+import { buttonClass } from "../demoShared";
+import type { ProviderOption } from "./shared";
+
+interface Props {
+  providerOptions: ProviderOption[];
+  /** When false, view is hidden (SSR + client use the same rules as `projectsInitialView`). */
+  visible?: boolean;
+}
+
+const { providerOptions, visible = false } = Astro.props;
+---
+
+<div
+  class:list={[
+    "project-view relative min-h-[calc(100dvh-77px)] flex-col",
+    visible ? "flex" : "hidden",
+  ]}
+  data-project-view="connect"
+>
+  <button
+    type="button"
+    class="absolute left-4 top-4 z-10 hidden font-sans text-xs font-normal text-[#6b7280] transition-colors hover:text-[#111827] bg-transparent border-0 p-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d1d5db] focus-visible:ring-offset-2 sm:left-6 sm:top-5"
+    data-project-connect-back
+    aria-hidden="true"
+  >
+    ← Back
+  </button>
+  <div
+    class="flex min-h-0 flex-1 items-center justify-center px-4 py-8 sm:px-6"
+  >
+    <div class="w-full max-w-[560px] text-center">
+      <h2 class="font-display text-[22px] font-semibold tracking-tight text-[#111827] sm:text-[28px]">
+        Import your project to get started.
+      </h2>
+      <p class="mx-auto mt-3 max-w-[460px] text-xs leading-6 text-[#6b7280]">
+        Connect GitHub, GitLab, Bitbucket, or Gitea below to import a repository and create a
+        Nearzero project.
+      </p>
+
+      <div class="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {providerOptions.map((provider) => (
+          <button
+            type="button"
+            class={`${buttonClass} w-full gap-2`}
+            data-project-connect
+            data-provider-key={provider.key}
+            data-provider-label={provider.label}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              class="h-4 w-4"
+              aria-hidden="true"
+              style={`color:${provider.accent}`}
+            >
+              <path fill="currentColor" d={provider.iconPath}></path>
+            </svg>
+            <span>{provider.buttonLabel}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,313 @@
+---
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { createServerTrpcClient } from "@/lib/server-api";
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.agent,
+});
+
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+
+let allowProduction = false;
+let openRouterConfigured = false;
+let openRouterSource: "env" | "org" | "none" = "none";
+let hasStoredOrgKey = false;
+
+const agentPolicyControls = [
+	{
+		key: "allowAgentOpenRouterSetup",
+		label: "OpenRouter setup",
+		description: "Allow admins to configure the organization OpenRouter key from Agent settings.",
+	},
+	{
+		key: "allowAgentProjectCreation",
+		label: "Project creation",
+		description: "Allow the Agent harness to create named development projects.",
+	},
+	{
+		key: "allowAgentProjectUpdates",
+		label: "Project updates",
+		description: "Allow the Agent harness to rename projects and update non-secret project fields.",
+	},
+	{
+		key: "allowAgentDevProjectDeletion",
+		label: "Development project deletion",
+		description: "Allow the Agent harness to delete projects that do not contain production environments.",
+	},
+	{
+		key: "allowAgentServiceCreation",
+		label: "Service creation",
+		description: "Allow the Agent harness to create services inside writable project environments.",
+	},
+	{
+		key: "allowAgentServiceImports",
+		label: "Git service imports",
+		description: "Allow Git provider, repository, and branch selection through Agent UI controls.",
+	},
+	{
+		key: "allowAgentSshServiceSetup",
+		label: "SSH service setup",
+		description: "Allow SSH-key based service setup through dedicated non-chat secret inputs.",
+	},
+	{
+		key: "allowAgentDomainAssignment",
+		label: "Domain assignment",
+		description: "Allow the Agent harness to attach managed or platform domains to services.",
+	},
+	{
+		key: "allowAgentServerCreation",
+		label: "Server creation",
+		description: "Allow the Agent harness to create server resources after required inputs are collected.",
+	},
+	{
+		key: "allowAgentDeployments",
+		label: "Deployments",
+		description: "Allow the Agent harness to queue deployments for existing services.",
+	},
+] as const;
+
+type AgentPolicySettingKey = (typeof agentPolicyControls)[number]["key"];
+
+const agentPolicyValues: Record<AgentPolicySettingKey, boolean> = {
+	allowAgentOpenRouterSetup: true,
+	allowAgentProjectCreation: true,
+	allowAgentProjectUpdates: true,
+	allowAgentDevProjectDeletion: false,
+	allowAgentServiceCreation: true,
+	allowAgentServiceImports: false,
+	allowAgentSshServiceSetup: false,
+	allowAgentDomainAssignment: true,
+	allowAgentServerCreation: false,
+	allowAgentDeployments: false,
+};
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as {
+		organizationSettings: {
+			getAgentSettings: {
+				query: () => Promise<
+					Record<AgentPolicySettingKey, boolean> & {
+						allowAgentProductionActions: boolean;
+						openRouterConfigured: boolean;
+						openRouterSource: "env" | "org" | "none";
+						hasStoredOrgKey: boolean;
+					}
+				>;
+			};
+		};
+	};
+	try {
+		const settings = await api.organizationSettings.getAgentSettings.query();
+		allowProduction = settings.allowAgentProductionActions;
+		for (const control of agentPolicyControls) {
+			agentPolicyValues[control.key] = settings[control.key];
+		}
+		openRouterConfigured = settings.openRouterConfigured;
+		openRouterSource = settings.openRouterSource;
+		hasStoredOrgKey = settings.hasStoredOrgKey;
+	} catch {
+		allowProduction = false;
+	}
+}
+
+const inputClass =
+	"flex h-8 w-full min-w-0 rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] px-3 text-xs text-[var(--nz-text)] shadow-none outline-none placeholder:text-[var(--nz-text-subtle)] focus-visible:ring-1 focus-visible:ring-[var(--nz-border-strong)]";
+const btnPrimary =
+	"inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-[var(--nz-primary,#111827)] px-3 text-xs font-medium text-[var(--nz-primary-fg,#fff)] transition-colors hover:bg-[var(--nz-primary-hover,#1f2937)] disabled:pointer-events-none disabled:opacity-50";
+const btnGhost =
+	"inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-[var(--nz-border)] bg-[var(--nz-surface)] px-3 text-xs font-medium text-[var(--nz-text)] transition-colors hover:bg-[var(--nz-bg-hover)]";
+---
+
+{
+	forbidden ? (
+		<p class="text-xs text-[var(--nz-text-muted)]">You do not have access to Agent settings.</p>
+	) : loadFailed ? (
+		<p class="text-xs text-[var(--nz-text-muted)]">Could not load Agent settings.</p>
+	) : (
+		<div
+			class="nz-agent-settings w-full min-w-0"
+			id="nz-agent-settings-root"
+			data-allow-production={allowProduction ? "1" : "0"}
+			data-openrouter-configured={openRouterConfigured ? "1" : "0"}
+			data-openrouter-source={openRouterSource}
+			data-has-stored-org-key={hasStoredOrgKey ? "1" : "0"}
+		>
+			<p class="nz-agent-settings__lead">
+				Control whether Nearzero Agent can mutate production environments. When disabled,
+				the Agent can plan and explain production work but cannot deploy or change
+				production resources.
+			</p>
+
+			<div class="nz-agent-settings-stack">
+				<section
+					class="nz-agent-settings-card nz-agent-settings-card--production"
+					aria-labelledby="nz-agent-production-title"
+				>
+					<header class="nz-agent-settings-card__header">
+						<p class="nz-agent-settings-card__eyebrow">Production</p>
+						<h3 id="nz-agent-production-title" class="nz-agent-settings-card__title">
+							Allow Agent production actions
+						</h3>
+						<p class="nz-agent-settings-card__desc">
+							When off, the Agent can explain and plan production changes but cannot
+							create, deploy, or modify production resources.
+						</p>
+					</header>
+					<div class="nz-agent-settings-card__body">
+						<div class="nz-agent-settings-row">
+							<div class="nz-agent-settings-row__text">
+								<p class="nz-agent-settings-row__title">Enable production mutations</p>
+							</div>
+							<label class="nz-app-switch">
+								<input
+									id="nz-agent-allow-production"
+									type="checkbox"
+									class="nz-app-switch__input"
+									checked={allowProduction}
+									data-agent-policy-toggle="allowAgentProductionActions"
+									aria-label="Enable production mutations"
+								/>
+								<span class="nz-app-switch__track" aria-hidden="true">
+									<span class="nz-app-switch__thumb" />
+								</span>
+							</label>
+						</div>
+						<div id="nz-agent-confirm-wrap" class="nz-agent-settings-confirm hidden">
+							<label class="nz-agent-settings-confirm__label" for="nz-agent-confirm-input">
+								Type <code>ALLOW PRODUCTION AGENT ACTIONS</code> to confirm
+							</label>
+							<input
+								id="nz-agent-confirm-input"
+								type="text"
+								class={inputClass}
+								autocomplete="off"
+							/>
+						</div>
+					</div>
+					<footer class="nz-agent-settings-card__footer">
+						<button id="nz-agent-save" type="button" class={btnPrimary}>
+							Save
+						</button>
+						<p id="nz-agent-save-status" class="nz-agent-settings-status" />
+					</footer>
+				</section>
+
+				<section
+					class="nz-agent-settings-card"
+					aria-labelledby="nz-agent-policy-gates-title"
+				>
+					<header class="nz-agent-settings-card__header">
+						<h3 id="nz-agent-policy-gates-title" class="nz-agent-settings-card__title">
+							Agent policy gates
+						</h3>
+						<p class="nz-agent-settings-card__desc">
+							These toggles back the code policies that every Agent harness mutation
+							calls before it changes infrastructure.
+						</p>
+					</header>
+					<div class="nz-agent-settings-card__body nz-agent-settings-card__body--list">
+						{
+							agentPolicyControls.map((control) => (
+								<div class="nz-agent-settings-row">
+									<div class="nz-agent-settings-row__text">
+										<p class="nz-agent-settings-row__title">{control.label}</p>
+										<p class="nz-agent-settings-row__desc">{control.description}</p>
+									</div>
+									<label class="nz-app-switch">
+										<input
+											type="checkbox"
+											class="nz-app-switch__input"
+											checked={agentPolicyValues[control.key]}
+											data-agent-policy-toggle={control.key}
+											aria-label={`Enable ${control.label}`}
+										/>
+										<span class="nz-app-switch__track" aria-hidden="true">
+											<span class="nz-app-switch__thumb" />
+										</span>
+									</label>
+								</div>
+							))
+						}
+					</div>
+					<footer class="nz-agent-settings-card__footer">
+						<button id="nz-agent-save-policy-gates" type="button" class={btnPrimary}>
+							Save policy gates
+						</button>
+					</footer>
+				</section>
+
+				<section
+					class="nz-agent-settings-card"
+					aria-labelledby="nz-agent-openrouter-title"
+				>
+					<header class="nz-agent-settings-card__header">
+						<div class="nz-agent-settings-card__title-row">
+							<h3 id="nz-agent-openrouter-title" class="nz-agent-settings-card__title">
+								OpenRouter API key
+							</h3>
+							<span
+								id="nz-agent-openrouter-badge"
+								class:list={[
+									"nz-agent-settings__badge",
+									openRouterConfigured && "nz-agent-settings__badge--ok",
+								]}
+							>
+								{
+									openRouterConfigured
+										? openRouterSource === "env"
+											? "Configured (platform ENV)"
+											: "Configured (organization)"
+										: "Not configured"
+								}
+							</span>
+						</div>
+						<p class="nz-agent-settings-card__desc">
+							Store an encrypted OpenRouter key for your organization. When the platform
+							<code class="nz-agent-settings__code">OPENROUTER_API_KEY</code> is set, it
+							overrides the org key for all agent requests.
+						</p>
+						{
+							openRouterSource === "env" ? (
+								<p class="nz-agent-settings-card__note">
+									Platform operator override is active. Saving an org key will not be
+									used until the ENV key is removed.
+								</p>
+							) : null
+						}
+					</header>
+					<div class="nz-agent-settings-card__body">
+						<label class="nz-agent-settings-field" for="nz-agent-openrouter-key">
+							<span class="nz-agent-settings-field__label">OpenRouter API key</span>
+							<input
+								id="nz-agent-openrouter-key"
+								type="password"
+								autocomplete="off"
+								placeholder="sk-or-..."
+								class={inputClass}
+							/>
+						</label>
+					</div>
+					<footer class="nz-agent-settings-card__footer">
+						<button id="nz-agent-openrouter-save" type="button" class={btnPrimary}>
+							Save key
+						</button>
+						<button
+							id="nz-agent-openrouter-clear"
+							type="button"
+							class:list={[btnGhost, !hasStoredOrgKey && "hidden"]}
+						>
+							Clear org key
+						</button>
+						<p id="nz-agent-openrouter-status" class="nz-agent-settings-status" />
+					</footer>
+				</section>
+			</div>
+		</div>
+	)
+}
+
+<script>
+	import { initAgentSettingsDashboard } from "@/scripts/agent-settings-dashboard";
+	initAgentSettingsDashboard();
+</script>

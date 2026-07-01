@@ -1,0 +1,380 @@
+---
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import Button from "@/components/ui/Button.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import { environmentApplicationNewHref } from "@/lib/project-workspace-nav";
+import { slugify } from "@/lib/slug";
+
+interface ServerOption {
+	serverId: string;
+	name: string;
+	ipAddress?: string | null;
+	port?: number | null;
+	setupStatus?: string | null;
+	serverStatus?: string | null;
+}
+
+interface ServiceOption {
+	id: string;
+	name: string;
+	type: "application" | "compose";
+	serverId?: string | null;
+}
+
+interface Props {
+	projectId: string;
+	environmentId: string;
+	projectName: string;
+	servers: ServerOption[];
+	services?: ServiceOption[];
+	isCommunity?: boolean;
+	dnsZoneId?: string | null;
+	domainPrefix?: string | null;
+	environmentName?: string;
+	isProduction?: boolean;
+	dnsZoneName?: string | null;
+}
+
+const {
+	projectId,
+	environmentId,
+	projectName,
+	servers,
+	services = [],
+	isCommunity = true,
+	dnsZoneId = null,
+	domainPrefix = "",
+	environmentName = "",
+	isProduction = false,
+	dnsZoneName = null,
+} = Astro.props;
+const projectSlug = slugify(projectName);
+const applicationNewHref = environmentApplicationNewHref(projectId, environmentId);
+
+const fieldClass =
+	"flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const labelClass = "text-sm font-medium leading-none";
+const dialogShellClass =
+	"nz-modal nz-env-dialog relative w-[calc(100%-2rem)] border-0 bg-transparent p-0 text-foreground shadow-none open:flex open:flex-col";
+---
+
+<div
+	class="relative flex shrink-0 justify-start sm:justify-end"
+	data-env-service-root="1"
+	data-environment-id={environmentId}
+	data-project-id={projectId}
+	data-project-slug={projectSlug}
+	data-dns-zone-id={dnsZoneId ?? ""}
+	data-domain-prefix={domainPrefix ?? ""}
+	data-environment-name={environmentName}
+	data-is-production={isProduction ? "1" : "0"}
+	data-zone-name={dnsZoneName ?? ""}
+	data-community={isCommunity ? "1" : "0"}
+>
+	<button
+		type="button"
+		class="nz-env-add-toggle inline-flex items-center gap-1 rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-elevated,#ffffff)] text-xs font-medium text-[var(--nz-text,#111827)] transition-colors hover:bg-[var(--nz-bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+		data-env-add-toggle="true"
+		aria-haspopup="menu"
+		aria-expanded="false"
+	>
+		Add New
+		<svg
+			class="size-3 shrink-0 text-[var(--nz-text-subtle)]"
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<path d="m6 9 6 6 6-6"></path>
+		</svg>
+	</button>
+	<div
+		class="absolute right-0 top-full z-30 mt-1 hidden min-w-40 overflow-hidden rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-elevated,#ffffff)] p-1 shadow-none"
+		data-env-add-menu
+		role="menu"
+	>
+		<a
+			href={applicationNewHref}
+			class="flex w-full rounded-md px-3 py-2 text-left text-sm text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)] no-underline"
+			role="menuitem"
+			data-env-add-application-link
+		>
+			Application
+		</a>
+		<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]" data-open-env-db="true" role="menuitem">
+			Database
+		</button>
+		<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]" data-open-env-domain="true" role="menuitem">
+			Domain
+		</button>
+	</div>
+</div>
+
+<script is:inline id="nz-env-servers-json" type="application/json" set:html={JSON.stringify(servers)} />
+<script is:inline id="nz-env-services-json" type="application/json" set:html={JSON.stringify(services)} />
+
+<!-- Database -->
+<NzModal
+	id="nz-env-db-dialog"
+	title="Databases"
+	size="lg"
+	form
+	formId="nz-env-db-form"
+>
+	<p id="nz-env-db-error" class="hidden text-xs text-red-600"></p>
+	<fieldset class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+		{["postgres", "mysql", "mongo", "redis", "mariadb", "libsql"].map((type) => (
+			<label class="flex cursor-pointer items-center justify-center rounded-md border border-[var(--nz-border-strong,#e5e7eb)] px-2 py-1 text-xs capitalize transition-colors hover:bg-[var(--nz-bg-hover)] has-[:checked]:border-primary">
+				<input type="radio" name="dbType" value={type} class="sr-only" checked={type === "postgres"} />
+				{type === "libsql" ? "libSQL" : type}
+			</label>
+		))}
+	</fieldset>
+	<label class="nz-modal__field"><span class="nz-modal__label">Name</span><input id="nz-env-db-name" class="nz-modal__input" required /></label>
+	<label id="nz-env-db-server-wrap" class="hidden nz-modal__field"><span class="nz-modal__label">{isCommunity ? "Select a Server" : "Server"}</span><select id="nz-env-db-server" class="nz-modal__select"></select></label>
+	<label class="nz-modal__field"><span class="nz-modal__label">App Name</span><input id="nz-env-db-appname" class="nz-modal__input" value={`${projectSlug}-`} required /></label>
+	<label class="nz-modal__field"><span class="nz-modal__label">Description</span><textarea id="nz-env-db-description" class="nz-modal__textarea nz-modal__textarea--compact"></textarea></label>
+	<label id="nz-env-db-database-name-wrap" class="nz-modal__field"><span class="nz-modal__label">Database Name</span><input id="nz-env-db-database-name" class="nz-modal__input" /></label>
+	<label id="nz-env-db-sqld-node-wrap" class="hidden nz-modal__field"><span class="nz-modal__label">Sqld Node</span><select id="nz-env-db-sqld-node" class="nz-modal__select"><option value="primary">Primary</option><option value="replica">Replica</option></select></label>
+	<label id="nz-env-db-sqld-primary-wrap" class="hidden nz-modal__field"><span class="nz-modal__label">Sqld Primary URL</span><input id="nz-env-db-sqld-primary" class="nz-modal__input" placeholder="https://<host>:<port>" /></label>
+	<label id="nz-env-db-namespaces-wrap" class="hidden nz-modal__field"><span class="nz-modal__label">Enable Namespaces</span><select id="nz-env-db-namespaces" class="nz-modal__select"><option value="false">False</option><option value="true">True</option></select></label>
+	<label id="nz-env-db-database-user-wrap" class="nz-modal__field"><span class="nz-modal__label">Database User</span><input id="nz-env-db-database-user" class="nz-modal__input" /></label>
+	<label class="nz-modal__field"><span class="nz-modal__label">Database Password</span><input id="nz-env-db-password" type="password" class="nz-modal__input" autocomplete="one-time-code" /></label>
+	<label id="nz-env-db-root-password-wrap" class="hidden nz-modal__field"><span class="nz-modal__label">Database Root password</span><input id="nz-env-db-root-password" type="password" class="nz-modal__input" /></label>
+	<label class="nz-modal__field"><span class="nz-modal__label">Docker image</span><input id="nz-env-db-docker-image" class="nz-modal__input" placeholder="Default postgres:18" /></label>
+	<label id="nz-env-db-replica-wrap" class="hidden flex cursor-pointer items-center justify-between gap-2 py-1"><span class="nz-modal__label">Use Replica Sets</span><input id="nz-env-db-replica" type="checkbox" class="size-4 cursor-pointer" /></label>
+	<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+	<button
+		slot="footer"
+		type="submit"
+		id="nz-env-db-submit-btn"
+		data-default-label="Create"
+		class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+	>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Create</span>
+	</button>
+</NzModal>
+
+<!-- Template -->
+<dialog id="nz-env-template-dialog" data-env-dialog class:list={[dialogShellClass, "nz-modal--3xl", "w-full"]}>
+	<div class="flex max-h-[98vh] flex-col">
+		<div class="sticky top-0 z-10 border-b bg-background p-6">
+			<button type="button" class="absolute right-4 top-4 text-muted-foreground" data-env-dialog-close data-nz-modal-close aria-label="Close">✕</button>
+			<h2 class="text-lg font-semibold">Create from Template</h2>
+			<p class="text-sm text-muted-foreground">Create an open source application from a template</p>
+			<div class="mt-4 grid gap-2 sm:grid-cols-2">
+				<input id="nz-env-template-search" class={fieldClass} placeholder="Search Template" />
+				<input id="nz-env-template-base-url" class={fieldClass} placeholder="Base URL (optional)" />
+			</div>
+			<p id="nz-env-template-error" class="mt-2 hidden text-xs text-red-600"></p>
+		</div>
+		<div class="flex-1 overflow-y-auto p-6">
+			<div id="nz-env-template-loading" class="flex min-h-[40vh] items-center justify-center text-sm text-muted-foreground">Loading templates...</div>
+			<div id="nz-env-template-empty" class="hidden min-h-[40vh] text-center text-sm text-muted-foreground">No templates found</div>
+			<div id="nz-env-template-grid" class="hidden grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
+		</div>
+	</div>
+</dialog>
+
+<dialog id="nz-env-template-confirm-dialog" data-env-dialog class:list={[dialogShellClass, "nz-modal--md"]}>
+	<div class="flex flex-col gap-4 p-6">
+		<h2 id="nz-env-template-confirm-title" class="text-lg font-semibold"></h2>
+		<p id="nz-env-template-confirm-desc" class="text-sm text-muted-foreground"></p>
+		<label id="nz-env-template-server-wrap" class="hidden grid gap-2"><span class={labelClass}>{isCommunity ? "Select a Server (Optional)" : "Server"}</span><select id="nz-env-template-server" class={fieldClass}></select></label>
+		<p id="nz-env-template-confirm-error" class="hidden text-xs text-red-600"></p>
+		<div class="grid grid-cols-2 gap-2">
+			<Button variant="outline" type="button" data-env-dialog-close data-nz-modal-close="">Cancel</Button>
+			<Button type="button" id="nz-env-template-confirm-run">Create</Button>
+		</div>
+	</div>
+</dialog>
+
+<!-- Domain -->
+<NzModal
+	id="nz-env-domain-dialog"
+	title="Add Domain"
+	description="Attach a host to an application or compose service."
+	size="md"
+	form
+	formId="nz-env-domain-form"
+	showClose={false}
+>
+	<p id="nz-env-domain-error" class="hidden text-xs text-red-600"></p>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Service</span>
+		<select id="nz-env-domain-service" class="nz-modal__input" required>
+			<option value="">Select service</option>
+			{services.map((service) => (
+				<option value={`${service.type}:${service.id}`}>{service.name} ({service.type})</option>
+			))}
+		</select>
+	</label>
+	<div id="nz-env-domain-managed-preview" class="hidden rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] px-3 py-2 text-xs text-[var(--nz-text-muted)]"></div>
+	<label id="nz-env-domain-auto-wrap" class="hidden nz-modal__field flex-row items-center gap-2">
+		<input id="nz-env-domain-auto" type="checkbox" class="size-4" />
+		<span class="text-sm">Use auto-assigned hostname (managed or platform default)</span>
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Host</span>
+		<input id="nz-env-domain-host" class="nz-modal__input" placeholder="app.example.com" required />
+	</label>
+	<p id="nz-env-domain-edge-ip" class="hidden text-xs text-[var(--nz-text-muted)]"></p>
+	<div class="grid gap-3 sm:grid-cols-2">
+		<label class="nz-modal__field">
+			<span class="nz-modal__label">Port</span>
+			<input id="nz-env-domain-port" type="number" min="1" max="65535" class="nz-modal__input" value="3000" required />
+		</label>
+		<label class="nz-modal__field">
+			<span class="nz-modal__label">Path</span>
+			<input id="nz-env-domain-path" class="nz-modal__input" value="/" />
+		</label>
+	</div>
+	<label class="nz-modal__field flex-row items-center gap-2">
+		<input id="nz-env-domain-https" type="checkbox" class="size-4" checked />
+		<span class="text-sm">Enable HTTPS</span>
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Certificate</span>
+		<select id="nz-env-domain-certificate" class="nz-modal__input">
+			<option value="letsencrypt">Let's Encrypt</option>
+			<option value="none">None</option>
+			<option value="custom">Custom resolver</option>
+		</select>
+	</label>
+	<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">
+		Add Domain
+	</button>
+</NzModal>
+
+<script is:inline>
+	(function () {
+		const OPENERS = [
+			{ sel: "[data-open-env-db],.nz-env-open-db", id: "nz-env-db-dialog" },
+			{ sel: "[data-open-env-domain],.nz-env-open-domain", id: "nz-env-domain-dialog" },
+		];
+
+		function closeAddMenu(root) {
+			const menu = root.querySelector("[data-env-add-menu]");
+			const toggle = root.querySelector("[data-env-add-toggle]");
+			if (menu) menu.classList.add("hidden");
+			if (toggle) toggle.setAttribute("aria-expanded", "false");
+		}
+
+		function toggleAddMenu(root) {
+			const menu = root.querySelector("[data-env-add-menu]");
+			const toggle = root.querySelector("[data-env-add-toggle]");
+			if (!menu || !toggle) return;
+			const nextOpen = menu.classList.contains("hidden");
+			menu.classList.toggle("hidden", !nextOpen);
+			toggle.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+		}
+
+		function openEnvDialog(id) {
+			if (typeof window.nzOpenDialog === "function") {
+				window.nzOpenDialog(id);
+			} else {
+				const dlg = document.getElementById(id);
+				if (dlg && typeof dlg.showModal === "function" && !dlg.open) {
+					dlg.showModal();
+				}
+			}
+			document.dispatchEvent(
+				new CustomEvent("nz-env-dialog-open", { detail: { id } }),
+			);
+		}
+
+		function closeEnvDialog(dialog) {
+			if (typeof window.nzCloseDialog === "function") {
+				window.nzCloseDialog(dialog.id);
+				return;
+			}
+			if (typeof dialog.close === "function") dialog.close();
+		}
+
+		function mountEnvDialogs() {
+			document.querySelectorAll("dialog[data-env-dialog]").forEach((node) => {
+				if (node.parentElement !== document.body) {
+					document.body.appendChild(node);
+				}
+			});
+			if (typeof window.nzRefreshNzModals === "function") {
+				window.nzRefreshNzModals();
+			}
+		}
+
+		function onEnvLauncherClick(event) {
+			const target = event.target;
+			if (!target || typeof target.closest !== "function") return;
+
+			const closeBtn = target.closest(
+				"[data-env-dialog-close], [data-nz-modal-close]",
+			);
+			if (closeBtn) {
+				const dlg = closeBtn.closest("dialog[data-env-dialog]");
+				if (dlg) {
+					event.preventDefault();
+					closeEnvDialog(dlg);
+				}
+				return;
+			}
+
+			const root = target.closest("[data-env-service-root]");
+			if (!root) return;
+
+			if (target.closest("[data-env-add-toggle]")) {
+				event.preventDefault();
+				toggleAddMenu(root);
+				return;
+			}
+
+			if (target.closest("[data-env-add-application-link]")) {
+				closeAddMenu(root);
+				return;
+			}
+
+			for (const { sel, id } of OPENERS) {
+				if (!target.closest(sel)) continue;
+				event.preventDefault();
+				closeAddMenu(root);
+				openEnvDialog(id);
+				return;
+			}
+		}
+
+		function boot() {
+			mountEnvDialogs();
+		}
+
+		boot();
+		if (!window.__nzEnvLauncherClickBound) {
+			window.__nzEnvLauncherClickBound = true;
+			document.addEventListener("click", onEnvLauncherClick, true);
+			document.addEventListener("click", function (event) {
+				document.querySelectorAll("[data-env-service-root]").forEach(function (root) {
+					if (!(root instanceof HTMLElement)) return;
+					if (event.target instanceof Node && root.contains(event.target)) return;
+					closeAddMenu(root);
+				});
+			});
+		}
+		document.addEventListener("astro:page-load", boot);
+		document.addEventListener("astro:after-swap", boot);
+	})();
+</script>
+
+<script>
+	import { bindEnvironmentServiceLauncher } from "@/components/dashboard/environment/environmentServiceLauncher";
+
+	function boot() {
+		bindEnvironmentServiceLauncher();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

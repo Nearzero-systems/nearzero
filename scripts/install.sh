@@ -1,0 +1,452 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+INSTALL_DIR_INPUT="${INSTALL_DIR:-}"
+if [[ "${DRY_RUN:-}" == "1" && -z "$INSTALL_DIR_INPUT" ]]; then
+	INSTALL_DIR="/tmp/nearzero-dry-run"
+else
+	INSTALL_DIR="${INSTALL_DIR_INPUT:-/opt/nearzero}"
+fi
+
+NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:latest}"
+NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}"
+NEARZERO_PLATFORM_PORT="${NEARZERO_PLATFORM_PORT:-3000}"
+NEARZERO_CONSOLE_PORT="${NEARZERO_CONSOLE_PORT:-4321}"
+NEARZERO_METRICS_PORT="${NEARZERO_METRICS_PORT:-4500}"
+NEARZERO_METRICS_REFRESH_SECONDS="${NEARZERO_METRICS_REFRESH_SECONDS:-5}"
+NEARZERO_METRICS_RETENTION_DAYS="${NEARZERO_METRICS_RETENTION_DAYS:-2}"
+NEARZERO_METRICS_CRON="${NEARZERO_METRICS_CRON:-0 0 * * *}"
+NEARZERO_METRICS_TOKEN="${NEARZERO_METRICS_TOKEN:-}"
+POSTGRES_USER="${POSTGRES_USER:-nearzero}"
+POSTGRES_DB="${POSTGRES_DB:-nearzero}"
+REDIS_URL="${REDIS_URL:-}"
+DATABASE_URL="${DATABASE_URL:-}"
+AUTO_YES="${AUTO_YES:-}"
+SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-}"
+DRY_RUN="${DRY_RUN:-}"
+USE_LOCAL_SERVICES=1
+if [[ -n "$DATABASE_URL" && -n "$REDIS_URL" ]]; then
+	USE_LOCAL_SERVICES=0
+fi
+if [[ "${EXTERNAL_SERVICES:-}" == "1" || "${EXTERNAL_SERVICES:-}" == "true" ]]; then
+	USE_LOCAL_SERVICES=0
+fi
+
+if [[ "$(id -u)" == "0" ]]; then
+	SUDO=()
+else
+	SUDO=(sudo)
+fi
+
+log() {
+	printf 'nearzero: %s\n' "$*"
+}
+
+die() {
+	printf 'nearzero: %s\n' "$*" >&2
+	exit 1
+}
+
+run() {
+	log "+ $*"
+	if [[ "$DRY_RUN" != "1" ]]; then
+		"$@"
+	fi
+}
+
+run_sudo() {
+	log "+ ${SUDO[*]} $*"
+	if [[ "$DRY_RUN" != "1" ]]; then
+		"${SUDO[@]}" "$@"
+	fi
+}
+
+write_file() {
+	local path="$1"
+	local tmp
+	tmp="$(mktemp)"
+	cat > "$tmp"
+	if [[ "$DRY_RUN" == "1" ]]; then
+		mkdir -p "$(dirname "$path")"
+		mv "$tmp" "$path"
+		return
+	fi
+	"${SUDO[@]}" mkdir -p "$(dirname "$path")"
+	"${SUDO[@]}" mv "$tmp" "$path"
+}
+
+chmod_file() {
+	local mode="$1"
+	local path="$2"
+	if [[ "$DRY_RUN" == "1" ]]; then
+		chmod "$mode" "$path"
+		return
+	fi
+	"${SUDO[@]}" chmod "$mode" "$path"
+}
+
+rand_hex() {
+	local bytes="$1"
+	if command -v openssl >/dev/null 2>&1; then
+		openssl rand -hex "$bytes"
+	else
+		tr -dc 'a-f0-9' < /dev/urandom | head -c "$((bytes * 2))"
+	fi
+}
+
+detect_host() {
+	if [[ -n "${NEARZERO_DOMAIN:-}" ]]; then
+		printf '%s' "$NEARZERO_DOMAIN"
+		return
+	fi
+	if command -v hostname >/dev/null 2>&1; then
+		hostname -I 2>/dev/null | awk '{print $1}' || true
+	fi
+}
+
+url_from_host() {
+	local host="$1"
+	local port="$2"
+	if [[ "$host" == http://* || "$host" == https://* ]]; then
+		printf '%s' "${host%/}"
+	elif [[ -n "$host" ]]; then
+		printf 'http://%s:%s' "$host" "$port"
+	else
+		printf 'http://localhost:%s' "$port"
+	fi
+}
+
+confirm_install() {
+	if [[ "$AUTO_YES" == "1" || "$AUTO_YES" == "true" || "$DRY_RUN" == "1" ]]; then
+		return
+	fi
+	printf 'Install Nearzero into %s and start Docker services? [y/N] ' "$INSTALL_DIR"
+	read -r answer
+	[[ "$answer" == "y" || "$answer" == "Y" || "$answer" == "yes" || "$answer" == "YES" ]] ||
+		die "Install cancelled"
+}
+
+ensure_sudo() {
+	if [[ "$(id -u)" != "0" && ${#SUDO[@]} -gt 0 ]] && ! command -v sudo >/dev/null 2>&1; then
+		die "sudo is required when not running as root"
+	fi
+}
+
+ensure_docker() {
+	if [[ "$DRY_RUN" == "1" ]]; then
+		return
+	fi
+	if command -v docker >/dev/null 2>&1; then
+		return
+	fi
+	if [[ "$SKIP_DOCKER_INSTALL" == "1" || "$SKIP_DOCKER_INSTALL" == "true" ]]; then
+		die "Docker is not installed and SKIP_DOCKER_INSTALL is set"
+	fi
+	log "Installing Docker with get.docker.com"
+	curl -fsSL https://get.docker.com -o /tmp/nearzero-get-docker.sh
+	run_sudo sh /tmp/nearzero-get-docker.sh
+	rm -f /tmp/nearzero-get-docker.sh
+}
+
+ensure_docker_compose() {
+	if [[ "$DRY_RUN" == "1" ]]; then
+		return
+	fi
+	if ! "${SUDO[@]}" docker compose version >/dev/null 2>&1; then
+		die "Docker Compose plugin is required"
+	fi
+}
+
+write_compose_base() {
+	write_file "$INSTALL_DIR/docker-compose.prod.yml" <<'YAML'
+name: nearzero
+
+services:
+  platform:
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:latest}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
+      NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
+      NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}
+    ports:
+      - "${NEARZERO_PLATFORM_PORT:-3000}:3000"
+      - "${NEARZERO_CONSOLE_PORT:-4321}:4321"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nearzero-data:/etc/nearzero
+    depends_on:
+      monitoring:
+        condition: service_healthy
+    restart: unless-stopped
+
+  monitoring:
+    container_name: nearzero-monitoring
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}
+    environment:
+      METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
+      HOST_PROC: /host/proc
+      HOST_SYS: /host/sys
+      NEARZERO_HOST_ROOT: /host/root
+    ports:
+      - "127.0.0.1:${NEARZERO_METRICS_PORT:-4500}:${NEARZERO_METRICS_PORT:-4500}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host/root:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/etc/os-release:ro
+      - /proc:/host/proc:ro
+      - /etc/nearzero/monitoring/monitoring.db:/app/monitoring.db
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${NEARZERO_METRICS_PORT:-4500}/health >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  schedules:
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:latest}
+    profiles: ["schedules"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+    restart: unless-stopped
+
+volumes:
+  nearzero-data:
+YAML
+}
+
+write_compose_local_db() {
+	write_file "$INSTALL_DIR/docker-compose.local-db.yml" <<'YAML'
+name: nearzero
+
+services:
+  postgres:
+    container_name: nearzero-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nearzero}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-nearzero}
+    volumes:
+      - nearzero-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nearzero} -d ${POSTGRES_DB:-nearzero}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    container_name: nearzero-redis
+    image: redis:7-alpine
+    volumes:
+      - nearzero-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  platform:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  schedules:
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  nearzero-postgres:
+  nearzero-redis:
+YAML
+}
+
+write_env() {
+	local host console_url platform_url postgres_password auth_secret local_redis_url metrics_token
+	host="$(detect_host)"
+	console_url="${CONSOLE_URL:-$(url_from_host "$host" "$NEARZERO_CONSOLE_PORT")}"
+	platform_url="${PUBLIC_BACKEND_URL:-$(url_from_host "$host" "$NEARZERO_PLATFORM_PORT")}"
+	auth_secret="${BETTER_AUTH_SECRET:-$(rand_hex 32)}"
+	postgres_password="${POSTGRES_PASSWORD:-$(rand_hex 24)}"
+	metrics_token="${NEARZERO_METRICS_TOKEN:-$(rand_hex 32)}"
+
+	if [[ "$USE_LOCAL_SERVICES" == "1" && -z "$DATABASE_URL" ]]; then
+		DATABASE_URL="postgresql://${POSTGRES_USER}:${postgres_password}@postgres:5432/${POSTGRES_DB}"
+	fi
+	if [[ "$USE_LOCAL_SERVICES" == "0" && ( -z "$DATABASE_URL" || -z "$REDIS_URL" ) ]]; then
+		die "External-service mode requires both DATABASE_URL and REDIS_URL"
+	fi
+	local_redis_url="${REDIS_URL:-redis://redis:6379}"
+
+	write_file "$INSTALL_DIR/.env" <<EOF
+NEARZERO_IMAGE=${NEARZERO_IMAGE}
+NEARZERO_MONITORING_IMAGE=${NEARZERO_MONITORING_IMAGE}
+NEARZERO_PLATFORM_PORT=${NEARZERO_PLATFORM_PORT}
+NEARZERO_CONSOLE_PORT=${NEARZERO_CONSOLE_PORT}
+NEARZERO_METRICS_PORT=${NEARZERO_METRICS_PORT}
+NEARZERO_METRICS_REFRESH_SECONDS=${NEARZERO_METRICS_REFRESH_SECONDS}
+NEARZERO_METRICS_RETENTION_DAYS=${NEARZERO_METRICS_RETENTION_DAYS}
+NEARZERO_METRICS_CRON="${NEARZERO_METRICS_CRON}"
+NEARZERO_METRICS_TOKEN=${metrics_token}
+NEARZERO_METRICS_URL=http://monitoring:${NEARZERO_METRICS_PORT}/metrics
+NEARZERO_METRICS_CALLBACK_URL=http://platform:3000/api/trpc/notification.receiveNotification
+
+DATABASE_URL=${DATABASE_URL}
+POSTGRES_USER=${POSTGRES_USER}
+POSTGRES_PASSWORD=${postgres_password}
+POSTGRES_DB=${POSTGRES_DB}
+
+REDIS_URL=${local_redis_url}
+
+PORT=3000
+HOST=0.0.0.0
+NODE_ENV=production
+COMMUNITY=true
+
+BETTER_AUTH_URL=${BETTER_AUTH_URL:-$console_url}
+BETTER_AUTH_SECRET=${auth_secret}
+CONSOLE_URL=${console_url}
+BACKEND_URL=http://platform:3000
+PUBLIC_BACKEND_URL=${platform_url}
+PUBLIC_GIT_PROVIDER_BASE_URL=${PUBLIC_GIT_PROVIDER_BASE_URL:-$console_url}
+
+RESEND_API_KEY=${RESEND_API_KEY:-}
+NEARZERO_AUTH_FROM_EMAIL="${NEARZERO_AUTH_FROM_EMAIL:-Nearzero <noreply@nearzero.dev>}"
+
+OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER:-$console_url}
+OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE:-Nearzero}
+OPENROUTER_CHAT_MODEL=${OPENROUTER_CHAT_MODEL:-moonshotai/kimi-k2.6}
+OPENROUTER_TITLE_MODEL=${OPENROUTER_TITLE_MODEL:-openai/gpt-4o-mini}
+OPENROUTER_FOLLOWUPS_MODEL=${OPENROUTER_FOLLOWUPS_MODEL:-openai/gpt-4o-mini}
+NEARZERO_AGENT_ENABLED=${NEARZERO_AGENT_ENABLED:-true}
+NEARZERO_AGENT_ATTACHMENTS_PATH=/etc/nearzero/agent-attachments
+TAVILY_API_KEY=${TAVILY_API_KEY:-}
+EOF
+}
+
+prepare_monitoring_storage() {
+	if [[ "$DRY_RUN" == "1" ]]; then
+		log "dry run: not creating /etc/nearzero/monitoring/monitoring.db"
+		return
+	fi
+	run_sudo mkdir -p /etc/nearzero/monitoring
+	run_sudo touch /etc/nearzero/monitoring/monitoring.db
+}
+
+write_helper() {
+	local helper_path="/usr/local/bin/nearzero"
+	if [[ "$DRY_RUN" == "1" ]]; then
+		helper_path="$INSTALL_DIR/nearzero"
+	fi
+	write_file "$helper_path" <<'HELPER'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+INSTALL_DIR="${INSTALL_DIR:-/opt/nearzero}"
+COMPOSE=(-f "$INSTALL_DIR/docker-compose.prod.yml")
+if [[ -f "$INSTALL_DIR/docker-compose.local-db.yml" ]]; then
+	COMPOSE+=(-f "$INSTALL_DIR/docker-compose.local-db.yml")
+fi
+
+docker_compose() {
+	docker compose "${COMPOSE[@]}" --env-file "$INSTALL_DIR/.env" "$@"
+}
+
+case "${1:-status}" in
+	status)
+		docker_compose ps
+		;;
+	logs)
+		shift || true
+		docker_compose logs -f "$@"
+		;;
+	restart)
+		docker_compose restart
+		;;
+	update)
+		docker_compose pull
+		docker_compose up -d
+		;;
+	backup-db)
+		if [[ ! -f "$INSTALL_DIR/docker-compose.local-db.yml" ]]; then
+			echo "backup-db only supports the local Postgres install" >&2
+			exit 1
+		fi
+		out="${2:-$INSTALL_DIR/nearzero-db-$(date +%Y%m%d-%H%M%S).sql}"
+		docker_compose exec -T postgres pg_dump -U "${POSTGRES_USER:-nearzero}" "${POSTGRES_DB:-nearzero}" > "$out"
+		echo "$out"
+		;;
+	restore-db)
+		if [[ ! -f "$INSTALL_DIR/docker-compose.local-db.yml" ]]; then
+			echo "restore-db only supports the local Postgres install" >&2
+			exit 1
+		fi
+		file="${2:?usage: nearzero restore-db dump.sql}"
+		docker_compose exec -T postgres psql -U "${POSTGRES_USER:-nearzero}" "${POSTGRES_DB:-nearzero}" < "$file"
+		;;
+	*)
+		echo "usage: nearzero {status|logs|restart|update|backup-db|restore-db}" >&2
+		exit 1
+		;;
+esac
+HELPER
+	chmod_file 0755 "$helper_path"
+}
+
+start_stack() {
+	local compose_args=(-f "$INSTALL_DIR/docker-compose.prod.yml")
+	if [[ "$USE_LOCAL_SERVICES" == "1" ]]; then
+		compose_args+=(-f "$INSTALL_DIR/docker-compose.local-db.yml")
+	fi
+	if [[ "$DRY_RUN" == "1" ]]; then
+		log "dry run: not starting Docker services"
+		return
+	fi
+	"${SUDO[@]}" docker compose "${compose_args[@]}" --env-file "$INSTALL_DIR/.env" up -d
+}
+
+main() {
+	ensure_sudo
+	confirm_install
+	run_sudo mkdir -p "$INSTALL_DIR"
+	write_compose_base
+	if [[ "$USE_LOCAL_SERVICES" == "1" ]]; then
+		write_compose_local_db
+	else
+		log "Using external DATABASE_URL/REDIS_URL only"
+	fi
+	write_env
+	prepare_monitoring_storage
+	write_helper
+	ensure_docker
+	ensure_docker_compose
+	start_stack
+	log "Installed Nearzero in $INSTALL_DIR"
+	log "Console: $(grep '^CONSOLE_URL=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
+	log "Helper: nearzero status"
+}
+
+main "$@"

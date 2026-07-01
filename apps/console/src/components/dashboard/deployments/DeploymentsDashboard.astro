@@ -1,0 +1,602 @@
+---
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+import {
+	compareDeploymentRows,
+	deploymentRowMatchesFilters,
+	deploymentStatusBadgeClass,
+	deploymentStatusDotClass,
+	formatDeploymentStatusLabel,
+	mapDeploymentsToViewRows,
+	type DeploymentViewRow,
+} from "@/lib/deployment-view-rows";
+
+interface Props {
+	request: Request;
+}
+
+type DeploymentDetailItem = {
+	label: string;
+	value: string;
+	status?: boolean;
+	wide?: boolean;
+	mono?: boolean;
+	danger?: boolean;
+};
+
+const { request } = Astro.props;
+const api = createServerTrpcClient(request) as any;
+
+const searchParams = new URL(request.url).searchParams;
+const qParam = (searchParams.get("q") ?? "").trim();
+const statusFilter = searchParams.get("status") ?? "all";
+const typeFilter = searchParams.get("type") ?? "all";
+const selectedDeploymentId = (searchParams.get("deploymentId") ?? "").trim();
+const sortId = searchParams.get("sort") ?? "createdAt";
+const sortDesc = (searchParams.get("order") ?? "desc") !== "asc";
+let pageIndex = Math.max(0, Number.parseInt(searchParams.get("page") ?? "0", 10) || 0);
+let pageSize = Number.parseInt(searchParams.get("pageSize") ?? "50", 10);
+if (![10, 25, 50, 100].includes(pageSize)) pageSize = 50;
+
+let permissions: any = null;
+let deploymentsList: any[] = [];
+let queueList: any[] = [];
+let loadFailed = false;
+
+try {
+	permissions = await api.user.getPermissions.query();
+	if (permissions?.deployment?.read) {
+		[deploymentsList, queueList] = await Promise.all([
+			api.deployment.allCentralized.query(),
+			api.deployment.queueList.query(),
+		]);
+	}
+} catch {
+	loadFailed = true;
+	deploymentsList = [];
+	queueList = [];
+}
+
+const canReadDeployments = !!permissions?.deployment?.read;
+
+function buildUrl(overrides: Record<string, string | number | undefined>) {
+	const u = new URL(Astro.url);
+	for (const [k, v] of Object.entries(overrides)) {
+		if (v === undefined || v === "") u.searchParams.delete(k);
+		else u.searchParams.set(k, String(v));
+	}
+	return u.pathname + u.search;
+}
+
+const allRows = canReadDeployments
+	? mapDeploymentsToViewRows(deploymentsList, queueList)
+	: [];
+
+const filteredRows = (() => {
+	const matched = allRows.filter((row) =>
+		deploymentRowMatchesFilters(row, {
+			status: statusFilter,
+			type: typeFilter,
+			query: qParam,
+		}),
+	);
+	const sortRows = (rows: DeploymentViewRow[]) =>
+		rows.sort((a, b) => compareDeploymentRows(a, b, sortId, sortDesc));
+	const queueRows = sortRows(matched.filter((row) => row.sourceKind === "queue"));
+	const deploymentRows = matched
+		.filter((row) => row.sourceKind === "deployment")
+		.sort((a, b) => compareDeploymentRows(a, b, sortId, sortDesc));
+	return [...queueRows, ...deploymentRows];
+})();
+const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+if (pageIndex > pageCount - 1) pageIndex = Math.max(0, pageCount - 1);
+const pageSlice = filteredRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
+const selectedRow = selectedDeploymentId
+	? allRows.find(
+			(row) =>
+				row.id === selectedDeploymentId ||
+				row.detailId === selectedDeploymentId ||
+				row.deploymentId === selectedDeploymentId,
+		) ?? null
+	: null;
+
+const badgeClass =
+	"inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap";
+const actionBtn =
+	"inline-flex h-8 items-center justify-center rounded-md border border-[var(--nz-border-strong)] bg-[var(--nz-bg)] px-2.5 text-xs font-medium text-[var(--nz-text)] transition-colors hover:bg-[var(--nz-bg-hover)] disabled:pointer-events-none disabled:opacity-50";
+const primaryActionBtn =
+	"inline-flex h-8 items-center justify-center rounded-md bg-[var(--nz-primary)] px-2.5 text-xs font-medium text-[var(--nz-primary-fg)] transition-colors hover:bg-[var(--nz-primary-hover)] disabled:pointer-events-none disabled:opacity-50";
+
+function canRedeployRow(row: DeploymentViewRow | null): boolean {
+	return !!(
+		row &&
+		row.sourceKind === "deployment" &&
+		row.serviceKind !== "database" &&
+		row.status !== "running" &&
+		(row.applicationId || row.composeId)
+	);
+}
+
+function getCommitLabel(row: DeploymentViewRow): string {
+	const candidates = [row.description, row.errorMessage, row.title]
+		.map((value) => (value ?? "").trim())
+		.filter(Boolean);
+	for (const value of candidates) {
+		const explicit = value.match(/\b(?:commit|hash):\s*([0-9a-f]{7,40})\b/i);
+		if (explicit?.[1]) return explicit[1].slice(0, 7);
+		const fallback = value.match(/\b[0-9a-f]{7,40}\b/i);
+		if (fallback?.[0]) return fallback[0].slice(0, 7);
+	}
+	return "";
+}
+
+function getDetailError(row: DeploymentViewRow): string {
+	const message = (row.errorMessage ?? "").trim();
+	if (!message || /^(commit|hash):/i.test(message)) return "";
+	return message;
+}
+
+function deploymentStatusDotState(status: string): "done" | "error" | "running" {
+	const normalized = status.trim().toLowerCase();
+	if (normalized === "done" || normalized === "completed") return "done";
+	if (
+		normalized === "error" ||
+		normalized === "failed" ||
+		normalized === "cancelled" ||
+		normalized === "removed"
+	) {
+		return "error";
+	}
+	return "running";
+}
+
+const selectedCanRedeploy = canRedeployRow(selectedRow);
+const selectedDetailNeedsRefresh =
+	!!selectedRow &&
+	(selectedRow.sourceKind === "queue" ||
+		selectedRow.status === "running" ||
+		selectedRow.status === "active" ||
+		selectedRow.status === "pending" ||
+		selectedRow.status === "waiting");
+
+const statusOptions = [
+	"running",
+	"done",
+	"error",
+	"cancelled",
+	"pending",
+	"waiting",
+	"active",
+	"delayed",
+	"completed",
+	"failed",
+	"paused",
+	"removed",
+];
+---
+
+<div
+	class="nz-dashboard-content h-full min-h-0 w-full"
+	id="nz-deployments-root"
+	data-selected-detail-id={selectedRow?.detailId || undefined}
+	data-selected-source-kind={selectedRow?.sourceKind || undefined}
+	data-selected-deployment-id={selectedRow?.deploymentId || undefined}
+	data-selected-application-id={selectedRow?.applicationId || undefined}
+	data-selected-compose-id={selectedRow?.composeId || undefined}
+	data-selected-status={selectedRow?.status || undefined}
+	data-selected-started-at={selectedRow?.startedAt ? String(selectedRow.startedAt) : undefined}
+	data-selected-finished-at={selectedRow?.finishedAt ? String(selectedRow.finishedAt) : undefined}
+	data-selected-needs-refresh={selectedDetailNeedsRefresh ? "1" : undefined}
+>
+	{
+		!canReadDeployments ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+				<span>You do not have permission to view deployments.</span>
+			</div>
+		) : loadFailed ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+				<span>Could not load deployments. Try refreshing the page.</span>
+			</div>
+		) : (
+			<div class="nz-deployments-surface h-full min-h-0 text-xs">
+				<div class="nz-deployments-toolbar">
+					{
+							selectedDeploymentId ? (
+								<div class="nz-deployments-toolbar-primary nz-deployment-detail-toolbar">
+									<a
+										href={buildUrl({ deploymentId: undefined })}
+										aria-label="Back to deployments"
+										title="Back to deployments"
+										class="nz-deployment-detail__back"
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+									</a>
+									{selectedRow ? (
+										<>
+											<div class="nz-deployment-detail-toolbar__start">
+												<h1 class={`${ST.pageTitle} nz-deployment-detail-toolbar__title truncate`}>
+													{selectedRow.service}
+												</h1>
+											</div>
+											<div class="nz-deployment-detail-toolbar__actions">
+												{selectedRow.rollbackId ? (
+													<button
+														type="button"
+														class={`${actionBtn} nz-deployment-rollback`}
+														data-nz-row-action
+														data-rollback-id={selectedRow.rollbackId}
+														title={selectedRow.rollbackLabel}
+													>
+														Rollback
+													</button>
+												) : selectedRow.sourceKind === "deployment" &&
+												  selectedRow.serviceKind !== "database" ? (
+													<button
+														type="button"
+														class={actionBtn}
+														disabled
+														title="No rollback is available for this deployment yet"
+													>
+														Rollback
+													</button>
+												) : null}
+												{selectedRow.href ? (
+													<a href={selectedRow.href} class={actionBtn} data-nz-row-action>
+														Open service
+													</a>
+												) : null}
+												{selectedCanRedeploy ? (
+													<button
+														type="button"
+														class={`${primaryActionBtn} gap-1.5 nz-deployment-redeploy`}
+														data-nz-row-action
+														data-current-deployment-id={selectedRow.deploymentId || undefined}
+														data-application-id={selectedRow.applicationId || undefined}
+														data-compose-id={selectedRow.composeId || undefined}
+													>
+														<svg
+															class="hidden size-3.5 animate-spin"
+															data-redeploy-spinner
+															xmlns="http://www.w3.org/2000/svg"
+															viewBox="0 0 24 24"
+															fill="none"
+															stroke="currentColor"
+															stroke-width="2"
+															stroke-linecap="round"
+															stroke-linejoin="round"
+															aria-hidden="true"
+														>
+															<path d="M21 12a9 9 0 1 1-6.219-8.56" />
+														</svg>
+														<span data-redeploy-label>Redeploy</span>
+													</button>
+												) : null}
+											</div>
+										</>
+									) : (
+										<h1 class={`${ST.pageTitle} truncate`}>Deployment</h1>
+									)}
+								</div>
+							) : (
+								<form
+									method="get"
+									class="nz-deployments-toolbar-form flex w-full min-w-0 flex-col"
+									id="nz-deployments-filter-form"
+								>
+									<div class="nz-deployments-toolbar-primary">
+										<h1 class={ST.pageTitle}>Deployments</h1>
+									</div>
+									<div class="nz-deployments-toolbar-secondary flex w-full min-w-0 flex-wrap items-center justify-end gap-2 px-3 py-2">
+										<input
+											id="nz-deployments-search"
+											name="q"
+											type="search"
+											placeholder="Search by service, project, environment, server..."
+											value={qParam}
+											class={`${ST.filterSearch} nz-deployments-search min-w-0 flex-1`}
+										/>
+										<span class="nz-select-chevron-wrap shrink-0 min-w-[6.75rem]">
+											<select name="status" class={ST.filterSelect} onchange="this.form.submit()">
+												<option value="all" selected={statusFilter === "all"}>All statuses</option>
+												{statusOptions.map((status) => (
+													<option value={status} selected={statusFilter === status}>{formatDeploymentStatusLabel(status)}</option>
+												))}
+											</select>
+											<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-select-chevron-wrap__icon" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+										</span>
+										<span class="nz-select-chevron-wrap shrink-0 min-w-[6.25rem]">
+											<select name="type" class={ST.filterSelect} onchange="this.form.submit()">
+												<option value="all" selected={typeFilter === "all"}>All types</option>
+												<option value="application" selected={typeFilter === "application"}>Application</option>
+												<option value="compose" selected={typeFilter === "compose"}>Compose</option>
+												<option value="database" selected={typeFilter === "database"}>Database</option>
+												<option value="queue" selected={typeFilter === "queue"}>Queue</option>
+											</select>
+											<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-select-chevron-wrap__icon" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+										</span>
+										<span class="nz-select-chevron-wrap shrink-0 min-w-[3.75rem]">
+											<select name="pageSize" class={ST.filterSelect} onchange="this.form.submit()">
+												{[10, 25, 50, 100].map((size) => (
+													<option value={size} selected={pageSize === size}>{size}</option>
+												))}
+											</select>
+											<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-select-chevron-wrap__icon" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+										</span>
+										<input type="hidden" name="page" value="0" />
+										<input type="hidden" name="sort" value={sortId} />
+										<input type="hidden" name="order" value={sortDesc ? "desc" : "asc"} />
+									</div>
+								</form>
+							)
+						}
+				</div>
+
+				<div class="nz-deployments-table-region">
+					{
+							selectedDeploymentId ? (
+									selectedRow ? (
+										(() => {
+											const row = selectedRow;
+											const metaItems = [
+												{ label: "Project", value: row.project },
+												{ label: "Environment", value: row.environment },
+												{ label: "Server", value: row.server },
+												{ label: "Duration", value: row.durationLabel },
+											];
+											const commitLabel = getCommitLabel(row);
+	const detailError = getDetailError(row);
+	const statusText = formatDeploymentStatusLabel(row.status);
+	const detailItems: DeploymentDetailItem[] = [
+		{ label: "Status", value: statusText, status: true },
+		...(detailError ? [{ label: "Error", value: detailError, danger: true, wide: true }] : []),
+		{ label: "Type", value: row.serviceType },
+												{ label: "Provider", value: row.source.provider },
+												{ label: "Repository", value: row.source.repository, wide: true },
+												{ label: "Branch", value: row.source.branch },
+												{ label: "Path", value: row.source.buildPath },
+												...(commitLabel ? [{ label: "Commit", value: commitLabel, mono: true }] : []),
+												...metaItems,
+											];
+											const statusDotState = deploymentStatusDotState(row.status);
+												return (
+													<div class="nz-deployment-detail-layout">
+														<div class="nz-deployment-detail-stack">
+															<div class="nz-deployment-detail-card">
+															<section
+																class="nz-app-deploy-meta nz-deployment-detail-card__meta"
+																aria-label="Deployment details"
+															>
+																<dl class="nz-app-deploy-meta__grid">
+																	{detailItems.map((item) => (
+																		<div
+																			class:list={[
+																				"nz-app-deploy-meta__item",
+																				item.wide && "nz-app-deploy-meta__item--full",
+																			]}
+																		>
+																			<dt>{item.label}</dt>
+																			{item.status ? (
+																				<dd class="nz-app-deploy-meta__status">
+																					<span
+																						class="nz-app-deploy-meta__status-dot"
+																						data-state={statusDotState}
+																						aria-hidden="true"
+																					/>
+																					<span>{item.value}</span>
+																				</dd>
+																			) : (
+																					<dd
+																						class:list={[
+																							item.mono && "font-mono",
+																							item.danger && "text-[var(--nz-danger,#dc2626)]",
+																						]}
+																						data-deployment-duration={item.label === "Duration" ? "1" : undefined}
+																					>
+																						{item.value}
+																					</dd>
+																			)}
+																		</div>
+																	))}
+																</dl>
+															</section>
+
+															{row.deploymentId ? (
+																<div
+																	class="nz-deployment-detail-logs is-expanded"
+																	data-deployment-logs-wrap
+																>
+																	<section
+																		class="nz-deployment-logs-panel"
+																		data-deployment-logs-panel
+																		data-deployment-id={row.deploymentId}
+																		data-deployment-status={row.status}
+																		data-deployment-logs-autoload="1"
+																	>
+																		<div class="nz-deployment-logs-head">
+																			<button
+																				type="button"
+																				class="nz-deployment-logs-toggle"
+																				data-deployment-logs-toggle
+																				aria-expanded="true"
+																			>
+																				<svg
+																					xmlns="http://www.w3.org/2000/svg"
+																					viewBox="0 0 24 24"
+																					fill="none"
+																					stroke="currentColor"
+																					stroke-width="2"
+																					stroke-linecap="round"
+																					stroke-linejoin="round"
+																					class="nz-app-setting-panel__chevron rotate-90"
+																					data-deployment-logs-chevron
+																					aria-hidden="true"
+																				>
+																					<path d="m9 18 6-6-6-6" />
+																				</svg>
+																				<span class="nz-app-setting-panel__title-wrap">
+																					<span class="nz-app-setting-panel__title">Build logs</span>
+																				</span>
+																				<span class="sr-only" data-deployment-logs-state>Ready</span>
+																			</button>
+																			<div
+																				class="nz-deployment-logs-toolbar-actions"
+																				data-deployment-logs-controls
+																			>
+																				<label class="nz-deployment-logs-search">
+																					<svg
+																						class="size-3.5 shrink-0"
+																						viewBox="0 0 24 24"
+																						fill="none"
+																						stroke="currentColor"
+																						stroke-width="2"
+																						aria-hidden="true"
+																					>
+																						<circle cx="11" cy="11" r="8" />
+																						<path d="m21 21-4.3-4.3" />
+																					</svg>
+																					<input
+																						data-deployment-logs-search
+																						type="search"
+																						placeholder="Find in logs"
+																						class="nz-log-search-input"
+																					/>
+																				</label>
+																				<button
+																					type="button"
+																					class={actionBtn}
+																					data-deployment-logs-copy
+																				>
+																					Copy
+																				</button>
+																			</div>
+																		</div>
+																		<div class="nz-app-setting-panel__body" data-deployment-logs-body>
+																			<div
+																				class="hidden border-b border-[var(--nz-border)] bg-red-50 px-3 py-2 text-[11px] text-red-700"
+																				data-deployment-logs-summary
+																			/>
+																			<div
+																				class="nz-deployment-logs-scroll scrollbar-hide"
+																				data-deployment-logs-scroll
+																			>
+																				<div
+																					class="nz-deployment-logs-output"
+																					data-deployment-logs-output
+																				>
+																					Loading build logs...
+																				</div>
+																			</div>
+																		</div>
+																	</section>
+																</div>
+															) : null}
+															</div>
+														</div>
+													</div>
+												);
+								})()
+							) : (
+								<div class="flex min-h-[32vh] flex-col items-center justify-center p-10 text-center">
+									<p class="font-medium text-[var(--nz-text)]">Deployment not found</p>
+									<p class="mt-1 text-xs text-muted-foreground">
+										This deployment may have been removed or filtered out.
+									</p>
+								</div>
+							)
+						) : (
+							<div class="nz-deployments-table-scroll scrollbar-hide">
+								<div class={ST.tableWrap}>
+									<table class={`${ST.table} nz-deployments-table`}>
+										<thead class={ST.thead}>
+											<tr>
+												<th class={ST.th}>Service</th>
+												<th class={ST.th}>Type</th>
+												<th class={ST.th}>Project</th>
+												<th class={ST.th}>Environment</th>
+												<th class={ST.th}>Server</th>
+												<th class={ST.th}>Status</th>
+											</tr>
+										</thead>
+										<tbody>
+											{pageSlice.map((row) => {
+												const rowBadge = deploymentStatusBadgeClass[row.status] ?? "bg-secondary text-secondary-foreground";
+												const rowDot = deploymentStatusDotClass[row.status] ?? "bg-[var(--nz-text-subtle)]";
+												const rowStatusLabel = formatDeploymentStatusLabel(row.status);
+												return (
+														<tr
+															class={`${ST.tr} nz-data-table-row nz-deployments-row--clickable cursor-pointer`}
+															data-deployment-href={buildUrl({ deploymentId: row.detailId })}
+														>
+															<td class={ST.td}>
+																<div class="min-w-0">
+																	<p class="truncate font-medium">{row.service}</p>
+																</div>
+															</td>
+														<td class={ST.td}>
+															<span class={`${badgeClass} bg-secondary text-secondary-foreground`}>{row.serviceType}</span>
+														</td>
+														<td class={ST.tdMuted}>{row.project}</td>
+														<td class={ST.tdMuted}>{row.environment}</td>
+														<td class={ST.tdMuted}>{row.server}</td>
+														<td class={ST.td}>
+															<span class={`${badgeClass} ${rowBadge} justify-center`}>
+																<span class={`size-1.5 rounded-full ${rowDot}`}></span>
+																{rowStatusLabel}
+															</span>
+														</td>
+													</tr>
+												);
+											})}
+										</tbody>
+									</table>
+								</div>
+								{pageSlice.length === 0 ? (
+									<div class="flex min-h-[32vh] flex-col items-center justify-center p-10 text-center">
+										<p class="font-medium text-[var(--nz-text)]">No deployments found</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											Deployment history and queued deployment jobs will appear here.
+										</p>
+									</div>
+								) : null}
+							</div>
+						)
+					}
+				</div>
+
+				{!selectedDeploymentId ? (
+					<div class={`nz-deployments-footer ${ST.footer}`}>
+						<span class={ST.total}>{filteredRows.length} total</span>
+						<div class="flex gap-2">
+							<a
+								href={pageIndex <= 0 ? undefined : buildUrl({ page: pageIndex - 1 })}
+								aria-disabled={pageIndex <= 0}
+								class={`inline-flex h-7 items-center justify-center rounded-md border border-input bg-background px-2 text-xs hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] ${pageIndex <= 0 ? "pointer-events-none opacity-50" : ""}`}
+							>
+								Previous
+							</a>
+							<a
+								href={pageIndex >= pageCount - 1 ? undefined : buildUrl({ page: pageIndex + 1 })}
+								aria-disabled={pageIndex >= pageCount - 1}
+								class={`inline-flex h-7 items-center justify-center rounded-md border border-input bg-background px-2 text-xs hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] ${pageIndex >= pageCount - 1 ? "pointer-events-none opacity-50" : ""}`}
+							>
+								Next
+							</a>
+						</div>
+					</div>
+				) : null}
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { mountDeploymentsDashboard } from "@/scripts/deployments-dashboard";
+
+	function boot() {
+		if (!document.getElementById("nz-deployments-root")) return;
+		mountDeploymentsDashboard();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

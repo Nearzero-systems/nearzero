@@ -1,0 +1,95 @@
+---
+import Button from "@/components/ui/Button.astro";
+import WebServerActionMenus from "@/components/dashboard/settings/web-server/WebServerActionMenus.astro";
+import WebServerSharedDialogs from "@/components/dashboard/settings/web-server/WebServerSharedDialogs.astro";
+
+interface Props {
+	webServerSettings: { serverIp?: string | null; enableDockerCleanup?: boolean } | null;
+	versionLabel: string;
+	traefikDashboardEnabled: boolean;
+}
+
+const { webServerSettings, versionLabel, traefikDashboardEnabled } = Astro.props;
+---
+
+<div
+	class="w-full nz-dashboard-content h-full min-h-0"
+	id="nz-web-server-root"
+	data-traefik-dashboard={traefikDashboardEnabled ? "1" : "0"}
+	data-update-available="0"
+	data-latest-version=""
+>
+	<div class="space-y-6">
+		<div class="grid gap-4 md:grid-cols-2">
+			<WebServerActionMenus traefikDashboardEnabled={traefikDashboardEnabled} />
+			<div class="flex items-end">
+				<Button type="button" variant="secondary" id="nz-ws-update-open">
+					Check for updates
+				</Button>
+			</div>
+		</div>
+
+		<div class="flex flex-wrap items-center justify-between gap-4">
+			<span class="flex items-center gap-1.5 text-sm text-muted-foreground">
+				Server IP: <span id="nz-ws-server-ip">{webServerSettings?.serverIp ?? "—"}</span>
+				{
+					webServerSettings?.serverIp ? (
+						<button
+							type="button"
+							id="nz-ws-copy-ip"
+							class="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-accent"
+							aria-label="Copy IP"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+						</button>
+					) : null
+				}
+			</span>
+			<span class="text-sm text-muted-foreground">Version: {versionLabel || "—"}</span>
+			<div class="flex items-center gap-3">
+				<input
+					type="checkbox"
+					id="nz-ws-docker-cleanup-local"
+					data-docker-cleanup-local
+					checked={!!webServerSettings?.enableDockerCleanup}
+					class="h-5 w-5"
+				/>
+				<label for="nz-ws-docker-cleanup-local" class="text-sm font-medium text-primary">
+					Daily Docker Cleanup
+				</label>
+			</div>
+		</div>
+	</div>
+
+	<dialog id="nz-ws-update-dialog" class="relative w-[calc(100%-2rem)] max-w-lg rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+		<div class="p-6">
+			<h2 class="text-lg font-semibold" id="nz-ws-update-title">Web Server Update</h2>
+			<div id="nz-ws-update-body" class="mt-3"></div>
+			<div id="nz-ws-update-footer" class="mt-6 flex justify-end gap-2"></div>
+			<div class="mt-4 flex items-center gap-3 border-t pt-4">
+				<input type="checkbox" id="nz-ws-auto-check-updates" class="h-5 w-5" />
+				<label for="nz-ws-auto-check-updates" class="text-sm text-primary">
+					Automatically check for new updates
+				</label>
+			</div>
+		</div>
+	</dialog>
+
+	<dialog id="nz-ws-update-confirm-dialog" class="relative w-[calc(100%-2rem)] max-w-lg rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+		<div class="p-6">
+			<p class="text-sm font-semibold" id="nz-ws-update-confirm-title">Are you absolutely sure?</p>
+			<div id="nz-ws-update-confirm-body" class="mt-2 text-sm text-muted-foreground"></div>
+			<div class="mt-6 grid grid-cols-2 gap-2">
+				<Button type="button" variant="outline" id="nz-ws-update-confirm-cancel">Cancel</Button>
+				<Button type="button" variant="secondary" id="nz-ws-update-confirm-verify">Verify Status</Button>
+				<Button type="button" variant="default" class="col-span-2" id="nz-ws-update-confirm-run">Confirm</Button>
+			</div>
+		</div>
+	</dialog>
+
+	<WebServerSharedDialogs />
+</div>
+
+<script>
+	import "@/scripts/web-server-dashboard.ts";
+</script>

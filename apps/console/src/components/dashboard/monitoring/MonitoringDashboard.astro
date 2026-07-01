@@ -1,0 +1,335 @@
+---
+import { createServerTrpcClient } from "@/lib/server-api";
+import {
+	buildHostMetricsUrl,
+	resolveHostMetricsToken,
+} from "@/lib/host-metrics";
+
+const envMetricsUrl =
+	process.env.NEARZERO_METRICS_URL?.trim() ||
+	import.meta.env.PUBLIC_METRICS_URL?.trim() ||
+	"";
+const envMetricsToken =
+	process.env.NEARZERO_METRICS_TOKEN?.trim() ||
+	import.meta.env.PUBLIC_METRICS_TOKEN?.trim() ||
+	"";
+
+let metricsUrl = envMetricsUrl;
+let metricsToken = envMetricsToken;
+let configError = "";
+
+try {
+	const api = createServerTrpcClient(Astro.request);
+	const metricsInfo = await api.user.getMetricsToken.query();
+	if (!envMetricsUrl) {
+		metricsUrl = buildHostMetricsUrl(metricsInfo);
+	}
+	if (!envMetricsToken) {
+		metricsToken = resolveHostMetricsToken(metricsInfo);
+	}
+} catch {
+	if (!metricsUrl) {
+		metricsUrl = buildHostMetricsUrl(null);
+	}
+}
+
+if (!metricsToken) {
+	configError =
+		"Monitoring is not configured yet. Use the web server actions above to start the monitoring service, then refresh this page.";
+}
+---
+
+<div
+	class="nz-monitoring w-full min-w-0"
+	id="nz-monitoring-root"
+	data-metrics-url={metricsUrl}
+	data-metrics-token={metricsToken}
+	data-config-error={configError}
+>
+	<div id="nz-monitoring-loading" class="nz-monitoring__state">
+		<span>Loading metrics...</span>
+	</div>
+	<div
+		id="nz-monitoring-error"
+		class="nz-monitoring__state nz-monitoring__state--error hidden"
+	>
+		<div class="nz-monitoring__error-card">
+			<p class="nz-monitoring__error-title">Error fetching metrics</p>
+			<p id="nz-monitoring-error-msg" class="nz-monitoring__error-message"></p>
+			{metricsUrl ? <p class="nz-monitoring__error-url">URL: {metricsUrl}</p> : null}
+		</div>
+	</div>
+	<div id="nz-monitoring-content" class="nz-monitoring__content hidden">
+		<header class="nz-monitoring__header">
+			<div class="nz-monitoring__intro">
+				<p class="nz-monitoring__eyebrow">Community monitoring</p>
+				<h3 class="nz-monitoring__title">Monitoring</h3>
+				<p class="nz-monitoring__description">
+					Track host CPU, RAM, and storage usage for this Nearzero install.
+				</p>
+			</div>
+			<div class="nz-monitoring__controls">
+				<label class="nz-monitoring__control">
+					<span>Data points</span>
+					<select id="nz-mon-data-points" class="nz-monitoring__select">
+						<option value="50">50 points</option>
+						<option value="200">200 points</option>
+						<option value="500">500 points</option>
+						<option value="all">All points</option>
+					</select>
+				</label>
+				<label class="nz-monitoring__control">
+					<span>Refresh</span>
+					<select id="nz-mon-refresh" class="nz-monitoring__select">
+						<option value="5000">5 seconds</option>
+						<option value="10000">10 seconds</option>
+						<option value="20000">20 seconds</option>
+						<option value="30000">30 seconds</option>
+					</select>
+				</label>
+			</div>
+		</header>
+
+		<div class="nz-monitoring__cards">
+			<div class="nz-monitoring-card">
+				<div class="nz-monitoring-card__label">Uptime</div>
+				<p id="nz-mon-uptime" class="nz-monitoring-card__value">—</p>
+				<p class="nz-monitoring-card__hint">Current host session</p>
+			</div>
+			<div class="nz-monitoring-card nz-monitoring-card--meter">
+				<div class="nz-monitoring-card__label">CPU Usage</div>
+				<p id="nz-mon-cpu" class="nz-monitoring-card__value">—</p>
+				<div class="nz-monitoring-meter" aria-hidden="true">
+					<span id="nz-mon-cpu-bar" class="nz-monitoring-meter__fill"></span>
+				</div>
+			</div>
+			<div class="nz-monitoring-card nz-monitoring-card--meter">
+				<div class="nz-monitoring-card__label">RAM Usage</div>
+				<p id="nz-mon-mem" class="nz-monitoring-card__value">—</p>
+				<div class="nz-monitoring-meter" aria-hidden="true">
+					<span id="nz-mon-mem-bar" class="nz-monitoring-meter__fill"></span>
+				</div>
+			</div>
+			<div class="nz-monitoring-card nz-monitoring-card--meter">
+				<div class="nz-monitoring-card__label">Storage Usage</div>
+				<p id="nz-mon-disk" class="nz-monitoring-card__value">—</p>
+				<div class="nz-monitoring-meter" aria-hidden="true">
+					<span id="nz-mon-disk-bar" class="nz-monitoring-meter__fill"></span>
+				</div>
+			</div>
+		</div>
+
+		<div class="nz-monitoring-panel">
+			<h3 class="nz-monitoring-panel__title">System information</h3>
+			<div class="nz-monitoring-panel__grid">
+				<div class="nz-monitoring-detail">
+					<h4>CPU</h4>
+					<p id="nz-mon-cpu-model">—</p>
+					<p id="nz-mon-cpu-detail" class="nz-monitoring-detail__muted">—</p>
+				</div>
+				<div class="nz-monitoring-detail">
+					<h4>Operating system</h4>
+					<p id="nz-mon-os">—</p>
+					<p id="nz-mon-kernel" class="nz-monitoring-detail__muted">—</p>
+				</div>
+			</div>
+		</div>
+
+		<div class="nz-monitoring__charts">
+			<div class="nz-monitoring-chart">
+				<h4>CPU history</h4>
+				<canvas id="nz-mon-cpu-chart"></canvas>
+			</div>
+			<div class="nz-monitoring-chart">
+				<h4>RAM history</h4>
+				<canvas id="nz-mon-mem-chart"></canvas>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+	import { trpcQuery } from "@/lib/client-api";
+
+	type MetricPoint = {
+		timestamp: string;
+		cpu: number;
+		cpuModel?: string;
+		cpuCores?: number;
+		cpuPhysicalCores?: number;
+		cpuSpeed?: number;
+		memUsedGB?: number;
+		memTotal?: number;
+		diskUsed?: number;
+		uptime?: number;
+		distro?: string;
+		kernel?: string;
+		arch?: string;
+	};
+
+	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	let history: MetricPoint[] = [];
+
+	function formatUptime(seconds: number) {
+		const days = Math.floor(seconds / (24 * 60 * 60));
+		const hours = Math.floor((seconds % (24 * 60 * 60)) / (60 * 60));
+		const minutes = Math.floor((seconds % (60 * 60)) / 60);
+		return `${days}d ${hours}h ${minutes}m`;
+	}
+
+	function finiteMetric(value: number | undefined) {
+		const numberValue = Number(value);
+		return Number.isFinite(numberValue) ? numberValue : 0;
+	}
+
+	function clampPercent(value: number) {
+		if (!Number.isFinite(value)) return 0;
+		return Math.min(100, Math.max(0, value));
+	}
+
+	function formatPercent(value: number) {
+		return `${Math.round(clampPercent(value))}%`;
+	}
+
+	function formatGb(value: number) {
+		return `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;
+	}
+
+	function setMeter(id: string, percent: number) {
+		const el = document.getElementById(id);
+		if (el instanceof HTMLElement) {
+			el.style.width = `${clampPercent(percent)}%`;
+		}
+	}
+
+	function drawLineChart(canvas: HTMLCanvasElement, values: number[], color: string) {
+		const ctx = canvas.getContext("2d");
+		if (!ctx || values.length === 0) return;
+		const w = canvas.clientWidth;
+		const h = canvas.clientHeight;
+		canvas.width = w * devicePixelRatio;
+		canvas.height = h * devicePixelRatio;
+		ctx.scale(devicePixelRatio, devicePixelRatio);
+		ctx.clearRect(0, 0, w, h);
+		const max = Math.max(...values, 1);
+		ctx.strokeStyle = color;
+		ctx.lineWidth = 2;
+		ctx.beginPath();
+		values.forEach((v, i) => {
+			const x = (i / Math.max(values.length - 1, 1)) * (w - 16) + 8;
+			const y = h - 8 - (v / max) * (h - 16);
+			if (i === 0) ctx.moveTo(x, y);
+			else ctx.lineTo(x, y);
+		});
+		ctx.stroke();
+	}
+
+	function renderMetrics(latest: MetricPoint) {
+		const uptimeEl = document.getElementById("nz-mon-uptime");
+		const cpuEl = document.getElementById("nz-mon-cpu");
+		const memEl = document.getElementById("nz-mon-mem");
+		const diskEl = document.getElementById("nz-mon-disk");
+		const cpuPercent = clampPercent(finiteMetric(latest.cpu));
+		const memUsed = finiteMetric(latest.memUsedGB);
+		const memTotal = finiteMetric(latest.memTotal);
+		const memPercent = memTotal > 0 ? clampPercent((memUsed / memTotal) * 100) : 0;
+		const diskPercent = clampPercent(finiteMetric(latest.diskUsed));
+		if (uptimeEl) uptimeEl.textContent = formatUptime(finiteMetric(latest.uptime));
+		if (cpuEl) cpuEl.textContent = formatPercent(cpuPercent);
+		if (memEl) memEl.textContent = memTotal > 0 ? `${formatGb(memUsed)} / ${formatGb(memTotal)}` : "—";
+		if (diskEl) diskEl.textContent = formatPercent(diskPercent);
+		setMeter("nz-mon-cpu-bar", cpuPercent);
+		setMeter("nz-mon-mem-bar", memPercent);
+		setMeter("nz-mon-disk-bar", diskPercent);
+		const cpuModel = document.getElementById("nz-mon-cpu-model");
+		const cpuDetail = document.getElementById("nz-mon-cpu-detail");
+		const osEl = document.getElementById("nz-mon-os");
+		const kernelEl = document.getElementById("nz-mon-kernel");
+		if (cpuModel) cpuModel.textContent = latest.cpuModel ?? "—";
+		if (cpuDetail) cpuDetail.textContent = `${latest.cpuPhysicalCores ?? 0} Physical Cores (${latest.cpuCores ?? 0} Threads) @ ${latest.cpuSpeed ?? 0}GHz`;
+		if (osEl) osEl.textContent = latest.distro ?? "—";
+		if (kernelEl) kernelEl.textContent = `Kernel: ${latest.kernel ?? "—"} (${latest.arch ?? "—"})`;
+
+		const cpuCanvas = document.getElementById("nz-mon-cpu-chart");
+		const memCanvas = document.getElementById("nz-mon-mem-chart");
+		if (cpuCanvas instanceof HTMLCanvasElement) drawLineChart(cpuCanvas, history.map((p) => p.cpu), "#2563eb");
+		if (memCanvas instanceof HTMLCanvasElement) {
+			drawLineChart(
+				memCanvas,
+				history.map((p) => {
+					const total = finiteMetric(p.memTotal);
+					const used = finiteMetric(p.memUsedGB);
+					return total > 0 ? clampPercent((used / total) * 100) : used;
+				}),
+				"#059669",
+			);
+		}
+	}
+
+	async function fetchMetrics(root: HTMLElement) {
+		const url = root.dataset.metricsUrl ?? "";
+		const token = root.dataset.metricsToken ?? "";
+		const configError = root.dataset.configError ?? "";
+		if (configError) {
+			throw new Error(configError);
+		}
+		if (!url || !token) {
+			throw new Error(
+				"Monitoring is not configured yet. Use the web server actions above to start the monitoring service, then refresh this page.",
+			);
+		}
+		const dataPoints = (document.getElementById("nz-mon-data-points") as HTMLSelectElement)?.value ?? "50";
+		const data = await trpcQuery<MetricPoint[]>("server.getServerMetrics", { url, token, dataPoints });
+		history = (data ?? []).map((m) => ({
+			...m,
+			cpu: Number.parseFloat(String(m.cpu)),
+			memUsedGB: Number.parseFloat(String(m.memUsedGB)),
+			memTotal: Number.parseFloat(String(m.memTotal)),
+			diskUsed: Number.parseFloat(String(m.diskUsed)),
+		}));
+		const latest = history[history.length - 1];
+		if (latest) renderMetrics(latest);
+	}
+
+	function bindMonitoringPage() {
+		const root = document.getElementById("nz-monitoring-root");
+		if (!root || root.dataset.bound === "1") return;
+		root.dataset.bound = "1";
+
+		const loading = document.getElementById("nz-monitoring-loading");
+		const error = document.getElementById("nz-monitoring-error");
+		const content = document.getElementById("nz-monitoring-content");
+		const errorMsg = document.getElementById("nz-monitoring-error-msg");
+
+		const schedule = () => {
+			if (pollTimer) clearInterval(pollTimer);
+			const refresh = Number.parseInt((document.getElementById("nz-mon-refresh") as HTMLSelectElement)?.value ?? "5000", 10);
+			const dataPoints = (document.getElementById("nz-mon-data-points") as HTMLSelectElement)?.value ?? "50";
+			if (dataPoints !== "all") {
+				pollTimer = setInterval(() => void fetchMetrics(root), refresh);
+			}
+		};
+
+		void fetchMetrics(root)
+			.then(() => {
+				loading?.classList.add("hidden");
+				content?.classList.remove("hidden");
+				schedule();
+			})
+			.catch((err) => {
+				loading?.classList.add("hidden");
+				error?.classList.remove("hidden");
+				if (errorMsg) errorMsg.textContent = err instanceof Error ? err.message : "Failed to fetch metrics";
+			});
+
+		document.getElementById("nz-mon-data-points")?.addEventListener("change", () => {
+			void fetchMetrics(root).then(schedule);
+		});
+		document.getElementById("nz-mon-refresh")?.addEventListener("change", schedule);
+	}
+
+	function boot() { bindMonitoringPage(); }
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

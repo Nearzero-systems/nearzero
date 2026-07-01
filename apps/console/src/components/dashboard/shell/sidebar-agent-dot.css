@@ -1,0 +1,84 @@
+/* 3×3 Agent nav icon — "N" (diagonal, not H); shimmer on nav row hover */
+
+.nz-agent-dot-matrix {
+	--nz-agent-dot-size: 4px;
+	--nz-agent-dot-gap: 2px;
+	width: calc(var(--nz-agent-dot-size) * 3 + var(--nz-agent-dot-gap) * 2);
+	height: calc(var(--nz-agent-dot-size) * 3 + var(--nz-agent-dot-gap) * 2);
+	gap: var(--nz-agent-dot-gap);
+}
+
+.nz-agent-dot-matrix__cell {
+	width: var(--nz-agent-dot-size);
+	height: var(--nz-agent-dot-size);
+	border-radius: 999px;
+	display: block;
+}
+
+/* Always visible — faint gray fill for non-N dots */
+.nz-agent-dot-matrix__cell--muted {
+	background-color: var(--nz-text-subtle, #9ca3af);
+	opacity: 0.32;
+}
+
+/* N letter — solid at rest */
+.nz-agent-dot-matrix__cell--n {
+	background-color: currentColor;
+	opacity: 0.92;
+	transform: scale(1);
+}
+
+/* Hover entire Agent row → twinkle / shimmer across the matrix */
+.nz-agent-nav-item:hover .nz-agent-dot-matrix__cell--n {
+	animation: nz-agent-n-shimmer 1.15s ease-in-out infinite;
+	animation-delay: calc(var(--nz-agent-dot-phase, 0) * 0.11s);
+}
+
+.nz-agent-nav-item:hover .nz-agent-dot-matrix__cell--muted {
+	animation: nz-agent-muted-twinkle 1.35s ease-in-out infinite;
+	animation-delay: calc(var(--nz-agent-dot-i, 0) * 0.07s);
+}
+
+@keyframes nz-agent-n-shimmer {
+	0%,
+	100% {
+		opacity: 0.55;
+		transform: scale(0.86);
+		filter: brightness(0.85);
+	}
+	40% {
+		opacity: 1;
+		transform: scale(1.14);
+		filter: brightness(1.35);
+	}
+	70% {
+		opacity: 0.75;
+		transform: scale(0.96);
+		filter: brightness(1);
+	}
+}
+
+@keyframes nz-agent-muted-twinkle {
+	0%,
+	100% {
+		opacity: 0.22;
+		transform: scale(0.9);
+	}
+	50% {
+		opacity: 0.48;
+		transform: scale(1.05);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nz-agent-nav-item:hover .nz-agent-dot-matrix__cell--n,
+	.nz-agent-nav-item:hover .nz-agent-dot-matrix__cell--muted {
+		animation: none;
+	}
+
+	.nz-agent-dot-matrix__cell--n {
+		opacity: 1;
+		transform: none;
+		filter: none;
+	}
+}

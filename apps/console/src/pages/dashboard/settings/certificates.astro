@@ -1,0 +1,5 @@
+---
+const dest = new URL("/dashboard/domains", Astro.url);
+dest.searchParams.set("tab", "certificates");
+return Astro.redirect(dest.pathname + dest.search);
+---

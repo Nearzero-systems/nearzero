@@ -1,0 +1,28 @@
+---
+/** Prevent flash of wrong theme before CSS loads. */
+interface Props {
+	forceLight?: boolean;
+}
+
+const { forceLight = false } = Astro.props;
+---
+<script is:inline define:vars={{ forceLight }}>
+	(function () {
+		try {
+			if (forceLight) {
+				document.documentElement.classList.remove("dark");
+				document.documentElement.dataset.theme = "light";
+				document.documentElement.style.colorScheme = "light";
+				return;
+			}
+			var stored = localStorage.getItem("nearzero-theme");
+			if (stored === "dark") {
+				document.documentElement.classList.add("dark");
+				document.documentElement.dataset.theme = "dark";
+				document.documentElement.style.colorScheme = "dark";
+			}
+		} catch (_e) {
+			/* ignore */
+		}
+	})();
+</script>

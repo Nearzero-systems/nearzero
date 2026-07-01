@@ -1,0 +1,26 @@
+---
+interface Props {
+  tone?: "default" | "success" | "warn" | "accent";
+}
+const { tone = "default" } = Astro.props;
+---
+
+{
+  tone === "success" ? (
+    <span class="inline-flex w-fit items-center rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+      <slot />
+    </span>
+  ) : tone === "warn" ? (
+    <span class="inline-flex w-fit items-center rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900">
+      <slot />
+    </span>
+  ) : tone === "accent" ? (
+    <span class="inline-flex w-fit items-center rounded-md bg-indigo-50 px-2 py-1 text-xs text-indigo-700">
+      <slot />
+    </span>
+  ) : (
+    <span class="inline-flex w-fit items-center rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">
+      <slot />
+    </span>
+  )
+}

@@ -1,0 +1,141 @@
+---
+import Base from "../layouts/Base.astro";
+import RegisterGrid from "../components/auth/RegisterGrid.astro";
+import { pageTitle } from "../lib/branding";
+import { getSession } from "../lib/backendProxy";
+import { fetchResolvedSocialAuthProviders } from "../lib/social-auth-providers";
+import {
+	invitationPathFromToken,
+	isInviteMemberSetupMode,
+	isWorkspaceSetupMode,
+	registerOnboardingResumePath,
+	registerPathForSession,
+	registerStepFromUrl,
+} from "../lib/onboarding-gates";
+import {
+	loginPathForInvitation,
+} from "../lib/invitation-routes";
+import { orgDashboardPath } from "../lib/org-routes";
+import { createServerTrpcClient } from "../lib/server-api";
+import {
+	fetchActiveOrganization,
+	fetchOnboardingStatus,
+} from "../lib/trpc-server";
+
+const invitationToken = Astro.url.searchParams.get("token") ?? "";
+const initialEmail = Astro.url.searchParams.get("email") ?? "";
+const step = registerStepFromUrl(Astro.url);
+const workspaceSetupMode = isWorkspaceSetupMode(Astro.url);
+const inviteMemberSetupMode = isInviteMemberSetupMode(Astro.url);
+
+const session = await getSession(Astro.request);
+const onboardingStatus = session?.user
+	? await fetchOnboardingStatus(Astro.request)
+	: null;
+let invitationTokenIsPending = false;
+if (session?.user && invitationToken) {
+	try {
+		const api = createServerTrpcClient(Astro.request);
+		const invitation = await api.user.getUserByToken.query({
+			token: invitationToken,
+		});
+		invitationTokenIsPending = Boolean(
+			invitation &&
+				!invitation.isExpired &&
+				invitation.status === "pending",
+		);
+	} catch {
+		invitationTokenIsPending = false;
+	}
+}
+
+let redirectTo: string | null = null;
+
+if (
+	session?.user &&
+	invitationToken &&
+	invitationTokenIsPending &&
+	!onboardingStatus?.needsWorkspaceSetup &&
+	!onboardingStatus?.needsInviteMemberSetup
+) {
+	redirectTo = invitationPathFromToken(invitationToken);
+}
+
+if (!redirectTo && session?.user && invitationToken && !invitationTokenIsPending) {
+	if (onboardingStatus?.complete === false) {
+		redirectTo = registerOnboardingResumePath(onboardingStatus);
+	} else {
+		const activeOrganization = await fetchActiveOrganization(Astro.request);
+		redirectTo = activeOrganization?.slug
+			? orgDashboardPath(activeOrganization.slug, "/dashboard/agent")
+			: "/dashboard/agent";
+	}
+}
+
+if (!redirectTo &&
+	session?.user &&
+	workspaceSetupMode &&
+	!onboardingStatus?.needsWorkspaceSetup
+) {
+	if (onboardingStatus?.complete === false) {
+		redirectTo = registerOnboardingResumePath(onboardingStatus);
+	} else {
+		redirectTo = "/dashboard/agent";
+	}
+}
+
+if (!redirectTo &&
+	session?.user &&
+	inviteMemberSetupMode &&
+	onboardingStatus?.complete === true
+) {
+	redirectTo = "/dashboard/agent";
+}
+
+const sessionRedirect = session?.user
+	? registerPathForSession(step, onboardingStatus, {
+			invitationToken,
+			workspaceSetupMode,
+			inviteMemberSetupMode,
+		})
+	: null;
+
+if (sessionRedirect) {
+	redirectTo = sessionRedirect;
+}
+
+if (redirectTo) {
+	return Astro.redirect(redirectTo);
+}
+
+const loginHref = invitationToken
+	? loginPathForInvitation(invitationToken, initialEmail)
+	: workspaceSetupMode || inviteMemberSetupMode
+		? "/"
+		: "/";
+const { providers: enabledSocialProviders, known: socialProvidersKnown } =
+	await fetchResolvedSocialAuthProviders();
+---
+<Base forceLightTheme title={pageTitle(
+	workspaceSetupMode
+		? "Create workspace"
+		: inviteMemberSetupMode
+			? "Complete your profile"
+			: "Sign up",
+)}>
+  <RegisterGrid
+    loginHref={loginHref}
+    invitationToken={invitationToken}
+    initialEmail={initialEmail}
+    lockEmail={Boolean(invitationToken && initialEmail)}
+    initialStep={
+		workspaceSetupMode || inviteMemberSetupMode
+			? "profile"
+			: step
+	}
+    workspaceSetupMode={workspaceSetupMode}
+    inviteMemberSetupMode={inviteMemberSetupMode}
+    enabledSocialProviders={enabledSocialProviders}
+    socialProvidersKnown={socialProvidersKnown}
+  />
+</Base>

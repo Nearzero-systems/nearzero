@@ -1,0 +1,22 @@
+---
+export const prerender = false;
+
+/**
+ * Route registration for org-scoped dashboard URLs: `/{org}/dashboard/...`.
+ *
+ * The global middleware (`src/middleware.ts`) normally rewrites these requests
+ * to the de-scoped `/dashboard/...` route before this page ever renders. This
+ * file exists primarily so the Astro Vercel adapter emits a real server (200)
+ * route for org-scoped paths — without a matching page file these URLs fall
+ * through to the generated `"/.*" -> _render (status 404)` catch-all and return
+ * 404 in production (while still working under `astro dev`).
+ *
+ * The body below is a defensive fallback: if the middleware rewrite did not run
+ * for any reason, de-scope the path here and render the matching dashboard page.
+ */
+const pathParam = Array.isArray(Astro.params.path)
+	? Astro.params.path.join("/")
+	: (Astro.params.path ?? "");
+const suffix = pathParam ? `/${pathParam}` : "/agent";
+return Astro.rewrite(`/dashboard${suffix}${Astro.url.search}`);
+---

@@ -1,0 +1,62 @@
+name: nearzero
+
+services:
+  postgres:
+    container_name: nearzero-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nearzero}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nearzero-local-password}
+      POSTGRES_DB: ${POSTGRES_DB:-nearzero}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - nearzero-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nearzero} -d ${POSTGRES_DB:-nearzero}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    container_name: nearzero-redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - nearzero-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://nearzero:nearzero-local-password@postgres:5432/nearzero}
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
+      CONSOLE_URL: ${CONSOLE_URL:-http://localhost:4321}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+      - "4321:4321"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nearzero-data:/etc/nearzero
+
+volumes:
+  nearzero-postgres:
+  nearzero-redis:
+  nearzero-data:

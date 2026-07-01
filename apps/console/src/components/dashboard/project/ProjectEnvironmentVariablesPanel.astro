@@ -1,0 +1,46 @@
+---
+interface Props {
+	projectId: string;
+	initialEnv: string;
+	canWrite: boolean;
+}
+
+const { projectId, initialEnv, canWrite } = Astro.props;
+---
+
+<section class="nz-project-panel">
+	<div class="nz-project-panel__head">
+		<h1 class="nz-project-panel__title">Environment variables</h1>
+		<p class="nz-project-panel__desc">
+			Project-level variables. Reference in services as
+			<code class="text-[var(--nz-text)]">{`{{project.KEY}}`}</code>.
+		</p>
+	</div>
+	<div class="nz-project-panel__body space-y-3">
+		<textarea
+			id="nz-project-env-editor"
+			class="nz-project-env-editor"
+			rows="14"
+			readonly={!canWrite}
+			placeholder="KEY=value"
+		>{initialEnv}</textarea>
+		{
+			canWrite ? (
+				<div class="flex justify-end">
+					<button
+						type="button"
+						id="nz-project-env-save"
+						class="inline-flex h-7 items-center justify-center rounded-md border border-[var(--nz-primary)] bg-[var(--nz-primary)] px-2 text-xs font-medium text-[var(--nz-primary-fg)] hover:bg-[var(--nz-primary-hover)]"
+					>
+						Save variables
+					</button>
+				</div>
+			) : (
+				<p class="text-xs text-[var(--nz-text-muted)]">
+					You do not have permission to edit project environment variables.
+				</p>
+			)
+		}
+	</div>
+	<input type="hidden" id="nz-project-env-project-id" value={projectId} />
+</section>

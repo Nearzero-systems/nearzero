@@ -1,0 +1,43 @@
+---
+import Dashboard from "@/layouts/Dashboard.astro";
+import DashboardAsyncRegion from "@/components/dashboard/DashboardAsyncRegion.astro";
+import ApplicationImportFragment from "@/components/dashboard/application/ApplicationImportFragment.astro";
+import { pageTitle } from "@/lib/branding";
+import { getSession } from "@/lib/backendProxy";
+import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+	return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+}
+
+const routeParams = Object.fromEntries(
+	Object.entries(Astro.params).filter(([, v]) => typeof v === "string"),
+) as Record<string, string>;
+
+const projectId = routeParams.projectId ?? "";
+const environmentId = routeParams.environmentId ?? "";
+const isFragment = isDashboardFragmentRequest(Astro.request);
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+---
+
+{
+	isFragment ? (
+		<ApplicationImportFragment
+			request={Astro.request}
+			projectId={projectId}
+			environmentId={environmentId}
+		/>
+	) : (
+		<Dashboard title={pageTitle("Create a new application")} user={session.user}>
+			<DashboardAsyncRegion
+				routeId="dashboard:application-new"
+				params={{ projectId, environmentId }}
+				search={Astro.url.search}
+				orgSlug={orgSlug}
+				label="Loading application setup..."
+			/>
+		</Dashboard>
+	)
+}

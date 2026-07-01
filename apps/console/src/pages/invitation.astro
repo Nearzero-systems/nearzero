@@ -1,0 +1,91 @@
+---
+import Base from "@/layouts/Base.astro";
+import InvitationGrid from "@/components/auth/InvitationGrid.astro";
+import { pageTitle } from "@/lib/branding";
+import type { InvitationPreview } from "@/lib/invitation-types";
+import {
+	loginPathForInvitation,
+	registerPathForInvitation,
+} from "@/lib/invitation-routes";
+import {
+	registerOnboardingResumePath,
+	workspaceSetupPath,
+} from "@/lib/onboarding-gates";
+import { orgDashboardPath } from "@/lib/org-routes";
+import { createServerTrpcClient } from "@/lib/server-api";
+import { getSession } from "@/lib/backendProxy";
+import {
+	fetchActiveOrganization,
+	fetchOnboardingStatus,
+} from "@/lib/trpc-server";
+
+const token = Astro.url.searchParams.get("token") ?? "";
+let invitation: InvitationPreview | null = null;
+let loadError: string | null = null;
+
+if (token) {
+	try {
+		const api = createServerTrpcClient(Astro.request);
+		invitation = await api.user.getUserByToken.query({ token });
+	} catch (err) {
+		loadError =
+			err instanceof Error && err.message ? err.message : "Invitation not found";
+	}
+}
+
+const session = await getSession(Astro.request);
+const sessionEmail = session?.user?.email ?? null;
+
+const inviteValid =
+	!!token &&
+	!loadError &&
+	!!invitation &&
+	!invitation.isExpired &&
+	invitation.status === "pending";
+const inviteExpiredOrUsed =
+	!!invitation &&
+	!loadError &&
+	(invitation.isExpired || invitation.status !== "pending");
+
+if (inviteValid && !session?.user && invitation) {
+	if (invitation.userAlreadyExists) {
+		return Astro.redirect(loginPathForInvitation(token, invitation.email));
+	}
+	return Astro.redirect(registerPathForInvitation(token, invitation.email));
+}
+
+let redirectTo: string | null = null;
+
+if (session?.user && inviteExpiredOrUsed) {
+	const [onboardingStatus, activeOrganization] = await Promise.all([
+		fetchOnboardingStatus(Astro.request),
+		fetchActiveOrganization(Astro.request),
+	]);
+	if (onboardingStatus?.complete === false) {
+		redirectTo = registerOnboardingResumePath(onboardingStatus);
+	} else if (
+		activeOrganization?.name?.trim() &&
+		activeOrganization.name.trim() !== "My Organization"
+	) {
+		redirectTo = activeOrganization.slug
+			? orgDashboardPath(activeOrganization.slug, "/dashboard/agent")
+			: "/dashboard/agent";
+	} else if (onboardingStatus?.needsWorkspaceSetup) {
+		redirectTo = workspaceSetupPath();
+	} else {
+		redirectTo = "/dashboard/agent";
+	}
+}
+
+if (redirectTo) {
+	return Astro.redirect(redirectTo);
+}
+---
+<Base title={pageTitle("Invitation")}>
+	<InvitationGrid
+		token={token}
+		invitation={invitation}
+		loadError={loadError}
+		sessionEmail={sessionEmail}
+	/>
+</Base>

@@ -1,0 +1,64 @@
+---
+import { ST } from "@/lib/settings-hub-ui";
+
+interface Props {
+	sshKey: { sshKeyId: string; name: string };
+	canDelete: boolean;
+	deleteBlocked: boolean;
+	deleteBlockedTitle?: string;
+}
+
+const {
+	sshKey,
+	canDelete,
+	deleteBlocked,
+	deleteBlockedTitle = "",
+} = Astro.props;
+---
+
+<div class="relative inline-flex justify-end">
+	<button
+		type="button"
+		id={`nz-ssh-menu-trigger-${sshKey.sshKeyId}`}
+		class={ST.actionBtn}
+		aria-expanded="false"
+		aria-haspopup="menu"
+		aria-label={`Actions for ${sshKey.name}`}
+	>
+		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+	</button>
+	<div
+		id={`nz-ssh-menu-${sshKey.sshKeyId}`}
+		class="nz-server-action-menu nz-server-action-menu--dropdown hidden min-w-[11rem] overflow-visible rounded-md border border-[var(--nz-border)] bg-[var(--nz-surface)] p-1 text-xs shadow-none"
+		role="menu"
+		aria-label={`Actions for ${sshKey.name}`}
+	>
+		<button type="button" role="menuitem" class="nz-server-action-menu__btn" data-ssh-menu-action="edit" data-ssh-key-id={sshKey.sshKeyId}>Edit</button>
+		{
+			canDelete ? (
+				<>
+					<div class="nz-server-action-menu__divider" role="separator" />
+					<div class="nz-server-action-menu__row">
+						<button
+							type="button"
+							role="menuitem"
+							class:list={[
+								"nz-server-action-menu__btn",
+								deleteBlocked
+									? "nz-server-action-menu__btn--disabled"
+									: "nz-server-action-menu__btn--danger",
+							]}
+							data-ssh-menu-action="delete"
+							data-ssh-key-id={sshKey.sshKeyId}
+							data-delete-blocked={deleteBlocked ? "1" : "0"}
+							disabled={deleteBlocked}
+							title={deleteBlocked ? deleteBlockedTitle : undefined}
+						>
+							Delete
+						</button>
+					</div>
+				</>
+			) : null
+		}
+	</div>
+</div>

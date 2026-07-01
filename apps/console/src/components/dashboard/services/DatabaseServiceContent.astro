@@ -1,0 +1,374 @@
+---
+import Button from "@/components/ui/Button.astro";
+import SettingPanelHint from "@/components/dashboard/application/SettingPanelHint.astro";
+import DatabaseGeneralPanel from "@/components/dashboard/services/DatabaseGeneralPanel.astro";
+import type { DatabaseServiceVariant } from "@/components/dashboard/services/databaseVariantConfig";
+import { DATABASE_VARIANT_CONFIG } from "@/components/dashboard/services/databaseVariantConfig";
+import { extractDeploymentCommitId } from "@/lib/deployment-logs";
+import { formatServiceStatusLabel } from "@/lib/service-status-ui";
+import "@/styles/service-application.css";
+import "@/styles/database-service.css";
+
+interface Props {
+	variant: DatabaseServiceVariant;
+	dbId: string;
+	projectId?: string;
+	environmentId?: string;
+	canDeploy: boolean;
+	applicationStatus: string;
+	appName: string;
+	serverId: string;
+	serviceName: string;
+	serviceDescription: string;
+	externalPort: number | null;
+	hasDb: boolean;
+	deploymentHistory: Array<{
+		deploymentId: string;
+		title: string;
+		description?: string | null;
+		status: string | null;
+		createdAt: string | Date;
+	}>;
+}
+
+const {
+	variant,
+	dbId,
+	projectId = "",
+	environmentId = "",
+	canDeploy,
+	applicationStatus,
+	appName,
+	serverId,
+	serviceName,
+	externalPort,
+	hasDb,
+	deploymentHistory,
+} = Astro.props;
+
+const config = DATABASE_VARIANT_CONFIG[variant];
+const variantLabel = config.label;
+const statusNorm = applicationStatus.toLowerCase();
+const statusLabel = formatServiceStatusLabel(applicationStatus);
+const statusDotState =
+	applicationStatus === "done" ? "done" : applicationStatus === "error" ? "error" : "running";
+const showDeploy = canDeploy && (statusNorm === "idle" || statusNorm === "error");
+const showStop = canDeploy && (statusNorm === "done" || statusNorm === "running");
+const stopEnabled = canDeploy && statusNorm === "done";
+const showTerminal = canDeploy && (statusNorm === "done" || statusNorm === "running");
+const terminalEnabled = canDeploy && statusNorm === "done";
+const servicesHref =
+	projectId && environmentId
+		? `/dashboard/project/${projectId}/environment/${environmentId}/services`
+		: "#";
+const btnClass = "nz-app-btn";
+const formatDeploymentStatusLabel = (value?: string | null) => {
+	const normalized = (value || "pending").toLowerCase();
+	if (normalized === "done") return "Done";
+	if (normalized === "running") return "Running";
+	if (normalized === "error") return "Error";
+	if (normalized === "cancelled") return "Cancelled";
+	return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+const formatDeploymentDate = (value?: string | Date | null) => {
+	if (!value) return "";
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+};
+const deploymentStatusKind = (value?: string | null) => {
+	const normalized = (value || "pending").toLowerCase();
+	if (normalized === "done") return "done";
+	if (normalized === "error" || normalized === "cancelled") return "error";
+	return "running";
+};
+---
+
+<div class="nz-dashboard-content nz-dashboard-content--service min-h-0 w-full" data-db-service-root="1">
+	{
+		!dbId?.trim() ? (
+			<p class="px-2 py-4 text-xs text-[#6b7280]">Missing service id.</p>
+		) : !hasDb ? (
+			<p class="px-2 py-4 text-xs text-[#6b7280]">Service not found.</p>
+		) : (
+			<div
+				id="nz-app-deploy-root"
+				class="nz-deployments-surface text-xs"
+				data-db-action-root="1"
+				data-db-variant={variant}
+				data-db-id={dbId}
+				data-db-id-field={config.idField}
+				data-db-appname={appName}
+				data-db-server-id={serverId}
+				data-db-service-name={serviceName || variantLabel}
+				data-db-status={statusNorm}
+			>
+				<div class="nz-deployments-toolbar">
+					<div class="nz-deployments-toolbar-primary nz-app-service-toolbar-primary">
+						<div class="nz-app-service-header__main">
+							<a
+								href={servicesHref}
+								class="nz-app-service-header__back"
+								aria-label="Back to services"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+							</a>
+							<h1 class="min-w-0 truncate text-sm font-semibold text-[var(--nz-text)]">
+								{serviceName || variantLabel}
+							</h1>
+						</div>
+					</div>
+					<div class="nz-domains-controls-row nz-app-service-controls-row">
+						<div class="nz-domains-tablist" role="tablist" aria-label="Service sections">
+							<button
+								type="button"
+								class="nz-domains-tab nz-domains-tab--active"
+								data-app-tab="overview"
+								role="tab"
+								aria-selected="true"
+							>
+								Overview
+							</button>
+							<button
+								type="button"
+								class="nz-domains-tab"
+								data-app-tab="settings"
+								role="tab"
+								aria-selected="false"
+							>
+								Settings
+							</button>
+						</div>
+						<div class="nz-domains-controls-actions nz-db-overview-actions">
+							{
+								canDeploy ? (
+									<Button
+										variant="default"
+										type="button"
+										id="nz-db-btn-deploy"
+										class={`${btnClass} nz-app-btn--primary nz-db-act-btn`}
+										data-act="deploy"
+										title={config.deployTooltip}
+										hidden={!showDeploy}
+										disabled={!showDeploy}
+										aria-disabled={!showDeploy}
+									>
+										Deploy
+									</Button>
+								) : null
+							}
+							<!-- Reload hidden for now — handler remains in databaseActions.ts
+							<Button
+								variant="secondary"
+								type="button"
+								class={`${btnClass} nz-db-act-btn`}
+								data-act="reload"
+								data-busy-reload="1"
+								title={config.reloadTooltip}
+							>
+								Reload
+							</Button>
+							-->
+							{
+								canDeploy ? (
+									<Button
+										variant="destructive"
+										type="button"
+										id="nz-db-btn-stop"
+										class={`${btnClass} nz-db-act-btn`}
+										data-act="stop"
+										data-busy-startstop="1"
+										title={
+											stopEnabled
+												? config.stopTooltip
+												: "Wait for deployment to finish before stopping this service"
+										}
+										hidden={!showStop}
+										disabled={!stopEnabled}
+										aria-disabled={!stopEnabled}
+									>
+										Stop
+									</Button>
+								) : null
+							}
+							{
+								canDeploy ? (
+									<Button
+										variant="outline"
+										type="button"
+										id="nz-db-terminal-open"
+										title={
+											terminalEnabled
+												? config.terminalTooltip
+												: "Wait for deployment to finish before opening the terminal"
+										}
+										class={btnClass}
+										hidden={!showTerminal}
+										disabled={!terminalEnabled}
+										aria-disabled={!terminalEnabled}
+									>
+										Open Terminal
+									</Button>
+								) : null
+							}
+						</div>
+					</div>
+				</div>
+
+				<div data-app-tab-panel="overview">
+					<div class="nz-app-overview-stack">
+						<section class="nz-app-deploy-meta" aria-label="Database status">
+							<dl class="nz-app-deploy-meta__grid nz-db-deploy-meta__grid">
+								<div class="nz-app-deploy-meta__item">
+									<dt>Status</dt>
+									<dd class="nz-app-deploy-meta__status">
+										<span
+											id="nz-db-status-dot"
+											class="nz-app-deploy-meta__status-dot"
+											data-state={statusDotState}
+											aria-hidden="true"
+										/>
+										<span id="nz-db-status-label">{statusLabel}</span>
+									</dd>
+								</div>
+								<div class="nz-app-deploy-meta__item">
+									<dt>Type</dt>
+									<dd>
+										<span class="nz-db-type-pill">{variantLabel}</span>
+									</dd>
+								</div>
+								{
+									externalPort ? (
+										<div class="nz-app-deploy-meta__item">
+											<dt>External port</dt>
+											<dd>{externalPort}</dd>
+										</div>
+									) : null
+								}
+								{
+									appName ? (
+										<div class="nz-app-deploy-meta__item nz-app-deploy-meta__item--full">
+											<dt>Container</dt>
+											<dd class="font-mono">{appName}</dd>
+										</div>
+									) : null
+								}
+							</dl>
+						</section>
+
+						<div class="nz-app-settings-stack">
+							<DatabaseGeneralPanel
+								variant={variant}
+								dbId={dbId}
+								canDeploy={canDeploy}
+								applicationStatus={applicationStatus}
+								showStopButton={false}
+								serviceName={serviceName || variantLabel}
+							/>
+
+							<section class="nz-app-setting-panel nz-app-collapse nz-app-deployments-section" data-app-collapse data-collapsed="true">
+								<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+									<span class="nz-app-setting-panel__title-wrap">
+										<span class="nz-app-setting-panel__title">Deployments</span>
+										<SettingPanelHint label="Relevant deploy history for this database service" />
+									</span>
+								</button>
+								<div class="nz-app-setting-panel__body nz-app-collapse__body" data-app-collapse-body>
+									{
+										deploymentHistory.length === 0 ? (
+											<div class="nz-app-empty-state nz-app-empty-state--compact">
+												<p>No deployments yet. Deploy this database to see history here.</p>
+											</div>
+										) : (
+											<ul class="nz-app-deployment-list">
+												{deploymentHistory.map((dep) => {
+													const commitId = extractDeploymentCommitId(dep);
+													return (
+														<li class="nz-app-deployment-row">
+															<button
+																type="button"
+																class="nz-app-deployment-row__main"
+																data-db-deployment-open
+																data-deployment-id={dep.deploymentId}
+																data-deployment-commit={commitId || undefined}
+															>
+																<span class="nz-app-deployment-row__line">
+																	<code class="nz-app-deployment-row__commit">{commitId || "—"}</code>
+																	<span class="nz-app-deployment-row__meta">{formatDeploymentDate(dep.createdAt)}</span>
+																</span>
+															</button>
+															<div class="nz-app-deployment-row__actions">
+																<span class="nz-app-status-pill" data-state={deploymentStatusKind(dep.status)}>
+																	{formatDeploymentStatusLabel(dep.status)}
+																</span>
+															</div>
+														</li>
+													);
+												})}
+											</ul>
+										)
+									}
+								</div>
+							</section>
+						</div>
+					</div>
+				</div>
+
+				<div data-app-tab-panel="settings" class="hidden">
+					<div class="nz-app-settings-tab">
+						<div class="nz-app-settings-stack">
+							<section class="nz-app-setting-panel nz-app-collapse" data-app-collapse data-collapsed="false">
+								<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="true">
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+									<span class="nz-app-setting-panel__title-wrap">
+										<span class="nz-app-setting-panel__title">Runtime settings</span>
+										<SettingPanelHint label="Runtime details for this database service" />
+									</span>
+								</button>
+								<div class="nz-app-setting-panel__body nz-app-collapse__body nz-app-settings-list" data-app-collapse-body>
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">Container app name</p>
+											<p class="nz-app-setting-row__desc font-mono">{appName || "Not assigned"}</p>
+										</div>
+									</div>
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">External port</p>
+											<p class="nz-app-setting-row__desc">{externalPort ?? "Not exposed"}</p>
+										</div>
+									</div>
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">Runtime server</p>
+											<p class="nz-app-setting-row__desc">{serverId || "Not assigned"}</p>
+										</div>
+									</div>
+								</div>
+							</section>
+						</div>
+					</div>
+				</div>
+
+				<dialog id="nz-db-history-log-dialog" class="nz-app-log-dialog backdrop:bg-black/50" aria-labelledby="nz-db-history-log-label">
+					<div class="nz-app-log-dialog__panel">
+						<div class="nz-app-log-dialog__header">
+							<p id="nz-db-history-log-label" class="nz-app-log-dialog__header-line">
+								<span class="nz-app-log-dialog__label">Deployment logs</span>
+								<span class="nz-app-log-dialog__sep" aria-hidden="true">·</span>
+								<code id="nz-db-history-log-commit" class="nz-app-log-dialog__commit">—</code>
+							</p>
+							<div class="nz-app-log-dialog__actions">
+								<button type="button" class={btnClass} id="nz-db-history-log-copy">Copy</button>
+								<button type="button" class={btnClass} id="nz-db-history-log-close">Close</button>
+							</div>
+						</div>
+						<div class="nz-app-log-dialog__body">
+							<div id="nz-db-history-log-output" class="nz-app-log-dialog__output">Select a deployment to load logs.</div>
+						</div>
+					</div>
+				</dialog>
+			</div>
+		)
+	}
+</div>

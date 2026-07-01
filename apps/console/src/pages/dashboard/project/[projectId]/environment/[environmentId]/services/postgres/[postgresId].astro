@@ -1,0 +1,45 @@
+---
+import Dashboard from "@/layouts/Dashboard.astro";
+import DashboardAsyncRegion from "@/components/dashboard/DashboardAsyncRegion.astro";
+import DatabaseServiceDashboard from "@/components/dashboard/services/DatabaseServiceDashboard.astro";
+import { pageTitle } from "@/lib/branding";
+import { getSession } from "@/lib/backendProxy";
+import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+	return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+}
+
+const routeParams = Object.fromEntries(
+	Object.entries(Astro.params).filter(([, v]) => typeof v === "string"),
+) as Record<string, string>;
+
+const projectId = routeParams.projectId ?? "";
+const environmentId = routeParams.environmentId ?? "";
+const isFragment = isDashboardFragmentRequest(Astro.request);
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+---
+
+{
+	isFragment ? (
+		<DatabaseServiceDashboard
+			request={Astro.request}
+			variant={"postgres"}
+			dbId={routeParams.postgresId ?? ""}
+			projectId={projectId}
+			environmentId={environmentId}
+		/>
+	) : (
+		<Dashboard title={pageTitle("PostgreSQL")} user={session.user}>
+			<DashboardAsyncRegion
+				routeId="dashboard:database-detail"
+				params={{ projectId, environmentId, variant: "postgres", dbId: routeParams.postgresId ?? "" }}
+				search={Astro.url.search}
+				orgSlug={orgSlug}
+				label="Loading PostgreSQL..."
+			/>
+		</Dashboard>
+	)
+}

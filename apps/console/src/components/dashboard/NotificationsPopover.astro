@@ -1,0 +1,111 @@
+---
+const triggerClassName =
+  "inline-flex h-7 w-7 items-center justify-center rounded-md bg-transparent p-0 text-xs text-[#6b7280] transition-colors hover:bg-[#ececef] hover:text-[#111827]";
+const panelClassName =
+  "pointer-events-none absolute right-0 top-[calc(100%+0.55rem)] z-[500] w-[min(17.5rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] translate-y-1 rounded-xl border border-[#e5e7eb] bg-white p-3.5 font-sans opacity-0 transition-all duration-200 ease-out sm:w-[22rem] sm:max-w-none";
+---
+
+<div class="relative z-30" data-notifications-popover>
+  <button
+    type="button"
+    aria-label="Notifications"
+    aria-expanded="false"
+    class={triggerClassName}
+    data-notifications-trigger
+  >
+    <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
+      <path
+        d="M12 3.75a4.5 4.5 0 0 0-4.5 4.5v2.38c0 .6-.18 1.19-.52 1.69l-1.1 1.65a1.5 1.5 0 0 0 1.25 2.33h9.74a1.5 1.5 0 0 0 1.25-2.33l-1.1-1.65a3 3 0 0 1-.52-1.69V8.25A4.5 4.5 0 0 0 12 3.75Z"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+      <path
+        d="M10.25 18.25a1.75 1.75 0 0 0 3.5 0"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+    </svg>
+  </button>
+
+  <div class={panelClassName} data-notifications-panel>
+    <div>
+      <p class="font-sans text-xs font-medium text-[#111827]">Notifications</p>
+      <p class="mt-1 font-sans text-xs text-[#6b7280]">
+        Project, deployment, and workspace updates will show up here.
+      </p>
+    </div>
+
+    <div class="mt-3 rounded-xl border border-[#eceef3] bg-[#f7f7f8] p-3">
+      <div class="flex items-start gap-3">
+        <div class="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-[#111827]">
+          <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true">
+            <path
+              d="M6.75 7.75h10.5M6.75 12h7.5m-7.5 4.25h5.5"
+              fill="none"
+              stroke="currentColor"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="1.8"
+            />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <p class="font-sans text-xs font-medium text-[#111827]">You&apos;re all caught up</p>
+          <p class="mt-1 font-sans text-xs leading-5 text-[#6b7280]">
+            New activity will appear here when something changes in your workspace.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+  (() => {
+    const script = document.currentScript;
+    const root = script?.previousElementSibling;
+    if (!(root instanceof HTMLElement) || root.dataset.bound === "true") return;
+    root.dataset.bound = "true";
+
+    const trigger = root.querySelector("[data-notifications-trigger]");
+    const panel = root.querySelector("[data-notifications-panel]");
+    if (!(trigger instanceof HTMLButtonElement) || !(panel instanceof HTMLElement)) return;
+
+    const openClasses = ["pointer-events-auto", "translate-y-0", "opacity-100"];
+    const closedClasses = ["pointer-events-none", "translate-y-1", "opacity-0"];
+
+    const setOpen = (nextOpen) => {
+      trigger.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      panel.classList.remove(...(nextOpen ? closedClasses : openClasses));
+      panel.classList.add(...(nextOpen ? openClasses : closedClasses));
+      root.dataset.open = nextOpen ? "true" : "false";
+    };
+
+    setOpen(false);
+
+    trigger.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(root.dataset.open !== "true");
+    });
+
+    root.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Node)) return;
+      if (!root.contains(event.target)) setOpen(false);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setOpen(false);
+    });
+  })();
+</script>

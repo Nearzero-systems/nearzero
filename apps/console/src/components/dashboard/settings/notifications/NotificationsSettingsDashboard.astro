@@ -1,0 +1,342 @@
+---
+import Button from "@/components/ui/Button.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import SettingsEmptyState from "@/components/dashboard/settings/SettingsEmptyState.astro";
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { ST } from "@/lib/settings-hub-ui";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.notifications,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+type NotificationRow = {
+	notificationId: string;
+	notificationType: string;
+	name: string;
+};
+
+type Permissions = {
+	notification?: { create?: boolean; delete?: boolean };
+};
+
+let notifications: NotificationRow[] = [];
+let permissions: Permissions | null = null;
+let canCreate = false;
+let canDelete = false;
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		[notifications, permissions] = await Promise.all([
+			api.notification.all.query(),
+			api.user.getPermissions.query(),
+		]);
+	} catch {
+		notifications = [];
+	}
+	canCreate = !!permissions?.notification?.create;
+	canDelete = !!permissions?.notification?.delete;
+}
+
+const providers = [
+	{ type: "slack", label: "Slack" },
+	{ type: "telegram", label: "Telegram" },
+	{ type: "discord", label: "Discord" },
+	{ type: "lark", label: "Lark" },
+	{ type: "teams", label: "Microsoft Teams" },
+	{ type: "email", label: "Email" },
+	{ type: "resend", label: "Resend" },
+	{ type: "gotify", label: "Gotify" },
+	{ type: "ntfy", label: "ntfy" },
+	{ type: "mattermost", label: "Mattermost" },
+	{ type: "pushover", label: "Pushover" },
+	{ type: "custom", label: "Custom" },
+];
+---
+
+<div class="w-full">
+	{
+		loadFailed ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground p-10">
+				<span>Could not load this page.</span>
+				<span class="text-xs">Try refreshing.</span>
+			</div>
+		) : forbidden ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground px-10">
+				<span>You do not have access to this section.</span>
+				<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+			</div>
+		) : (
+			<div
+				class="w-full nz-dashboard-content h-full min-h-0"
+				id="nz-notifications-root"
+				data-can-create={canCreate ? "1" : "0"}
+				data-can-delete={canDelete ? "1" : "0"}
+			>
+				<div class={ST.panel}>
+					{
+						notifications.length === 0 ? (
+							<SettingsEmptyState message="To send notifications, add at least one provider.">
+								{canCreate ? <Button type="button" data-notif-action="add">Add Notification</Button> : null}
+							</SettingsEmptyState>
+						) : (
+							<>
+								<div class={ST.toolbar}>
+									<span />
+									{canCreate ? <Button type="button" data-notif-action="add">Add Notification</Button> : null}
+								</div>
+								<div class={ST.tableWrap}>
+									<table class={ST.table}>
+										<thead class={ST.thead}>
+											<tr>
+												<th class={ST.th}>Name</th>
+												<th class={ST.th}>Type</th>
+												<th class={ST.thRight}>Actions</th>
+											</tr>
+										</thead>
+										<tbody>
+											{
+												notifications.map((notification) => {
+													const typeLabel =
+														providers.find((p) => p.type === notification.notificationType)?.label ??
+														notification.notificationType;
+													return (
+														<tr class={ST.tr}>
+															<td class={`${ST.td} font-medium`}>{notification.name}</td>
+															<td class={`${ST.td} text-muted-foreground`}>{typeLabel}</td>
+															<td class={ST.tdRight}>
+																<div class="flex justify-end gap-1">
+																	{canCreate ? (
+																		<button type="button" class={ST.actionBtn} data-notif-action="edit" data-notification-id={notification.notificationId}>Edit</button>
+																	) : null}
+																	{canDelete ? (
+																		<button type="button" class={`${ST.actionBtn} text-destructive`} data-notif-action="delete" data-notification-id={notification.notificationId}>Delete</button>
+																	) : null}
+																</div>
+															</td>
+														</tr>
+													);
+												})
+											}
+										</tbody>
+									</table>
+								</div>
+								<div class={ST.footer}><span class={ST.total}>{notifications.length} total</span></div>
+							</>
+						)
+					}
+				</div>
+				<NzModal
+					id="nz-notifications-form-dialog"
+					title="Add Notification"
+					description="Create new notification providers for multiple channels."
+					size="3xl"
+					form
+					formId="nz-notif-form"
+					formClass="nz-notif-form-grid"
+				>
+					<div class="nz-notif-form-section">
+						<p class="nz-notif-section-title">Select a provider</p>
+						<div class="nz-notif-providers">
+							{
+								providers.map((provider) => (
+									<label
+										for={`nz-notif-type-${provider.type}`}
+										data-notif-type-label={provider.type}
+										class="nz-notif-provider-card"
+									>
+										<input
+											type="radio"
+											name="nz-notif-type"
+											value={provider.type}
+											id={`nz-notif-type-${provider.type}`}
+											class="sr-only"
+											checked={provider.type === "slack"}
+										/>
+										{provider.label}
+									</label>
+								))
+							}
+						</div>
+					</div>
+
+					<div class="nz-notif-form-section">
+						<p class="nz-notif-section-title">Provider details</p>
+								<div class="flex flex-col gap-2">
+									<label class="nz-modal__field"><span class="nz-modal__label">Name</span><input id="nz-notif-name" type="text" placeholder="Name" class="nz-modal__input" /></label>
+
+									<div data-notif-panel="slack" class="flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Webhook URL</span><input id="nz-notif-slack-webhook" type="url" placeholder="https://hooks.slack.com/services/..." class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Channel</span><input id="nz-notif-slack-channel" type="text" placeholder="Channel" class="nz-modal__input" /></label>
+									</div>
+
+									<div data-notif-panel="telegram" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Bot Token</span><input id="nz-notif-telegram-token" type="text" placeholder="6660491268:AAF..." class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Chat ID</span><input id="nz-notif-telegram-chat" type="text" placeholder="431231869" class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Message Thread ID</span><input id="nz-notif-telegram-thread" type="text" placeholder="11" class="nz-modal__input" /><p class="nz-modal__hint">Optional. Use it when you want to send notifications to a specific topic in a group.</p></label>
+									</div>
+
+									<div data-notif-panel="discord" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Webhook URL</span><input id="nz-notif-discord-webhook" type="url" placeholder="https://discord.com/api/webhooks/..." class="nz-modal__input" /></label>
+										<div class="nz-notif-toggle-card">
+											<div><span class="nz-modal__label">Decoration</span><p class="nz-modal__hint">Decorate the notification with emojis.</p></div>
+											<label class="nz-app-switch"><input id="nz-notif-discord-decoration" type="checkbox" checked class="nz-app-switch__input" aria-label="Decoration" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+										</div>
+									</div>
+
+									<div data-notif-panel="email" class="hidden flex flex-col gap-2">
+										<div class="flex md:flex-row flex-col gap-2 w-full">
+											<label class="nz-modal__field nz-modal__field--full"><span class="nz-modal__label">SMTP Server</span><input id="nz-notif-email-smtp-server" type="text" placeholder="smtp.gmail.com" class="nz-modal__input" /></label>
+											<label class="nz-modal__field nz-modal__field--full"><span class="nz-modal__label">SMTP Port</span><input id="nz-notif-email-smtp-port" type="number" placeholder="587" class="nz-modal__input" /></label>
+										</div>
+										<div class="flex md:flex-row flex-col gap-2 w-full">
+											<label class="nz-modal__field nz-modal__field--full"><span class="nz-modal__label">Username</span><input id="nz-notif-email-username" type="text" placeholder="username" class="nz-modal__input" /></label>
+											<label class="nz-modal__field nz-modal__field--full"><span class="nz-modal__label">Password</span><input id="nz-notif-email-password" type="password" placeholder="******************" class="nz-modal__input" /></label>
+										</div>
+										<label class="nz-modal__field"><span class="nz-modal__label">From Address</span><input id="nz-notif-email-from" type="email" placeholder="from@example.com" class="nz-modal__input" /></label>
+									</div>
+
+									<div data-notif-panel="resend" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">API Key</span><input id="nz-notif-resend-api-key" type="password" placeholder="re_********" class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">From Address</span><input id="nz-notif-resend-from" type="email" placeholder="from@example.com" class="nz-modal__input" /></label>
+									</div>
+
+									<div data-notif-shared-panel="email resend" class="hidden flex flex-col gap-2">
+										<div class="flex flex-col gap-2 pt-2">
+											<span class="nz-modal__label">To addresses</span>
+											<div id="nz-notif-to-addresses" class="flex flex-col gap-2"></div>
+										</div>
+										<Button type="button" variant="outline" data-notif-action="add-to-address">Add</Button>
+									</div>
+
+									<div data-notif-panel="gotify" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Server URL</span><input id="nz-notif-gotify-url" type="url" placeholder="https://gotify.example.com" class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">App Token</span><input id="nz-notif-gotify-token" type="text" placeholder="AzxcvbnmKjhgfdsa..." class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Priority</span><input id="nz-notif-gotify-priority" type="number" value="5" min="1" max="10" class="nz-modal__input" /><p class="nz-modal__hint">Message priority (1-10, default: 5)</p></label>
+										<div class="nz-notif-toggle-card">
+											<div><span class="nz-modal__label">Decoration</span><p class="nz-modal__hint">Decorate the notification with emojis.</p></div>
+											<label class="nz-app-switch"><input id="nz-notif-gotify-decoration" type="checkbox" checked class="nz-app-switch__input" aria-label="Decoration" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+										</div>
+									</div>
+
+									<div data-notif-panel="ntfy" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Server URL</span><input id="nz-notif-ntfy-url" type="url" placeholder="https://ntfy.sh" class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Topic</span><input id="nz-notif-ntfy-topic" type="text" placeholder="deployments" class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Access Token</span><input id="nz-notif-ntfy-token" type="text" placeholder="AzxcvbnmKjhgfdsa..." class="nz-modal__input" /><p class="nz-modal__hint">Optional. Leave blank for public topics.</p></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Priority</span><input id="nz-notif-ntfy-priority" type="number" value="3" min="1" max="5" class="nz-modal__input" /><p class="nz-modal__hint">Message priority (1-5, default: 3)</p></label>
+									</div>
+
+									<div data-notif-panel="mattermost" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Webhook URL</span><input id="nz-notif-mattermost-webhook" type="url" placeholder="https://your-mattermost.com/hooks/..." class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Channel</span><input id="nz-notif-mattermost-channel" type="text" placeholder="deployments" class="nz-modal__input" /><p class="nz-modal__hint">Optional. Channel to post to (without #).</p></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Username</span><input id="nz-notif-mattermost-username" type="text" placeholder="Nearzero" class="nz-modal__input" /><p class="nz-modal__hint">Optional. Display name for the webhook.</p></label>
+									</div>
+
+									<div data-notif-panel="custom" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Webhook URL</span><input id="nz-notif-custom-endpoint" type="url" placeholder="https://api.example.com/webhook" class="nz-modal__input" /><p class="nz-modal__hint">The URL where POST requests will be sent with notification data.</p></label>
+										<div class="space-y-3">
+											<div><span class="nz-modal__label">Headers</span><p class="nz-modal__hint">Optional. Custom headers for your POST request (e.g., Authorization, Content-Type).</p></div>
+											<div id="nz-notif-headers" class="space-y-2"></div>
+											<Button type="button" variant="outline" size="sm" class="w-full" data-notif-action="add-header">Add header</Button>
+										</div>
+									</div>
+
+									<div data-notif-panel="lark" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Webhook URL</span><input id="nz-notif-lark-webhook" type="url" placeholder="https://open.larksuite.com/open-apis/bot/v2/hook/..." class="nz-modal__input" /></label>
+									</div>
+
+									<div data-notif-panel="teams" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">Webhook URL</span><input id="nz-notif-teams-webhook" type="url" placeholder="https://xxx.webhook.office.com/webhookb2/..." class="nz-modal__input" /><p class="nz-modal__hint">Incoming Webhook URL from a Teams channel. Add an Incoming Webhook in your channel settings to get the URL.</p></label>
+									</div>
+
+									<div data-notif-panel="pushover" class="hidden flex flex-col gap-2">
+										<label class="nz-modal__field"><span class="nz-modal__label">User Key</span><input id="nz-notif-pushover-user" type="text" placeholder="ub3de9kl2q..." class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">API Token</span><input id="nz-notif-pushover-token" type="text" placeholder="a3d9k2q7m4..." class="nz-modal__input" /></label>
+										<label class="nz-modal__field"><span class="nz-modal__label">Priority</span><input id="nz-notif-pushover-priority" type="number" value="0" min="-2" max="2" class="nz-modal__input" /><p class="nz-modal__hint">Message priority (-2 to 2, default: 0, emergency: 2)</p></label>
+										<div id="nz-notif-pushover-emergency" class="hidden flex flex-col gap-2">
+											<label class="nz-modal__field"><span class="nz-modal__label">Retry (seconds)</span><input id="nz-notif-pushover-retry" type="number" min="30" placeholder="30" class="nz-modal__input" /><p class="nz-modal__hint">How often (in seconds) to retry. Minimum 30 seconds.</p></label>
+											<label class="nz-modal__field"><span class="nz-modal__label">Expire (seconds)</span><input id="nz-notif-pushover-expire" type="number" min="1" max="10800" placeholder="3600" class="nz-modal__input" /><p class="nz-modal__hint">How long to keep retrying (max 10800 seconds / 3 hours).</p></label>
+										</div>
+									</div>
+								</div>
+							</div>
+
+					<div class="nz-notif-form-section">
+						<p class="nz-notif-section-title">Trigger actions</p>
+						<div class="nz-notif-events">
+							<div class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">App deploy</span><p class="nz-notif-event-row__hint">When an app is deployed.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-app-deploy" type="checkbox" class="nz-app-switch__input" aria-label="App deploy" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">App build error</span><p class="nz-notif-event-row__hint">When a build fails.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-app-build-error" type="checkbox" class="nz-app-switch__input" aria-label="App build error" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">Database backup</span><p class="nz-notif-event-row__hint">When a database backup completes.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-database-backup" type="checkbox" class="nz-app-switch__input" aria-label="Database backup" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">Nearzero backup</span><p class="nz-notif-event-row__hint">When a platform backup completes.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-nearzero-backup" type="checkbox" class="nz-app-switch__input" aria-label="Nearzero backup" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">Volume backup</span><p class="nz-notif-event-row__hint">When a volume backup completes.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-volume-backup" type="checkbox" class="nz-app-switch__input" aria-label="Volume backup" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">Docker cleanup</span><p class="nz-notif-event-row__hint">When docker cleanup runs.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-docker-cleanup" type="checkbox" class="nz-app-switch__input" aria-label="Docker cleanup" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div id="nz-notif-nearzero-restart-wrap" class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">Nearzero restart</span><p class="nz-notif-event-row__hint">When the platform restarts.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-nearzero-restart" type="checkbox" class="nz-app-switch__input" aria-label="Nearzero restart" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+							<div id="nz-notif-server-threshold-wrap" class="nz-notif-event-row">
+								<div><span class="nz-notif-event-row__label">Server threshold</span><p class="nz-notif-event-row__hint">When server thresholds are exceeded.</p></div>
+								<label class="nz-app-switch"><input id="nz-notif-server-threshold" type="checkbox" class="nz-app-switch__input" aria-label="Server threshold" /><span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span></label>
+							</div>
+						</div>
+					</div>
+
+					<div id="nz-notif-form-error" class="nz-notif-form-error hidden"></div>
+
+					<button slot="footer" type="button" id="nz-notif-test" class="nz-modal__btn nz-modal__btn--ghost">
+						Test notification
+					</button>
+					<button slot="footer" type="submit" id="nz-notif-form-submit" class="nz-modal__btn nz-modal__btn--primary">
+						Create
+					</button>
+				</NzModal>
+
+				<NzModal id="nz-notifications-delete-dialog" title="Delete notification" variant="danger" size="sm">
+					<p class="nz-modal__hint">Are you sure you want to delete this notification?</p>
+					<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-notif-action="close-delete" data-nz-modal-close>
+						Cancel
+					</button>
+					<button slot="footer" type="button" id="nz-notifications-delete-confirm" class="nz-modal__btn nz-modal__btn--danger">
+						Delete
+					</button>
+				</NzModal>
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { mountNotificationsDashboard } from "@/scripts/notifications-dashboard";
+	import { refreshNzModalListeners } from "@/scripts/modal-animations";
+
+	function boot() {
+		mountNotificationsDashboard();
+		refreshNzModalListeners();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

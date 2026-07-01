@@ -1,0 +1,24 @@
+---
+import Dashboard from "@/layouts/Dashboard.astro";
+import AboutNearzeroDashboard from "@/components/dashboard/about-nearzero/AboutNearzeroDashboard.astro";
+import { pageTitle } from "@/lib/branding";
+import { getSession } from "@/lib/backendProxy";
+import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+	return Astro.redirect(
+		`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`,
+	);
+}
+const isFragment = isDashboardFragmentRequest(Astro.request);
+---
+{
+	isFragment ? (
+		<AboutNearzeroDashboard />
+	) : (
+		<Dashboard title={pageTitle("About Nearzero")} user={session.user}>
+			<AboutNearzeroDashboard />
+		</Dashboard>
+	)
+}

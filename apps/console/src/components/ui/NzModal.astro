@@ -1,0 +1,129 @@
+---
+export type NzModalSize = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl";
+
+interface Props {
+	id: string;
+	title: string;
+	description?: string;
+	size?: NzModalSize;
+	variant?: "default" | "danger";
+	form?: boolean;
+	formId?: string;
+	formClass?: string;
+	showClose?: boolean;
+	/** When true, clicking the dimmed backdrop closes the modal. Default: true */
+	dismissOnBackdrop?: boolean;
+	class?: string;
+}
+
+const {
+	id,
+	title,
+	description,
+	size = "md",
+	variant = "default",
+	form = false,
+	formId,
+	formClass = "",
+	showClose = false,
+	dismissOnBackdrop = true,
+	class: className = "",
+} = Astro.props;
+
+const sizeClass = `nz-modal--${size}`;
+const variantClass = variant === "danger" ? "nz-modal--danger" : "";
+---
+
+<dialog
+	id={id}
+	class:list={["nz-modal", sizeClass, variantClass, className]}
+	aria-labelledby={`${id}-title`}
+	data-nz-modal
+	data-nz-modal-backdrop-close={dismissOnBackdrop ? "1" : "0"}
+>
+	{
+		form ? (
+			<form id={formId} class:list={["nz-modal__form", formClass]}>
+				<div class="nz-modal__panel">
+					<header class="nz-modal__header">
+						{showClose ? (
+							<button
+								type="button"
+								class="nz-modal__close"
+								data-nz-modal-close
+								aria-label="Close"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="16"
+									height="16"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									aria-hidden="true"
+								>
+									<path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" />
+								</svg>
+							</button>
+						) : null}
+						<h2 id={`${id}-title`} class="nz-modal__title">
+							{title}
+						</h2>
+						{description ? (
+							<p class="nz-modal__description">{description}</p>
+						) : null}
+					</header>
+					<div class="nz-modal__body">
+						<slot />
+					</div>
+					{Astro.slots.has("footer") ? (
+						<footer class="nz-modal__footer">
+							<slot name="footer" />
+						</footer>
+					) : null}
+				</div>
+			</form>
+		) : (
+			<div class="nz-modal__panel">
+				<header class="nz-modal__header">
+					{showClose ? (
+						<button
+							type="button"
+							class="nz-modal__close"
+							data-nz-modal-close
+							aria-label="Close"
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								aria-hidden="true"
+							>
+								<path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" />
+							</svg>
+						</button>
+					) : null}
+					<h2 id={`${id}-title`} class="nz-modal__title">
+						{title}
+					</h2>
+					{description ? (
+						<p class="nz-modal__description">{description}</p>
+					) : null}
+				</header>
+				<div class="nz-modal__body">
+					<slot />
+				</div>
+				{Astro.slots.has("footer") ? (
+					<footer class="nz-modal__footer">
+						<slot name="footer" />
+					</footer>
+				) : null}
+			</div>
+		)
+	}
+</dialog>

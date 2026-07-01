@@ -1,0 +1,45 @@
+---
+import "@/styles/agent-workspace.css";
+import AgentIconRail from "./AgentIconRail.astro";
+import type { NavContext } from "@/components/dashboard/navMenu";
+
+interface Props {
+	activeSection: string;
+	orgSlug?: string | null;
+	permissions: NavContext["permissions"] | null;
+	whitelabeling: NavContext["whitelabeling"] | null;
+	dashboardAuth: {
+		user?: {
+			firstName?: string | null;
+			lastName?: string | null;
+			email?: string | null;
+			image?: string | null;
+		};
+		role?: string | null;
+	} | null;
+}
+
+const {
+	activeSection,
+	orgSlug = null,
+	permissions,
+	whitelabeling,
+	dashboardAuth,
+} = Astro.props;
+---
+
+<div
+	class="nz-agent-workspace nz-agent-workspace--primary-collapsed"
+	data-primary-open="0"
+>
+	<AgentIconRail
+		activeSection={activeSection}
+		orgSlug={orgSlug}
+		permissions={permissions}
+		whitelabeling={whitelabeling}
+		dashboardAuth={dashboardAuth}
+	/>
+	<div class="nz-agent-main-region flex min-h-0 min-w-0 flex-1 flex-col">
+		<slot />
+	</div>
+</div>

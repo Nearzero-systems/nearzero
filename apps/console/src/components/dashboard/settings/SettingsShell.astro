@@ -1,0 +1,81 @@
+---
+import "@/styles/settings-hub.css";
+import type { NavContext } from "@/components/dashboard/navMenu";
+import {
+	buildSettingsSections,
+	findActiveSettingsKey,
+	getSettingsPageTitle,
+} from "@/lib/settings-nav";
+import { ST } from "@/lib/settings-hub-ui";
+
+interface Props {
+	pathname: string;
+	auth: NavContext["auth"];
+	permissions: NavContext["permissions"] | null;
+	orgSlug?: string | null;
+}
+
+const { pathname, auth, permissions, orgSlug = null } = Astro.props;
+
+const ctx: NavContext = {
+	auth,
+	permissions: permissions ?? undefined,
+	orgSlug,
+};
+const sections = buildSettingsSections(ctx);
+const activeKey = findActiveSettingsKey(pathname);
+const pageTitle = getSettingsPageTitle(activeKey);
+
+const settingsNavLinkClass = (active: boolean) =>
+	`block rounded-md px-2 py-1 text-xs leading-tight transition-colors ${
+		active
+			? "bg-[var(--nz-bg-hover)] font-medium text-[var(--nz-text)]"
+			: "font-normal text-[var(--nz-text-muted)] hover:bg-[var(--nz-bg-muted)] hover:text-[var(--nz-text)]"
+	}`;
+---
+
+<div class="nz-settings-layout flex h-full min-h-0 flex-col overflow-hidden md:flex-row">
+	<aside
+		class="nz-settings-subnav flex min-h-0 shrink-0 flex-col overflow-hidden border-b border-[var(--nz-border)] text-xs md:h-full md:w-[13.5rem] md:border-b-0 md:border-r"
+	>
+		<div class="nz-settings-subnav__title shrink-0 border-b border-[var(--nz-border)] px-3 py-5 md:px-4">
+			<h1 class="nz-settings-page-title text-base font-semibold tracking-tight text-[var(--nz-text)]">
+				Settings
+			</h1>
+		</div>
+		<nav
+			class="scrollbar-hide min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-2 max-md:max-h-[min(45vh,20rem)] md:px-4 md:pb-6"
+			aria-label="Settings"
+		>
+			<ul class="space-y-0.5">
+				{
+					sections.flatMap((section) =>
+						section.items.map((item) => (
+							<li>
+								<a
+									href={item.href}
+									data-astro-prefetch="hover"
+									data-astro-reload
+									class={settingsNavLinkClass(activeKey === item.key)}
+								>
+									{item.label}
+								</a>
+							</li>
+						)),
+					)
+				}
+			</ul>
+		</nav>
+	</aside>
+
+	<main class="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nz-surface)] text-xs">
+		<div class="shrink-0 border-b border-[var(--nz-border)] px-6 py-5 md:px-8">
+			<h2 class={ST.pageTitle}>{pageTitle}</h2>
+		</div>
+		<div class="nz-dashboard-content min-h-0 flex-1 overflow-y-auto scrollbar-hide">
+			<div class="nz-settings-content w-full px-6 pt-6 pb-10 md:px-8 md:pt-8 md:pb-12">
+				<slot />
+			</div>
+		</div>
+	</main>
+</div>

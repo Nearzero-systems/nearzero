@@ -1,0 +1,116 @@
+---
+import SidebarNav from "../shell/SidebarNav.astro";
+import UserNav from "../shell/UserNav.astro";
+import type { NavContext } from "@/components/dashboard/navMenu";
+import "@/components/dashboard/shell/primary-sidebar.css";
+
+interface Props {
+	activeSection: string;
+	orgSlug?: string | null;
+	permissions: NavContext["permissions"] | null;
+	whitelabeling: NavContext["whitelabeling"] | null;
+	dashboardAuth: {
+		user?: {
+			firstName?: string | null;
+			lastName?: string | null;
+			email?: string | null;
+			image?: string | null;
+		};
+		role?: string | null;
+	} | null;
+}
+
+const {
+	activeSection,
+	orgSlug = null,
+	permissions,
+	whitelabeling,
+	dashboardAuth,
+} = Astro.props;
+const sidebarAuth = dashboardAuth ? { role: dashboardAuth.role ?? null } : null;
+---
+
+<div class="nz-agent-primary-column">
+	<aside
+		id="nz-agent-primary-sidebar"
+		class="nz-agent-primary-sidebar nz-dashboard-primary-sidebar"
+		aria-label="Primary navigation"
+	>
+		<div class="scrollbar-hide min-h-0 flex-1 overflow-y-auto">
+			<SidebarNav
+				section="main"
+				activeSection={activeSection}
+				auth={sidebarAuth}
+				permissions={permissions}
+				orgSlug={orgSlug}
+				whitelabeling={whitelabeling}
+			/>
+		</div>
+		<div class="nz-agent-primary-sidebar__bottom">
+			<div class="nz-agent-primary-sidebar__account w-full">
+				<div class="nz-agent-primary-user--full">
+					<UserNav
+						auth={dashboardAuth}
+						orgSlug={orgSlug}
+						whitelabeling={whitelabeling}
+					/>
+				</div>
+				<div class="nz-agent-primary-user--compact">
+					<UserNav
+						auth={dashboardAuth}
+						orgSlug={orgSlug}
+						whitelabeling={whitelabeling}
+						compact
+					/>
+				</div>
+			</div>
+		</div>
+	</aside>
+
+	<button
+		type="button"
+		data-nz-primary-toggle
+		class="nz-agent-primary-toggle"
+		aria-label="Close primary sidebar"
+		aria-expanded="true"
+		aria-controls="nz-agent-primary-sidebar"
+	>
+		<svg
+			class="nz-agent-primary-toggle__icon nz-agent-primary-toggle__icon--collapse h-3.5 w-3.5"
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<path d="m15 18-6-6 6-6"></path>
+		</svg>
+		<svg
+			class="nz-agent-primary-toggle__icon nz-agent-primary-toggle__icon--expand h-3.5 w-3.5"
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<path d="m9 18 6-6-6-6"></path>
+		</svg>
+	</button>
+</div>
+
+<script>
+	import { bindAgentPrimarySidebarToggle } from "@/scripts/agent-primary-sidebar";
+
+	function boot() {
+		bindAgentPrimarySidebarToggle();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

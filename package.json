@@ -1,0 +1,64 @@
+{
+  "name": "nearzero",
+  "private": true,
+  "workspaces": [
+    "apps/console",
+    "apps/platform",
+    "apps/schedules",
+    "packages/agent",
+    "packages/trpc-openapi",
+    "packages/server"
+  ],
+  "scripts": {
+    "setup": "bun scripts/setup.ts",
+    "dev": "bun scripts/dev.ts",
+    "dev:frontend": "bun scripts/dev.ts --frontend-only",
+    "dev:infra": "bun scripts/dev-infra.ts",
+    "dev:full": "bun scripts/dev.ts --with-infra",
+    "nearzero:setup": "bun run setup",
+    "nearzero:dev": "bun run dev",
+    "platform:dev": "bun run --filter @nearzero/platform dev",
+    "platform:build": "bun run --filter @nearzero/platform build",
+    "platform:start": "bun run --filter @nearzero/platform start",
+    "platform:setup": "bun run --filter @nearzero/platform setup",
+    "console:dev": "bun run --filter @nearzero/console dev",
+    "console:build": "bun run --filter @nearzero/console build",
+    "test": "bun run --filter @nearzero/platform test",
+    "verify:edition-split": "bun scripts/verify-edition-split.ts",
+    "server:script": "bun run --filter @nearzero/server switch:dev",
+    "server:dev": "bun run --filter @nearzero/server dev",
+    "server:build": "bun run --filter @nearzero/server build",
+    "compose:up": "docker compose up",
+    "compose:infra": "docker compose up -d postgres redis",
+    "compose:prod": "docker compose -f docker-compose.prod.yml -f docker-compose.local-db.yml up -d",
+    "compose:prod:external": "docker compose -f docker-compose.prod.yml up -d",
+    "docker:build:nightly": "echo 'Use root Dockerfile for Nearzero builds'",
+    "typecheck": "bun run --filter '*' typecheck",
+    "build": "bun run --filter '*' build",
+    "format-and-lint": "biome check .",
+    "check": "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true",
+    "format-and-lint:fix": "biome check . --write",
+    "generate:openapi": "bun run --filter @nearzero/platform generate:openapi"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.1.1",
+    "@types/node": "^24.4.0",
+    "dotenv": "16.4.5",
+    "esbuild": "0.20.2",
+    "lint-staged": "^15.5.2",
+    "tsx": "4.16.2"
+  },
+  "packageManager": "bun@1.3.10",
+  "engines": {
+    "node": "^24.4.0",
+    "bun": ">=1.1.0"
+  },
+  "lint-staged": {
+    "*": [
+      "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true"
+    ]
+  },
+  "overrides": {
+    "esbuild": "0.20.2"
+  }
+}

@@ -1,0 +1,149 @@
+---
+import {
+	isServiceDeleteDisabled,
+	serviceDeleteDisabledReason,
+} from "@/lib/service-status-ui";
+import type { ProjectWorkspaceService } from "./projectWorkspaceTypes";
+
+interface Props {
+	title?: string;
+	services: ProjectWorkspaceService[];
+	viewAllHref?: string | null;
+	emptyLabel?: string;
+	flat?: boolean;
+	showActions?: boolean;
+}
+
+const {
+	title,
+	services,
+	viewAllHref = null,
+	emptyLabel = "No services yet.",
+	flat = false,
+	showActions = false,
+} = Astro.props;
+
+const serviceMenuItemClass =
+	"flex w-full cursor-pointer rounded-md px-2 py-1 text-left text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]";
+const serviceMenuItemDisabledClass =
+	"cursor-not-allowed opacity-50 hover:bg-transparent";
+
+function statusLabel(status: string) {
+	const normalized = status.toLowerCase();
+	if (normalized === "done") return "Running";
+	if (normalized === "running") return "Deploying";
+	if (normalized === "error") return "Error";
+	return "Not running";
+}
+---
+
+<div
+	class:list={["nz-project-services", flat && "nz-project-services--flat"]}
+	id={showActions ? "nz-project-services-list" : undefined}
+	data-project-services={showActions ? undefined : "1"}
+>
+	{
+		title || viewAllHref ? (
+			<div class="nz-project-services__head">
+				{title ? <h2>{title}</h2> : <span />}
+				{
+					viewAllHref ? (
+						<a class="nz-project-services__view-all" href={viewAllHref}>
+							View all
+						</a>
+					) : null
+				}
+			</div>
+		) : null
+	}
+	<div class="nz-project-services__list">
+		{
+			services.length > 0 ? (
+				services.map((service) => (
+					<div
+						class="nz-project-service-item"
+						data-has-actions={showActions ? "1" : undefined}
+						data-service-row
+						data-service-kind={service.serviceKind}
+						data-service-id={service.serviceId}
+						data-service-name={service.name}
+						data-service-status={service.status}
+						data-service-href={service.href}
+					>
+						<a
+							href={service.href}
+							class="nz-project-service-item__link"
+							aria-label={`Open ${service.name}`}
+							tabindex="-1"
+						></a>
+						<div class="nz-project-service-item__main min-w-0">
+							<p class="truncate font-medium text-[var(--nz-text)]">
+								{service.name}
+							</p>
+							<p class="mt-1 text-[11px] text-[var(--nz-text-muted)]">
+								{service.type}
+							</p>
+						</div>
+						<span class="nz-project-service-item__status">
+							{statusLabel(service.status)}
+						</span>
+						{
+							showActions ? (
+								<div class="nz-project-service-item__actions relative flex shrink-0 items-center justify-end">
+									<button
+										type="button"
+										data-svc-menu-trigger
+										data-nz-row-action
+										class="nz-project-service-menu-trigger inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md px-0 py-0 text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)]"
+										aria-expanded="false"
+										aria-haspopup="true"
+										aria-label={`Actions for ${service.name}`}
+									>
+										···
+									</button>
+									<div
+										data-svc-menu
+										class="nz-project-service-menu hidden min-w-[10.5rem] overflow-hidden rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-elevated,#ffffff)] p-1 text-xs shadow-none"
+										role="menu"
+									>
+										<a
+											href={service.href}
+											class={serviceMenuItemClass}
+											role="menuitem"
+											data-svc-open
+											data-nz-row-action
+										>
+											Open service
+										</a>
+										<button
+											type="button"
+											data-svc-remove
+											data-nz-row-action
+											disabled={isServiceDeleteDisabled(service.status)}
+											title={
+												isServiceDeleteDisabled(service.status)
+													? serviceDeleteDisabledReason(service.status)
+													: undefined
+											}
+											class:list={[
+												serviceMenuItemClass,
+												"text-red-600",
+												isServiceDeleteDisabled(service.status) &&
+													serviceMenuItemDisabledClass,
+											]}
+											role="menuitem"
+										>
+											Delete service
+										</button>
+									</div>
+								</div>
+							) : null
+						}
+					</div>
+				))
+			) : (
+				<p class="nz-project-services__empty">{emptyLabel}</p>
+			)
+		}
+	</div>
+</div>

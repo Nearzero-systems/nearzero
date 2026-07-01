@@ -1,0 +1,148 @@
+---
+import AgentDotMatrixIcon from "@/components/dashboard/shell/AgentDotMatrixIcon.astro";
+import "@/components/dashboard/shell/sidebar-agent-dot.css";
+import "@/styles/nearzero-terminal-shell.css";
+
+interface Props {
+	id: string;
+	hostId: string;
+	containerSelectId: string;
+	shellSelectId: string;
+	closeButtonId: string;
+	sectionLabel: string;
+	nameLabel: string;
+	defaultShell?: "sh" | "bash";
+}
+
+const {
+	id,
+	hostId,
+	containerSelectId,
+	shellSelectId,
+	closeButtonId,
+	sectionLabel,
+	nameLabel,
+	defaultShell = "sh",
+} = Astro.props;
+
+const appHomeUrl =
+	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim() ||
+	"https://app.nearzero.dev";
+---
+
+<dialog id={id} class="nz-terminal-shell">
+	<div class="nz-terminal-shell__frame">
+		<header class="nz-terminal-shell__titlebar">
+			<nav class="nz-terminal-shell__nav" aria-label="Terminal context">
+				<a
+					href={appHomeUrl}
+					class="nz-terminal-shell__brand-link"
+					aria-label="Go to Nearzero"
+				>
+					<AgentDotMatrixIcon class="nz-terminal-shell__brand-matrix" />
+				</a>
+				<span class="nz-terminal-shell__sep" aria-hidden="true">/</span>
+				<span
+					class="nz-terminal-shell__crumb nz-terminal-shell__crumb--section"
+					id={`${id}-crumb-section`}
+				>
+					{sectionLabel}
+				</span>
+				<span class="nz-terminal-shell__sep" aria-hidden="true">/</span>
+				<span
+					class="nz-terminal-shell__crumb nz-terminal-shell__crumb--name"
+					id={`${id}-crumb-name`}
+				>
+					{nameLabel}
+				</span>
+				<span class="nz-terminal-shell__sep" aria-hidden="true">/</span>
+				<span
+					class="nz-terminal-shell__crumb nz-terminal-shell__crumb--id"
+					id={`${id}-crumb-tab`}
+				>
+					terminal
+				</span>
+			</nav>
+			<div class="nz-terminal-shell__actions">
+				<div class="nz-terminal-shell__options">
+					<button
+						type="button"
+						class="nz-terminal-shell__options-btn"
+						id={`${id}-options-btn`}
+						aria-expanded="false"
+						aria-controls={`${id}-options-panel`}
+					>
+						Options
+					</button>
+					<div
+						id={`${id}-options-panel`}
+						class="nz-terminal-shell__options-panel hidden"
+						role="region"
+						aria-label="Terminal options"
+					>
+						<label class="nz-terminal-shell__options-field">
+							Container
+							<span class="nz-select-chevron-wrap">
+								<select id={containerSelectId}></select>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									class="nz-select-chevron-wrap__icon"
+									aria-hidden="true"
+								>
+									<path d="m6 9 6 6 6-6"></path>
+								</svg>
+							</span>
+						</label>
+						<label class="nz-terminal-shell__options-field">
+							Shell
+							<span class="nz-select-chevron-wrap">
+								<select id={shellSelectId}>
+									<option value="sh" selected={defaultShell === "sh"}>Sh</option>
+									<option value="bash" selected={defaultShell === "bash"}>Bash</option>
+								</select>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									class="nz-select-chevron-wrap__icon"
+									aria-hidden="true"
+								>
+									<path d="m6 9 6 6 6-6"></path>
+								</svg>
+							</span>
+						</label>
+					</div>
+				</div>
+				<button
+					type="button"
+					class="nz-terminal-shell__window-close"
+					id={closeButtonId}
+					aria-label="Close"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						aria-hidden="true"
+					>
+						<path d="M18 6 6 18M6 6l12 12"></path>
+					</svg>
+				</button>
+			</div>
+		</header>
+		<div id={hostId} class="nz-terminal-shell__host"></div>
+	</div>
+</dialog>

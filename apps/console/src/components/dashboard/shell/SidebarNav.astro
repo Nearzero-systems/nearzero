@@ -1,0 +1,189 @@
+---
+import SidebarIcon from "../../SidebarIcon.astro";
+import AgentDotMatrixIcon from "./AgentDotMatrixIcon.astro";
+import SidebarNavIcon from "./SidebarNavIcon.astro";
+import {
+	createDashboardNavMenu,
+	type NavContext,
+	type NavGroup,
+	type NavLeaf,
+} from "@/components/dashboard/navMenu";
+import { navItemClass, navSectionLabelClass } from "@/components/dashboard/sidebarShared";
+
+interface Props {
+	auth: NavContext["auth"];
+	permissions: NavContext["permissions"] | null;
+	orgSlug?: string | null;
+	whitelabeling: NavContext["whitelabeling"] | null;
+	activeSection: string;
+	/** `main` = workspace nav; `help` = docs/support at sidebar bottom */
+	section?: "main" | "help";
+}
+
+const {
+	auth,
+	permissions,
+	orgSlug = null,
+	whitelabeling,
+	activeSection,
+	section = "main",
+} = Astro.props;
+
+const ctx: NavContext = {
+	auth,
+	permissions: permissions ?? undefined,
+	orgSlug,
+	whitelabeling: whitelabeling ?? undefined,
+};
+const menu = createDashboardNavMenu(ctx);
+const useAnimatedIcons = section === "main";
+
+function groupDefaultOpen(group: NavGroup): boolean {
+	return groupActive(group);
+}
+
+function leafActive(item: NavLeaf): boolean {
+	return activeSection === item.key;
+}
+
+function groupActive(group: NavGroup): boolean {
+	return group.items.some((item) => item.key === activeSection);
+}
+
+function navDataAttrs(item: NavLeaf) {
+	return {
+		"data-nz-dashboard-nav": item.asyncRouteId ? "1" : undefined,
+		"data-route-id": item.asyncRouteId,
+		"data-nav-key": item.key,
+		"data-loading-label": item.loadingLabel,
+		"data-shell-mode": item.shellMode,
+	};
+}
+---
+
+{
+	section === "help" ? (
+		<div class="space-y-px">
+			{
+				menu.help.map((item) => (
+					<a
+						class={navItemClass(false)}
+						href={item.href}
+						target={item.external ? "_blank" : undefined}
+						rel={item.external ? "noopener noreferrer" : undefined}
+					>
+						<SidebarIcon
+							name={item.icon}
+							class="inline-flex size-4 shrink-0 text-current"
+						/>
+						<span class="truncate">{item.label}</span>
+					</a>
+				))
+			}
+		</div>
+	) : (
+		<>
+			<div class="space-y-px">
+				{
+					menu.workspace.map((item) => (
+						<a
+							class:list={[
+								navItemClass(leafActive(item)),
+								item.icon === "agent" && "nz-agent-nav-item",
+							]}
+							href={item.href}
+							{...navDataAttrs(item)}
+							target={item.external ? "_blank" : undefined}
+							rel={item.external ? "noopener noreferrer" : undefined}
+						>
+							{
+								item.icon === "agent" ? (
+									<AgentDotMatrixIcon class="text-current" />
+								) : (
+									<SidebarNavIcon name={item.icon} animated={useAnimatedIcons} />
+								)
+							}
+							<span class="truncate">{item.label}</span>
+						</a>
+					))
+				}
+			</div>
+			{
+				menu.groups.length > 0 ? (
+					<div class="mt-2 space-y-px">
+						{
+							menu.groups.map((group) => (
+								<details class="group/nav-group" open={groupDefaultOpen(group)}>
+									<summary
+										class={`${navItemClass(groupActive(group))} w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
+									>
+										<SidebarNavIcon name={group.icon} animated={useAnimatedIcons} />
+										<span class="truncate">{group.label}</span>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="14"
+											height="14"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="ml-auto size-3.5 shrink-0 text-[var(--nz-text-subtle)] transition-transform duration-200 group-open/nav-group:rotate-90"
+											aria-hidden="true"
+										>
+											<path d="m9 18 6-6-6-6" />
+										</svg>
+									</summary>
+									<div class="space-y-px pl-3">
+										{
+											group.items.map((item) => (
+												<a
+													class={navItemClass(leafActive(item))}
+													href={item.href}
+													{...navDataAttrs(item)}
+													target={item.external ? "_blank" : undefined}
+													rel={item.external ? "noopener noreferrer" : undefined}
+												>
+													<SidebarNavIcon name={item.icon} animated={useAnimatedIcons} />
+													<span class="truncate">{item.label}</span>
+												</a>
+											))
+										}
+									</div>
+								</details>
+							))
+						}
+					</div>
+				) : null
+			}
+			{
+				menu.infrastructure.length > 0 ? (
+					<div class="nz-sidebar-infrastructure-section mt-2 space-y-px">
+						{
+							menu.infrastructureLabel ? (
+								<p class:list={[navSectionLabelClass, "nz-sidebar-section-label"]}>
+									{menu.infrastructureLabel}
+								</p>
+							) : null
+						}
+						{
+							menu.infrastructure.map((item) => (
+								<a
+									class={navItemClass(leafActive(item))}
+									href={item.href}
+									{...navDataAttrs(item)}
+									target={item.external ? "_blank" : undefined}
+									rel={item.external ? "noopener noreferrer" : undefined}
+								>
+									<SidebarNavIcon name={item.icon} animated={useAnimatedIcons} />
+									<span class="truncate">{item.label}</span>
+								</a>
+							))
+						}
+					</div>
+				) : null
+			}
+		</>
+	)
+}

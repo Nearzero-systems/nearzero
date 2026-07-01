@@ -1,0 +1,11 @@
+---
+import { authBtnSpinnerClass } from "@/lib/auth-form-classes";
+---
+
+<span data-auth-btn-spinner class="hidden">
+	<span class="sr-only">Loading</span>
+	<svg viewBox="0 0 24 24" class={authBtnSpinnerClass} aria-hidden="true">
+		<circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2" fill="none"></circle>
+		<path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+	</svg>
+</span>

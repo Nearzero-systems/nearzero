@@ -1,0 +1,124 @@
+---
+import { listFrameworkPresetOptions } from "@nearzero/spec";
+import { dashboardSpinnerSvgHtml } from "../demoShared";
+import PresetFrameworkIcon from "./PresetFrameworkIcon.astro";
+
+const deployButtonClass =
+  "inline-flex items-center justify-center rounded-md border border-[#d9dbe3] bg-[#f7f7f8] px-3 py-1.5 text-xs font-sans font-medium text-[#111827] transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d1d5db] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+
+const fieldClass =
+  "mt-1.5 w-full rounded-md border border-[#d9dbe3] bg-white px-2 py-1 text-xs font-sans text-[#111827] outline-none focus:border-[#bfc4d4]";
+
+const applicationPresets = listFrameworkPresetOptions();
+---
+
+<div
+  class="project-view hidden min-h-[calc(100dvh-77px)] px-4 py-4 font-sans sm:px-6"
+  data-project-view="configure"
+>
+  <div class="relative mx-auto w-full max-w-[1100px]">
+    <div class="flex flex-col gap-4 pb-2" data-configure-main-column>
+      <div class="flex flex-col gap-3 border-b border-[#eceef3] pb-4">
+        <button
+          type="button"
+          class="self-start border-0 bg-transparent p-0 text-left text-xs font-sans text-[#6b7280] no-underline transition-colors hover:text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d1d5db] focus-visible:ring-offset-2"
+          data-project-back-import
+        >
+          ← Back
+        </button>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="font-display text-[22px] font-semibold tracking-tight text-[#111827] sm:text-[28px]">
+            New Project
+          </h2>
+          <button type="button" class={`${deployButtonClass} shrink-0`} data-project-start-deploy>
+            Deploy
+          </button>
+        </div>
+
+        <div class="rounded-md border border-[#eceef3] bg-[#fafafa] px-3 py-3 sm:px-4">
+          <p class="text-xs font-sans text-[#6b7280]">
+            Importing from <span class="text-[#111827]" data-config-provider-label>GitHub</span>
+          </p>
+          <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-sans">
+            <span class="max-w-[min(100%,520px)] truncate font-medium text-[#111827]" data-config-repo-full
+              >—</span
+            >
+            <span class="text-[#6b7280]">Branch</span>
+            <div class="relative inline-flex items-center gap-2">
+              <select
+                class={`${fieldClass} !mt-0 max-w-[min(100%,240px)] cursor-pointer py-1`}
+                data-config-branch-select
+                aria-label="Branch"
+              >
+              </select>
+              <span
+                class="hidden inline-flex items-center text-[#6b7280]"
+                data-config-hints-loading
+                aria-hidden="true"
+                set:html={dashboardSpinnerSvgHtml()}
+              />
+            </div>
+          </div>
+          <p class="mt-2 hidden text-xs font-sans leading-snug text-[#6b7280]" data-config-resolved-sha></p>
+        </div>
+      </div>
+
+      <label class="block font-sans">
+        <span class="text-xs text-[#6b7280]">Project Name</span>
+        <input class={fieldClass} data-config-project-name value="" />
+      </label>
+
+      <label class="block font-sans">
+        <span class="text-xs text-[#6b7280]">Application Preset</span>
+        <div class="mt-1.5 flex items-center gap-2 rounded-md border border-[#d9dbe3] bg-white px-2 py-1">
+          <PresetFrameworkIcon />
+          <select
+            class="min-w-0 flex-1 cursor-pointer border-0 bg-transparent py-0.5 pl-0 pr-6 text-xs font-sans text-[#111827] outline-none focus:ring-0"
+            data-config-preset-select
+            aria-label="Application preset"
+          >
+            {applicationPresets.map((p) => (
+              <option value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </div>
+      </label>
+
+      <label class="block font-sans">
+        <span class="text-xs text-[#6b7280]">Root Directory</span>
+        <input class={fieldClass} data-config-root value="." />
+      </label>
+
+      <div class="py-1">
+        <p class="text-xs font-semibold text-[#111827]">Build and Output Settings</p>
+        <p class="mt-1 text-xs font-sans leading-relaxed text-[#6b7280]">
+          Commands Nearzero runs to install dependencies and produce a production build.
+        </p>
+        <div class="mt-3 grid gap-3 md:grid-cols-2">
+          <label class="block font-sans">
+            <span class="text-xs text-[#6b7280]">Build command</span>
+            <input class={fieldClass} data-config-build value="" placeholder="npm run build" />
+          </label>
+          <label class="block font-sans">
+            <span class="text-xs text-[#6b7280]">Output directory</span>
+            <input class={fieldClass} data-config-output value="dist" placeholder="dist" />
+          </label>
+        </div>
+      </div>
+
+      <div class="py-1" data-config-env-panel tabindex="-1">
+        <p class="text-xs font-semibold text-[#111827]">Environment Variables</p>
+        <p class="mt-1 text-xs font-sans leading-relaxed text-[#6b7280]">
+          Paste key and value (e.g. a <code class="font-mono text-[11px] text-[#111827]">.env</code> block)—rows
+          fill automatically.
+        </p>
+
+        <div class="mt-3">
+          <table class="w-full min-w-[300px] border-collapse text-left font-sans">
+            <tbody class="text-xs" data-config-env-tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

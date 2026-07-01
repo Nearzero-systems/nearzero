@@ -1,0 +1,34 @@
+---
+import AuthGrid from "./AuthGrid.astro";
+
+const mutedText = "text-[#a3a3a3]";
+const linkClass =
+	"cursor-pointer border-0 bg-transparent p-0 font-sans text-sm font-medium text-[#6b7280] no-underline transition-colors hover:text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d1d5db] focus-visible:ring-offset-2";
+---
+
+<AuthGrid>
+	<div slot="c10" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-center gap-2 px-3 py-1 text-center">
+		<p class="font-display shrink-0 font-semibold leading-none tabular-nums tracking-tight text-[#111827]" style="font-size: clamp(3.25rem, 9vw, 5.5rem)">404</p>
+		<h1 class="font-display shrink-0 text-xl font-semibold tracking-tight text-[#111827] sm:text-2xl">Page not found</h1>
+	</div>
+	<div slot="c13" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
+		<p class={`text-sm leading-relaxed ${mutedText}`}>The link may be broken, or this page may have been removed.</p>
+	</div>
+	<div slot="c16" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-center">
+		<button type="button" id="nz-not-found-back" class={linkClass}>Go back</button>
+	</div>
+</AuthGrid>
+
+<script>
+	function bindNotFound() {
+		const btn = document.getElementById("nz-not-found-back");
+		if (!btn || btn.dataset.bound === "1") return;
+		btn.dataset.bound = "1";
+		btn.addEventListener("click", () => {
+			if (window.history.length > 1) window.history.back();
+			else window.location.assign("/");
+		});
+	}
+	bindNotFound();
+	document.addEventListener("astro:page-load", bindNotFound);
+</script>

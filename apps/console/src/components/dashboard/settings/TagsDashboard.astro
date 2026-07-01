@@ -1,0 +1,361 @@
+---
+import Button from "@/components/ui/Button.astro";
+import SettingsEmptyState from "@/components/dashboard/settings/SettingsEmptyState.astro";
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.tags,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+let tags: Array<{ tagId: string; name: string; color?: string | null }> = [];
+let permissions: {
+	tag?: { create?: boolean; update?: boolean; delete?: boolean };
+} | null = null;
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		[tags, permissions] = await Promise.all([
+			api.tag.all.query(),
+			api.user.getPermissions.query(),
+		]);
+	} catch {
+		tags = [];
+	}
+}
+
+const canCreate = !!permissions?.tag?.create;
+const canUpdate = !!permissions?.tag?.update;
+const canDelete = !!permissions?.tag?.delete;
+---
+
+<div class="w-full">
+	{
+		loadFailed ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground p-10">
+				<span>Could not load this page.</span>
+				<span class="text-xs">Try refreshing.</span>
+			</div>
+		) : forbidden ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground px-10">
+				<span>You do not have access to this section.</span>
+				<a
+					href="/dashboard/home"
+					class="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+				>
+					Back to dashboard
+				</a>
+			</div>
+		) : (
+			<div class="w-full" id="nz-tags-root">
+				<div class={ST.panel}>
+					{
+						tags.length === 0 ? (
+							<SettingsEmptyState message="No tags yet. Create your first tag to start organizing projects.">
+								{canCreate ? <Button type="button" id="nz-tag-create-open" variant="default">Create Tag</Button> : null}
+							</SettingsEmptyState>
+						) : (
+							<>
+								<div class={ST.toolbar}>
+									<input id="nz-tags-filter" type="search" placeholder="Filter by name" class={ST.filterInput} />
+									{canCreate ? <Button type="button" id="nz-tag-create-open-list" variant="default">Create Tag</Button> : null}
+								</div>
+								<div class={ST.tableWrap}>
+									<table class={ST.table}>
+										<thead class={ST.thead}>
+											<tr>
+												<th class={ST.th}>Name</th>
+												<th class={ST.th}>Color</th>
+												<th class={ST.thRight}>Actions</th>
+											</tr>
+										</thead>
+										<tbody>
+											{
+												tags.map((tag) => (
+													<tr class={ST.tr} data-tag-name={tag.name.toLowerCase()}>
+														<td class={`${ST.td} font-medium`}>{tag.name}</td>
+														<td class={ST.td}>
+															{tag.color ? (
+																<span class="font-mono text-sm text-muted-foreground">{tag.color}</span>
+															) : (
+																<span class="text-muted-foreground">—</span>
+															)}
+														</td>
+														<td class={ST.tdRight}>
+															<div class="flex justify-end gap-1">
+																{canUpdate ? (
+																	<button type="button" class={ST.actionBtn} data-tag-edit={tag.tagId} aria-label="Edit tag">Edit</button>
+																) : null}
+																{canDelete ? (
+																	<button type="button" class={`${ST.actionBtn} text-destructive`} data-tag-delete={tag.tagId} data-tag-name={tag.name} aria-label="Delete tag">Delete</button>
+																) : null}
+															</div>
+														</td>
+													</tr>
+												))
+											}
+										</tbody>
+									</table>
+								</div>
+								<div class={ST.footer}>
+									<span class={ST.total}>{tags.length} total</span>
+								</div>
+							</>
+						)
+					}
+				</div>
+					<dialog
+					id="nz-tag-form-dialog"
+					class="relative w-[calc(100%-2rem)] max-w-lg rounded-lg border bg-background text-foreground shadow-lg backdrop:bg-black/50"
+				>
+					<div class="p-6">
+						<button type="button" class="absolute right-4 top-4 opacity-70 hover:opacity-100" data-close-tag-form aria-label="Close">✕</button>
+						<h2 id="nz-tag-form-title" class="text-lg font-semibold">Create Tag</h2>
+						<p class="text-sm text-muted-foreground mt-1">Create a new tag to organize your projects</p>
+						<p id="nz-tag-form-error" class="mt-3 hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"></p>
+						<form id="nz-tag-form" class="grid w-full gap-4 mt-4">
+							<input type="hidden" id="nz-tag-form-id" value="" />
+							<label class="grid gap-1 text-sm font-medium">
+								Name
+								<input
+									id="nz-tag-form-name"
+									required
+									class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+									placeholder="e.g., Production, Client, Internal"
+								/>
+							</label>
+							<label class="grid gap-1 text-sm font-medium">
+								Color (Optional)
+								<div class="flex items-center gap-3">
+									<label
+										id="nz-tag-color-swatch"
+										class="relative flex items-center justify-center w-12 h-12 rounded-md border-2 cursor-pointer hover:opacity-80 transition-opacity"
+										style="background-color:#3b82f6"
+									>
+										<input id="nz-tag-form-color-picker" type="color" class="absolute opacity-0 w-12 h-12 top-0 left-0 cursor-pointer" value="#3b82f6" />
+									</label>
+									<div class="flex-1">
+										<input
+											id="nz-tag-form-color"
+											class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+											placeholder="#3b82f6"
+											value="#3b82f6"
+										/>
+										<p class="text-xs text-muted-foreground mt-1">Choose a color to easily identify this tag</p>
+									</div>
+								</div>
+							</label>
+							<div id="nz-tag-preview-row" class="flex items-center gap-2">
+								<span class="text-sm text-muted-foreground">Preview:</span>
+								<span id="nz-tag-preview-badge" class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold" style="background-color:#3b82f633;color:#3b82f6;border-color:#3b82f666">Tag Name</span>
+							</div>
+							<Button type="submit" id="nz-tag-form-submit" variant="default" class="w-full">Create</Button>
+						</form>
+					</div>
+				</dialog>
+
+				<dialog
+					id="nz-tag-delete-dialog"
+					class="relative w-[calc(100%-2rem)] max-w-md rounded-lg border bg-background text-foreground shadow-lg backdrop:bg-black/50"
+				>
+					<div class="p-6">
+						<p class="text-sm font-semibold">Delete Tag</p>
+						<p id="nz-tag-delete-desc" class="mt-2 text-sm text-muted-foreground"></p>
+						<div class="mt-6 grid grid-cols-2 gap-2">
+							<Button type="button" variant="outline" id="nz-tag-delete-cancel">Cancel</Button>
+							<Button type="button" variant="destructive" id="nz-tag-delete-confirm">Delete</Button>
+						</div>
+					</div>
+				</dialog>
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { trpcMutate, trpcQuery } from "@/lib/client-api";
+	import { showToast } from "@/scripts/ui";
+
+	function bindTagsPage() {
+		const root = document.getElementById("nz-tags-root");
+		if (!root || root.dataset.bound === "1") return;
+		root.dataset.bound = "1";
+
+		const formDlg = document.getElementById("nz-tag-form-dialog");
+		const deleteDlg = document.getElementById("nz-tag-delete-dialog");
+		const form = document.getElementById("nz-tag-form");
+		const formId = document.getElementById("nz-tag-form-id");
+		const formName = document.getElementById("nz-tag-form-name");
+		const formColor = document.getElementById("nz-tag-form-color");
+		const colorPicker = document.getElementById("nz-tag-form-color-picker");
+		const colorSwatch = document.getElementById("nz-tag-color-swatch");
+		const previewBadge = document.getElementById("nz-tag-preview-badge");
+		const formTitle = document.getElementById("nz-tag-form-title");
+		const formSubmit = document.getElementById("nz-tag-form-submit");
+		const formError = document.getElementById("nz-tag-form-error");
+		const deleteDesc = document.getElementById("nz-tag-delete-desc");
+		const deleteConfirm = document.getElementById("nz-tag-delete-confirm");
+
+		if (
+			!(formDlg instanceof HTMLDialogElement) ||
+			!(deleteDlg instanceof HTMLDialogElement) ||
+			!(form instanceof HTMLFormElement) ||
+			!(formId instanceof HTMLInputElement) ||
+			!(formName instanceof HTMLInputElement) ||
+			!(formColor instanceof HTMLInputElement) ||
+			!(colorPicker instanceof HTMLInputElement) ||
+			!(colorSwatch instanceof HTMLElement) ||
+			!(previewBadge instanceof HTMLElement) ||
+			!(formTitle instanceof HTMLElement) ||
+			!(formSubmit instanceof HTMLButtonElement) ||
+			!(formError instanceof HTMLElement) ||
+			!(deleteDesc instanceof HTMLElement) ||
+			!(deleteConfirm instanceof HTMLButtonElement)
+		) {
+			return;
+		}
+
+		let pendingDeleteId = "";
+
+		const updatePreview = () => {
+			const color = formColor.value.trim() || "#3b82f6";
+			const name = formName.value.trim() || "Tag Name";
+			colorSwatch.style.backgroundColor = color;
+			colorPicker.value = color.startsWith("#") ? color : `#${color}`;
+			previewBadge.textContent = name;
+			previewBadge.style.backgroundColor = `${color}33`;
+			previewBadge.style.color = color;
+			previewBadge.style.borderColor = `${color}66`;
+		};
+
+		const openCreate = () => {
+			formId.value = "";
+			formName.value = "";
+			formColor.value = "#3b82f6";
+			formTitle.textContent = "Create Tag";
+			formSubmit.textContent = "Create";
+			formError.classList.add("hidden");
+			updatePreview();
+			formDlg.showModal();
+		};
+
+		const openEdit = async (tagId: string) => {
+			formError.classList.add("hidden");
+			formId.value = tagId;
+			formTitle.textContent = "Update Tag";
+			formSubmit.textContent = "Update";
+			try {
+				const tag = await trpcQuery<{ name: string; color?: string | null }>(
+					"tag.one",
+					{ tagId },
+				);
+				formName.value = tag.name ?? "";
+				formColor.value = tag.color ?? "#3b82f6";
+				updatePreview();
+				formDlg.showModal();
+			} catch (err) {
+				showToast(err instanceof Error ? err.message : "Failed to load tag", "error");
+			}
+		};
+
+		root.addEventListener("click", (e) => {
+			const t = e.target instanceof Element ? e.target : null;
+			if (!t) return;
+
+			if (t.closest("#nz-tag-create-open") || t.closest("#nz-tag-create-open-list")) {
+				e.preventDefault();
+				openCreate();
+				return;
+			}
+
+			const editBtn = t.closest("[data-tag-edit]");
+			if (editBtn instanceof HTMLElement && editBtn.dataset.tagEdit) {
+				e.preventDefault();
+				void openEdit(editBtn.dataset.tagEdit);
+				return;
+			}
+
+			const delBtn = t.closest("[data-tag-delete]");
+			if (delBtn instanceof HTMLElement && delBtn.dataset.tagDelete) {
+				e.preventDefault();
+				pendingDeleteId = delBtn.dataset.tagDelete;
+				const name = delBtn.dataset.tagName ?? "this tag";
+				deleteDesc.textContent = `Are you sure you want to delete the tag "${name}"? This will remove the tag from all projects. This action cannot be undone.`;
+				deleteDlg.showModal();
+				return;
+			}
+
+			if (t.closest("[data-close-tag-form]")) {
+				formDlg.close();
+			}
+		});
+
+		formColor.addEventListener("input", updatePreview);
+		formName.addEventListener("input", updatePreview);
+		colorPicker.addEventListener("input", () => {
+			formColor.value = colorPicker.value;
+			updatePreview();
+		});
+
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			formError.classList.add("hidden");
+			formSubmit.disabled = true;
+			const tagId = formId.value.trim();
+			const name = formName.value.trim();
+			const color = formColor.value.trim() || undefined;
+			try {
+				if (tagId) {
+					await trpcMutate("tag.update", { tagId, name, color });
+					showToast("Tag Updated", "success");
+				} else {
+					await trpcMutate("tag.create", { name, color });
+					showToast("Tag Created", "success");
+				}
+				formDlg.close();
+				window.location.reload();
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : "Request failed";
+				formError.textContent = msg;
+				formError.classList.remove("hidden");
+				showToast(tagId ? "Error updating tag" : "Error creating tag", "error");
+			} finally {
+				formSubmit.disabled = false;
+			}
+		});
+
+		deleteConfirm.addEventListener("click", async () => {
+			if (!pendingDeleteId) return;
+			deleteConfirm.disabled = true;
+			try {
+				await trpcMutate("tag.remove", { tagId: pendingDeleteId });
+				showToast("Tag deleted successfully", "success");
+				deleteDlg.close();
+				window.location.reload();
+			} catch {
+				showToast("Error deleting tag", "error");
+			} finally {
+				deleteConfirm.disabled = false;
+				pendingDeleteId = "";
+			}
+		});
+
+		document.getElementById("nz-tag-delete-cancel")?.addEventListener("click", () => {
+			pendingDeleteId = "";
+			deleteDlg.close();
+		});
+	}
+
+	function boot() {
+		bindTagsPage();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

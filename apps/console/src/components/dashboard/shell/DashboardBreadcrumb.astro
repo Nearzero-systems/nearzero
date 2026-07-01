@@ -1,0 +1,298 @@
+---
+import { pickAccessibleEnvironment } from "@/lib/pick-accessible-environment";
+import { scopeDashboardHref } from "@/lib/org-routes";
+
+type EnvironmentCrumbRow = {
+	environmentId: string;
+	name?: string | null;
+	isDefault?: boolean | null;
+};
+
+type ProjectCrumbRow = {
+	projectId: string;
+	name: string;
+	environments: EnvironmentCrumbRow[];
+};
+
+interface Props {
+	projectName?: string;
+	environmentName?: string;
+	isProductionEnvironment?: boolean;
+	projectId?: string;
+	activeEnvironmentId?: string;
+	currentPathname?: string;
+	orgSlug?: string | null;
+	projects?: ProjectCrumbRow[];
+	environments?: EnvironmentCrumbRow[];
+	canAddEnvironment?: boolean;
+}
+
+const {
+	projectName,
+	environmentName,
+	isProductionEnvironment = false,
+	projectId,
+	activeEnvironmentId,
+	currentPathname = "",
+	orgSlug = null,
+	projects = [],
+	environments = [],
+	canAddEnvironment = false,
+} = Astro.props;
+
+const environmentRows = environments.filter((env) => env.environmentId);
+const projectRows = projects.filter((project) => project.projectId);
+const canOpenProjectMenu = Boolean(projectName && projectId);
+const canOpenEnvironmentMenu = Boolean(environmentName && projectId);
+
+function toEnvPickRows(rows: EnvironmentCrumbRow[]) {
+	return rows.map((env) => ({
+		environmentId: env.environmentId,
+		name: env.name?.trim() || "Environment",
+		isDefault: env.isDefault,
+	}));
+}
+
+function projectHref(
+	targetProjectId: string,
+	targetEnvironments: EnvironmentCrumbRow[],
+) {
+	const env = pickAccessibleEnvironment(toEnvPickRows(targetEnvironments));
+	if (!env) {
+		return scopeDashboardHref("/dashboard/projects", orgSlug);
+	}
+
+	if (currentPathname.includes("/environment/")) {
+		let next = currentPathname.replace(
+			/\/project\/[^/]+/,
+			`/project/${targetProjectId}`,
+		);
+		next = next.replace(
+			/\/environment\/[^/]+/,
+			`/environment/${env.environmentId}`,
+		);
+		if (/\/environment\/[^/]+\/?$/.test(next)) {
+			return scopeDashboardHref(
+				`/dashboard/project/${targetProjectId}/environment/${env.environmentId}/overview`,
+				orgSlug,
+			);
+		}
+		return next;
+	}
+
+	return scopeDashboardHref(
+		`/dashboard/project/${targetProjectId}/environment/${env.environmentId}/overview`,
+		orgSlug,
+	);
+}
+
+function environmentHref(environmentId: string) {
+	if (!projectId) return currentPathname || "#";
+	if (currentPathname.includes("/environment/")) {
+		const next = currentPathname.replace(
+			/\/environment\/[^/]+/,
+			`/environment/${environmentId}`,
+		);
+		if (/\/environment\/[^/]+\/?$/.test(next)) {
+			return scopeDashboardHref(
+				`/dashboard/project/${projectId}/environment/${environmentId}/overview`,
+				orgSlug,
+			);
+		}
+		return next;
+	}
+	return scopeDashboardHref(
+		`/dashboard/project/${projectId}/environment/${environmentId}/overview`,
+		orgSlug,
+	);
+}
+---
+
+{
+	(projectName || environmentName) && (
+		<nav
+			aria-label="Dashboard context"
+			class="flex min-w-0 flex-1 items-center gap-2 overflow-visible text-xs text-[var(--nz-text-muted)]"
+		>
+			{projectName ? (
+				<>
+					<span class="font-medium text-[color-mix(in_srgb,var(--nz-text-muted)_72%,var(--nz-text))]">/</span>
+					{
+						canOpenProjectMenu ? (
+							<details class="relative min-w-0 nz-project-crumb">
+								<summary class="flex min-w-0 cursor-pointer list-none items-center gap-1 rounded-md px-1 py-1 transition-colors hover:bg-[var(--nz-bg-hover)] [&::-webkit-details-marker]:hidden">
+									<span class="min-w-0 truncate font-medium text-[var(--nz-text)]">{projectName}</span>
+									<svg
+										class="size-3.5 shrink-0 text-[var(--nz-text-subtle)]"
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										aria-hidden="true"
+									>
+										<path d="m7 15 5 5 5-5"></path>
+										<path d="m7 9 5-5 5 5"></path>
+									</svg>
+								</summary>
+								<div class="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-[13rem] max-w-[13rem] rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-1 shadow-lg">
+									<div class="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--nz-text-subtle)]">
+										Projects
+									</div>
+									<div class="max-h-[min(70vh,22rem)] overflow-y-auto">
+										{(projectRows.length > 0 ? projectRows : [{
+											projectId: projectId || "",
+											name: projectName,
+											environments: environmentRows,
+										}]).map((project) => {
+											if (!project.projectId) return null;
+											const name = project.name?.trim() || "Project";
+											const isActive = project.projectId === projectId;
+											return (
+												<a
+													href={projectHref(project.projectId, project.environments)}
+													class="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--nz-text)] transition-colors hover:bg-[var(--nz-bg-hover)]"
+													aria-current={isActive ? "page" : undefined}
+												>
+													<span class="min-w-0 flex-1 truncate">{name}</span>
+													{
+														isActive ? (
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																viewBox="0 0 24 24"
+																fill="none"
+																stroke="currentColor"
+																stroke-width="2"
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																class="size-3.5 shrink-0 text-[var(--nz-text)]"
+																aria-hidden="true"
+															>
+																<path d="M20 6 9 17l-5-5" />
+															</svg>
+														) : null
+													}
+												</a>
+											);
+										})}
+									</div>
+								</div>
+							</details>
+						) : (
+							<span class="truncate font-medium text-[var(--nz-text)]">{projectName}</span>
+						)
+					}
+				</>
+			) : null}
+			{environmentName ? (
+				<>
+					<span class="font-medium text-[color-mix(in_srgb,var(--nz-text-muted)_72%,var(--nz-text))]">/</span>
+					{
+						canOpenEnvironmentMenu ? (
+							<details class="relative min-w-0 nz-env-crumb">
+								<summary class="flex min-w-0 cursor-pointer list-none items-center gap-1 rounded-md px-1 py-1 transition-colors hover:bg-[var(--nz-bg-hover)] [&::-webkit-details-marker]:hidden">
+									<span class="truncate font-medium text-[var(--nz-text)]">{environmentName}</span>
+									<svg
+										class="size-3.5 shrink-0 text-[var(--nz-text-subtle)]"
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										aria-hidden="true"
+									>
+										<path d="m7 15 5 5 5-5"></path>
+										<path d="m7 9 5-5 5 5"></path>
+									</svg>
+								</summary>
+								<div class="absolute left-0 top-[calc(100%+0.375rem)] z-50 w-[13rem] max-w-[13rem] rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-1 shadow-lg">
+									<div class="px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--nz-text-subtle)]">
+										Environments
+									</div>
+									<div class="max-h-[min(70vh,22rem)] overflow-y-auto">
+										{(environmentRows.length > 0 ? environmentRows : [{
+											environmentId: activeEnvironmentId || "",
+											name: environmentName,
+											isDefault: false,
+										}]).map((env) => {
+											if (!env.environmentId) return null;
+											const name = env.name?.trim() || "Environment";
+											const isActive = env.environmentId === activeEnvironmentId;
+											return (
+												<a
+													href={environmentHref(env.environmentId)}
+													class="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--nz-text)] transition-colors hover:bg-[var(--nz-bg-hover)]"
+													aria-current={isActive ? "page" : undefined}
+												>
+													<span class="min-w-0 flex-1 truncate">{name}</span>
+													{
+														isActive ? (
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																viewBox="0 0 24 24"
+																fill="none"
+																stroke="currentColor"
+																stroke-width="2"
+																stroke-linecap="round"
+																stroke-linejoin="round"
+																class="size-3.5 shrink-0 text-[var(--nz-text)]"
+																aria-hidden="true"
+															>
+																<path d="M20 6 9 17l-5-5" />
+															</svg>
+														) : null
+													}
+												</a>
+											);
+										})}
+									</div>
+									{
+										canAddEnvironment && projectId ? (
+											<>
+												<div class="-mx-1 my-1 h-px bg-[var(--nz-border)]" />
+												<button
+													type="button"
+													class="nz-env-open-create flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)]"
+													data-project-id={projectId}
+												>
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														width="14"
+														height="14"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="2"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														class="size-3.5 shrink-0"
+														aria-hidden="true"
+													>
+														<path d="M12 5v14" />
+														<path d="M5 12h14" />
+													</svg>
+													Add environment
+												</button>
+											</>
+										) : null
+									}
+								</div>
+							</details>
+						) : (
+							<span class="truncate font-medium text-[var(--nz-text)]">{environmentName}</span>
+						)
+					}
+					{isProductionEnvironment ? (
+						<span class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+							Production
+						</span>
+					) : null}
+				</>
+			) : null}
+		</nav>
+	)
+}

@@ -1,0 +1,12 @@
+---
+const routeParams = Object.fromEntries(
+	Object.entries(Astro.params).filter(([, v]) => typeof v === "string"),
+) as Record<string, string>;
+
+const projectId = routeParams.projectId ?? "";
+const environmentId = routeParams.environmentId ?? "";
+
+return Astro.redirect(
+	`/dashboard/project/${projectId}/environment/${environmentId}/overview`,
+);
+---

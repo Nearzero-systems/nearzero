@@ -1,0 +1,324 @@
+---
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+
+interface Props {
+	organizationId: string;
+	userId: string;
+	gitProviderBaseUrl: string;
+	gitProviderBaseUrlIsLocal: boolean;
+	isCommunity: boolean;
+}
+
+const { organizationId, userId, gitProviderBaseUrl, gitProviderBaseUrlIsLocal, isCommunity } =
+	Astro.props;
+
+const primaryBtnClass =
+	"nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2";
+---
+
+<NzModal
+	id="nz-git-github-dialog"
+	title="Connect GitHub"
+	description="Install the Nearzero GitHub App on your account to deploy repositories from this workspace."
+	size="lg"
+>
+	<div class="nz-git-modal__stack">
+		{
+			isCommunity ? (
+				<div
+					class:list={[
+						"nz-git-modal-callout",
+						gitProviderBaseUrlIsLocal && "nz-git-modal-callout--warn",
+					]}
+				>
+					Callbacks and webhooks use <code>{gitProviderBaseUrl}</code>. GitHub requires a publicly
+					reachable HTTPS URL—localhost will not work.
+				</div>
+			) : null
+		}
+		<label class="nz-git-modal__checkbox">
+			<input id="nz-git-github-org-switch" type="checkbox" />
+			<span class="nz-git-modal__checkbox-copy">
+				<span class="nz-git-modal__checkbox-label">Install for a GitHub organization</span>
+				<span class="nz-git-modal__checkbox-hint">Leave unchecked to connect a personal account.</span>
+			</span>
+		</label>
+		<label class="nz-modal__field hidden nz-github-org-field">
+			<span class="nz-modal__label">Organization slug</span>
+			<input
+				id="nz-git-github-org-name"
+				type="text"
+				placeholder="acme-corp"
+				class="nz-modal__input"
+				autocomplete="off"
+			/>
+			<span class="nz-modal__hint">Use the slug from github.com/orgs/your-org</span>
+		</label>
+		<form
+			id="nz-git-github-form"
+			action={`https://github.com/settings/apps/new?state=gh_init:${organizationId}:${userId}`}
+			method="post"
+		>
+			<input type="text" name="manifest" id="nz-git-github-manifest" class="sr-only" tabindex="-1" aria-hidden="true" />
+			<p class="nz-git-modal__note">
+				Already connected?
+				<a
+					href="https://github.com/settings/installations"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="nz-git-modal__link"
+				>
+					View installed GitHub Apps
+				</a>
+			</p>
+		</form>
+	</div>
+	<button
+		slot="footer"
+		type="submit"
+		form="nz-git-github-form"
+		id="nz-git-github-submit"
+		class={primaryBtnClass}
+	>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Continue on GitHub</span>
+	</button>
+</NzModal>
+
+<NzModal
+	id="nz-git-gitlab-dialog"
+	title="Connect GitLab"
+	description="Add a GitLab integration using OAuth credentials from your GitLab instance."
+	size="lg"
+	form
+	formId="nz-git-gitlab-form"
+>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-gitlab-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">GitLab URL</span>
+		<input id="nz-git-gitlab-url" required value="https://gitlab.com" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Internal URL (optional)</span>
+		<input id="nz-git-gitlab-internal" class="nz-modal__input" placeholder="http://gitlab:80" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Redirect URI</span>
+		<input id="nz-git-gitlab-redirect" readonly value={`${gitProviderBaseUrl}/api/providers/gitlab/callback`} class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Application ID</span>
+		<input id="nz-git-gitlab-app-id" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Application secret</span>
+		<input id="nz-git-gitlab-secret" required type="password" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Group name (optional)</span>
+		<input id="nz-git-gitlab-group" class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="submit" id="nz-git-gitlab-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Save and connect</span>
+	</button>
+</NzModal>
+
+<NzModal
+	id="nz-git-bitbucket-dialog"
+	title="Connect Bitbucket"
+	description="Add Bitbucket using an API token with repository read access."
+	size="lg"
+	form
+	formId="nz-git-bitbucket-form"
+>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-bitbucket-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Bitbucket username</span>
+		<input id="nz-git-bitbucket-username" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Bitbucket email</span>
+		<input id="nz-git-bitbucket-email" type="email" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">API token</span>
+		<input id="nz-git-bitbucket-token" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Workspace name (optional)</span>
+		<input id="nz-git-bitbucket-workspace" class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="submit" id="nz-git-bitbucket-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Save connection</span>
+	</button>
+</NzModal>
+
+<NzModal
+	id="nz-git-gitea-dialog"
+	title="Connect Gitea"
+	description="Add Gitea using OAuth client credentials from your Gitea instance."
+	size="lg"
+	form
+	formId="nz-git-gitea-form"
+>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-gitea-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Gitea URL</span>
+		<input id="nz-git-gitea-url" required value="https://gitea.com" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Internal URL (optional)</span>
+		<input id="nz-git-gitea-internal" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Redirect URI</span>
+		<input id="nz-git-gitea-redirect" readonly value={`${gitProviderBaseUrl}/api/providers/gitea/callback`} class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Client ID</span>
+		<input id="nz-git-gitea-client-id" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Client secret</span>
+		<input id="nz-git-gitea-client-secret" required type="password" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Organization name (optional)</span>
+		<input id="nz-git-gitea-org" class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="submit" id="nz-git-gitea-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Save and connect</span>
+	</button>
+</NzModal>
+
+<NzModal id="nz-git-edit-github-dialog" title="Update GitHub" size="lg" form formId="nz-git-edit-github-form">
+	<input type="hidden" id="nz-git-edit-github-id" />
+	<input type="hidden" id="nz-git-edit-github-git-provider-id" />
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-edit-github-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">App name</span>
+		<input id="nz-git-edit-github-app" required class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="button" id="nz-git-edit-github-test" class="nz-modal__btn nz-modal__btn--ghost">Test connection</button>
+	<button slot="footer" type="submit" id="nz-git-edit-github-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Update</span>
+	</button>
+</NzModal>
+
+<NzModal id="nz-git-edit-gitlab-dialog" title="Update GitLab" size="lg" form formId="nz-git-edit-gitlab-form">
+	<input type="hidden" id="nz-git-edit-gitlab-id" />
+	<input type="hidden" id="nz-git-edit-gitlab-git-provider-id" />
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-edit-gitlab-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">GitLab URL</span>
+		<input id="nz-git-edit-gitlab-url" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Internal URL</span>
+		<input id="nz-git-edit-gitlab-internal" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Group name</span>
+		<input id="nz-git-edit-gitlab-group" class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="button" id="nz-git-edit-gitlab-test" class="nz-modal__btn nz-modal__btn--ghost">Test connection</button>
+	<button slot="footer" type="submit" id="nz-git-edit-gitlab-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Update</span>
+	</button>
+</NzModal>
+
+<NzModal id="nz-git-edit-bitbucket-dialog" title="Update Bitbucket" size="lg" form formId="nz-git-edit-bitbucket-form">
+	<input type="hidden" id="nz-git-edit-bitbucket-id" />
+	<input type="hidden" id="nz-git-edit-bitbucket-git-provider-id" />
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-edit-bitbucket-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Username</span>
+		<input id="nz-git-edit-bitbucket-username" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Email</span>
+		<input id="nz-git-edit-bitbucket-email" type="email" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Workspace</span>
+		<input id="nz-git-edit-bitbucket-workspace" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">API token</span>
+		<input id="nz-git-edit-bitbucket-token" type="password" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">App password (legacy)</span>
+		<input id="nz-git-edit-bitbucket-app-password" type="password" class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="button" id="nz-git-edit-bitbucket-test" class="nz-modal__btn nz-modal__btn--ghost">Test connection</button>
+	<button slot="footer" type="submit" id="nz-git-edit-bitbucket-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Update</span>
+	</button>
+</NzModal>
+
+<NzModal id="nz-git-edit-gitea-dialog" title="Edit Gitea provider" size="lg" form formId="nz-git-edit-gitea-form">
+	<input type="hidden" id="nz-git-edit-gitea-id" />
+	<input type="hidden" id="nz-git-edit-gitea-git-provider-id" />
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="nz-git-edit-gitea-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Gitea URL</span>
+		<input id="nz-git-edit-gitea-url" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Internal URL</span>
+		<input id="nz-git-edit-gitea-internal" class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Client ID</span>
+		<input id="nz-git-edit-gitea-client-id" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Client secret</span>
+		<input id="nz-git-edit-gitea-client-secret" required type="password" class="nz-modal__input" />
+	</label>
+	<button slot="footer" type="button" id="nz-git-edit-gitea-test" class="nz-modal__btn nz-modal__btn--ghost">Test connection</button>
+	<button slot="footer" type="button" id="nz-git-edit-gitea-connect" class="nz-modal__btn nz-modal__btn--ghost">Connect to Gitea</button>
+	<button slot="footer" type="submit" id="nz-git-edit-gitea-submit" class={primaryBtnClass}>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Save</span>
+	</button>
+</NzModal>
+
+<NzModal id="nz-git-delete-dialog" title="Delete Git provider" variant="danger" size="sm">
+	<p id="nz-git-delete-desc" class="nz-modal__hint">Are you sure you want to delete this Git provider?</p>
+	<button slot="footer" type="button" id="nz-git-delete-cancel" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+		Cancel
+	</button>
+	<button slot="footer" type="button" id="nz-git-delete-confirm" class="nz-modal__btn nz-modal__btn--danger">
+		Delete
+	</button>
+</NzModal>

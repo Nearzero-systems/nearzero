@@ -1,0 +1,28 @@
+{
+  "name": "@nearzero/agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./db/schema": {
+      "types": "./src/db/schema.ts",
+      "import": "./dist/db/schema.js"
+    }
+  },
+  "scripts": {
+    "build": "bun esbuild.config.ts"
+  },
+  "dependencies": {
+    "@nearzero/server": "workspace:*",
+    "drizzle-orm": "0.45.1",
+    "nanoid": "3.3.11",
+    "postgres": "3.4.4",
+    "zod": "^4.3.6"
+  }
+}

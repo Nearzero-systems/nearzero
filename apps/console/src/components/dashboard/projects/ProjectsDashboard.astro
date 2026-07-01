@@ -1,0 +1,421 @@
+---
+import { format, formatDistanceToNow } from "date-fns";
+import { pickAccessibleEnvironment } from "@/lib/pick-accessible-environment";
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+import { normalizeDashboardPath, scopeDashboardHref } from "@/lib/org-routes";
+
+interface Props {
+	request: Request;
+}
+
+const { request } = Astro.props;
+const api = createServerTrpcClient(request) as any;
+const orgSlug = normalizeDashboardPath(new URL(request.url).pathname).orgSlug;
+const dash = (path: string) => scopeDashboardHref(path, orgSlug);
+
+type ProjectEnvRow = {
+	isDefault?: boolean | null;
+	environmentId: string;
+	name: string;
+	applications: unknown[];
+	compose: unknown[];
+	libsql: unknown[];
+	mariadb: unknown[];
+	mongo: unknown[];
+	mysql: unknown[];
+	postgres: unknown[];
+	redis: unknown[];
+};
+type ProjectRow = {
+	projectId: string;
+	name: string;
+	description?: string | null;
+	createdAt: string;
+	environments: ProjectEnvRow[];
+};
+
+function countEnvServices(env: ProjectEnvRow): number {
+	return (
+		env.applications.length +
+		env.compose.length +
+		env.libsql.length +
+		env.mariadb.length +
+		env.mongo.length +
+		env.mysql.length +
+		env.postgres.length +
+		env.redis.length
+	);
+}
+
+let projects: ProjectRow[] | null = null;
+let permissions: Awaited<ReturnType<typeof api.user.getPermissions.query>> | null =
+	null;
+
+const results = await Promise.allSettled([
+	api.project.all.query(),
+	api.user.getPermissions.query(),
+]);
+if (results[0].status === "fulfilled") projects = results[0].value as ProjectRow[];
+if (results[1].status === "fulfilled") permissions = results[1].value;
+
+const initialQ = Astro.url.searchParams.get("q") ?? "";
+const list = projects ?? [];
+
+const projectPayload = list.map((project: ProjectRow) => {
+	const emptyServices = project.environments.every(
+		(env: ProjectEnvRow) => countEnvServices(env) === 0,
+	);
+	const totalServices = project.environments.reduce(
+		(acc: number, env: ProjectEnvRow) => acc + countEnvServices(env),
+		0,
+	);
+	const accessibleEnvironment = pickAccessibleEnvironment(project.environments);
+	const hasNoEnvironments = !accessibleEnvironment;
+	return {
+		projectId: project.projectId,
+		name: project.name,
+		description: project.description ?? null,
+		createdAt: project.createdAt,
+		href: hasNoEnvironments
+			? null
+			: dash(
+					`/dashboard/project/${project.projectId}/environment/${accessibleEnvironment.environmentId}/overview`,
+				),
+		hasNoEnvironments,
+		emptyServices,
+		totalServices,
+	};
+});
+
+const bootstrap = {
+	initialQ,
+	projects: projectPayload,
+	permissions: {
+		project: {
+			create: permissions?.project?.create,
+			delete: permissions?.project?.delete,
+		},
+	},
+};
+
+---
+
+<div
+	id="nz-projects-root"
+	class="nz-dashboard-content h-full min-h-0 w-full"
+	data-bootstrap={JSON.stringify(bootstrap)}
+>
+	{
+		projects === null ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+				<span>Loading projects...</span>
+				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 animate-spin" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+			</div>
+		) : (
+			<div class="nz-projects-surface text-xs">
+				<div class="nz-projects-toolbar">
+					<div class="nz-projects-toolbar-primary">
+						<h1 class={ST.pageTitle}>Projects</h1>
+					</div>
+						<div class="nz-projects-toolbar-secondary flex w-full min-w-0 flex-wrap items-center justify-end gap-2 px-3 py-2">
+							<div class="nz-projects-toolbar-form flex w-full min-w-0 flex-wrap items-center justify-end gap-2">
+								<input
+									id="projects-search"
+									type="search"
+									placeholder="Search by name or description..."
+									value={initialQ}
+									class={`${ST.filterSearch} nz-projects-search`}
+								/>
+								<span class="nz-select-chevron-wrap shrink-0 min-w-[8.75rem]">
+									<select id="projects-sort" class={ST.filterSelect}>
+										<option value="name-asc">Name (A-Z)</option>
+										<option value="name-desc">Name (Z-A)</option>
+										<option value="createdAt-desc" selected>Newest first</option>
+										<option value="createdAt-asc">Oldest first</option>
+										<option value="services-desc">Most services</option>
+										<option value="services-asc">Least services</option>
+									</select>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="nz-select-chevron-wrap__icon"
+										aria-hidden="true"
+									>
+										<path d="m6 9 6 6 6-6"></path>
+									</svg>
+								</span>
+								{
+									permissions?.project?.create ? (
+										<button
+											type="button"
+											id="create-project-open"
+											class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] shadow-none transition-colors hover:bg-[var(--nz-primary-hover)]"
+										>
+											Create project
+										</button>
+									) : null
+								}
+							</div>
+						</div>
+				</div>
+
+				<div class="nz-projects-content-region">
+					<div class="nz-projects-content-scroll scrollbar-hide">
+						<div
+							id="projects-grid"
+							class="grid w-full grid-cols-1 gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+						>
+									{
+										list.map((project) => {
+											const p = projectPayload.find(
+												(x) => x.projectId === project.projectId,
+											)!;
+											const emptyServices = p.emptyServices;
+											const totalServices = p.totalServices;
+											const hasNoEnvironments = p.hasNoEnvironments;
+											return (
+												<div
+													class="w-full"
+													data-project-card={project.projectId}
+													data-project-name={project.name}
+													data-project-desc={project.description ?? ""}
+													data-name={project.name}
+													data-description={project.description ?? ""}
+													data-sort-name={project.name}
+													data-sort-created={new Date(project.createdAt).getTime()}
+													data-sort-services={totalServices}
+												>
+													<div class="nz-project-card group relative flex h-full w-full flex-col rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] shadow-none transition-colors hover:bg-[var(--nz-bg-hover)]">
+														{
+															!hasNoEnvironments && p.href ? (
+																<a
+																	href={p.href}
+																	class="absolute inset-0 z-0 rounded-md"
+																	aria-label={`Open ${project.name}`}
+																/>
+															) : null
+														}
+														<div class="pointer-events-none relative z-10 flex flex-1 flex-col">
+															<div class="flex items-start justify-between gap-2 p-3">
+																<div class="min-w-0 flex-1">
+																	<p class="truncate font-medium text-[var(--nz-text)]">{project.name}</p>
+																	{
+																		project.description ? (
+																			<p class="mt-0.5 line-clamp-2 text-muted-foreground">
+																				{project.description}
+																			</p>
+																		) : null
+																	}
+																	{
+																		hasNoEnvironments ? (
+																			<p class="mt-2 text-[10px] text-yellow-700">
+																				No environments available
+																			</p>
+																		) : null
+																	}
+																</div>
+																<div class="pointer-events-auto relative z-20 shrink-0">
+																	<button
+																		type="button"
+																		id={`proj-menu-trigger-${project.projectId}`}
+																		class={ST.actionBtn}
+																		aria-expanded="false"
+																		aria-haspopup="true"
+																	>
+																		···
+																	</button>
+																	<div
+																		id={`proj-menu-${project.projectId}`}
+																		class="absolute right-0 top-full z-50 mt-1 hidden max-h-[280px] w-[11rem] overflow-y-auto rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-1 text-xs shadow-none"
+																	>
+																		<button
+																			type="button"
+																			data-edit-project={project.projectId}
+																			class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left hover:bg-accent"
+																		>
+																			Update
+																		</button>
+																		{
+																			permissions?.project?.delete ? (
+																				<button
+																					type="button"
+																					data-open-delete={project.projectId}
+																					data-empty-services={emptyServices ? "1" : "0"}
+																					class="flex w-full cursor-pointer items-center rounded-sm px-2 py-1.5 text-left text-destructive hover:bg-accent"
+																				>
+																					Delete
+																				</button>
+																			) : null
+																		}
+																	</div>
+																</div>
+															</div>
+															<div class="mt-auto flex items-center justify-between gap-2 border-t border-[var(--nz-border)] px-3 py-2 text-muted-foreground">
+																<span title={format(new Date(project.createdAt), "PPpp")}>
+																	Created {formatDistanceToNow(new Date(project.createdAt), { addSuffix: true })}
+																</span>
+																<span>
+																	{totalServices} {totalServices === 1 ? "service" : "services"}
+																</span>
+															</div>
+														</div>
+													</div>
+												</div>
+											);
+										})
+									}
+						</div>
+					</div>
+					<div
+						id="projects-empty-state"
+						class:list={[
+							"nz-projects-empty-state",
+							{ hidden: list.length > 0 },
+						]}
+					>
+						<p class="font-medium text-[var(--nz-text)]">No projects found</p>
+						<p class={`${ST.emptyText} mt-1`}>Create a project to start deploying services.</p>
+					</div>
+					<div id="projects-empty-filtered" class="nz-projects-empty-state hidden">
+						<p class="font-medium text-[var(--nz-text)]">No projects found</p>
+						<p class={`${ST.emptyText} mt-1`}>Try adjusting your search.</p>
+					</div>
+				</div>
+
+				<div class={`nz-projects-footer ${ST.footer}`}>
+					<span id="projects-total" class={ST.total}>{list.length} total</span>
+				</div>
+			</div>
+		)
+	}
+
+	<script is:inline define:vars={{ nzProjectsBootstrap: bootstrap }}>
+		window.__NZ_PROJECTS_BOOTSTRAP = nzProjectsBootstrap;
+	</script>
+</div>
+
+<NzModal
+	id="create-project-dialog"
+	title="Add a project"
+	size="md"
+	form
+	formId="create-project-form"
+	showClose={false}
+>
+		<label class="nz-modal__field">
+			<span class="nz-modal__label">Name</span>
+			<input
+				id="create-project-name"
+				name="name"
+				required
+				class="nz-modal__input"
+				placeholder="Name of your project"
+			/>
+		</label>
+		<label class="nz-modal__field">
+			<span class="nz-modal__label">Description</span>
+			<textarea
+				id="create-project-desc"
+				name="description"
+				rows="3"
+				class="nz-modal__textarea nz-modal__textarea--compact"
+				placeholder="Description about your project..."
+			/>
+		</label>
+		<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+			Cancel
+		</button>
+		<button
+			slot="footer"
+			type="submit"
+			id="create-project-submit"
+			data-default-label="Create"
+			class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+		>
+			<AuthButtonSpinner />
+			<span data-auth-btn-label>Create</span>
+		</button>
+	</NzModal>
+
+<NzModal
+	id="edit-project-dialog"
+	title="Update project"
+	description="Change the project name or description."
+	size="md"
+	form
+	formId="edit-project-form"
+	showClose={false}
+>
+	<input type="hidden" id="edit-project-id" value="" />
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Name</span>
+		<input id="edit-project-name" required class="nz-modal__input" />
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Description</span>
+		<textarea id="edit-project-desc" rows="3" class="nz-modal__textarea nz-modal__textarea--compact" />
+	</label>
+	<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+		Cancel
+	</button>
+	<button slot="footer" type="submit" id="edit-project-submit" class="nz-modal__btn nz-modal__btn--primary">
+		Update
+	</button>
+</NzModal>
+
+<NzModal
+	id="delete-project-dialog"
+	title="Delete project"
+	description="This project and its environments will be removed."
+	variant="danger"
+	size="sm"
+	showClose={false}
+>
+	<p id="delete-project-confirm-text" class="nz-modal__confirm text-xs text-muted-foreground">
+		Are you sure you want to delete <span class="font-semibold text-foreground">this project</span>?
+	</p>
+	<label id="delete-project-input-wrap" class="nz-modal__field hidden">
+		<span class="nz-modal__label">
+			Type <span id="delete-project-input-label" class="font-semibold text-foreground">project name</span> to confirm
+		</span>
+		<input
+			id="delete-project-input"
+			type="text"
+			class="nz-modal__input"
+			autocomplete="off"
+			spellcheck="false"
+		/>
+	</label>
+	<div
+		id="delete-project-warn"
+		class="nz-modal__callout hidden border-amber-200/80 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+	>
+		Delete active services in this project before removing it.
+	</div>
+	<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+		Cancel
+	</button>
+	<button slot="footer" type="button" id="delete-project-confirm" class="nz-modal__btn nz-modal__btn--danger" disabled>
+		Delete
+	</button>
+</NzModal>
+
+<script>
+	import { mountProjectsDashboard } from "@/scripts/projects-dashboard";
+	import { initNzModals } from "@/scripts/modal-animations";
+	function bootProjectsDashboard() {
+		initNzModals();
+		mountProjectsDashboard();
+	}
+	bootProjectsDashboard();
+	document.addEventListener("astro:page-load", bootProjectsDashboard);
+	document.addEventListener("astro:after-swap", bootProjectsDashboard);
+</script>

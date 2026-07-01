@@ -1,0 +1,55 @@
+---
+interface Props {
+	totalServices: number;
+	running: number;
+	idle: number;
+	error: number;
+}
+
+const { totalServices, running, idle, error } = Astro.props;
+---
+
+<section class="nz-project-overview" aria-label="Analytics">
+	<div class="nz-project-overview__topbar">
+		<div class="min-w-0">
+			<p class="truncate text-xs font-semibold text-[var(--nz-text)]">Analytics</p>
+			<p class="mt-1 truncate text-[11px] text-[var(--nz-text-muted)]">
+				Service health summary for this environment.
+			</p>
+		</div>
+	</div>
+	<div class="nz-project-panel__body">
+		<div class="nz-project-stat-grid">
+			<div class="nz-project-stat">
+				<p class="nz-project-stat__label">Total services</p>
+				<p class="nz-project-stat__value">{totalServices}</p>
+			</div>
+			<div class="nz-project-stat">
+				<p class="nz-project-stat__label">Running</p>
+				<p class="nz-project-stat__value">{running}</p>
+			</div>
+			<div class="nz-project-stat">
+				<p class="nz-project-stat__label">Not running</p>
+				<p class="nz-project-stat__value">{idle}</p>
+			</div>
+			<div class="nz-project-stat">
+				<p class="nz-project-stat__label">Error</p>
+				<p class="nz-project-stat__value">{error}</p>
+			</div>
+		</div>
+		<div class="nz-project-analytics-bars">
+			<div class="nz-project-analytics-bar">
+				<span>Running</span>
+				<div><i style={`width: ${totalServices ? Math.round((running / totalServices) * 100) : 0}%`}></i></div>
+			</div>
+			<div class="nz-project-analytics-bar">
+				<span>Not running</span>
+				<div><i style={`width: ${totalServices ? Math.round((idle / totalServices) * 100) : 0}%`}></i></div>
+			</div>
+			<div class="nz-project-analytics-bar">
+				<span>Error</span>
+				<div><i style={`width: ${totalServices ? Math.round((error / totalServices) * 100) : 0}%`}></i></div>
+			</div>
+		</div>
+	</div>
+</section>

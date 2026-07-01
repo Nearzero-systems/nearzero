@@ -1,0 +1,142 @@
+---
+import AgentDotMatrixIcon from "@/components/dashboard/shell/AgentDotMatrixIcon.astro";
+import Button from "@/components/ui/Button.astro";
+import "@/components/dashboard/shell/sidebar-agent-dot.css";
+import "@/styles/nearzero-terminal-shell.css";
+
+const appHomeUrl =
+	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim() ||
+	"https://app.nearzero.dev";
+---
+
+<dialog id="nz-ws-terminal-dialog" class="nz-terminal-shell">
+	<div class="nz-terminal-shell__frame">
+		<header class="nz-terminal-shell__titlebar">
+			<nav class="nz-terminal-shell__nav" aria-label="Terminal context">
+				<a
+					id="nz-ws-terminal-brand-link"
+					href={appHomeUrl}
+					class="nz-terminal-shell__brand-link"
+					aria-label="Go to Nearzero"
+				>
+					<AgentDotMatrixIcon class="nz-terminal-shell__brand-matrix" />
+				</a>
+				<span class="nz-terminal-shell__sep" aria-hidden="true">/</span>
+				<span class="nz-terminal-shell__crumb nz-terminal-shell__crumb--section" id="nz-ws-terminal-crumb-section">servers</span>
+				<span class="nz-terminal-shell__sep" aria-hidden="true">/</span>
+				<span class="nz-terminal-shell__crumb nz-terminal-shell__crumb--name" id="nz-ws-terminal-crumb-name">session</span>
+				<span class="nz-terminal-shell__sep" aria-hidden="true">/</span>
+				<span class="nz-terminal-shell__crumb nz-terminal-shell__crumb--id" id="nz-ws-terminal-tab-label">session</span>
+			</nav>
+			<button
+				type="button"
+				class="nz-terminal-shell__window-close"
+				data-close-dialog="nz-ws-terminal-dialog"
+				aria-label="Close"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					aria-hidden="true"
+				>
+					<path d="M18 6 6 18M6 6l12 12"></path>
+				</svg>
+			</button>
+		</header>
+		<div id="nz-ws-terminal-local-config" class="nz-terminal-shell__local-config hidden">
+			<form id="nz-ws-terminal-local-form" class="grid max-w-md grid-cols-2 gap-3">
+				<label>
+					Port
+					<input id="nz-ws-terminal-local-port" type="number" value="22" />
+				</label>
+				<label>
+					Username
+					<input id="nz-ws-terminal-local-user" value="root" />
+				</label>
+				<div class="col-span-2 flex justify-end">
+					<Button type="submit" variant="secondary">Save connection</Button>
+				</div>
+			</form>
+		</div>
+		<div id="nz-ws-terminal-host" class="nz-terminal-shell__host"></div>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-logs-dialog" class="relative w-[calc(100%-2rem)] max-w-7xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6 max-h-[85vh] overflow-y-auto">
+		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-logs-dialog" aria-label="Close">✕</button>
+		<h2 class="text-lg font-semibold">View Logs</h2>
+		<label class="mt-4 grid gap-1 text-sm font-medium">Select a container
+			<select id="nz-ws-logs-container" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></select>
+		</label>
+		<pre id="nz-ws-logs-output" class="mt-4 max-h-[55vh] overflow-auto rounded-lg border bg-black/90 p-4 text-xs text-green-400 whitespace-pre-wrap"></pre>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-update-ip-dialog" class="relative w-[calc(100%-2rem)] max-w-md rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6">
+		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-update-ip-dialog" aria-label="Close">✕</button>
+		<h2 class="text-lg font-semibold">Update Server IP</h2>
+		<form id="nz-ws-update-ip-form" class="mt-4 grid gap-3">
+			<label class="text-sm font-medium">Server IP
+				<div class="mt-1 flex gap-2">
+					<input id="nz-ws-update-ip-input" required class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+					<Button type="button" variant="secondary" id="nz-ws-update-ip-use-public">Use public IP</Button>
+				</div>
+			</label>
+			<div class="flex justify-end"><Button type="submit" id="nz-ws-update-ip-submit" variant="default">Update</Button></div>
+		</form>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-traefik-env-dialog" class="relative w-[calc(100%-2rem)] max-w-4xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6 max-h-[90vh] overflow-y-auto">
+		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-traefik-env-dialog" aria-label="Close">✕</button>
+		<div class="flex items-center justify-between gap-2">
+			<h2 class="text-lg font-semibold">Update Traefik Environment</h2>
+			<Button type="button" variant="secondary" id="nz-ws-traefik-env-lock">Unlock</Button>
+		</div>
+		<form id="nz-ws-traefik-env-form" class="mt-4">
+			<textarea id="nz-ws-traefik-env-input" readonly rows="18" class="w-full rounded-md border border-input bg-background p-3 font-mono text-sm"></textarea>
+			<div class="mt-4 flex justify-end"><Button type="submit" id="nz-ws-traefik-env-submit" variant="default" disabled>Update</Button></div>
+		</form>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-traefik-ports-dialog" class="relative w-[calc(100%-2rem)] max-w-3xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6 max-h-[90vh] overflow-y-auto">
+		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-traefik-ports-dialog" aria-label="Close">✕</button>
+		<div class="flex items-center justify-between gap-2">
+			<h2 class="text-lg font-semibold">Additional Port Mappings</h2>
+			<Button type="button" variant="default" id="nz-ws-traefik-ports-add">Add Mapping</Button>
+		</div>
+		<form id="nz-ws-traefik-ports-form" class="mt-4 space-y-4">
+			<div id="nz-ws-traefik-ports-rows" class="space-y-3"></div>
+			<div class="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">The Traefik container will be recreated from scratch. This may cause downtime.</div>
+			<div class="flex justify-end"><Button type="submit" id="nz-ws-traefik-ports-submit" variant="default">Save</Button></div>
+		</form>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-traefik-dashboard-dialog" class="relative w-[calc(100%-2rem)] max-w-md rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6">
+		<p class="text-sm font-semibold">Toggle Traefik Dashboard</p>
+		<p class="mt-2 text-sm text-muted-foreground">The Traefik container will be recreated from scratch, which may cause downtime in your applications.</p>
+		<div class="mt-6 grid grid-cols-2 gap-2">
+			<Button type="button" variant="outline" id="nz-ws-traefik-dashboard-cancel">Cancel</Button>
+			<Button type="button" variant="default" id="nz-ws-traefik-dashboard-confirm">Confirm</Button>
+		</div>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-gpu-dialog" class="relative w-[calc(100%-2rem)] max-w-4xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6">
+		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-gpu-dialog" aria-label="Close">✕</button>
+		<h2 class="text-lg font-semibold">Nearzero Server GPU Setup</h2>
+		<p class="mt-2 text-sm text-muted-foreground">Configure GPU support on your local web server from the server setup workflow.</p>
+	</div>
+</dialog>

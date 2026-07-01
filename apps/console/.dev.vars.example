@@ -1,0 +1,7 @@
+# Cloudflare Workers/Pages local dev (wrangler) — copy to `.dev.vars`
+# Note: the Astro app reads BACKEND_URL, not API_URL.
+
+BACKEND_URL=http://127.0.0.1:3000
+PUBLIC_BACKEND_URL=http://127.0.0.1:3000
+PUBLIC_GIT_PROVIDER_BASE_URL=http://localhost:4321
+COMMUNITY=true

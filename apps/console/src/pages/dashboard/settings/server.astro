@@ -1,0 +1,13 @@
+---
+import { getSession } from "@/lib/backendProxy";
+import { getDefaultSettingsHref } from "@/lib/settings-nav";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+  return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+}
+
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+return Astro.redirect(getDefaultSettingsHref(orgSlug));
+---

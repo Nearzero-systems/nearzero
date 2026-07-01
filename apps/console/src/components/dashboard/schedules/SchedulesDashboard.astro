@@ -1,0 +1,389 @@
+---
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import { ST } from "@/lib/settings-hub-ui";
+import { getSession } from "@/lib/backendProxy";
+import { createServerTrpcClient } from "@/lib/server-api";
+import NzModal from "@/components/ui/NzModal.astro";
+
+interface Props {
+	request: Request;
+}
+
+type ScheduleRow = {
+	scheduleId: string;
+	name: string;
+	description?: string | null;
+	cronExpression: string;
+	timezone?: string | null;
+	enabled: boolean;
+	createdAt?: string | null;
+};
+
+const { request } = Astro.props;
+const session = await getSession(request);
+const userId = session?.user?.id ?? "";
+const scheduleType = "nearzero-server" as const;
+
+const searchParams = new URL(request.url).searchParams;
+const qParam = (searchParams.get("q") ?? "").trim();
+const statusFilter = searchParams.get("status") ?? "all";
+const sortId = searchParams.get("sort") ?? "createdAt";
+const sortDesc = (searchParams.get("order") ?? "desc") !== "asc";
+let pageIndex = Math.max(0, Number.parseInt(searchParams.get("page") ?? "0", 10) || 0);
+let pageSize = Number.parseInt(searchParams.get("pageSize") ?? "50", 10);
+if (![10, 25, 50, 100].includes(pageSize)) pageSize = 50;
+
+const api = createServerTrpcClient(request) as any;
+let schedules: ScheduleRow[] = [];
+let loadFailed = false;
+
+if (userId) {
+	try {
+		schedules = await api.schedule.list.query({ id: userId, scheduleType });
+	} catch {
+		loadFailed = true;
+		schedules = [];
+	}
+}
+
+const commonCronExpressions = [
+	{ label: "Every minute", value: "* * * * *" },
+	{ label: "Every hour", value: "0 * * * *" },
+	{ label: "Every day at midnight", value: "0 0 * * *" },
+	{ label: "Every Sunday at midnight", value: "0 0 * * 0" },
+	{ label: "Every month on the 1st at midnight", value: "0 0 1 * *" },
+	{ label: "Every 15 minutes", value: "*/15 * * * *" },
+	{ label: "Every weekday at midnight", value: "0 0 * * 1-5" },
+	{ label: "Custom", value: "custom" },
+];
+
+function buildUrl(overrides: Record<string, string | number | undefined>) {
+	const u = new URL(Astro.url);
+	for (const [k, v] of Object.entries(overrides)) {
+		if (v === undefined || v === "") u.searchParams.delete(k);
+		else u.searchParams.set(k, String(v));
+	}
+	return u.pathname + u.search;
+}
+
+function formatDate(value: string | null | undefined): string {
+	if (!value) return "-";
+	return new Date(value).toLocaleString();
+}
+
+function rowMatchesFilters(row: ScheduleRow) {
+	if (statusFilter === "enabled" && !row.enabled) return false;
+	if (statusFilter === "disabled" && row.enabled) return false;
+	if (!qParam) return true;
+	const q = qParam.toLowerCase();
+	return [row.name, row.description ?? "", row.cronExpression, row.timezone ?? "", row.enabled ? "enabled" : "disabled"]
+		.join(" ")
+		.toLowerCase()
+		.includes(q);
+}
+
+function compareRows(a: ScheduleRow, b: ScheduleRow): number {
+	const mul = sortDesc ? -1 : 1;
+	if (sortId === "createdAt") {
+		const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+		const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+		return mul * (ta - tb);
+	}
+	const valueFor = (row: ScheduleRow) => {
+		switch (sortId) {
+			case "name":
+				return row.name;
+			case "cron":
+				return row.cronExpression;
+			case "timezone":
+				return row.timezone ?? "";
+			case "status":
+				return row.enabled ? "enabled" : "disabled";
+			default:
+				return row.name;
+		}
+	};
+	return mul * valueFor(a).localeCompare(valueFor(b));
+}
+
+function sortLink(nextSort: string) {
+	const nextDesc = sortId === nextSort ? !sortDesc : nextSort === "createdAt";
+	return buildUrl({
+		sort: nextSort,
+		order: nextDesc ? "desc" : "asc",
+		page: 0,
+	});
+}
+
+const filteredRows = schedules.filter(rowMatchesFilters).sort(compareRows);
+const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+if (pageIndex > pageCount - 1) pageIndex = Math.max(0, pageCount - 1);
+const pageSlice = filteredRows.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
+
+const badgeClass =
+	"inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap";
+const sortLinkClass =
+	"inline-flex items-center gap-1 font-medium text-inherit hover:text-[var(--nz-text)]";
+---
+
+<div
+	class="nz-dashboard-content h-full min-h-0 w-full"
+	id="nz-tasks-root"
+	data-user-id={userId}
+	data-schedule-type={scheduleType}
+>
+	{
+		!userId ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+				<span>Sign in to manage tasks.</span>
+			</div>
+		) : loadFailed ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+				<span>Could not load tasks. Try refreshing the page.</span>
+			</div>
+		) : (
+			<div class="nz-deployments-surface text-xs">
+				<div class="nz-deployments-toolbar">
+					<form method="get" class="nz-deployments-toolbar-form" id="nz-tasks-filter-form">
+						<div class="nz-deployments-toolbar-primary">
+							<h1 class={ST.pageTitle}>Tasks</h1>
+						</div>
+						<div class="nz-deployments-toolbar-secondary">
+							<input
+								id="nz-tasks-search"
+								name="q"
+								type="search"
+								placeholder="Search by name, cron, timezone..."
+								value={qParam}
+								class={`${ST.filterSearch} nz-deployments-search`}
+							/>
+							<span class="nz-select-chevron-wrap">
+								<select name="status" class={ST.filterSelect} onchange="this.form.submit()">
+									<option value="all" selected={statusFilter === "all"}>All statuses</option>
+									<option value="enabled" selected={statusFilter === "enabled"}>Enabled</option>
+									<option value="disabled" selected={statusFilter === "disabled"}>Disabled</option>
+								</select>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-select-chevron-wrap__icon" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+							</span>
+							<span class="nz-select-chevron-wrap">
+								<select name="pageSize" class={ST.filterSelect} onchange="this.form.submit()">
+									{[10, 25, 50, 100].map((size) => (
+										<option value={size} selected={pageSize === size}>{size}</option>
+									))}
+								</select>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-select-chevron-wrap__icon" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+							</span>
+							<button
+								type="button"
+								id="nz-task-create-open"
+								data-task-create
+								class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] shadow-none transition-colors hover:bg-[var(--nz-primary-hover)]"
+							>
+								Add task
+							</button>
+						</div>
+						<input type="hidden" name="page" value="0" />
+						<input type="hidden" name="sort" value={sortId} />
+						<input type="hidden" name="order" value={sortDesc ? "desc" : "asc"} />
+					</form>
+				</div>
+
+				<div class="nz-deployments-table-region">
+					<div class="nz-deployments-table-scroll scrollbar-hide">
+						<div class={ST.tableWrap}>
+							<table class={`${ST.table} nz-deployments-table nz-tasks-table`}>
+								<thead class={ST.thead}>
+									<tr>
+										<th class={ST.th}><a href={sortLink("name")} class={sortLinkClass}>Name</a></th>
+										<th class={ST.th}>Description</th>
+										<th class={ST.th}><a href={sortLink("cron")} class={sortLinkClass}>Cron</a></th>
+										<th class={ST.th}><a href={sortLink("timezone")} class={sortLinkClass}>Timezone</a></th>
+										<th class={ST.th}><a href={sortLink("status")} class={sortLinkClass}>Status</a></th>
+										<th class={ST.th}><a href={sortLink("createdAt")} class={sortLinkClass}>Created</a></th>
+										<th class={ST.thRight}>Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{
+										pageSlice.map((row) => {
+											const statusBadge = row.enabled
+												? "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600"
+												: "bg-secondary text-secondary-foreground";
+											return (
+												<tr class={`${ST.tr} nz-data-table-row`}>
+													<td class={ST.td}>
+														<span class="truncate font-medium">{row.name}</span>
+													</td>
+													<td class={ST.tdMuted}>{row.description || "-"}</td>
+													<td class={ST.tdMuted}>
+														<span class="font-mono text-[10px]">{row.cronExpression}</span>
+													</td>
+													<td class={ST.tdMuted}>{row.timezone || "UTC"}</td>
+													<td class={ST.td}>
+														<span class={`${badgeClass} ${statusBadge}`}>
+															{row.enabled ? "Enabled" : "Disabled"}
+														</span>
+													</td>
+													<td class={ST.tdMuted}>{formatDate(row.createdAt)}</td>
+													<td class={ST.tdRight}>
+														<div class="flex items-center justify-end gap-1">
+															<button
+																type="button"
+																class={ST.actionBtn}
+																data-task-history={row.scheduleId}
+																title="View deployments"
+															>
+																History
+															</button>
+															<button
+																type="button"
+																class={ST.actionBtn}
+																data-task-run={row.scheduleId}
+																title="Run now"
+															>
+																Run
+															</button>
+															<button
+																type="button"
+																class={ST.actionBtn}
+																data-task-edit={row.scheduleId}
+															>
+																Edit
+															</button>
+															<button
+																type="button"
+																class={`${ST.actionBtn} text-destructive`}
+																data-task-delete={row.scheduleId}
+																data-task-name={row.name}
+															>
+																Delete
+															</button>
+														</div>
+													</td>
+												</tr>
+											);
+										})
+									}
+								</tbody>
+							</table>
+						</div>
+					</div>
+					{
+						pageSlice.length === 0 ? (
+							<div class="nz-deployments-empty-state">
+								<p class="font-medium text-[var(--nz-text)]">No tasks found</p>
+								<p class="mt-1 text-xs text-muted-foreground">
+									{filteredRows.length === 0 && schedules.length === 0
+										? "Create your first scheduled task to automate workflows."
+										: "Try adjusting your search or filters."}
+								</p>
+							</div>
+						) : null
+					}
+				</div>
+
+				<div class={`nz-deployments-footer ${ST.footer}`}>
+					<span class={ST.total}>{filteredRows.length} total</span>
+					<div class="flex gap-2">
+						<a
+							href={pageIndex <= 0 ? undefined : buildUrl({ page: pageIndex - 1 })}
+							aria-disabled={pageIndex <= 0}
+							class={`inline-flex h-7 items-center justify-center rounded-md border border-input bg-background px-2 text-xs hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] ${pageIndex <= 0 ? "pointer-events-none opacity-50" : ""}`}
+						>
+							Previous
+						</a>
+						<a
+							href={pageIndex >= pageCount - 1 ? undefined : buildUrl({ page: pageIndex + 1 })}
+							aria-disabled={pageIndex >= pageCount - 1}
+							class={`inline-flex h-7 items-center justify-center rounded-md border border-input bg-background px-2 text-xs hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] ${pageIndex >= pageCount - 1 ? "pointer-events-none opacity-50" : ""}`}
+						>
+							Next
+						</a>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
+		<NzModal
+			id="nz-task-form-dialog"
+			title="Create task"
+			description="Run a script on a cron schedule on this host."
+			size="lg"
+			form
+			formId="nz-task-form"
+			showClose={false}
+		>
+			<p id="nz-task-form-error" class="nz-modal__callout hidden border-red-500/20 bg-red-500/10 text-destructive"></p>
+			<input type="hidden" id="nz-task-form-id" value="" />
+			<label class="nz-modal__field">
+				<span class="nz-modal__label">Task name</span>
+				<input id="nz-task-name" required class="nz-modal__input" placeholder="Daily database backup" />
+			</label>
+			<label class="nz-modal__field">
+				<span class="nz-modal__label">Description</span>
+				<input id="nz-task-description" class="nz-modal__input" placeholder="Backs up the database every day at midnight" />
+			</label>
+			<div class="nz-modal__field">
+				<span class="nz-modal__label">Schedule</span>
+				<span class="nz-select-chevron-wrap">
+					<select id="nz-task-cron-preset" class="nz-modal__select">
+						<option value="">Select a predefined schedule</option>
+						{commonCronExpressions.map((expr) => (
+							<option value={expr.value}>
+								{expr.label}{expr.value !== "custom" ? ` (${expr.value})` : ""}
+							</option>
+						))}
+					</select>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-select-chevron-wrap__icon" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+				</span>
+				<input id="nz-task-cron" required class="nz-modal__input mt-2 font-mono" placeholder="Custom cron expression (e.g., 0 0 * * *)" />
+			</div>
+			<label class="nz-modal__field">
+				<span class="nz-modal__label">Timezone (optional)</span>
+				<input id="nz-task-timezone" class="nz-modal__input" placeholder="UTC" />
+			</label>
+			<label class="nz-modal__field">
+				<span class="nz-modal__label">Script</span>
+				<textarea id="nz-task-script" required rows="12" class="nz-modal__textarea nz-modal__textarea--code" placeholder={'# This is a comment\necho "Hello, world!"'}></textarea>
+			</label>
+			<div class="nz-task-form-enabled-row">
+				<div class="nz-task-form-enabled-row__text">
+					<p class="nz-task-form-enabled-row__title">Enabled</p>
+					<p class="nz-task-form-enabled-row__desc">Run this task on its cron schedule.</p>
+				</div>
+				<label class="nz-app-switch">
+					<input type="checkbox" id="nz-task-enabled" checked class="nz-app-switch__input" aria-label="Enabled" />
+					<span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span>
+				</label>
+			</div>
+			<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close data-close-task-form>Cancel</button>
+			<button
+				slot="footer"
+				type="submit"
+				id="nz-task-form-submit"
+				data-default-label="Create task"
+				class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+			>
+				<AuthButtonSpinner />
+				<span data-auth-btn-label>Create task</span>
+			</button>
+		</NzModal>
+
+		<NzModal id="nz-task-delete-dialog" title="Delete task" description="This scheduled task will be removed." variant="danger" size="sm" showClose={false}>
+			<p id="nz-task-delete-desc" class="text-xs text-muted-foreground">Are you sure you want to delete this task?</p>
+			<button slot="footer" type="button" id="nz-task-delete-cancel" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+			<button slot="footer" type="button" id="nz-task-delete-confirm" class="nz-modal__btn nz-modal__btn--danger">Delete</button>
+		</NzModal>
+
+	<script>
+		import { mountTasksDashboard } from "@/scripts/tasks-dashboard";
+
+		function bootTasksDashboard() {
+			mountTasksDashboard();
+		}
+		bootTasksDashboard();
+		document.addEventListener("astro:page-load", bootTasksDashboard);
+		document.addEventListener("astro:after-swap", bootTasksDashboard);
+	</script>
+</div>

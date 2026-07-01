@@ -1,0 +1,360 @@
+---
+import Button from "@/components/ui/Button.astro";
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { getAvatarType, isSolidColorAvatar } from "@/lib/avatar-utils";
+import { createServerTrpcClient } from "@/lib/server-api";
+import { getFallbackAvatarInitials } from "@/lib/user-utils";
+import { createHash } from "node:crypto";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.profile,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+let user: {
+	email?: string;
+	image?: string | null;
+	firstName?: string | null;
+	lastName?: string | null;
+	allowImpersonation?: boolean;
+	twoFactorEnabled?: boolean;
+} | null = null;
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		const [userData] = await Promise.all([
+			api.user.get.query(),
+		]);
+		user = userData?.user ?? null;
+	} catch {
+		user = null;
+	}
+}
+
+const gravatarHash =
+	user?.email &&
+	createHash("sha256").update(user.email.trim().toLowerCase()).digest("hex");
+const gravatarUrl = gravatarHash
+	? `https://www.gravatar.com/avatar/${gravatarHash}`
+	: null;
+
+const fullName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
+const avatarInitials = getFallbackAvatarInitials(fullName);
+const selectedAvatarType = getAvatarType(user?.image);
+const colorAvatarValue =
+	user?.image && isSolidColorAvatar(user.image) ? user.image : "#6366f1";
+---
+
+<div class="w-full">
+	{
+		loadFailed ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground p-10">
+				<span>Could not load this page.</span>
+				<span class="text-xs">Try refreshing.</span>
+			</div>
+		) : forbidden ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground px-10">
+				<span>You do not have access to this section.</span>
+				<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+			</div>
+		) : (
+			<div class="w-full" id="nz-profile-root" data-user-email={user?.email || ""}>
+					<div class="flex flex-row gap-2 flex-wrap justify-between items-center p-6">
+							<div>
+								<h3 class="text-xl font-semibold leading-none tracking-tight flex flex-row gap-2">
+									<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6 text-muted-foreground self-center" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+									Account
+								</h3>
+								<p class="text-sm text-muted-foreground mt-1.5">Change the details of your profile here.</p>
+							</div>
+							{
+								user?.twoFactorEnabled ? (
+									<Button type="button" variant="secondary" id="nz-2fa-manage-open">
+										<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-4 text-muted-foreground mr-1 inline" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+										Manage 2FA
+									</Button>
+								) : (
+									<Button type="button" variant="ghost" id="nz-2fa-enable-open">
+										<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-4 text-muted-foreground mr-1 inline" aria-hidden="true"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M8.65 22a2 2 0 0 1-1.8-2.9l.15-.45"/><path d="M18 12h.01"/><path d="M18 16h.01"/><path d="M18 20h.01"/><path d="M18 8h.01"/><path d="M6 12h.01"/><path d="M6 16h.01"/><path d="M6 20h.01"/><path d="M6 8h.01"/><circle cx="12" cy="12" r="2"/></svg>
+										Enable 2FA
+									</Button>
+								)
+							}
+						</div>
+
+						<div class="w-full">
+							<p id="nz-profile-error" class="hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"></p>
+							<form id="nz-profile-form" class="grid gap-4">
+								<div class="space-y-4">
+									<label class="grid gap-1 text-sm font-medium">First Name<input id="nz-profile-first" name="firstName" value={user?.firstName || ""} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="John" /></label>
+									<label class="grid gap-1 text-sm font-medium">Last Name<input id="nz-profile-last" name="lastName" value={user?.lastName || ""} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Doe" /></label>
+									<label class="grid gap-1 text-sm font-medium">Email<input id="nz-profile-email" name="email" type="email" required value={user?.email || ""} class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Email" /></label>
+									<label class="grid gap-1 text-sm font-medium">Current Password<input id="nz-profile-current-password" name="currentPassword" type="password" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Current Password" /></label>
+									<label class="grid gap-1 text-sm font-medium">Password<input id="nz-profile-password" name="password" type="password" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Password" /></label>
+
+									<div class="grid gap-1">
+										<span class="text-sm font-medium">Avatar</span>
+										<input type="hidden" id="nz-profile-image" name="image" value={user?.image || ""} />
+										<div class="flex flex-row flex-wrap gap-2 max-xl:justify-center" id="nz-profile-avatars" role="radiogroup" aria-label="Avatar">
+											<label class="cursor-pointer [&:has(input:checked)>.default-avatar]:border-primary [&:has(input:checked)>.default-avatar]:border [&:has(input:checked)>.default-avatar]:p-px">
+												<input type="radio" name="avatar-type" value="" class="sr-only" checked={selectedAvatarType === ""} />
+												<span class="default-avatar inline-flex h-12 w-12 items-center justify-center rounded-full border hover:p-px hover:border-primary transition-transform bg-muted text-sm font-medium">{avatarInitials}</span>
+											</label>
+											<label class="cursor-pointer [&:has(input:checked)>.upload-avatar]:border-primary [&:has(input:checked)>.upload-avatar]:border [&:has(input:checked)>.upload-avatar]:p-px">
+												<input type="radio" name="avatar-type" value="upload" class="sr-only" checked={selectedAvatarType === "upload"} />
+												<span class="upload-avatar h-12 w-12 rounded-full border border-dashed border-muted-foreground hover:border-primary transition-colors flex items-center justify-center bg-muted/50 hover:bg-muted overflow-hidden">
+													{
+														user?.image?.startsWith("data:") ? (
+															<img src={user.image} alt="Custom avatar" class="h-full w-full object-cover rounded-full" id="nz-profile-upload-preview" />
+														) : (
+															<svg class="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+														)
+													}
+												</span>
+												<input id="nz-profile-avatar-upload" type="file" accept="image/*" class="hidden" />
+											</label>
+											<label class="cursor-pointer relative [&:has(input:checked)>.color-avatar]:border-primary [&:has(input:checked)>.color-avatar]:border [&:has(input:checked)>.color-avatar]:p-px">
+												<input type="radio" name="avatar-type" value="color" class="sr-only" checked={selectedAvatarType === "color"} />
+												<span class="color-avatar h-12 w-12 rounded-full border hover:p-px hover:border-primary transition-colors flex items-center justify-center overflow-hidden cursor-pointer" style={isSolidColorAvatar(user?.image) ? `background-color:${user?.image}` : undefined} id="nz-profile-color-preview">
+													{!isSolidColorAvatar(user?.image) ? (
+														<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5 text-muted-foreground" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+													) : null}
+												</span>
+												<input type="color" id="nz-profile-color-input" class="absolute opacity-0 pointer-events-none w-12 h-12 top-0 left-0" value={colorAvatarValue} />
+											</label>
+											{
+												gravatarUrl ? (
+													<label class="cursor-pointer [&:has(input:checked)>img]:border-primary [&:has(input:checked)>img]:border [&:has(input:checked)>img]:p-px">
+														<input type="radio" name="avatar-type" value={gravatarUrl} class="sr-only" checked={selectedAvatarType === gravatarUrl} />
+														<img src={gravatarUrl} alt="Gravatar" class="h-12 w-12 rounded-full border hover:p-px hover:border-primary transition-transform" loading="lazy" />
+													</label>
+												) : null
+											}
+										</div>
+									</div>
+								</div>
+								<div class="flex items-center justify-end gap-2">
+									<Button type="submit" id="nz-profile-submit" variant="default">Save</Button>
+								</div>
+							</form>
+						</div>
+					<dialog id="nz-2fa-enable-dialog" class="relative w-[calc(100%-2rem)] max-w-xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+					<div class="p-6 max-h-[90vh] overflow-y-auto">
+						<button type="button" class="absolute right-4 top-4" data-close-2fa-enable aria-label="Close">✕</button>
+						<h2 class="text-lg font-semibold">2FA Setup</h2>
+						<p class="text-sm text-muted-foreground mt-1" id="nz-2fa-enable-desc">Enter your password to begin 2FA setup</p>
+						<div id="nz-2fa-enable-password">
+							<form id="nz-2fa-enable-password-form" class="space-y-4 mt-4">
+								<label class="grid gap-1 text-sm font-medium">Password<input id="nz-2fa-enable-password-input" type="password" required class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Enter your password" /></label>
+								<label class="grid gap-1 text-sm font-medium">Issuer<input id="nz-2fa-enable-issuer-input" type="text" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Enter your issuer" /><span class="text-xs text-muted-foreground font-normal">Use a custom issuer to identify the service you're authenticating with.</span></label>
+								<Button type="submit" id="nz-2fa-enable-submit" variant="default" class="w-full">Continue</Button>
+							</form>
+						</div>
+						<div id="nz-2fa-enable-verify" class="hidden">
+							<form id="nz-2fa-enable-verify-form" class="space-y-6 mt-4">
+								<div class="flex flex-col gap-6 justify-center items-center">
+									<div class="flex flex-col items-center gap-4 p-6 border rounded-lg">
+										<span class="text-sm font-medium">Scan this QR code with your authenticator app</span>
+										<img id="nz-2fa-enable-qr" alt="2FA QR Code" class="rounded-lg w-48 h-48 hidden" />
+										<div class="flex flex-col gap-2 text-center">
+											<span class="text-sm text-muted-foreground">Can't scan the QR code?</span>
+											<span class="text-xs font-mono bg-muted p-2 rounded" id="nz-2fa-enable-secret"></span>
+										</div>
+									</div>
+									<div id="nz-2fa-enable-backup"></div>
+								</div>
+								<label class="grid gap-1 text-sm font-medium">Verification Code<input id="nz-2fa-enable-otp" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm tracking-widest text-center" placeholder="000000" /><span class="text-xs text-muted-foreground font-normal">Enter the 6-digit code from your authenticator app</span></label>
+								<Button type="submit" id="nz-2fa-enable-verify-submit" variant="default" class="w-full" disabled>Enable 2FA</Button>
+							</form>
+						</div>
+					</div>
+				</dialog>
+
+				<dialog id="nz-2fa-manage-dialog" class="relative w-[calc(100%-2rem)] max-w-xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+					<div class="p-6 max-h-[90vh] overflow-y-auto">
+						<button type="button" class="absolute right-4 top-4" data-close-2fa-manage aria-label="Close">✕</button>
+						<h2 class="text-lg font-semibold" id="nz-2fa-manage-title">Verify Your Identity</h2>
+						<p class="text-sm text-muted-foreground mt-1" id="nz-2fa-manage-desc">Enter your password to manage your 2FA settings</p>
+						<div id="nz-2fa-manage-password">
+							<form id="nz-2fa-manage-password-form" class="space-y-4 mt-4">
+								<label class="grid gap-1 text-sm font-medium">Password<input id="nz-2fa-manage-password-input" type="password" required class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Enter your password" /><span class="text-xs text-muted-foreground font-normal">Enter your password to continue</span></label>
+								<div class="flex justify-end gap-4">
+									<Button type="button" variant="outline" data-close-2fa-manage>Cancel</Button>
+									<Button type="submit" id="nz-2fa-manage-password-submit" variant="default">Continue</Button>
+								</div>
+							</form>
+						</div>
+						<div id="nz-2fa-manage-actions" class="hidden space-y-4 mt-4">
+							<div class="flex flex-col gap-2 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+								<h4 class="font-medium">Regenerate Backup Codes</h4>
+								<p class="text-sm text-muted-foreground mt-1">Generate new backup codes to replace your existing ones. This will invalidate all previous backup codes.</p>
+								<Button type="button" variant="outline" id="nz-2fa-regenerate" class="w-full mt-2">Regenerate Backup Codes</Button>
+							</div>
+							<div class="flex flex-col gap-2 p-4 border border-destructive/50 rounded-lg hover:bg-destructive/5 transition-colors">
+								<h4 class="font-medium text-destructive">Disable 2FA</h4>
+								<p class="text-sm text-muted-foreground mt-1">Completely disable two-factor authentication for your account. This will make your account less secure.</p>
+								<Button type="button" variant="destructive" id="nz-2fa-disable-open" class="w-full mt-2">Disable 2FA</Button>
+							</div>
+							<div class="flex justify-end"><Button type="button" variant="outline" data-close-2fa-manage>Close</Button></div>
+						</div>
+						<div id="nz-2fa-manage-backup" class="hidden space-y-4 mt-4">
+							<div class="w-full space-y-3 border rounded-lg p-4 bg-muted/50">
+								<div class="grid grid-cols-2 gap-2" id="nz-2fa-manage-backup-grid"></div>
+								<p class="text-sm text-muted-foreground">Save these backup codes in a secure place. You can use them to access your account if you lose access to your authenticator device. Each code can only be used once.</p>
+							</div>
+							<div class="flex gap-2">
+								<Button type="button" variant="outline" id="nz-2fa-manage-dl" class="flex-1">Download</Button>
+								<Button type="button" variant="outline" id="nz-2fa-manage-copy" class="flex-1">Copy</Button>
+							</div>
+							<div class="flex justify-end gap-4">
+								<Button type="button" variant="outline" data-close-2fa-manage>Back to Actions</Button>
+								<Button type="button" data-close-2fa-manage id="nz-2fa-manage-done">Done</Button>
+							</div>
+						</div>
+					</div>
+				</dialog>
+
+				<dialog id="nz-2fa-disable-dialog" class="relative w-[calc(100%-2rem)] max-w-md rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+					<div class="p-6">
+						<p class="text-sm font-semibold">Are you absolutely sure?</p>
+						<p class="mt-2 text-sm text-muted-foreground">This will permanently disable Two-Factor Authentication for your account. Your account will be less secure without 2FA enabled.</p>
+						<div class="mt-6 grid grid-cols-2 gap-2">
+							<Button type="button" variant="outline" data-close-2fa-disable>Cancel</Button>
+							<Button type="button" variant="destructive" id="nz-2fa-disable-confirm">Disable 2FA</Button>
+						</div>
+					</div>
+				</dialog>
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { trpcMutate } from "@/lib/client-api";
+	import { bindProfile2FA } from "@/scripts/profile-2fa";
+	import { showToast } from "@/scripts/ui";
+
+	function bindProfilePage() {
+		const root = document.getElementById("nz-profile-root");
+		if (!root || root.dataset.bound === "1") return;
+		root.dataset.bound = "1";
+
+		const form = document.getElementById("nz-profile-form");
+		const imageInput = document.getElementById("nz-profile-image");
+		const uploadInput = document.getElementById("nz-profile-avatar-upload");
+		const colorInput = document.getElementById("nz-profile-color-input");
+		const colorPreview = document.getElementById("nz-profile-color-preview");
+		const uploadPreview = document.getElementById("nz-profile-upload-preview");
+		const submitBtn = document.getElementById("nz-profile-submit");
+		const formError = document.getElementById("nz-profile-error");
+		const impersonation = document.getElementById("nz-profile-impersonation");
+
+		if (!(form instanceof HTMLFormElement) || !(imageInput instanceof HTMLInputElement) || !(submitBtn instanceof HTMLButtonElement) || !(formError instanceof HTMLElement)) {
+			return;
+		}
+
+		bindProfile2FA(root, root.dataset.userEmail || "");
+
+		const syncImageFromSelection = () => {
+			const selected = form.querySelector('input[name="avatar-type"]:checked');
+			if (!(selected instanceof HTMLInputElement)) return;
+			const val = selected.value;
+			if (val === "upload") {
+				if (uploadPreview instanceof HTMLImageElement && uploadPreview.src) {
+					imageInput.value = uploadPreview.src;
+				}
+			} else if (val === "color") {
+				if (colorInput instanceof HTMLInputElement) {
+					imageInput.value = colorInput.value;
+				}
+			} else {
+				imageInput.value = val;
+			}
+		};
+
+		form.querySelectorAll('input[name="avatar-type"]').forEach((radio) => {
+			radio.addEventListener("change", syncImageFromSelection);
+		});
+
+		colorPreview?.addEventListener("click", () => {
+			colorInput instanceof HTMLInputElement && colorInput.click();
+		});
+
+		colorInput?.addEventListener("input", () => {
+			if (colorInput instanceof HTMLInputElement && colorPreview instanceof HTMLElement) {
+				colorPreview.style.backgroundColor = colorInput.value;
+				colorPreview.innerHTML = "";
+				const colorRadio = form.querySelector('input[name="avatar-type"][value="color"]');
+				if (colorRadio instanceof HTMLInputElement) {
+					colorRadio.checked = true;
+				}
+				imageInput.value = colorInput.value;
+			}
+		});
+
+		document.querySelector(".upload-avatar")?.addEventListener("click", () => {
+			uploadInput instanceof HTMLInputElement && uploadInput.click();
+		});
+
+		uploadInput?.addEventListener("change", async (e) => {
+			const file = (e.target as HTMLInputElement).files?.[0];
+			if (!file) return;
+			if (file.size > 2 * 1024 * 1024) {
+				showToast("Image size must be less than 2MB", "error");
+				return;
+			}
+			const reader = new FileReader();
+			reader.onload = (event) => {
+				const result = event.target?.result as string;
+				imageInput.value = result;
+				const uploadRadio = form.querySelector('input[name="avatar-type"][value="upload"]');
+				if (uploadRadio instanceof HTMLInputElement) uploadRadio.checked = true;
+				const label = document.querySelector(".upload-avatar");
+				if (label instanceof HTMLElement) {
+					label.innerHTML = `<img src="${result}" alt="Custom avatar" class="h-full w-full object-cover rounded-full" id="nz-profile-upload-preview" />`;
+				}
+			};
+			reader.readAsDataURL(file);
+		});
+
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			syncImageFromSelection();
+			formError.classList.add("hidden");
+			submitBtn.disabled = true;
+			submitBtn.textContent = "Saving...";
+			const firstName = (document.getElementById("nz-profile-first") as HTMLInputElement)?.value;
+			const lastName = (document.getElementById("nz-profile-last") as HTMLInputElement)?.value;
+			const email = (document.getElementById("nz-profile-email") as HTMLInputElement)?.value;
+			const password = (document.getElementById("nz-profile-password") as HTMLInputElement)?.value;
+			const currentPassword = (document.getElementById("nz-profile-current-password") as HTMLInputElement)?.value;
+			try {
+				await trpcMutate("user.update", {
+					email: email.toLowerCase(),
+					password: password || undefined,
+					image: imageInput.value,
+					currentPassword: currentPassword || undefined,
+					allowImpersonation: impersonation instanceof HTMLInputElement ? impersonation.checked : undefined,
+					firstName: firstName || undefined,
+					lastName: lastName || undefined,
+				});
+				showToast("Profile Updated", "success");
+				(document.getElementById("nz-profile-password") as HTMLInputElement).value = "";
+				(document.getElementById("nz-profile-current-password") as HTMLInputElement).value = "";
+			} catch {
+				showToast("Error updating the profile", "error");
+			} finally {
+				submitBtn.disabled = false;
+				submitBtn.textContent = "Save";
+			}
+		});
+	}
+
+	bindProfilePage();
+	document.addEventListener("astro:page-load", bindProfilePage);
+	document.addEventListener("astro:after-swap", bindProfilePage);
+</script>

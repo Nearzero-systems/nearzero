@@ -1,0 +1,434 @@
+---
+import { format } from "date-fns";
+import Button from "@/components/ui/Button.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import SettingsEmptyState from "@/components/dashboard/settings/SettingsEmptyState.astro";
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.users,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+const FREE_ROLES = ["owner", "admin", "member"];
+
+let members: any[] = [];
+let invitations: any[] = [];
+let permissions: { member?: { create?: boolean; delete?: boolean } } | null = null;
+let currentUserId = "";
+let hasValidLicense = false;
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		const [allMembers, perms, currentUser, license, allInvitations] = await Promise.all([
+			api.user.all.query(),
+			api.user.getPermissions.query(),
+			api.user.get.query(),
+			api.licenseKey.haveValidLicenseKey.query().catch(() => false),
+			api.organization.allInvitations.query().catch(() => []),
+		]);
+		members = allMembers ?? [];
+		invitations = allInvitations ?? [];
+		permissions = perms;
+		currentUserId = currentUser?.user?.id ?? currentUser?.id ?? "";
+		hasValidLicense = license;
+	} catch {
+		members = [];
+	}
+}
+
+const currentUserRole = members.find((m) => m.user?.id === currentUserId)?.role;
+const membersWithCustomRoles = members.filter((m) => !FREE_ROLES.includes(m.role));
+const hasCustomRolesWithoutLicense = !hasValidLicense && membersWithCustomRoles.length > 0;
+const canInvite =
+	Boolean(permissions?.member?.create) ||
+	currentUserRole === "owner" ||
+	currentUserRole === "admin";
+
+type MemberRow = {
+	memberId: string;
+	userId: string;
+	email: string;
+	role: string;
+	createdAt: string;
+	isSelf: boolean;
+	canChangeRole: boolean;
+	canEditPermissions: boolean;
+	canDelete: boolean;
+	canUnlink: boolean;
+	hasAnyAction: boolean;
+};
+
+type PendingInvitationRow = {
+	invitationId: string;
+	email: string;
+	role: string;
+	status: string;
+	createdAt: string;
+	expiresAt: string;
+	canCancel: boolean;
+	hasAnyAction: boolean;
+};
+
+const memberRows: MemberRow[] = members.map((member) => {
+	const isStaticAdminOrOwner = member.role === "owner" || member.role === "admin";
+	const canEditPermissions =
+		!isStaticAdminOrOwner && member.user?.id !== currentUserId;
+	const canChangeRole =
+		member.role !== "owner" &&
+		member.user?.id !== currentUserId &&
+		(currentUserRole === "owner" ||
+			(currentUserRole === "admin" && member.role !== "admin"));
+	const canDeleteMember = permissions?.member?.delete ?? false;
+	const canRemove =
+		member.role !== "owner" &&
+		member.user?.id !== currentUserId &&
+		(currentUserRole === "owner" ||
+			(currentUserRole === "admin" && member.role !== "admin") ||
+			(canDeleteMember && !isStaticAdminOrOwner));
+	const canDelete = canRemove;
+	const canUnlink = canRemove;
+	const hasAnyAction = canEditPermissions || canChangeRole || canDelete || canUnlink;
+
+	return {
+		memberId: member.id,
+		userId: member.user?.id ?? "",
+		email: member.user?.email ?? "",
+		role: member.role,
+		createdAt: member.createdAt,
+		isSelf: member.user?.id === currentUserId,
+		canChangeRole,
+		canEditPermissions,
+		canDelete,
+		canUnlink,
+		hasAnyAction,
+	};
+});
+
+const pendingInvitationRows: PendingInvitationRow[] = invitations
+	.filter(
+		(invite) =>
+			invite.status === "pending" &&
+			new Date(invite.expiresAt).getTime() > Date.now(),
+	)
+	.map((invite) => ({
+		invitationId: invite.id,
+		email: invite.email ?? "",
+		role: invite.role ?? "member",
+		status: invite.status,
+		createdAt: invite.createdAt,
+		expiresAt: invite.expiresAt,
+		canCancel: canInvite,
+		hasAnyAction: canInvite,
+	}));
+
+const totalRows = memberRows.length + pendingInvitationRows.length;
+
+const usersBootstrap = {
+	hasValidLicense,
+	members: memberRows,
+	pendingInvitations: pendingInvitationRows,
+	customRolesWithoutLicenseCount: membersWithCustomRoles.length,
+	canInvite,
+};
+---
+
+<div class="w-full">
+	{
+		loadFailed ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground p-10">
+				<span>Could not load this page.</span>
+				<span class="text-xs">Try refreshing.</span>
+			</div>
+		) : forbidden ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground px-10">
+				<span>You do not have access to this section.</span>
+				<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+			</div>
+		) : (
+			<div class="w-full nz-dashboard-content" id="nz-users-root">
+				<script is:inline id="nz-users-data" type="application/json" set:html={JSON.stringify(usersBootstrap)} />
+				<div class={ST.panel}>
+					{
+						totalRows === 0 ? (
+							<div class="flex flex-col items-center gap-4 py-10">
+								<SettingsEmptyState message="No teammates yet. Invite users to collaborate in this workspace." />
+								{canInvite ? (
+									<Button type="button" id="nz-users-invite-open" variant="default">
+										Invite user
+									</Button>
+								) : null}
+							</div>
+						) : (
+							<>
+								{
+									hasCustomRolesWithoutLicense ? (
+										<div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+											You have {membersWithCustomRoles.length === 1 ? "1 user" : `${membersWithCustomRoles.length} users`} assigned to custom roles. Custom roles will not work without a valid Enterprise license. Please activate your license or change these users to a free role (Admin or Member).
+										</div>
+									) : null
+								}
+								<div class={ST.filterBar}>
+									<input
+										id="nz-users-filter"
+										type="search"
+										placeholder="Filter by email"
+										class={ST.filterSearch}
+									/>
+									{canInvite ? (
+										<Button type="button" id="nz-users-invite-open" variant="default">
+											Invite user
+										</Button>
+									) : null}
+								</div>
+								<div class={ST.tableWrap}>
+									<table class={ST.table} id="nz-users-table">
+										<thead class={ST.thead}>
+											<tr>
+												<th class={ST.th}>Email</th>
+												<th class={ST.th}>Role</th>
+												<th class={ST.th}>Created</th>
+												<th class={ST.thRight}>Actions</th>
+											</tr>
+										</thead>
+										<tbody id="nz-users-tbody">
+											{
+												memberRows.map((member) => (
+													<tr class={ST.tr} data-user-email={member.email.toLowerCase()}>
+														<td class={ST.td}>
+															<span class="font-medium">{member.email}</span>
+															{member.isSelf ? <span class="text-muted-foreground ml-1">(You)</span> : null}
+														</td>
+														<td class={`${ST.td} capitalize text-muted-foreground`}>{member.role}</td>
+														<td class={ST.tdMuted}>
+															{format(new Date(member.createdAt), "MMM d, yyyy HH:mm")}
+														</td>
+														<td class={ST.tdRight}>
+																	{
+																		member.hasAnyAction ? (
+																			<div class="relative inline-flex justify-end">
+																				<button
+																					type="button"
+																					id={`nz-user-menu-trigger-${member.memberId}`}
+																					class={ST.actionBtn}
+																					aria-expanded="false"
+																					aria-haspopup="true"
+																					aria-label="Open menu"
+																				>
+																					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+																				</button>
+																				<div
+																					id={`nz-user-menu-${member.memberId}`}
+																					class="hidden absolute right-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-[#eceef3] bg-white p-1 text-[#111827]"
+																				>
+																					<div class="px-2 py-1.5 text-xs font-semibold">Actions</div>
+																					{
+																						member.canChangeRole ? (
+																							<button type="button" class="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent" data-user-action="change-role" data-member-id={member.memberId} data-user-id={member.userId} data-role={member.role} data-email={member.email}>Change Role</button>
+																						) : null
+																					}
+																					{
+																						member.canEditPermissions ? (
+																							<button type="button" class="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs hover:bg-accent" data-user-action="permissions" data-user-id={member.userId} data-role={member.role}>Add Permissions</button>
+																						) : null
+																					}
+																					{
+																						member.canDelete ? (
+																							<button type="button" class="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs text-red-500 hover:bg-accent hover:text-red-600" data-user-action="remove-member" data-user-id={member.userId}>Remove member</button>
+																						) : null
+																					}
+																				</div>
+																			</div>
+																		) : (
+																			<button type="button" class={`${ST.actionBtn} opacity-50`} disabled aria-label="No actions available">
+																				<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+																			</button>
+																		)
+																	}
+																</td>
+															</tr>
+												))
+											}
+											{
+												pendingInvitationRows.map((invite) => (
+													<tr class={ST.tr} data-user-email={invite.email.toLowerCase()}>
+														<td class={ST.td}>
+															<span class="font-medium">{invite.email}</span>
+															<span class="ml-1 text-xs text-muted-foreground">(pending)</span>
+														</td>
+														<td class={`${ST.td} capitalize text-muted-foreground`}>{invite.role}</td>
+														<td class={ST.tdMuted}>
+															{format(new Date(invite.createdAt), "MMM d, yyyy HH:mm")}
+														</td>
+														<td class={ST.tdRight}>
+															{
+																invite.hasAnyAction ? (
+																	<div class="relative inline-flex justify-end">
+																		<button
+																			type="button"
+																			id={`nz-user-menu-trigger-${invite.invitationId}`}
+																			class={ST.actionBtn}
+																			aria-expanded="false"
+																			aria-haspopup="true"
+																			aria-label="Open menu"
+																		>
+																			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+																		</button>
+																		<div
+																			id={`nz-user-menu-${invite.invitationId}`}
+																			class="hidden absolute right-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-[#eceef3] bg-white p-1 text-[#111827]"
+																		>
+																			<div class="px-2 py-1.5 text-xs font-semibold">Actions</div>
+																			<button type="button" class="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs text-red-500 hover:bg-accent hover:text-red-600" data-user-action="cancel-invitation" data-invitation-id={invite.invitationId}>Cancel invitation</button>
+																		</div>
+																	</div>
+																) : (
+																	<button type="button" class={`${ST.actionBtn} opacity-50`} disabled aria-label="No actions available">
+																		<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4 text-muted-foreground" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+																	</button>
+																)
+															}
+														</td>
+													</tr>
+												))
+											}
+										</tbody>
+									</table>
+								</div>
+								<div class={ST.footer}>
+									<span id="nz-users-total" class={ST.total}>{totalRows} total</span>
+								</div>
+							</>
+						)
+					}
+				</div>
+					<dialog id="nz-user-role-dialog" class="relative w-[calc(100%-2rem)] max-w-lg rounded-lg border bg-background text-foreground shadow-lg backdrop:bg-black/50">
+					<div class="p-6">
+						<button type="button" class="absolute right-4 top-4 opacity-70 hover:opacity-100" data-close-dialog aria-label="Close">✕</button>
+						<h2 class="text-lg font-semibold">Change User Role</h2>
+						<p class="text-xs text-muted-foreground mt-1">Change the role for <strong id="nz-user-role-email"></strong></p>
+						<p id="nz-user-role-error" class="mt-3 hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"></p>
+						<form id="nz-user-role-form" class="space-y-4 mt-4">
+							<input type="hidden" id="nz-user-role-member-id" value="" />
+							<label class="grid gap-1 text-xs font-medium">
+								Role
+								<select id="nz-user-role-select" required class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs">
+									<option value="admin">Admin</option>
+									<option value="member">Member</option>
+								</select>
+								<span class="text-xs text-muted-foreground">Note: Owner role is nontransferable.</span>
+							</label>
+							<button type="submit" id="nz-user-role-submit" class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground">Update Role</button>
+						</form>
+					</div>
+				</dialog>
+
+				<dialog id="nz-user-perm-dialog" class="relative w-[calc(100%-2rem)] max-w-4xl rounded-lg border bg-background text-foreground shadow-lg backdrop:bg-black/50">
+					<div class="p-6 max-h-[85vh] overflow-y-auto">
+						<button type="button" class="absolute right-4 top-4 opacity-70 hover:opacity-100" data-close-dialog aria-label="Close">✕</button>
+						<h2 class="text-lg font-semibold">Permissions</h2>
+						<p class="text-xs text-muted-foreground mt-1">Add or remove permissions</p>
+						<p id="nz-user-perm-error" class="mt-3 hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"></p>
+						<form id="nz-user-perm-form" class="mt-4">
+							<div id="nz-user-perm-body"></div>
+							<div class="flex justify-end mt-4">
+								<button type="submit" id="nz-user-perm-submit" class="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground">Update</button>
+							</div>
+						</form>
+					</div>
+				</dialog>
+
+				<dialog id="nz-user-remove-dialog" class="relative w-[calc(100%-2rem)] max-w-md rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+					<div class="p-6">
+						<p class="text-xs font-semibold">Remove member</p>
+						<p class="mt-2 text-xs text-muted-foreground">Remove this user from the current organization? Their account will not be deleted.</p>
+						<div class="mt-6 grid grid-cols-2 gap-2">
+							<button type="button" id="nz-user-remove-cancel" class="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-xs">Cancel</button>
+							<button type="button" id="nz-user-remove-confirm" class="inline-flex h-10 items-center justify-center rounded-md bg-destructive px-4 py-2 text-xs font-medium text-destructive-foreground">Remove</button>
+						</div>
+					</div>
+				</dialog>
+
+				<NzModal
+					id="nz-user-invite-dialog"
+					title="Invite user"
+					description="Send an email invitation to join this workspace."
+					size="sm"
+					form
+					formId="nz-user-invite-form"
+				>
+					<p
+						id="nz-user-invite-error"
+						class="hidden rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+					></p>
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Email</span>
+						<input
+							id="nz-user-invite-email"
+							type="email"
+							required
+							placeholder="teammate@company.com"
+							class="nz-modal__input"
+						/>
+					</label>
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Role</span>
+						<select id="nz-user-invite-role" required class="nz-modal__select">
+							<option value="member">Member</option>
+							<option value="admin">Admin</option>
+						</select>
+					</label>
+					<button
+						slot="footer"
+						type="submit"
+						id="nz-user-invite-submit"
+						class="nz-modal__btn nz-modal__btn--primary"
+					>
+						Send invitation
+					</button>
+				</NzModal>
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { mountUsersDashboard } from "@/scripts/users-dashboard";
+	import { refreshNzModalListeners } from "@/scripts/modal-animations";
+
+	function bindUsersFilter() {
+		const filter = document.getElementById("nz-users-filter");
+		const tbody = document.getElementById("nz-users-tbody");
+		const totalEl = document.getElementById("nz-users-total");
+		if (!(filter instanceof HTMLInputElement) || !(tbody instanceof HTMLElement)) return;
+
+		const rows = [...tbody.querySelectorAll<HTMLTableRowElement>("tr[data-user-email]")];
+		const apply = () => {
+			const q = filter.value.trim().toLowerCase();
+			let visible = 0;
+			for (const row of rows) {
+				const email = row.dataset.userEmail ?? "";
+				const show = !q || email.includes(q);
+				row.hidden = !show;
+				if (show) visible += 1;
+			}
+			if (totalEl) totalEl.textContent = `${visible} total`;
+		};
+		filter.addEventListener("input", apply);
+	}
+
+	function boot() {
+		refreshNzModalListeners();
+		mountUsersDashboard();
+		bindUsersFilter();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

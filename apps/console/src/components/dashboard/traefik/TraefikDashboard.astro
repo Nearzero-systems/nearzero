@@ -1,0 +1,215 @@
+---
+import { createServerTrpcClient } from "@/lib/server-api";
+
+interface Props {
+	request: Request;
+}
+
+type TreeItem = {
+	id: string;
+	name: string;
+	type: "file" | "directory";
+	children?: TreeItem[];
+};
+
+const { request } = Astro.props;
+const serverId = undefined;
+
+const api = createServerTrpcClient(request) as any;
+let directories: TreeItem[] = [];
+let loadError: string | null = null;
+
+try {
+	directories = await api.settings.readDirectories.query({ serverId });
+} catch (err) {
+	loadError = err instanceof Error ? err.message : "Failed to load directories";
+	directories = [];
+}
+
+function renderTreeItems(items: TreeItem[], depth = 0): string {
+	return items
+		.map((item) => {
+			const pad = depth * 12;
+			if (item.type === "directory") {
+				const children = item.children?.length
+					? renderTreeItems(item.children, depth + 1)
+					: "";
+				return `<div class="nz-traefik-tree__group" style="padding-left:${pad}px">
+					<button type="button" class="nz-traefik-tree__btn" data-tree-dir="${item.id}">
+						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+						<span>${item.name}</span>
+					</button>
+					<div class="hidden" data-tree-children="${item.id}">${children}</div>
+				</div>`;
+			}
+			return `<button type="button" class="nz-traefik-tree__btn nz-traefik-tree__btn--file" style="padding-left:${pad}px" data-tree-file="${item.id}">
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+				<span>${item.name}</span>
+			</button>`;
+		})
+		.join("");
+}
+---
+
+<div class="w-full nz-dashboard-content nz-traefik" id="nz-traefik-root" data-server-id={serverId ?? ""}>
+	<div class="nz-traefik__callout" role="note">
+		Adding invalid configuration to existing files can break your Traefik instance and block access to your applications.
+	</div>
+
+	{
+		loadError ? (
+			<div class="nz-traefik__error">{loadError}</div>
+		) : directories.length === 0 ? (
+			<div class="nz-traefik__empty">
+				<p class="nz-traefik__empty-title">No files found</p>
+				<p class="nz-traefik__empty-text">No directories or files detected in <code>/etc/nearzero/traefik</code>.</p>
+			</div>
+		) : (
+			<div class="nz-traefik__layout">
+				<aside class="nz-traefik__sidebar">
+					<p class="nz-traefik__sidebar-label">Files</p>
+					<div class="nz-traefik__tree" id="nz-traefik-tree" set:html={renderTreeItems(directories)} />
+				</aside>
+				<div class="nz-traefik__editor">
+					<div id="nz-traefik-empty" class="nz-traefik__placeholder">
+						<p class="nz-traefik__placeholder-title">No file selected</p>
+						<p class="nz-traefik__placeholder-text">Choose a file from the tree to view or edit its configuration.</p>
+					</div>
+					<form id="nz-traefik-editor" class="nz-traefik__form hidden">
+						<input type="hidden" id="nz-traefik-path" value="" />
+						<div class="nz-traefik__form-toolbar">
+							<label class="nz-traefik__check">
+								<input type="checkbox" id="nz-traefik-can-edit" checked class="nz-traefik__check-input" />
+								<span>Edit mode</span>
+							</label>
+							<label class="nz-traefik__check">
+								<input type="checkbox" id="nz-traefik-skip-yaml" class="nz-traefik__check-input" />
+								<span>Skip YAML validation</span>
+							</label>
+						</div>
+						<textarea
+							id="nz-traefik-content"
+							rows="24"
+							class="nz-traefik__textarea"
+							readonly
+							spellcheck="false"
+						></textarea>
+						<p id="nz-traefik-form-error" class="nz-traefik__form-error hidden"></p>
+						<div class="nz-traefik__form-actions">
+							<button type="submit" id="nz-traefik-save" class="nz-modal__btn nz-modal__btn--primary">
+								Save
+							</button>
+						</div>
+					</form>
+				</div>
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { trpcMutate, trpcQuery } from "@/lib/client-api";
+	import { showToast } from "@/scripts/ui";
+
+	function bindTraefikPage() {
+		const root = document.getElementById("nz-traefik-root");
+		if (!root || root.dataset.bound === "1") return;
+		root.dataset.bound = "1";
+
+		const serverId = root.dataset.serverId?.trim() || undefined;
+		const tree = document.getElementById("nz-traefik-tree");
+		const empty = document.getElementById("nz-traefik-empty");
+		const editor = document.getElementById("nz-traefik-editor");
+		const pathEl = document.getElementById("nz-traefik-path");
+		const contentEl = document.getElementById("nz-traefik-content");
+		const canEditEl = document.getElementById("nz-traefik-can-edit");
+		const skipYamlEl = document.getElementById("nz-traefik-skip-yaml");
+		const formError = document.getElementById("nz-traefik-form-error");
+		const saveBtn = document.getElementById("nz-traefik-save");
+
+		if (
+			!(tree instanceof HTMLElement) ||
+			!(empty instanceof HTMLElement) ||
+			!(editor instanceof HTMLFormElement) ||
+			!(pathEl instanceof HTMLInputElement) ||
+			!(contentEl instanceof HTMLTextAreaElement) ||
+			!(canEditEl instanceof HTMLInputElement) ||
+			!(skipYamlEl instanceof HTMLInputElement) ||
+			!(formError instanceof HTMLElement) ||
+			!(saveBtn instanceof HTMLButtonElement)
+		) return;
+
+		const syncEditMode = () => {
+			contentEl.readOnly = !canEditEl.checked;
+			saveBtn.disabled = !canEditEl.checked;
+		};
+		canEditEl.addEventListener("change", syncEditMode);
+
+		tree.addEventListener("click", async (e) => {
+			const t = e.target instanceof Element ? e.target : null;
+			if (!t) return;
+
+			const dirBtn = t.closest("[data-tree-dir]");
+			if (dirBtn instanceof HTMLElement && dirBtn.dataset.treeDir) {
+				const child = tree.querySelector(`[data-tree-children="${dirBtn.dataset.treeDir}"]`);
+				child?.classList.toggle("hidden");
+				dirBtn.classList.toggle("nz-traefik-tree__btn--open");
+				return;
+			}
+
+			const fileBtn = t.closest("[data-tree-file]");
+			if (!(fileBtn instanceof HTMLElement) || !fileBtn.dataset.treeFile) return;
+
+			tree.querySelectorAll("[data-tree-file].nz-traefik-tree__btn--active").forEach((btn) => {
+				btn.classList.remove("nz-traefik-tree__btn--active");
+			});
+			fileBtn.classList.add("nz-traefik-tree__btn--active");
+
+			const path = fileBtn.dataset.treeFile;
+			pathEl.value = path;
+			empty.classList.add("hidden");
+			editor.classList.remove("hidden");
+			contentEl.value = "Loading...";
+			formError.classList.add("hidden");
+
+			try {
+				const data = await trpcQuery<string>("settings.readTraefikFile", { path, serverId });
+				contentEl.value = data ?? "";
+			} catch (err) {
+				contentEl.value = "";
+				showToast(err instanceof Error ? err.message : "Failed to load file", "error");
+			}
+			syncEditMode();
+		});
+
+		editor.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const path = pathEl.value.trim();
+			if (!path) return;
+			formError.classList.add("hidden");
+			saveBtn.disabled = true;
+			try {
+				await trpcMutate("settings.updateTraefikFile", {
+					path,
+					traefikConfig: contentEl.value,
+					serverId,
+				});
+				showToast("Traefik config updated", "success");
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : "Error updating the Traefik config";
+				formError.textContent = msg;
+				formError.classList.remove("hidden");
+				showToast("Error updating the Traefik config", "error");
+			} finally {
+				saveBtn.disabled = !canEditEl.checked;
+			}
+		});
+	}
+
+	function boot() {
+		bindTraefikPage();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

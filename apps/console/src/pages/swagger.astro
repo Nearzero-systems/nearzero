@@ -1,0 +1,14 @@
+---
+import Base from "@/layouts/Base.astro";
+import { pageTitle } from "@/lib/branding";
+
+---
+<Base title={pageTitle("API docs")}>
+  <div class="flex min-h-screen items-center justify-center bg-[#f3f4f6] p-6">
+    <div class="w-full max-w-md rounded-xl border border-[#e5e7eb] bg-white p-6">
+      <h1 class="font-display text-xl font-semibold text-[#111827]">API docs</h1>
+      <p class="mt-2 text-xs text-[#6b7280]">Use the platform API for this flow.</p>
+      <a href="/" class="mt-6 inline-block text-xs text-[#6d28d9] hover:underline">Back to sign in</a>
+    </div>
+  </div>
+</Base>

@@ -1,0 +1,91 @@
+---
+import MonitoringDashboard from "@/components/dashboard/monitoring/MonitoringDashboard.astro";
+import { IS_COMMUNITY } from "@/lib/branding";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const isCommunity = IS_COMMUNITY;
+
+let serverIp = "";
+const nearzeroVersion = "0.0.1";
+let releaseTag = "";
+
+if (isCommunity) {
+	const api = createServerTrpcClient(Astro.request) as {
+		settings: {
+			getWebServerSettings: { query: () => Promise<{ serverIp?: string | null }> };
+			getReleaseTag: { query: () => Promise<string> };
+		};
+	};
+	try {
+		const [webServerSettings, tag] = await Promise.all([
+			api.settings.getWebServerSettings.query(),
+			api.settings.getReleaseTag.query(),
+		]);
+		serverIp = webServerSettings?.serverIp?.trim() ?? "";
+		releaseTag = tag ?? "";
+	} catch {
+		/* partial ok */
+	}
+}
+
+const versionLabel =
+	releaseTag === "nightly" || releaseTag === "feature"
+		? `${nearzeroVersion} (${releaseTag})`
+		: nearzeroVersion;
+---
+
+<div class="nz-about-nearzero w-full min-w-0">
+	<section class="nz-about-nearzero__meta" aria-label="Platform information">
+		<dl class="nz-about-nearzero__grid">
+			<div class="nz-about-nearzero__item">
+				<dt>Version</dt>
+				<dd class="nz-about-nearzero__value">{versionLabel || "—"}</dd>
+			</div>
+			<div class="nz-about-nearzero__item">
+				<dt>Server IP</dt>
+				<dd class="nz-about-nearzero__value nz-about-nearzero__value--ip">
+					<span id="nz-ws-server-ip">{serverIp || "—"}</span>
+					{
+						serverIp ? (
+							<button
+								type="button"
+								id="nz-ws-copy-ip"
+								class="nz-about-nearzero__copy"
+								aria-label="Copy server IP"
+								title="Copy server IP"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									aria-hidden="true"
+								>
+									<rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+									<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+								</svg>
+							</button>
+						) : null
+					}
+				</dd>
+			</div>
+		</dl>
+	</section>
+
+	<section
+		id="metrics"
+		class="nz-about-nearzero__metrics scroll-mt-6"
+	>
+		<MonitoringDashboard />
+	</section>
+</div>
+
+<script>
+	import { bindCopyServerIp } from "@/scripts/web-server-shared";
+	if (document.getElementById("nz-ws-copy-ip")) {
+		bindCopyServerIp();
+	}
+</script>

@@ -1,0 +1,92 @@
+---
+import { cardClass } from "./demoShared";
+import { ST } from "@/lib/settings-hub-ui";
+import {
+	deploymentStatusBadgeClass,
+	deploymentStatusDotClass,
+	formatDeploymentStatusLabel,
+	mapDeploymentsToViewRows,
+} from "@/lib/deployment-view-rows";
+import { normalizeDashboardPath, scopeDashboardHref } from "@/lib/org-routes";
+
+interface Props {
+	deployments: any[];
+}
+
+const { deployments } = Astro.props;
+const rows = mapDeploymentsToViewRows(deployments);
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+const badgeClass =
+	"inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap";
+---
+
+<section class={`${cardClass} min-h-[calc(100dvh-45px)] overflow-hidden`}>
+	<div class="flex min-h-[calc(100dvh-77px)] flex-col bg-[var(--nz-surface)] text-xs">
+		<div class="flex items-center gap-3 border-b border-[var(--nz-border)] px-3 py-2">
+			<h2 class={ST.pageTitle}>Deployments</h2>
+		</div>
+
+		<div class="scrollbar-hide min-h-0 flex-1 overflow-auto">
+			{rows.length ? (
+				<div class={ST.tableWrap}>
+					<table class={`${ST.table} nz-deployments-section-table`}>
+						<thead class={ST.thead}>
+							<tr>
+								<th class={ST.th}>Service</th>
+								<th class={ST.th}>Type</th>
+								<th class={ST.th}>Project</th>
+								<th class={ST.th}>Environment</th>
+								<th class={ST.th}>Server</th>
+								<th class={ST.th}>Status</th>
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((row) => {
+								const rowBadge =
+									deploymentStatusBadgeClass[row.status] ??
+									"bg-secondary text-secondary-foreground";
+								const rowDot =
+									deploymentStatusDotClass[row.status] ??
+									"bg-[var(--nz-text-subtle)]";
+								const rowStatusLabel = formatDeploymentStatusLabel(row.status);
+								const href = scopeDashboardHref(
+									`/dashboard/deployments?deploymentId=${encodeURIComponent(row.detailId)}`,
+									orgSlug,
+								);
+								return (
+									<tr class={`${ST.tr} nz-data-table-row`}>
+										<td class={ST.td}>
+											<a href={href} class="block truncate font-medium text-[var(--nz-text)] hover:underline">
+												{row.service}
+											</a>
+										</td>
+										<td class={ST.td}>
+											<span class={`${badgeClass} bg-secondary text-secondary-foreground`}>
+												{row.serviceType}
+											</span>
+										</td>
+										<td class={ST.tdMuted}>{row.project}</td>
+										<td class={ST.tdMuted}>{row.environment}</td>
+										<td class={ST.tdMuted}>{row.server}</td>
+										<td class={ST.td}>
+											<span class={`${badgeClass} ${rowBadge} justify-center`}>
+												<span class={`size-1.5 rounded-full ${rowDot}`}></span>
+												{rowStatusLabel}
+											</span>
+										</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>
+			) : (
+				<div class={ST.empty}>
+					<p class={ST.emptyText}>
+						Deployment history will appear here after services are deployed.
+					</p>
+				</div>
+			)}
+		</div>
+	</div>
+</section>

@@ -1,0 +1,29 @@
+---
+import { buttonClass, cardClass } from "./demoShared";
+
+interface Props {
+  rows: Array<{ name: string; scope: string; lastUsed: string }>;
+}
+
+const { rows } = Astro.props;
+---
+
+<div class={cardClass}>
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <p class="text-xs text-[#6b7280]">
+      API keys
+    </p>
+    <a class={buttonClass} href="/">
+      Create key
+    </a>
+  </div>
+  <div class="mt-4 divide-y divide-[#eceef3]">
+    {rows.map((row) => (
+      <div class="grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_170px_120px] md:items-center">
+        <p class="text-sm font-medium text-[#111827]">{row.name}</p>
+        <span class="text-xs text-[#6b7280]">{row.scope}</span>
+        <span class="text-xs text-[#6b7280]">{row.lastUsed}</span>
+      </div>
+    ))}
+  </div>
+</div>

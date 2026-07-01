@@ -1,0 +1,34 @@
+---
+import { dashboardSpinnerSvgHtml } from "../demoShared";
+
+interface Props {
+  visible?: boolean;
+}
+
+const { visible = false } = Astro.props;
+---
+
+<div
+  class:list={[
+    "project-view min-h-[calc(100dvh-77px)] items-center justify-center px-4 py-8 font-sans sm:px-6",
+    visible ? "flex" : "hidden",
+  ]}
+  data-project-view="loading"
+  aria-busy="false"
+>
+  <div
+    class="flex w-full max-w-[360px] flex-col items-center gap-3"
+    role="status"
+    aria-live="polite"
+  >
+    <span class="sr-only">Loading repository details</span>
+    <div
+      class="inline-flex items-center justify-center text-[#6b7280]"
+      set:html={dashboardSpinnerSvgHtml()}
+      aria-hidden="true"
+    />
+    <p class="text-center text-xs font-sans text-[#6b7280]" data-project-loading-caption>
+      Loading repository details…
+    </p>
+  </div>
+</div>

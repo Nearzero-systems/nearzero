@@ -1,0 +1,129 @@
+---
+import type { DemoSectionKey } from "./demoShared";
+import DemoSectionContent from "./DemoSectionContent.astro";
+import DemoSectionHero from "./DemoSectionHero.astro";
+
+interface Props {
+  activeSection: DemoSectionKey;
+  currentMeta: {
+    eyebrow: string;
+    title: string;
+    description: string;
+    ctaLabel?: string;
+    ctaHref?: string;
+  };
+  linkedVcsProviders?: string[];
+  githubImportConnected?: boolean;
+  gitlabImportConnected?: boolean;
+  bitbucketImportConnected?: boolean;
+  giteaImportConnected?: boolean;
+  projectsInitialView: "connect" | "import" | "inventory";
+  projectRows: any[];
+  projectsCount: number;
+  deploymentsCount: number;
+  domainsCount: number;
+  objectsCount: number;
+  latestDeployName: string;
+  glacierTotalSizeLabel: string;
+  currentPlanLabel: string;
+  billing: {
+    currentPlan: {
+      key: string;
+      label: string;
+      detail: string;
+    };
+    invoices: any[];
+  };
+  storySteps: any[];
+  deployments: any[];
+  logRows: any[];
+  domainRows: any[];
+  glacierBucketRows: any[];
+  cronRows: any[];
+  taskRows: any[];
+  queueRows: any[];
+  apiKeyRows: any[];
+  docsRows: any[];
+  error: string;
+}
+
+const {
+  activeSection,
+  currentMeta,
+  linkedVcsProviders = [],
+  githubImportConnected = false,
+  gitlabImportConnected = false,
+  bitbucketImportConnected = false,
+  giteaImportConnected = false,
+  projectsInitialView,
+  projectRows,
+  projectsCount,
+  deploymentsCount,
+  domainsCount,
+  objectsCount,
+  latestDeployName,
+  glacierTotalSizeLabel,
+  currentPlanLabel,
+  billing,
+  storySteps,
+  deployments,
+  logRows,
+  domainRows,
+  glacierBucketRows,
+  cronRows,
+  taskRows,
+  queueRows,
+  apiKeyRows,
+  docsRows,
+  error,
+} = Astro.props;
+---
+
+<section class="space-y-px">
+  {activeSection !== "projects" &&
+  activeSection !== "deployments" &&
+  activeSection !== "plan" ? (
+    <DemoSectionHero
+      meta={currentMeta}
+      projectsCount={projectsCount}
+      deploymentsCount={deploymentsCount}
+      domainsCount={domainsCount}
+      objectsCount={objectsCount}
+      latestDeployName={latestDeployName}
+      glacierTotalSizeLabel={glacierTotalSizeLabel}
+      currentPlanLabel={currentPlanLabel}
+    />
+  ) : null}
+
+  <DemoSectionContent
+    activeSection={activeSection}
+    linkedVcsProviders={linkedVcsProviders}
+    githubImportConnected={githubImportConnected}
+    gitlabImportConnected={gitlabImportConnected}
+    bitbucketImportConnected={bitbucketImportConnected}
+    giteaImportConnected={giteaImportConnected}
+    projectsInitialView={projectsInitialView}
+    projectRows={projectRows}
+    storySteps={storySteps}
+    deployments={deployments}
+    logRows={logRows}
+    domainRows={domainRows}
+    glacierBucketRows={glacierBucketRows}
+    cronRows={cronRows}
+    taskRows={taskRows}
+    queueRows={queueRows}
+    apiKeyRows={apiKeyRows}
+    docsRows={docsRows}
+    billing={billing}
+    projectsCount={projectsCount}
+    deploymentsCount={deploymentsCount}
+    domainsCount={domainsCount}
+    objectsCount={objectsCount}
+  />
+
+  {error ? (
+    <div class="rounded-md border border-[#f5c8c8] bg-[#fff1f1] px-3 py-3 text-xs text-[#9f3131]">
+      {error}
+    </div>
+  ) : null}
+</section>

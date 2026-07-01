@@ -1,0 +1,964 @@
+---
+import Button from "@/components/ui/Button.astro";
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import ProjectWorkspaceShell from "@/components/dashboard/project/ProjectWorkspaceShell.astro";
+import {
+	formatServiceStatusLabel,
+	isServiceDeleteDisabled,
+	serviceDeleteDisabledReason,
+} from "@/lib/service-status-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+import { IS_COMMUNITY } from "@/lib/branding";
+import SettingPanelHint from "@/components/dashboard/application/SettingPanelHint.astro";
+import DockerTerminalShell from "@/components/dashboard/terminal/DockerTerminalShell.astro";
+import { extractDeploymentCommitId } from "@/lib/deployment-logs";
+import "@/styles/service-application.css";
+
+interface Props {
+	request: Request;
+	applicationId: string;
+	projectId?: string;
+	environmentId?: string;
+}
+
+const {
+	request,
+	applicationId,
+	projectId: routeProjectId = "",
+	environmentId: routeEnvironmentId = "",
+} = Astro.props;
+const api = createServerTrpcClient(request) as any;
+
+let appRow: any = null;
+let permissions: any = null;
+let githubProviders: any[] = [];
+let gitlabProviders: any[] = [];
+let sshKeys: any[] = [];
+
+try {
+	[appRow, permissions, githubProviders, gitlabProviders, sshKeys] =
+		await Promise.all([
+			api.application.one.query({ applicationId }),
+			api.user.getPermissions.query(),
+			api.github.githubProviders.query(),
+			api.gitlab.gitlabProviders.query(),
+			api.sshKey.allForApps.query(),
+		]);
+} catch {
+	appRow = null;
+}
+
+// Relevant deployments for this application. The same rows power the header
+// rollback shortcut and the deployment history below the build settings.
+let deploymentRows: any[] = [];
+let latestRollbackId = "";
+if (appRow) {
+	try {
+		deploymentRows = (await api.deployment.all.query({ applicationId })) ?? [];
+		const withRollback = deploymentRows.find(
+			(d: { rollback?: { rollbackId?: string } | null }) =>
+				d?.rollback?.rollbackId,
+		);
+		latestRollbackId = withRollback?.rollback?.rollbackId ?? "";
+	} catch {
+		deploymentRows = [];
+		latestRollbackId = "";
+	}
+}
+
+const canDeploy = permissions?.deployment?.create ?? false;
+const canUpdateService = permissions?.service?.create ?? false;
+const canCreateDomain = permissions?.domain?.create ?? false;
+
+const projId = appRow?.environment?.project?.projectId ?? routeProjectId;
+const envId = appRow?.environmentId ?? routeEnvironmentId;
+const projectName = appRow?.environment?.project?.name ?? "Project";
+const environmentName = appRow?.environment?.name ?? "Environment";
+const deploymentsTabHref =
+	projId && envId
+		? `/dashboard/project/${projId}/environment/${envId}/services/application/${applicationId}?tab=deployments`
+		: "";
+
+const appName = appRow?.appName ?? "";
+const serviceName = appRow?.name ?? appName ?? "Service";
+const serverId = appRow?.serverId ?? "";
+const applicationStatus = appRow?.applicationStatus ?? "idle";
+const deleteServiceDisabled = isServiceDeleteDisabled(applicationStatus);
+const deleteServiceDisabledReason = serviceDeleteDisabledReason(applicationStatus);
+const sourceType = appRow?.sourceType ?? "github";
+const hasGitProviderAccess = appRow?.hasGitProviderAccess !== false;
+const buildType = appRow?.buildType ?? "nixpacks";
+const buildExecutionTarget = appRow?.buildExecutionTarget ?? "deploy_server";
+const customInstallCommand = appRow?.customInstallCommand ?? "";
+const customBuildCommand = appRow?.customBuildCommand ?? "";
+const customStartCommand = appRow?.customStartCommand ?? "";
+const showUnauthorized =
+	appRow && !hasGitProviderAccess && sourceType !== "docker" && sourceType !== "drop";
+const showBuildSection = appRow && sourceType !== "docker";
+const isCommunity = IS_COMMUNITY;
+const showBuildLocationControl = showBuildSection && isCommunity;
+const hasApp = Boolean(applicationId && appRow);
+
+const buildTypes = [
+	["dockerfile", "Dockerfile"],
+	["railpack", "Railpack"],
+	["nixpacks", "Nixpacks"],
+	["heroku_buildpacks", "Heroku Buildpacks"],
+	["paketo_buildpacks", "Paketo Buildpacks"],
+	["static", "Static"],
+] as const;
+
+const railpackVersions = [
+	"0.15.4", "0.15.3", "0.15.2", "0.15.1", "0.15.0", "0.14.0", "0.13.0",
+];
+
+const inputClass = "nz-app-input";
+const selectClass = "nz-app-select";
+const fieldClass = "nz-app-field";
+const fieldWideClass = "nz-app-field nz-app-field--wide";
+const tabBtnClass = "nz-app-provider-tab";
+const btnClass = "nz-app-btn";
+const btnPrimaryClass = "nz-app-btn nz-app-btn--primary";
+const statusLabel = formatServiceStatusLabel(applicationStatus);
+const formatSourceLabel = (type: string) => {
+	const labels: Record<string, string> = {
+		github: "Github",
+		gitlab: "Gitlab",
+		bitbucket: "Bitbucket",
+		gitea: "Gitea",
+		docker: "Docker",
+		git: "Git",
+		drop: "Drop",
+	};
+	return labels[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
+};
+const sourceLabel = formatSourceLabel(sourceType);
+const branchLabel = appRow?.branch ?? appRow?.customGitBranch ?? "—";
+const repositoryLabel = appRow?.repository
+	? appRow.owner
+		? `${appRow.owner}/${appRow.repository}`
+		: appRow.repository
+	: "—";
+const formatDeploymentStatusLabel = (status?: string | null) => {
+	const normalized = (status || "pending").toLowerCase();
+	if (normalized === "done") return "Done";
+	if (normalized === "running") return "Running";
+	if (normalized === "error") return "Error";
+	if (normalized === "cancelled") return "Cancelled";
+	return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
+const formatDeploymentDate = (value?: string | Date | null) => {
+	if (!value) return "";
+	const date = new Date(value);
+	return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+};
+const deploymentStatusKind = (status?: string | null) => {
+	const normalized = (status || "pending").toLowerCase();
+	if (normalized === "done") return "done";
+	if (normalized === "error" || normalized === "cancelled") return "error";
+	return "running";
+};
+
+const githubRepoInitial =
+	appRow?.owner && appRow?.repository ?
+		JSON.stringify({ owner: appRow.owner, repo: appRow.repository })
+	:	"";
+const watchPathsInitial = JSON.stringify(appRow?.watchPaths ?? []);
+const githubBranchInitial = appRow?.branch ?? "";
+const githubTriggerIsTag = appRow?.triggerType === "tag";
+const githubTriggerIsPush = !githubTriggerIsTag;
+
+// Header data: back link to the services list, a Visit URL from the first
+// domain (https), and whether a rollback is available.
+const servicesHref = `/dashboard/project/${projId}/environment/${envId}/services`;
+const firstDomainHost = appRow?.domains?.find(
+	(d: { host?: string }) => d?.host,
+)?.host;
+const visitUrl = firstDomainHost ? `https://${firstDomainHost}` : "";
+const firstConfiguredPort = appRow?.ports?.find(
+	(port: { targetPort?: number | null }) =>
+		Number.isFinite(Number(port?.targetPort)),
+)?.targetPort;
+const defaultDomainPort = Number(firstConfiguredPort ?? appRow?.previewPort ?? 3000);
+let defaultDomainPreview: any = null;
+if (appRow && !firstDomainHost) {
+	try {
+		defaultDomainPreview = await api.domain.previewServiceDomain.query({
+			environmentId: envId,
+			serviceName,
+			serverId: serverId || null,
+		});
+	} catch {
+		defaultDomainPreview = null;
+	}
+}
+const defaultDomainPreviewHost =
+	defaultDomainPreview?.enabled && defaultDomainPreview?.host
+		? defaultDomainPreview.host
+		: "";
+const defaultDomainPreviewLabel =
+	defaultDomainPreview?.mode === "platform"
+		? "Nearzero default"
+		: defaultDomainPreview?.mode === "preview"
+			? "Nearzero preview"
+			: "Managed hostname";
+const hasRollback = Boolean(latestRollbackId);
+const hasRollbackTarget = deploymentRows.some((d: { rollback?: { rollbackId?: string } | null }) =>
+	Boolean(d?.rollback?.rollbackId),
+);
+const showStartServiceAction = canDeploy && applicationStatus === "idle";
+const showStopServiceAction =
+	canDeploy && applicationStatus !== "idle" && applicationStatus !== "running";
+const showReloadServiceAction = canDeploy && applicationStatus === "done";
+const showRedeployServiceAction = canDeploy && applicationStatus !== "running";
+const deleteServiceDescription =
+	deleteServiceDisabled && deleteServiceDisabledReason
+		? deleteServiceDisabledReason
+		: "Removes the service, its image, and data volumes.";
+---
+<ProjectWorkspaceShell
+	projectId={projId}
+	environmentId={envId}
+	projectName={projectName}
+	environmentName={environmentName}
+	activeSection="services"
+>
+<div
+	class="nz-dashboard-content nz-dashboard-content--service min-h-0 w-full"
+	data-application-action-root={hasApp ? "1" : undefined}
+	data-application-id={hasApp ? applicationId : undefined}
+	data-environment-id={hasApp ? envId : undefined}
+	data-deployments-href={hasApp ? deploymentsTabHref : undefined}
+	data-application-appname={hasApp ? appName : undefined}
+	data-service-name={hasApp ? serviceName : undefined}
+	data-server-id={hasApp ? serverId : undefined}
+	data-source-type={hasApp ? sourceType : undefined}
+	data-application-status={hasApp ? applicationStatus : undefined}
+	data-build-execution-target={hasApp ? buildExecutionTarget : undefined}
+	data-domain-port={hasApp ? defaultDomainPort : undefined}
+	data-can-create-domain={hasApp && canCreateDomain ? "1" : "0"}
+	data-default-domain-host={hasApp ? defaultDomainPreviewHost : undefined}
+	data-has-git-provider-access={hasApp && hasGitProviderAccess ? "1" : "0"}
+	data-can-update-service={hasApp && canUpdateService ? "1" : "0"}
+	data-can-deploy={hasApp && canDeploy ? "1" : "0"}
+>
+	{
+		!applicationId ? (
+			<p class="px-2 py-4 text-xs text-[#6b7280]">Missing application id.</p>
+		) : !appRow ? (
+			<p class="px-2 py-4 text-xs text-[#6b7280]">Application not found.</p>
+		) : (
+			<div id="nz-app-deploy-root" class="nz-deployments-surface text-xs">
+				<div
+					id="nz-app-live-url-banner"
+					class="nz-app-live-url-banner hidden"
+					role="status"
+					aria-live="polite"
+				>
+					<span class="nz-app-live-url-banner__label">Live at</span>
+					<a
+						id="nz-app-live-url-link"
+						class="nz-app-live-url-banner__link"
+						href="#"
+						target="_blank"
+						rel="noopener noreferrer"
+					></a>
+					<button
+						type="button"
+						id="nz-app-live-url-dismiss"
+						class="nz-app-live-url-banner__dismiss"
+					>
+						Dismiss
+					</button>
+				</div>
+				<div class="nz-deployments-toolbar">
+					<div class="nz-deployments-toolbar-primary nz-app-service-toolbar-primary">
+						<div class="nz-app-service-header__main">
+							<a
+								href={servicesHref}
+								class="nz-app-service-header__back"
+								aria-label="Back to services"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+							</a>
+							<h1 class="min-w-0 truncate text-sm font-semibold text-[var(--nz-text)]">{serviceName}</h1>
+						</div>
+					</div>
+					<div class="nz-domains-controls-row nz-app-service-controls-row">
+						<div class="nz-domains-tablist" role="tablist" aria-label="Service sections">
+							<button
+								type="button"
+								class="nz-domains-tab nz-domains-tab--active"
+								data-app-tab="overview"
+								role="tab"
+								aria-selected="true"
+							>
+								Overview
+							</button>
+							<button
+								type="button"
+								class="nz-domains-tab"
+								data-app-tab="settings"
+								role="tab"
+								aria-selected="false"
+							>
+								Settings
+							</button>
+						</div>
+						<div class="nz-domains-controls-actions nz-app-service-actions">
+							{
+								showRedeployServiceAction ? (
+									<button type="button" id="nz-app-redeploy-btn" class={`${btnClass} nz-app-act-btn`} data-act="redeploy">
+										Redeploy
+									</button>
+								) : null
+							}
+							{
+								showReloadServiceAction ? (
+									<button type="button" id="nz-app-reload-btn" class={`${btnClass} nz-app-act-btn`} data-act="reload" data-busy-reload>
+										Reload
+									</button>
+								) : null
+							}
+							{
+								showStartServiceAction ? (
+									<button type="button" id="nz-app-start-btn" class={`${btnClass} nz-app-act-btn`} data-act="start" data-busy-startstop>
+										Start
+									</button>
+								) : null
+							}
+							{
+								showStopServiceAction ? (
+									<button type="button" id="nz-app-stop-btn" class={`${btnClass} nz-app-act-btn`} data-act="stop" data-busy-startstop>
+										Stop
+									</button>
+								) : null
+							}
+							{
+								applicationStatus === "done" ? (
+									<Button variant="outline" type="button" id="nz-app-terminal-open" class={btnClass}>
+										Terminal
+									</Button>
+								) : null
+							}
+							{
+								canDeploy && hasRollback ? (
+									<button
+										type="button"
+										id="nz-app-rollback-btn"
+										class={`${btnClass} nz-app-rollback-btn`}
+										data-rollback-id={latestRollbackId}
+										disabled={applicationStatus !== "done"}
+										title={
+											applicationStatus === "done"
+												? "Roll back to the previous image"
+												: "Rollback is available only while the service is running"
+										}
+									>
+										Instant Rollback
+									</button>
+								) : null
+							}
+							{
+								visitUrl ? (
+									<a
+										href={visitUrl}
+										target="_blank"
+										rel="noopener noreferrer"
+										class={`${btnClass} nz-app-visit-btn`}
+										title="Open the live URL"
+									>
+										Visit
+									</a>
+								) : defaultDomainPreviewHost && canCreateDomain ? (
+									<button
+										type="button"
+										id="nz-app-default-domain-create"
+										class={`${btnClass} nz-app-default-domain-create`}
+										title={`Create ${defaultDomainPreviewLabel.toLowerCase()} URL`}
+									>
+										Create URL
+									</button>
+								) : null
+							}
+						</div>
+					</div>
+				</div>
+
+				<div data-app-tab-panel="overview">
+				<div class="nz-app-overview-stack">
+				<section class="nz-app-deploy-meta" aria-label="Deployment status">
+					<dl class="nz-app-deploy-meta__grid">
+						<div class="nz-app-deploy-meta__item nz-app-deploy-meta__item--domain">
+							<dt>Domain</dt>
+							<dd>
+								{
+									visitUrl ? (
+										<a href={visitUrl} target="_blank" rel="noopener noreferrer">{firstDomainHost}</a>
+									) : defaultDomainPreviewHost ? (
+										<span class="inline-flex flex-wrap items-center gap-2">
+											<span class="font-mono">{defaultDomainPreviewHost}</span>
+											<span class="text-[10px] uppercase tracking-[0.08em] text-[var(--nz-text-subtle)]">{defaultDomainPreviewLabel}</span>
+										</span>
+									) : (
+										<span class="text-muted-foreground">—</span>
+									)
+								}
+							</dd>
+						</div>
+						<div class="nz-app-deploy-meta__item">
+							<dt>Status</dt>
+							<dd class="nz-app-deploy-meta__status">
+								<span
+									class="nz-app-deploy-meta__status-dot"
+									data-state={applicationStatus === "done" ? "done" : applicationStatus === "error" ? "error" : "running"}
+									aria-hidden="true"
+								/>
+								<span>{statusLabel}</span>
+							</dd>
+						</div>
+						<div class="nz-app-deploy-meta__item">
+							<dt>Source</dt>
+							<dd>{sourceLabel}</dd>
+						</div>
+						<div class="nz-app-deploy-meta__item">
+							<dt>Branch</dt>
+							<dd>{branchLabel}</dd>
+						</div>
+						<div class="nz-app-deploy-meta__item">
+							<dt>Repository</dt>
+							<dd>{repositoryLabel}</dd>
+						</div>
+						<div class="nz-app-deploy-meta__item nz-app-deploy-meta__item--full">
+							<dt>Container</dt>
+							<dd class="font-mono">{appName}</dd>
+						</div>
+					</dl>
+				</section>
+
+				<div class="nz-app-settings-stack">
+
+				{
+					showUnauthorized ? (
+						<section class="nz-app-setting-panel nz-app-setting-panel--open">
+							<div class="nz-app-setting-panel__trigger nz-app-setting-panel__trigger--static" aria-hidden="true">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+								<span class="nz-app-setting-panel__title-wrap">
+									<span class="nz-app-setting-panel__title">Source</span>
+									<SettingPanelHint label="Repository connection through unauthorized provider" />
+								</span>
+							</div>
+							<div class="nz-app-setting-panel__body space-y-3">
+								<div class="nz-app-callout">
+									This application is connected to a {sourceType} repository through a git provider that you don't have access to.
+								</div>
+								<div class="nz-app-meta-box">
+									{appRow.owner ? <p><span>Owner:</span> {appRow.owner}</p> : null}
+									{appRow.repository || appRow.customGitUrl ? <p><span>Repository:</span> {appRow.repository ?? appRow.customGitUrl}</p> : null}
+									{appRow.branch || appRow.customGitBranch ? <p><span>Branch:</span> {appRow.branch ?? appRow.customGitBranch}</p> : null}
+								</div>
+								<Button type="button" variant="secondary" id="nz-app-disconnect-git" class={btnClass}>Disconnect repository</Button>
+							</div>
+						</section>
+					) : (
+						<section class="nz-app-setting-panel nz-app-collapse" id="nz-app-provider-root" data-app-collapse data-collapsed="true">
+							<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+								<span class="nz-app-setting-panel__title-wrap">
+									<span class="nz-app-setting-panel__title">Source</span>
+									<SettingPanelHint label="Where your code comes from" />
+								</span>
+							</button>
+							<div class="nz-app-setting-panel__body nz-app-collapse__body" data-app-collapse-body>
+								<div class="nz-app-provider-tabs" role="tablist" aria-label="Code provider">
+									{["github", "gitlab", "bitbucket", "gitea", "docker", "git", "drop"].map((tab) => (
+										<button type="button" class={tabBtnClass} data-app-provider-tab={tab} data-active={tab === sourceType ? "true" : "false"}>
+											{tab.charAt(0).toUpperCase() + tab.slice(1)}
+										</button>
+									))}
+								</div>
+
+								<div data-app-provider-panel="github" class={sourceType === "github" ? "" : "hidden"}>
+									{githubProviders.length === 0 ? (
+										<div class="nz-app-empty-state">
+											<p>Connect GitHub to deploy from a repository.</p>
+											<a href="/dashboard/settings/git-providers">Open Git providers in Settings</a>
+										</div>
+									) : (
+										<form id="nz-app-github-form" class="nz-app-form-grid">
+											<label class={fieldWideClass}>Github Account
+												<select id="nz-app-github-account" class={selectClass} required>
+													<option value="">Select account</option>
+													{githubProviders.map((p: any) => (
+														<option value={p.githubId} selected={p.githubId === appRow.githubId}>{p.gitProvider?.name}</option>
+													))}
+												</select>
+											</label>
+											<label class={fieldWideClass}>Repository
+												<select id="nz-app-github-repo" class={selectClass} required data-initial={githubRepoInitial}></select>
+											</label>
+											<label class={fieldClass}>Branch
+												<select id="nz-app-github-branch" class={selectClass} required data-initial={githubBranchInitial}></select>
+											</label>
+											<label class={fieldClass}>Build Path
+												<input id="nz-app-github-build-path" class={inputClass} value={appRow.buildPath ?? "/"} />
+											</label>
+											<label class={fieldWideClass}>Trigger Type
+												<select id="nz-app-github-trigger" class={selectClass}>
+													<option value="push" selected={githubTriggerIsPush}>On Push</option>
+													<option value="tag" selected={githubTriggerIsTag}>On Tag</option>
+												</select>
+											</label>
+											<div id="nz-app-github-watch" class="nz-app-field nz-app-field--wide space-y-2" data-paths={watchPathsInitial}>
+												<span>Watch Paths</span>
+												<div data-watch-list class="flex flex-wrap gap-2"></div>
+												<div class="flex gap-2">
+													<input id="nz-app-github-watch-input" class={inputClass} placeholder="Enter path and press Enter" />
+													<Button type="button" variant="outline" data-watch-add class={btnClass}>Add</Button>
+												</div>
+											</div>
+											<label class="nz-app-check-row nz-app-field--wide">
+												<input type="checkbox" id="nz-app-github-submodules" checked={Boolean(appRow.enableSubmodules)} />
+												Enable Submodules
+											</label>
+											<div class="nz-app-form-actions">
+												<Button type="submit" id="nz-app-github-save" class={btnPrimaryClass}>{canDeploy ? "Save & Deploy" : "Save"}</Button>
+											</div>
+										</form>
+									)}
+								</div>
+
+								<div data-app-provider-panel="gitlab" class={sourceType === "gitlab" ? "" : "hidden"}>
+									{gitlabProviders.length === 0 ? (
+										<div class="nz-app-empty-state">
+											<p>Connect GitLab to deploy from a repository.</p>
+											<a href="/dashboard/settings/git-providers">Open Git providers in Settings</a>
+										</div>
+									) : (
+										<form id="nz-app-gitlab-form" class="nz-app-form-grid">
+											<label class={fieldWideClass}>GitLab Account
+												<select id="nz-app-gitlab-account" class={selectClass} required>
+													{gitlabProviders.map((p: any) => (
+														<option value={p.gitlabId} selected={p.gitlabId === appRow.gitlabId}>{p.gitProvider?.name}</option>
+													))}
+												</select>
+											</label>
+											<label class={fieldWideClass}>Repository
+												<select id="nz-app-gitlab-repo" class={selectClass} required></select>
+											</label>
+											<label class={fieldClass}>Branch
+												<select id="nz-app-gitlab-branch" class={selectClass} required></select>
+											</label>
+											<label class={fieldClass}>Build Path
+												<input id="nz-app-gitlab-build-path" class={inputClass} value={appRow.gitlabBuildPath ?? "/"} />
+											</label>
+											<label class="nz-app-check-row nz-app-field--wide">
+												<input type="checkbox" id="nz-app-gitlab-submodules" checked={Boolean(appRow.enableSubmodules)} />
+												Enable Submodules
+											</label>
+											<div class="nz-app-form-actions">
+												<Button type="submit" id="nz-app-gitlab-save" class={btnPrimaryClass}>Save</Button>
+											</div>
+										</form>
+									)}
+								</div>
+
+								<div data-app-provider-panel="docker" class={sourceType === "docker" ? "" : "hidden"}>
+									<form id="nz-app-docker-form" class="nz-app-form-grid">
+										<label class={fieldClass}>Docker Image<input id="nz-app-docker-image" class={inputClass} value={appRow.dockerImage ?? ""} required /></label>
+										<label class={fieldClass}>Registry URL<input id="nz-app-docker-registry" class={inputClass} value={appRow.registryUrl ?? ""} /></label>
+										<label class={fieldClass}>Username<input id="nz-app-docker-username" class={inputClass} value={appRow.username ?? ""} /></label>
+										<label class={fieldClass}>Password<input id="nz-app-docker-password" type="password" class={inputClass} value={appRow.password ?? ""} /></label>
+										<div class="nz-app-form-actions"><Button type="submit" id="nz-app-docker-save" class={btnPrimaryClass}>Save</Button></div>
+									</form>
+								</div>
+
+								<div data-app-provider-panel="git" class={sourceType === "git" ? "" : "hidden"}>
+									<form id="nz-app-git-form" class="nz-app-form-grid">
+										<label class={fieldWideClass}>Repository URL<input id="nz-app-git-url" class={inputClass} value={appRow.customGitUrl ?? ""} required /></label>
+										<label class={fieldClass}>Branch<input id="nz-app-git-branch" class={inputClass} value={appRow.customGitBranch ?? ""} required /></label>
+										<label class={fieldClass}>Build Path<input id="nz-app-git-build-path" class={inputClass} value={appRow.customGitBuildPath ?? "/"} /></label>
+										<label class={fieldClass}>SSH Key
+											<select id="nz-app-git-ssh" class={selectClass}>
+												{sshKeys.map((k: any) => (
+													<option value={k.sshKeyId} selected={k.sshKeyId === appRow.customGitSSHKeyId}>{k.name}</option>
+												))}
+												<option value="none">None</option>
+											</select>
+										</label>
+										<div id="nz-app-git-watch" class="nz-app-field nz-app-field--wide space-y-2" data-paths={watchPathsInitial}>
+											<span>Watch Paths</span>
+											<div data-watch-list class="flex flex-wrap gap-2" />
+											<div class="flex gap-2">
+												<input id="nz-app-git-watch-input" class={inputClass} placeholder="Enter path" />
+												<Button type="button" variant="outline" data-watch-add class={btnClass}>Add</Button>
+											</div>
+										</div>
+										<label class="nz-app-check-row nz-app-field--wide">
+											<input type="checkbox" id="nz-app-git-submodules" checked={Boolean(appRow.enableSubmodules)} />
+											Enable Submodules
+										</label>
+										<div class="nz-app-form-actions"><Button type="submit" id="nz-app-git-save" class={btnPrimaryClass}>Save</Button></div>
+									</form>
+								</div>
+
+								<div data-app-provider-panel="drop" class={sourceType === "drop" ? "" : "hidden"}>
+									<form id="nz-app-drop-form" class="nz-app-form-grid">
+										<label class={fieldWideClass}>Build Path<input id="nz-app-drop-build-path" class={inputClass} value={appRow.dropBuildPath ?? ""} /></label>
+										<label class={fieldWideClass}>Zip file<input id="nz-app-drop-file" type="file" accept=".zip" class={inputClass} /></label>
+										<div class="nz-app-form-actions"><Button type="submit" id="nz-app-drop-save" class={btnPrimaryClass}>Deploy</Button></div>
+									</form>
+								</div>
+
+								<div data-app-provider-panel="bitbucket" class={sourceType === "bitbucket" ? "" : "hidden"}>
+									<div class="nz-app-empty-state">
+										<p>Connect Bitbucket in Settings to use this provider.</p>
+										<a href="/dashboard/settings/git-providers">Open Git providers in Settings</a>
+									</div>
+								</div>
+								<div data-app-provider-panel="gitea" class={sourceType === "gitea" ? "" : "hidden"}>
+									<div class="nz-app-empty-state">
+										<p>Connect Gitea in Settings to use this provider.</p>
+										<a href="/dashboard/settings/git-providers">Open Git providers in Settings</a>
+									</div>
+								</div>
+							</div>
+						</section>
+					)
+				}
+
+				{
+					showBuildSection ? (
+						<section class="nz-app-setting-panel nz-app-collapse" id="nz-app-build-section" data-app-collapse data-collapsed="true">
+							<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+								<span class="nz-app-setting-panel__title-wrap">
+									<span class="nz-app-setting-panel__title">Build</span>
+									<SettingPanelHint label="How your code is built" />
+								</span>
+							</button>
+							<form id="nz-app-build-form" class="nz-app-setting-panel__body nz-app-collapse__body space-y-4" data-app-collapse-body>
+								<div class="nz-app-build-grid" role="radiogroup" aria-label="Build type">
+									{buildTypes.map(([value, label]) => (
+										<label class="nz-app-build-option">
+											<input type="radio" name="buildType" value={value} checked={buildType === value} />
+											<span>{label}</span>
+										</label>
+									))}
+								</div>
+								{
+									showBuildLocationControl ? (
+										<div class="space-y-2">
+											<p class="text-xs font-medium text-[var(--nz-text-muted)]">Build location</p>
+											<div class="nz-app-build-grid" role="radiogroup" aria-label="Build location">
+												<label class="nz-app-build-option">
+													<input
+														type="radio"
+														name="buildExecutionTarget"
+														value="deploy_server"
+														checked={buildExecutionTarget !== "nearzero_host"}
+													/>
+													<span>Server</span>
+												</label>
+												<label class="nz-app-build-option">
+													<input
+														type="radio"
+														name="buildExecutionTarget"
+														value="nearzero_host"
+														checked={buildExecutionTarget === "nearzero_host"}
+													/>
+													<span>Nearzero host</span>
+												</label>
+											</div>
+										</div>
+									) : null
+								}
+								<div id="nz-app-build-dockerfile-fields" class={buildType === "dockerfile" ? "nz-app-form-grid" : "hidden nz-app-form-grid"}>
+									<label class={fieldClass}>Docker File<input id="nz-app-build-dockerfile" class={inputClass} value={appRow.dockerfile ?? ""} /></label>
+									<label class={fieldClass}>Docker Context Path<input id="nz-app-build-docker-context" class={inputClass} value={appRow.dockerContextPath ?? ""} /></label>
+									<label class={fieldWideClass}>Docker Build Stage<input id="nz-app-build-docker-stage" class={inputClass} value={appRow.dockerBuildStage ?? ""} /></label>
+								</div>
+								<div id="nz-app-build-heroku-fields" class={buildType === "heroku_buildpacks" ? "nz-app-form-grid" : "hidden nz-app-form-grid"}>
+									<label class={fieldClass}>Heroku Version<input id="nz-app-build-heroku" class={inputClass} value={appRow.herokuVersion ?? ""} /></label>
+								</div>
+								<div id="nz-app-build-nixpacks-fields" class={buildType === "nixpacks" ? "nz-app-form-grid" : "hidden nz-app-form-grid"}>
+									<label class={fieldClass}>Publish Directory<input id="nz-app-build-publish" class={inputClass} value={appRow.publishDirectory ?? ""} /></label>
+								</div>
+								<div id="nz-app-build-static-fields" class={buildType === "static" ? "" : "hidden"}>
+									<label class="nz-app-check-row">
+										<input type="checkbox" id="nz-app-build-static-spa" checked={Boolean(appRow.isStaticSpa)} />
+										Single Page Application (SPA)
+									</label>
+								</div>
+								<div id="nz-app-build-railpack-fields" class={buildType === "railpack" ? "nz-app-form-grid" : "hidden nz-app-form-grid"}>
+									<label class={fieldClass}>Railpack Version
+										<select id="nz-app-build-railpack" class={selectClass}>
+											{railpackVersions.map((v) => (
+												<option value={v} selected={(appRow.railpackVersion ?? "0.15.4") === v}>v{v}</option>
+											))}
+										</select>
+									</label>
+								</div>
+								<div class="nz-app-form-grid">
+									<div class="nz-app-field nz-app-field--wide">
+										<p class="text-xs font-medium text-[var(--nz-text-muted)]">Custom commands</p>
+										<p class="text-xs text-[var(--nz-text-muted)]">Optional - leave blank to let Nearzero detect commands.</p>
+									</div>
+									<label class={fieldClass}>Install command
+										<input id="nz-app-custom-install-command" class={inputClass} value={customInstallCommand} placeholder="pnpm install --frozen-lockfile" />
+									</label>
+									<label class={fieldClass}>Build command
+										<input id="nz-app-custom-build-command" class={inputClass} value={customBuildCommand} placeholder="cd apps/web && pnpm run build" />
+									</label>
+									<label class={fieldWideClass}>Start command
+										<input id="nz-app-custom-start-command" class={inputClass} value={customStartCommand} placeholder="cd apps/web && pnpm run start" />
+									</label>
+								</div>
+								<div class="nz-app-form-actions !justify-end !p-0"><Button type="submit" id="nz-app-build-save" class={btnPrimaryClass}>Save</Button></div>
+							</form>
+						</section>
+					) : null
+				}
+
+				<section class="nz-app-setting-panel nz-app-collapse nz-app-deployments-section" data-app-collapse data-collapsed="true">
+					<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+						<span class="nz-app-setting-panel__title-wrap">
+							<span class="nz-app-setting-panel__title">Deployments</span>
+							<SettingPanelHint label="Relevant deploy history for this service" />
+						</span>
+					</button>
+					<div class="nz-app-setting-panel__body nz-app-collapse__body" data-app-collapse-body>
+						{
+							deploymentRows.length === 0 ? (
+								<div class="nz-app-empty-state nz-app-empty-state--compact">
+									<p>No deployments yet. Deploy this service to see history and rollback options here.</p>
+								</div>
+							) : (
+								<ul class="nz-app-deployment-list">
+									{deploymentRows.map((dep: any) => {
+										const depStatus = dep?.status ?? "pending";
+										const depStatusNorm = depStatus.toLowerCase();
+										const commitId = extractDeploymentCommitId(dep);
+										const rollbackId = dep?.rollback?.rollbackId ?? "";
+										const rollbackEnabled =
+											canDeploy &&
+											Boolean(rollbackId) &&
+											depStatusNorm === "done";
+										const showRollback =
+											hasRollbackTarget && canDeploy;
+										return (
+											<li class="nz-app-deployment-row">
+												<button
+													type="button"
+													class="nz-app-deployment-row__main"
+													data-app-deployment-open
+													data-deployment-id={dep.deploymentId}
+													data-deployment-commit={commitId || undefined}
+												>
+													<span class="nz-app-deployment-row__line">
+														<code class="nz-app-deployment-row__commit">{commitId || "—"}</code>
+														<span class="nz-app-deployment-row__meta">{formatDeploymentDate(dep.createdAt)}</span>
+													</span>
+												</button>
+												<div class="nz-app-deployment-row__actions">
+													<span class="nz-app-status-pill" data-state={deploymentStatusKind(depStatus)}>
+														{formatDeploymentStatusLabel(depStatus)}
+													</span>
+													{
+														showRollback ? (
+															<button
+																type="button"
+																class={`${btnClass} nz-app-rollback-btn`}
+																data-app-deployment-rollback
+																data-rollback-id={rollbackId}
+																disabled={!rollbackEnabled}
+																title={
+																	rollbackEnabled
+																		? "Roll back to this deployment"
+																		: depStatusNorm === "error"
+																			? "Cannot roll back from a failed deployment"
+																			: rollbackId
+																				? "Rollback unavailable for this deployment"
+																				: "No rollback snapshot for this deployment"
+																}
+															>
+																Rollback
+															</button>
+														) : null
+													}
+												</div>
+											</li>
+										);
+									})}
+								</ul>
+							)
+						}
+					</div>
+				</section>
+				</div>
+				</div>
+				</div>
+
+				<div data-app-tab-panel="settings" class="hidden">
+					<div class="nz-app-settings-tab">
+					<div class="nz-app-settings-stack">
+					{
+						canUpdateService ? (
+							<section class="nz-app-setting-panel nz-app-collapse nz-app-settings-group" data-app-collapse data-collapsed="true">
+								<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+									<span class="nz-app-setting-panel__title-wrap">
+										<span class="nz-app-setting-panel__title">Deployment settings</span>
+										<SettingPanelHint label="Control how this service deploys" />
+									</span>
+								</button>
+								<div class="nz-app-setting-panel__body nz-app-collapse__body nz-app-settings-list" data-app-collapse-body>
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">Autodeploy</p>
+											<p class="nz-app-setting-row__desc">Automatically deploy on new commits to the watched branch.</p>
+										</div>
+										<label class="nz-app-switch">
+											<input type="checkbox" id="nz-app-autodeploy" class="nz-app-switch__input" checked={Boolean(appRow.autoDeploy)} aria-label="Toggle autodeploy" />
+											<span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span>
+										</label>
+									</div>
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">Clean cache</p>
+											<p class="nz-app-setting-row__desc">Rebuild without using the previous build cache.</p>
+										</div>
+										<label class="nz-app-switch">
+											<input type="checkbox" id="nz-app-clean-cache" class="nz-app-switch__input" checked={Boolean(appRow.cleanCache)} aria-label="Toggle clean cache" />
+											<span class="nz-app-switch__track" aria-hidden="true"><span class="nz-app-switch__thumb" /></span>
+										</label>
+									</div>
+								</div>
+							</section>
+						) : null
+					}
+					<section class="nz-app-setting-panel nz-app-setting-panel--danger nz-app-collapse nz-app-settings-group" data-app-collapse data-collapsed="true">
+						<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+							<span class="nz-app-setting-panel__title-wrap">
+								<span class="nz-app-setting-panel__title">Danger zone</span>
+								<SettingPanelHint label="Stop the service before deleting it" />
+							</span>
+						</button>
+						<div class="nz-app-setting-panel__body nz-app-collapse__body nz-app-settings-list" data-app-collapse-body>
+							<div class="nz-app-setting-row">
+								<div class="nz-app-setting-row__text">
+									<p class="nz-app-setting-row__title">Delete service</p>
+									<p class="nz-app-setting-row__desc">{deleteServiceDescription}</p>
+								</div>
+								<button
+									type="button"
+									id="nz-app-delete-service"
+									class="nz-modal__btn nz-modal__btn--danger"
+									data-service-name={serviceName}
+									data-application-status={applicationStatus}
+									disabled={deleteServiceDisabled}
+									title={deleteServiceDisabled ? deleteServiceDisabledReason : undefined}
+								>
+									Delete service
+								</button>
+							</div>
+						</div>
+					</section>
+					</div>
+					</div>
+				</div>
+
+				<NzModal id="nz-app-act-dialog" title="Confirm action" size="sm" showClose={false}>
+					<p id="nz-app-act-desc" class="text-sm text-muted-foreground" />
+					<p
+						id="nz-app-act-error"
+						role="alert"
+						class="mt-3 hidden max-h-48 overflow-auto whitespace-pre-line break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-left text-sm leading-6 text-red-700 select-text dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+					/>
+					<button slot="footer" type="button" id="nz-app-act-cancel" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+						Cancel
+					</button>
+					<button
+						slot="footer"
+						type="button"
+						id="nz-app-act-run"
+						data-default-label="Continue"
+						class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+					>
+						<AuthButtonSpinner />
+						<span data-auth-btn-label>Continue</span>
+					</button>
+				</NzModal>
+
+				<dialog id="nz-app-deployment-log-dialog" class="nz-app-log-dialog backdrop:bg-black/50" aria-labelledby="nz-app-deployment-log-label">
+					<div class="nz-app-log-dialog__panel">
+						<div class="nz-app-log-dialog__header">
+							<p id="nz-app-deployment-log-label" class="nz-app-log-dialog__header-line">
+								<span class="nz-app-log-dialog__label">Deployment logs</span>
+								<span class="nz-app-log-dialog__sep" aria-hidden="true">·</span>
+								<code id="nz-app-deployment-log-commit" class="nz-app-log-dialog__commit">—</code>
+							</p>
+							<div class="nz-app-log-dialog__actions">
+								<button type="button" class={`${btnClass}`} id="nz-app-deployment-log-copy">Copy</button>
+								<button type="button" class={`${btnClass}`} id="nz-app-deployment-log-close">Close</button>
+							</div>
+						</div>
+						<div class="nz-app-log-dialog__body">
+							<div id="nz-app-deployment-log-output" class="nz-app-log-dialog__output">Select a deployment to load logs.</div>
+						</div>
+					</div>
+				</dialog>
+
+				<DockerTerminalShell
+					id="nz-app-terminal-dialog"
+					hostId="nz-app-terminal-host"
+					containerSelectId="nz-app-terminal-container"
+					shellSelectId="nz-app-terminal-way"
+					closeButtonId="nz-app-terminal-close-request"
+					sectionLabel="application"
+					nameLabel={serviceName}
+					defaultShell="bash"
+				/>
+
+				<NzModal
+					id="nz-app-terminal-close-dialog"
+					title="Close terminal?"
+					description="By clicking confirm, the terminal will be closed."
+					size="sm"
+					showClose={false}
+				>
+					<button slot="footer" type="button" id="nz-app-terminal-close-cancel" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+						Cancel
+					</button>
+					<button
+						slot="footer"
+						type="button"
+						id="nz-app-terminal-close-confirm"
+						data-default-label="Confirm"
+						class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+					>
+						<AuthButtonSpinner />
+						<span data-auth-btn-label>Confirm</span>
+					</button>
+				</NzModal>
+			</div>
+		)
+	}
+</div>
+</ProjectWorkspaceShell>
+
+<script>
+	import { bootApplicationDashboard } from "@/scripts/application-dashboard";
+	import { refreshNzModalListeners } from "@/scripts/modal-animations";
+
+	function boot() {
+		refreshNzModalListeners();
+		bootApplicationDashboard();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

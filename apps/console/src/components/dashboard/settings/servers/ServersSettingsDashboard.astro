@@ -1,0 +1,499 @@
+---
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import WebServerSharedDialogs from "@/components/dashboard/settings/web-server/WebServerSharedDialogs.astro";
+import WebServerActionMenus from "@/components/dashboard/settings/web-server/WebServerActionMenus.astro";
+import ServersSshKeysPanel from "@/components/dashboard/settings/servers/ServersSshKeysPanel.astro";
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import { ST } from "@/lib/settings-hub-ui";
+import { IS_COMMUNITY } from "@/lib/branding";
+import {
+	formatRuntimeServerReadiness,
+	isReadyRuntimeServer,
+} from "@/lib/runtime-server-options";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.servers,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+type ServerRow = {
+	serverId: string;
+	name: string;
+	description?: string | null;
+	ipAddress: string;
+	port: number;
+	username: string;
+	sshKeyId?: string | null;
+	serverStatus?: string;
+	setupStatus?: "not_started" | "running" | "ready" | "failed" | string | null;
+	setupError?: string | null;
+	setupStartedAt?: string | null;
+	setupFinishedAt?: string | null;
+	totalSum?: number;
+	createdAt: string;
+	metricsConfig?: { server?: { port?: number; token?: string } };
+};
+
+type SshKey = {
+	sshKeyId: string;
+	name: string;
+	description?: string | null;
+	createdAt: string;
+};
+
+let servers: ServerRow[] = [];
+let sshKeys: SshKey[] = [];
+let canCreateMoreServers = true;
+let permissions: {
+	server?: { create?: boolean; delete?: boolean };
+	sshKeys?: { create?: boolean; delete?: boolean; read?: boolean };
+} | null = null;
+
+const url = new URL(Astro.request.url);
+const showWelcome = url.searchParams.get("success") === "true";
+const qParam = (url.searchParams.get("q") ?? "").trim();
+const statusFilter = url.searchParams.get("status") ?? "all";
+const tabParam = url.searchParams.get("tab") ?? "servers";
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		[servers, sshKeys, canCreateMoreServers, permissions] = await Promise.all([
+			api.server.all.query(),
+			api.sshKey.all.query(),
+			api.stripe.canCreateMoreServers.query(),
+			api.user.getPermissions.query(),
+		]);
+	} catch {
+		servers = [];
+	}
+}
+
+const canCreate = !!permissions?.server?.create;
+const canDelete = !!permissions?.server?.delete;
+const canSshRead = !!permissions?.sshKeys?.read;
+const canSshCreate = !!permissions?.sshKeys?.create;
+
+const tabs = [
+	{ id: "servers", label: "Servers" },
+	...(canSshRead ? [{ id: "ssh-keys", label: "SSH keys" }] : []),
+];
+
+const activeTab = tabs.find((tab) => tab.id === tabParam)?.id ?? "servers";
+const isCommunity = IS_COMMUNITY;
+
+const statusOptions = [
+	"all",
+	...Array.from(new Set(servers.map((server) => server.serverStatus).filter(Boolean))),
+];
+
+function serverMatchesFilters(server: ServerRow) {
+	if (statusFilter !== "all" && server.serverStatus !== statusFilter) return false;
+	if (!qParam) return true;
+	const q = qParam.toLowerCase();
+	return `${server.name} ${server.ipAddress} ${server.description ?? ""} ${server.username}`
+		.toLowerCase()
+		.includes(q);
+}
+
+const filteredServers = servers.filter(serverMatchesFilters);
+
+const sshKeyServerUsage: Record<string, string[]> = {};
+for (const server of servers) {
+	if (!server.sshKeyId) continue;
+	if (!sshKeyServerUsage[server.sshKeyId]) {
+		sshKeyServerUsage[server.sshKeyId] = [];
+	}
+	sshKeyServerUsage[server.sshKeyId].push(server.name);
+}
+
+const badgeClass =
+	"inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap capitalize";
+
+function setupBadgeClass(server: ServerRow) {
+	if (isReadyRuntimeServer(server)) {
+		return "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600";
+	}
+	if (server.setupStatus === "failed") {
+		return "bg-red-600/20 dark:bg-red-500/15 text-destructive";
+	}
+	if (server.setupStatus === "running") {
+		return "bg-blue-600/15 text-blue-600";
+	}
+	return "bg-secondary text-secondary-foreground";
+}
+---
+
+{
+	forbidden ? (
+		<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+			<span>You do not have access to servers.</span>
+			<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+		</div>
+	) : loadFailed ? (
+		<div class="flex min-h-[45vh] flex-col items-center justify-center gap-2 p-10 text-center text-xs text-muted-foreground">
+			<span>Could not load servers. Try refreshing the page.</span>
+		</div>
+	) : (
+		<div
+			class="nz-dashboard-content h-full min-h-0 w-full"
+			id="nz-servers-root"
+			transition:animate="none"
+			data-can-create-more={canCreateMoreServers ? "1" : "0"}
+			data-show-welcome={showWelcome ? "1" : "0"}
+			data-community={isCommunity ? "1" : "0"}
+		>
+			<div class="nz-deployments-surface text-xs">
+				<div class="nz-deployments-toolbar">
+					<div class="nz-deployments-toolbar-primary">
+						<h1 class={ST.pageTitle}>Servers</h1>
+					</div>
+					<form method="get" class="nz-domains-controls-row" id="nz-servers-filter-form">
+						<input type="hidden" name="tab" value={activeTab} id="nz-servers-tab-input" />
+						{
+							tabs.length > 1 ? (
+								<div class="nz-domains-tablist" role="tablist" aria-label="Server sections">
+									{
+										tabs.map((tab) => (
+											<button
+												type="button"
+												class={`nz-domains-tab ${tab.id === activeTab ? "nz-domains-tab--active" : ""}`}
+												data-servers-tab={tab.id}
+												role="tab"
+												aria-selected={tab.id === activeTab ? "true" : "false"}
+											>
+												{tab.label}
+											</button>
+										))
+									}
+								</div>
+							) : (
+								<div class="min-w-0 flex-1" />
+							)
+						}
+						<div class="nz-domains-controls-actions">
+							<div
+								id="nz-servers-search-root"
+								class:list={["relative shrink-0", activeTab !== "servers" && "hidden"]}
+								data-servers-search-wrap
+							>
+								<button
+									id="nz-servers-search-toggle"
+									type="button"
+									aria-label="Search servers"
+									aria-expanded={qParam ? "true" : "false"}
+									aria-controls="nz-servers-search-panel"
+									class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-transparent p-0 text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)]"
+								>
+									<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+								</button>
+								<label
+									id="nz-servers-search-panel"
+									class:list={[
+										"pointer-events-none absolute right-0 top-1/2 z-20 flex h-8 -translate-y-1/2 items-center gap-1 overflow-hidden rounded-md border border-[var(--nz-border)] bg-transparent shadow-none transition-all duration-200 ease-in-out",
+										qParam ? "w-44 px-2 opacity-100 pointer-events-auto sm:w-52" : "w-0 px-0 opacity-0 pointer-events-none border-transparent",
+									]}
+								>
+									<input
+										id="nz-servers-search"
+										name="q"
+										type="search"
+										placeholder="Search..."
+										value={qParam}
+										class="min-w-0 w-full bg-transparent text-xs text-[var(--nz-text)] outline-none placeholder:text-[var(--nz-text-subtle)]"
+									/>
+								</label>
+							</div>
+							<select
+								name="status"
+								class:list={[ST.filterSelect, activeTab !== "servers" && "hidden"]}
+								data-servers-status-wrap
+								onchange="this.form.submit()"
+							>
+								{statusOptions.map((status) => (
+									<option value={status} selected={statusFilter === status}>
+										{status === "all" ? "All statuses" : status}
+									</option>
+								))}
+							</select>
+							{
+								canCreate ? (
+									<button
+										type="button"
+										id="nz-server-create-open"
+										class:list={[
+											"inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] shadow-none transition-colors hover:bg-[var(--nz-primary-hover)]",
+											activeTab !== "servers" && "hidden",
+										]}
+										data-servers-add="server"
+									>
+										Add Server
+									</button>
+								) : null
+							}
+							{
+								canSshCreate ? (
+									<button
+										type="button"
+										id="nz-ssh-create-open-list"
+										class:list={[
+											"inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] shadow-none transition-colors hover:bg-[var(--nz-primary-hover)]",
+											activeTab !== "ssh-keys" && "hidden",
+										]}
+										data-servers-add="ssh-key"
+									>
+										Add SSH Key
+									</button>
+								) : null
+							}
+						</div>
+					</form>
+				</div>
+
+				<div class={activeTab === "servers" ? "" : "hidden"} data-servers-panel="servers">
+					{
+						sshKeys.length === 0 && servers.length === 0 ? (
+							<div class={ST.empty}>
+								<p class="font-medium text-[var(--nz-text)]">No SSH keys yet</p>
+								<p class={ST.emptyText}>
+									Add an SSH key first, then connect a server for Nearzero to set up automatically.
+								</p>
+							</div>
+						) : filteredServers.length === 0 ? (
+							<div class={ST.empty}>
+								<p class="font-medium text-[var(--nz-text)]">
+									{servers.length === 0 ? "No servers yet" : "No servers match your filters"}
+								</p>
+								<p class={ST.emptyText}>
+									{servers.length === 0
+										? isCommunity
+											? "Create a server to deploy applications remotely."
+											: "Nearzero requires a ready server before services, domains, tasks, and deployments can run."
+										: "Try adjusting your search or status filter."}
+								</p>
+							</div>
+						) : (
+							<div class="grid gap-3 p-4 xl:grid-cols-2 2xl:grid-cols-3">
+								{
+									filteredServers.map((server) => {
+										const canDeleteServer = Number(server.totalSum ?? 0) === 0;
+										const serverIsReady = isReadyRuntimeServer(server);
+										const setupMenuLabel = serverIsReady ? "View" : "Run setup again";
+										const setupMenuAction = serverIsReady ? "view" : "setup";
+										const setupStatusLabel = formatRuntimeServerReadiness(server);
+										return (
+											<article class="nz-server-card group rounded-md border border-[var(--nz-border)] bg-[var(--nz-surface)] p-4 text-xs transition-colors hover:bg-[var(--nz-bg-hover)]">
+												<div class="nz-server-card__header flex items-start justify-between gap-2">
+													<div class="min-w-0 flex-1">
+														<div class="flex flex-wrap items-center gap-2">
+															<h2 class="truncate text-sm font-semibold text-[var(--nz-text)]">{server.name}</h2>
+															<span class={`${badgeClass} ${setupBadgeClass(server)}`}>{setupStatusLabel}</span>
+														</div>
+														{server.description ? <p class="mt-2 line-clamp-2 text-[11px] text-[var(--nz-text-muted)]">{server.description}</p> : null}
+													</div>
+													<div class="relative shrink-0">
+														<button
+															type="button"
+															id={`nz-server-menu-trigger-${server.serverId}`}
+															class={ST.actionBtn}
+															aria-expanded="false"
+															aria-haspopup="menu"
+															aria-label={`Actions for ${server.name}`}
+														>
+															<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+														</button>
+														<div
+															id={`nz-server-menu-${server.serverId}`}
+															class="nz-server-action-menu nz-server-action-menu--dropdown hidden min-w-[11rem] overflow-visible rounded-md border border-[var(--nz-border)] bg-[var(--nz-surface)] p-1 text-xs shadow-none"
+															role="menu"
+															aria-label={`Actions for ${server.name}`}
+														>
+															<button type="button" role="menuitem" class="nz-server-action-menu__btn" data-server-menu-action={setupMenuAction} data-server-id={server.serverId}>{setupMenuLabel}</button>
+															{server.sshKeyId ? <button type="button" role="menuitem" class="nz-server-action-menu__btn" data-server-menu-action="terminal" data-server-id={server.serverId} data-server-name={server.name}>Terminal</button> : null}
+															<button type="button" role="menuitem" class="nz-server-action-menu__btn" data-server-menu-action="edit" data-server-id={server.serverId}>Edit</button>
+															{
+																server.sshKeyId ? (
+																	<button type="button" role="menuitem" class="nz-server-action-menu__btn" data-server-menu-action="traefik-fs" data-server-id={server.serverId}>Traefik files</button>
+																) : null
+															}
+															{
+																canDelete ? (
+																	<>
+																		<div class="nz-server-action-menu__divider" role="separator"></div>
+																			<div class="nz-server-action-menu__row">
+																				<button
+																					type="button"
+																					role="menuitem"
+																					class="nz-server-action-menu__btn nz-server-action-menu__btn--danger"
+																					data-server-menu-action="delete"
+																					data-server-id={server.serverId}
+																					data-can-delete-server={canDeleteServer ? "1" : "0"}
+																					data-server-service-count={Number(server.totalSum ?? 0)}
+																				>
+																					Delete
+																				</button>
+																			</div>
+																	</>
+																) : null
+															}
+														</div>
+													</div>
+												</div>
+												{server.setupError ? <p class="mt-3 line-clamp-2 text-[11px] text-destructive">{server.setupError}</p> : null}
+											</article>
+										);
+									})
+								}
+							</div>
+						)
+					}
+				</div>
+
+				{
+					canSshRead ? (
+						<div class={`nz-deployments-table-region ${activeTab === "ssh-keys" ? "" : "hidden"}`} data-servers-panel="ssh-keys">
+							<ServersSshKeysPanel
+								embedded
+								request={Astro.request}
+								sshKeys={sshKeys}
+								sshKeyServerUsage={sshKeyServerUsage}
+								canCreate={canSshCreate}
+								canDelete={!!permissions?.sshKeys?.delete}
+							/>
+						</div>
+					) : null
+				}
+			</div>
+
+			<NzModal
+				id="nz-server-form-dialog"
+				title="Create Server"
+				description="Create a server to deploy your applications remotely."
+				size="lg"
+				form
+				formId="nz-server-form"
+				showClose={false}
+			>
+				<div id="nz-server-form-limit" class:list={["nz-modal__callout border-amber-200/80 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200", canCreateMoreServers && "hidden"]}>
+					You cannot create more servers. Upgrade your plan to add more.
+				</div>
+				<input type="hidden" id="nz-server-form-id" value="" />
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Name</span>
+					<input id="nz-server-name" required placeholder="Production server" class="nz-modal__input" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Description</span>
+					<textarea id="nz-server-description" rows="2" placeholder="This server is for databases..." class="nz-modal__textarea nz-modal__textarea--compact" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">SSH key</span>
+					<select id="nz-server-ssh" required class="nz-modal__select">
+						<option value="">Select an SSH key</option>
+						{sshKeys.map((k) => <option value={k.sshKeyId}>{k.name}</option>)}
+					</select>
+				</label>
+				<div class="grid grid-cols-[minmax(0,1fr)_5.5rem] gap-3">
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">IP address</span>
+						<input id="nz-server-ip" required placeholder="192.168.1.100" class="nz-modal__input" />
+					</label>
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Port</span>
+						<input id="nz-server-port" type="number" value="22" class="nz-modal__input" />
+					</label>
+				</div>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Username</span>
+					<input id="nz-server-user" value="root" class="nz-modal__input" />
+				</label>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button
+					slot="footer"
+					type="submit"
+					id="nz-server-form-submit"
+					data-default-label="Create"
+					class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+					disabled
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Create</span>
+				</button>
+			</NzModal>
+
+			<NzModal id="nz-server-delete-dialog" title="Delete server" description="This server will be removed from your organization." variant="danger" size="sm" showClose={false}>
+				<div id="nz-server-delete-body" class="text-xs text-muted-foreground" />
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close id="nz-server-delete-cancel">Cancel</button>
+				<button slot="footer" type="button" id="nz-server-delete-confirm" class="nz-modal__btn nz-modal__btn--danger">Delete</button>
+			</NzModal>
+
+			<NzModal
+				id="nz-server-setup-dialog"
+				title="Server setup"
+				description="Nearzero installs Docker, Swarm, Traefik, build tools, and monitoring automatically."
+				size="xl"
+			>
+				<div id="nz-server-setup-body"></div>
+			</NzModal>
+
+			<NzModal
+				id="nz-server-view-dialog"
+				title="Server details"
+				description="Connection info and setup validation for this server."
+				size="lg"
+				showClose={false}
+			>
+				<div id="nz-server-view-body"></div>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Close</button>
+			</NzModal>
+
+			<NzModal
+				id="nz-server-actions-dialog"
+				title="Web server settings"
+				description="Reload or clean the web server."
+				size="lg"
+				showClose
+			>
+				<div class="grid grid-cols-2 gap-4" id="nz-server-actions-menus">
+					<WebServerActionMenus showNearzeroMenu={false} menuSuffix="-remote" />
+				</div>
+				<label class="mt-2 flex cursor-pointer items-center gap-3">
+					<input type="checkbox" id="nz-server-actions-docker-cleanup" class="size-4 cursor-pointer" />
+					<span class="nz-modal__label">Daily Docker Cleanup</span>
+				</label>
+			</NzModal>
+
+			<NzModal
+				id="nz-server-advanced-dialog"
+				title="Advanced"
+				size="2xl"
+				showClose
+			>
+				<div id="nz-server-advanced-body"></div>
+			</NzModal>
+
+			<NzModal
+				id="nz-servers-welcome-dialog"
+				title="Welcome to Nearzero"
+				description="Your subscription is active. Create an SSH key, connect your first server, and run setup to get started."
+				size="md"
+				showClose
+			>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" id="nz-servers-welcome-close">Close</button>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--primary" data-servers-tab-jump="ssh-keys">Add SSH Key</button>
+			</NzModal>
+
+			<WebServerSharedDialogs />
+			<script is:inline type="application/json" id="nz-servers-ssh-keys-json" set:html={JSON.stringify(sshKeys)} />
+		</div>
+	)
+}
+
+<script>
+	import "@/scripts/servers-dashboard.ts";
+</script>

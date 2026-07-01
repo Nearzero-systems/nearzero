@@ -1,0 +1,46 @@
+---
+import { createServerTrpcClient } from "@/lib/server-api";
+import { AgentHomeAsk } from "./AgentHomeAsk";
+
+interface Props {
+	request: Request;
+}
+
+const { request } = Astro.props;
+const api = createServerTrpcClient(request) as any;
+let user: Awaited<ReturnType<typeof api.user.get.query>> | null = null;
+try {
+	user = await api.user.get.query();
+} catch {
+	user = null;
+}
+function pickFirstName(...candidates: (string | null | undefined)[]) {
+	for (const candidate of candidates) {
+		const trimmed = candidate?.trim();
+		if (!trimmed) continue;
+		const first = trimmed.split(/\s+/)[0]?.trim();
+		if (first) return first;
+	}
+	return "there";
+}
+
+const firstName = pickFirstName(user?.user?.firstName, user?.user?.name);
+const title = (
+	process.env.NEARZERO_AGENT_GREETING_TITLE ||
+	"Hi {firstName}, what should we work on today?"
+).replaceAll("{firstName}", firstName);
+const subtitle =
+	process.env.NEARZERO_AGENT_GREETING_SUBTITLE ||
+	"Your deployment assistant for projects, logs, and infrastructure.";
+const initialThreadId = Astro.url.searchParams.get("thread");
+const canConfigureOpenRouter =
+	user?.role === "owner" || user?.role === "admin";
+---
+
+<AgentHomeAsk
+	title={title}
+	subtitle={subtitle}
+	initialThreadId={initialThreadId}
+	canConfigureOpenRouter={canConfigureOpenRouter}
+	client:load
+/>

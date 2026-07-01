@@ -1,0 +1,12 @@
+---
+import Base from "../layouts/Base.astro";
+import NotFoundGrid from "../components/auth/NotFoundGrid.astro";
+
+Astro.response.status = 404;
+---
+
+<Base title="Nearzero | Page not found">
+  <main class="relative min-h-screen overflow-x-hidden bg-[#f3f4f6] gap-2 text-[#111827]" id="not-found">
+    <NotFoundGrid />
+  </main>
+</Base>

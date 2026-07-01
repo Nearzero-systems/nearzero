@@ -1,0 +1,601 @@
+/**
+ * Nearzero app theme — light (default) and dark ("darkflow" style).
+ * Toggle via html.dark + localStorage key nearzero-theme.
+ */
+
+:root {
+	color-scheme: light;
+	--nz-bg: #f3f4f6;
+	--nz-bg-elevated: #ffffff;
+	--nz-bg-muted: #f7f7f8;
+	--nz-bg-hover: #ececef;
+	--nz-border: #eceef3;
+	--nz-border-strong: #e5e7eb;
+	--nz-text: #111827;
+	--nz-text-muted: #6b7280;
+	--nz-text-subtle: #9ca3af;
+	--nz-primary: #111827;
+	--nz-primary-fg: #ffffff;
+	--nz-primary-hover: #1f2937;
+	--nz-surface: #ffffff;
+	--nz-grid-line: #eceef3;
+	--nz-shadow-popover: 0 10px 15px -3px rgb(0 0 0 / 0.08);
+	--nz-card-border: #eceef3;
+	--nz-agent-composer-bg: #ffffff;
+	--nz-agent-code-bg: #f3f4f6;
+}
+
+html.dark {
+	color-scheme: dark;
+	--nz-bg: #050506;
+	--nz-bg-elevated: #0a0a0c;
+	--nz-bg-muted: #141416;
+	--nz-bg-hover: #1f1f23;
+	--nz-border: #1f1f23;
+	--nz-border-strong: #323238;
+	--nz-text: #fafafa;
+	--nz-text-muted: #a1a1aa;
+	--nz-text-subtle: #71717a;
+	--nz-primary: #fafafa;
+	--nz-primary-fg: #18181b;
+	--nz-primary-hover: #e4e4e7;
+	--nz-surface: #0a0a0c;
+	--nz-grid-line: #2a2a2e;
+	--nz-shadow-popover: 0 10px 15px -3px rgb(0 0 0 / 0.45);
+	--nz-card-border: #27272a;
+	--nz-agent-composer-bg: #18181b;
+	--nz-agent-code-bg: #27272a;
+}
+
+/* Tailwind/shadcn tokens — align with globals.css .dark */
+html.dark {
+	--background: 0 0% 0%;
+	--foreground: 0 0% 98%;
+	--card: 240 4% 10%;
+	--card-foreground: 0 0% 98%;
+	--popover: 240 10% 3.9%;
+	--popover-foreground: 0 0% 98%;
+	--primary: 0 0% 98%;
+	--primary-foreground: 240 5.9% 10%;
+	--secondary: 240 3.7% 15.9%;
+	--secondary-foreground: 0 0% 98%;
+	--muted: 240 3.7% 15.9%;
+	--muted-foreground: 240 5% 64.9%;
+	--accent: 240 3.7% 15.9%;
+	--accent-foreground: 0 0% 98%;
+	--destructive: 0 84.2% 50.2%;
+	--destructive-foreground: 0 0% 98%;
+	--border: 240 3.7% 15.9%;
+	--input: 240 4% 10%;
+	--ring: 240 4.9% 83.9%;
+	--sidebar-background: 240 5.9% 10%;
+	--sidebar-foreground: 240 4.8% 95.9%;
+	--sidebar-primary: 224.3 76.3% 48%;
+	--sidebar-primary-foreground: 0 0% 100%;
+	--sidebar-accent: 240 3.7% 15.9%;
+	--sidebar-accent-foreground: 240 4.8% 95.9%;
+	--sidebar-border: 240 3.7% 15.9%;
+	--sidebar-ring: 217.2 91.2% 59.8%;
+}
+
+/* App shell */
+html.dark body.nz-app-shell {
+	background-color: var(--nz-bg) !important;
+	color: var(--nz-text) !important;
+}
+
+html.dark .nz-app-shell .bg-\[\#f3f4f6\] {
+	background-color: var(--nz-bg) !important;
+}
+
+html.dark .nz-app-shell .bg-white {
+	background-color: var(--nz-bg-elevated) !important;
+}
+
+html.dark .nz-app-shell .bg-\[\#ececef\],
+html.dark .nz-app-shell .hover\:bg-\[\#ececef\]:hover {
+	background-color: var(--nz-bg-hover) !important;
+}
+
+html.dark .nz-app-shell .text-\[\#111827\],
+html.dark .nz-app-shell .text-\[\#334155\],
+html.dark .nz-app-shell .hover\:text-\[\#111827\]:hover {
+	color: var(--nz-text) !important;
+}
+
+html.dark .nz-app-shell .text-\[\#4b5563\],
+html.dark .nz-app-shell .text-\[\#6b7280\] {
+	color: var(--nz-text-muted) !important;
+}
+
+html.dark .nz-app-shell .text-\[\#9ca3af\] {
+	color: var(--nz-text-subtle) !important;
+}
+
+html.dark .nz-app-shell .border-\[\#eceef3\],
+html.dark .nz-app-shell .border-\[\#e5e7eb\],
+html.dark .nz-app-shell .border-\[\#d9dbe3\] {
+	border-color: var(--nz-border) !important;
+}
+
+html.dark .nz-app-shell .bg-\[\#111827\] {
+	background-color: var(--nz-primary) !important;
+	color: var(--nz-primary-fg) !important;
+}
+
+html.dark .nz-app-shell .hover\:bg-\[\#1f2937\]:hover {
+	background-color: var(--nz-primary-hover) !important;
+}
+
+html.dark .nz-app-shell header.sticky {
+	background-color: color-mix(in srgb, var(--nz-bg-elevated) 92%, transparent) !important;
+}
+
+html.dark .nz-dashboard-shell.rounded-md,
+html.dark .nz-dashboard-shell:has(.nz-agent-workspace) {
+	background-color: var(--nz-surface) !important;
+}
+
+/* Agent workspace — inherit tokens, never hardcoded neutrals */
+html.dark .nz-agent-workspace,
+html.dark .nz-agent-chat,
+html.dark .nz-agent-sessions,
+html.dark .nz-agent-primary-column,
+html.dark #nz-project-workspace {
+	background-color: var(--nz-surface);
+	border-color: var(--nz-border);
+	color: var(--nz-text);
+}
+
+html.dark .nz-agent-primary-toggle,
+html.dark .nz-agent-secondary-toggle {
+	background-color: var(--nz-bg-elevated);
+	border-color: var(--nz-border-strong);
+	color: var(--nz-text-muted);
+}
+
+html.dark .nz-agent-workspace,
+html.dark .nz-agent-main-region,
+html.dark .nz-agent-conversation-layout {
+	background-color: var(--nz-grid-line) !important;
+}
+
+html.dark .nz-agent-dot-matrix__cell--muted {
+	opacity: 0.45;
+}
+
+html.dark .nz-app-shell [class*="bg-[linear-gradient"] {
+	opacity: 0.35;
+}
+
+html.dark .nz-app-shell .bg-\[\#eceef3\].gap-px {
+	background-color: var(--nz-grid-line) !important;
+}
+
+/* Dashboard content panel */
+html.dark .nz-dashboard-content {
+	--background: 240 4% 10%;
+	--foreground: 0 0% 98%;
+	--card: 240 4% 12%;
+	--card-foreground: 0 0% 98%;
+	--popover: 240 5% 11%;
+	--popover-foreground: 0 0% 98%;
+	--primary: 0 0% 98%;
+	--primary-foreground: 240 5% 10%;
+	--secondary: 240 4% 16%;
+	--secondary-foreground: 0 0% 98%;
+	--muted: 240 4% 16%;
+	--muted-foreground: 240 5% 65%;
+	--accent: 240 4% 18%;
+	--accent-foreground: 0 0% 98%;
+	--destructive: 0 72% 51%;
+	--destructive-foreground: 0 0% 98%;
+	--border: 240 4% 22%;
+	--input: 240 4% 18%;
+	--ring: 240 5% 84%;
+	--sidebar-background: 240 4% 10%;
+	--sidebar-foreground: 0 0% 98%;
+	--sidebar-primary: 0 0% 98%;
+	--sidebar-primary-foreground: 240 5% 10%;
+	--sidebar-accent: 240 4% 18%;
+	--sidebar-accent-foreground: 0 0% 98%;
+	--sidebar-border: 240 4% 22%;
+	--sidebar-ring: 240 5% 84%;
+	background-color: var(--nz-surface) !important;
+	color: var(--nz-text) !important;
+	--nz-card-border: var(--nz-border);
+}
+
+html.dark .nz-dashboard-content .bg-background,
+html.dark .nz-dashboard-content [class*="bg-background"] {
+	background-color: hsl(var(--background)) !important;
+}
+
+html.dark .nz-dashboard-content .bg-card,
+html.dark .nz-dashboard-content [data-slot="card"] {
+	background-color: hsl(var(--card)) !important;
+	color: hsl(var(--card-foreground)) !important;
+}
+
+html.dark .nz-dashboard-content .bg-secondary,
+html.dark .nz-dashboard-content [class*="bg-secondary"] {
+	background-color: hsl(var(--secondary)) !important;
+	color: hsl(var(--secondary-foreground)) !important;
+}
+
+html.dark .nz-dashboard-content .rounded-xl.bg-white,
+html.dark .nz-dashboard-content .rounded-xl.bg-background,
+html.dark .nz-dashboard-content .rounded-xl.border.bg-background {
+	background-color: var(--nz-bg-elevated) !important;
+	color: var(--nz-text) !important;
+}
+
+html.dark .nz-dashboard-content code,
+html.dark .nz-dashboard-content kbd,
+html.dark .nz-dashboard-content .font-mono {
+	background-color: var(--nz-bg-muted);
+	color: var(--nz-text);
+}
+
+html.dark .nz-dashboard-content .text-muted-foreground {
+	color: var(--nz-text-muted) !important;
+}
+
+html.dark .nz-dashboard-content [class*="bg-sidebar"]:not(.border),
+html.dark .nz-dashboard-content [class*="bg-sidebar"]:not(.border) > * {
+	background-color: var(--nz-surface) !important;
+}
+
+html.dark .nz-settings-panel,
+html.dark .nz-deployments-surface,
+html.dark .nz-environment-surface,
+html.dark .nz-projects-surface,
+html.dark .nz-settings-table-wrap,
+html.dark .nz-settings-table,
+html.dark .nz-settings-table thead {
+	background-color: var(--nz-surface) !important;
+}
+
+html.dark .nz-settings-table thead,
+html.dark .nz-projects-toolbar,
+html.dark .nz-deployments-footer,
+html.dark .nz-projects-footer {
+	background-color: var(--nz-bg-muted) !important;
+	border-color: var(--nz-border) !important;
+}
+
+html.dark .nz-deployments-toolbar-primary,
+html.dark .nz-deployments-toolbar-secondary,
+html.dark .nz-environment-toolbar-primary,
+html.dark .nz-projects-toolbar-primary,
+html.dark .nz-projects-toolbar-secondary {
+	background-color: var(--nz-surface) !important;
+	border-color: var(--nz-border) !important;
+}
+
+html.dark .nz-settings-subnav {
+	background-color: var(--nz-bg-elevated) !important;
+	border-color: var(--nz-border) !important;
+}
+
+/* Sidebar nav */
+html.dark .group.flex.items-center.gap-3.rounded-md:not(.nz-nav-item--active) {
+	background-color: transparent !important;
+	color: var(--nz-text-muted) !important;
+}
+
+html.dark .group.flex.items-center.gap-3.rounded-md.bg-\[\#ececef\],
+html.dark .dashboard-sidebar-host .group.flex.items-center.gap-3.rounded-md.nz-nav-item--active,
+html.dark .nz-agent-workspace--primary-open .group.flex.items-center.gap-3.rounded-md.nz-nav-item--active {
+	background-color: var(--nz-bg-hover) !important;
+	color: var(--nz-text) !important;
+}
+
+html.dark .group.flex.items-center.gap-3.rounded-md:hover {
+	background-color: var(--nz-bg-hover) !important;
+	color: var(--nz-text) !important;
+}
+
+/* User menu */
+html.dark .group\/nz-user summary:hover {
+	background-color: var(--nz-bg-hover) !important;
+}
+
+html.dark .group\/nz-user .rounded-md.border {
+	background-color: var(--nz-bg-elevated) !important;
+	border-color: var(--nz-border) !important;
+	box-shadow: var(--nz-shadow-popover) !important;
+}
+
+html.dark .nz-theme-toggle:not(.nz-theme-toggle--plain) {
+	border-color: var(--nz-border) !important;
+	background-color: var(--nz-bg-muted) !important;
+	color: var(--nz-text) !important;
+}
+
+html.dark .nz-theme-toggle:not(.nz-theme-toggle--plain):hover {
+	background-color: var(--nz-bg-hover) !important;
+}
+
+html.dark .nz-theme-toggle--plain {
+	color: var(--nz-text) !important;
+}
+
+/* Auth grids — login, register, invitation, reset password */
+html.dark .grid.bg-\[\#eceef3\] {
+	background-color: var(--nz-grid-line) !important;
+}
+
+html.dark .grid.bg-\[\#eceef3\] > div.rounded-md.bg-white {
+	background-color: var(--nz-bg-elevated) !important;
+}
+
+html.dark .rounded-md.bg-white {
+	background-color: var(--nz-bg-elevated) !important;
+}
+
+html.dark .grid.bg-\[\#eceef3\] .text-\[\#111827\],
+html.dark .grid.bg-\[\#eceef3\] .hover\:text-\[\#111827\]:hover,
+html.dark .grid.bg-\[\#eceef3\] label.font-medium {
+	color: #fafafa !important;
+}
+
+html.dark .grid.bg-\[\#eceef3\] input:not([type="checkbox"]):not([type="radio"]),
+html.dark .grid.bg-\[\#eceef3\] select,
+html.dark .grid.bg-\[\#eceef3\] textarea {
+	background-color: #f4f4f5 !important;
+	border-color: #e5e7eb !important;
+	color: #111827 !important;
+	color-scheme: light;
+}
+
+html.dark .grid.bg-\[\#eceef3\] input::placeholder,
+html.dark .grid.bg-\[\#eceef3\] textarea::placeholder {
+	color: #9ca3af !important;
+}
+
+html.dark .grid.bg-\[\#eceef3\] button.bg-\[\#f7f7f8\],
+html.dark .grid.bg-\[\#eceef3\] button.bg-white,
+html.dark .grid.bg-\[\#eceef3\] button.border-\[\#e5e7eb\] {
+	background-color: #f4f4f5 !important;
+	border-color: #e5e7eb !important;
+	color: #111827 !important;
+}
+
+html.dark .grid.bg-\[\#eceef3\] button.hover\:bg-white:hover,
+html.dark .grid.bg-\[\#eceef3\] button.hover\:bg-\[\#f7f7f8\]:hover {
+	background-color: #ffffff !important;
+	color: #111827 !important;
+}
+
+/* Dialogs */
+html.dark [role="dialog"]:not(.nz-modal),
+html.dark dialog:not(.nz-modal) {
+	background-color: var(--nz-bg-elevated) !important;
+	border-color: var(--nz-border) !important;
+	color: var(--nz-text) !important;
+}
+
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark select,
+html.dark textarea {
+	background-color: var(--nz-bg-muted) !important;
+	border-color: var(--nz-border) !important;
+	color: var(--nz-text) !important;
+	color-scheme: dark;
+}
+
+html.dark input.nz-agent-message-input__field:not([type="checkbox"]):not([type="radio"]) {
+	background-color: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	cursor: text !important;
+}
+
+html.dark select option {
+	background-color: var(--nz-bg-elevated);
+	color: var(--nz-text);
+}
+
+/* Native select / details summary white flash */
+html.dark .nz-dashboard-content summary,
+html.dark #tag-filter-trigger,
+html.dark .nz-projects-toolbar-secondary select,
+html.dark .nz-projects-toolbar-secondary input[type="search"],
+html.dark .nz-deployments-toolbar-secondary select,
+html.dark .nz-deployments-toolbar-secondary input[type="search"],
+html.dark .nz-domains-controls-row input:not([type="checkbox"]):not([type="radio"]),
+html.dark .nz-domains-controls-row select {
+	background-color: transparent !important;
+	color: var(--nz-text) !important;
+	border-color: var(--nz-border) !important;
+}
+
+html.dark .nz-projects-toolbar-secondary button#create-project-open {
+	background-color: var(--nz-primary) !important;
+	color: var(--nz-primary-fg) !important;
+	border-color: transparent !important;
+}
+
+html.dark .nz-projects-toolbar-secondary button#create-project-open:hover {
+	background-color: var(--nz-primary-hover) !important;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+	color: var(--nz-text-subtle) !important;
+}
+
+/* Project cards */
+html.dark .border-\[\#eceef3\].bg-white {
+	background-color: var(--nz-bg-elevated) !important;
+	border-color: var(--nz-border) !important;
+}
+
+html.dark .hover\:bg-\[\#f7f7f8\]:hover {
+	background-color: var(--nz-bg-hover) !important;
+}
+
+/* Status badges — keep hue, soften bg */
+html.dark .bg-yellow-600\/20 {
+	background-color: rgb(234 179 8 / 0.15) !important;
+}
+
+html.dark .bg-emerald-600\/20 {
+	background-color: rgb(16 185 129 / 0.15) !important;
+}
+
+html.dark .bg-red-600\/20 {
+	background-color: rgb(239 68 68 / 0.15) !important;
+}
+
+/* Theme toggle button (light mode default) */
+.nz-theme-toggle {
+	display: inline-flex;
+	height: 1.75rem;
+	width: 1.75rem;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	border-radius: 0.375rem;
+	border: 1px solid var(--nz-border-strong);
+	background-color: var(--nz-bg-muted);
+	color: var(--nz-text);
+	cursor: pointer;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.nz-theme-toggle--plain {
+	height: 1.25rem;
+	width: 1.25rem;
+	border: none;
+	background-color: transparent;
+}
+
+.nz-theme-toggle--plain:hover {
+	background-color: transparent;
+	opacity: 0.75;
+}
+
+.nz-theme-toggle:hover {
+	background-color: var(--nz-bg-hover);
+}
+
+.nz-theme-toggle--plain:hover {
+	background-color: transparent;
+}
+
+.nz-theme-toggle svg {
+	width: 1rem;
+	height: 1rem;
+}
+
+.nz-theme-toggle .nz-theme-icon-light {
+	display: none;
+}
+
+.nz-theme-toggle .nz-theme-icon-dark {
+	display: block;
+}
+
+html.dark .nz-theme-toggle .nz-theme-icon-light {
+	display: block;
+}
+
+html.dark .nz-theme-toggle .nz-theme-icon-dark {
+	display: none;
+}
+
+/* Toasts — neutral elevated card; subtle status accent (not loud green/red) */
+:root {
+	--nz-toast-bg: var(--nz-bg-elevated);
+	--nz-toast-border: var(--nz-border-strong);
+	--nz-toast-accent-success: color-mix(in srgb, var(--nz-text-subtle) 55%, #15803d 45%);
+	--nz-toast-accent-error: color-mix(in srgb, var(--nz-text-subtle) 55%, #b91c1c 45%);
+}
+
+html.dark {
+	--nz-toast-bg: var(--nz-bg-hover);
+	--nz-toast-accent-success: color-mix(in srgb, var(--nz-text-muted) 82%, #4ade80 18%);
+	--nz-toast-accent-error: color-mix(in srgb, var(--nz-text-muted) 82%, #f87171 18%);
+}
+
+.nz-toast {
+	pointer-events: auto;
+	width: 100%;
+	border-radius: 0.375rem;
+	border: 1px solid var(--nz-toast-border);
+	background: var(--nz-toast-bg);
+	padding: 0.5rem 0.75rem;
+	font-family: inherit;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--nz-text);
+	box-shadow: var(--nz-shadow-popover);
+}
+
+.nz-toast__title {
+	margin: 0;
+	font-weight: 500;
+}
+
+.nz-toast__desc {
+	margin: 0.25rem 0 0;
+	color: var(--nz-text-muted);
+	line-height: 1.25rem;
+}
+
+.nz-toast--success {
+	border-left: 3px solid var(--nz-toast-accent-success);
+}
+
+.nz-toast--error {
+	border-left: 3px solid var(--nz-toast-accent-error);
+}
+
+.nz-toast__actions {
+	margin-top: 0.75rem;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+.nz-toast__action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 0.375rem;
+	border: 1px solid var(--nz-border-strong);
+	background: var(--nz-bg-elevated);
+	padding: 0.25rem 0.5rem;
+	font-size: 0.75rem;
+	color: var(--nz-text);
+	transition: background-color 0.15s ease;
+	cursor: pointer;
+}
+
+.nz-toast__action:hover {
+	background: var(--nz-bg-hover);
+}
+
+.nz-toast__action--primary {
+	border-color: transparent;
+	background: var(--nz-primary);
+	color: var(--nz-primary-fg);
+}
+
+.nz-toast__action--primary:hover {
+	background: var(--nz-primary-hover);
+}
+
+.nz-toast__action--danger {
+	border-color: color-mix(in srgb, var(--nz-toast-accent-error) 35%, var(--nz-border-strong));
+	color: var(--nz-toast-accent-error);
+}
+
+.nz-toast__action--danger:hover {
+	background: color-mix(in srgb, var(--nz-toast-accent-error) 8%, var(--nz-bg-hover));
+}

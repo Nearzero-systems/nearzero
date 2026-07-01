@@ -1,0 +1,365 @@
+---
+type Invite = {
+	id: string;
+	role?: string | null;
+	expiresAt: string | Date;
+	organization?: { name?: string | null } | null;
+};
+
+type DeployRow = {
+	deploymentId: string;
+	application?: { name?: string | null } | null;
+	compose?: { name?: string | null } | null;
+	title?: string | null;
+	status?: string | null;
+	createdAt: string | Date;
+};
+
+interface Props {
+	invitations?: readonly unknown[];
+	deployments: DeployRow[];
+}
+
+const { invitations, deployments } = Astro.props;
+
+function isInvite(inv: unknown): inv is Invite {
+	return (
+		!!inv &&
+		typeof inv === "object" &&
+		"id" in inv &&
+		typeof (inv as { id: unknown }).id === "string"
+	);
+}
+
+const invitationsSafe = (invitations ?? []).filter(isInvite);
+const invitationCount = invitationsSafe.length;
+const recentDeployments = deployments.slice(0, 8);
+const errorDeployments = recentDeployments.filter(
+	(d) => d.status === "error",
+);
+const badgeCount = invitationCount + errorDeployments.length;
+
+const cardClass =
+	"rounded-xl border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] p-3";
+
+function statusLabel(status: string | null | undefined): string {
+	switch (status) {
+		case "done":
+			return "Deployed";
+		case "error":
+			return "Failed";
+		case "running":
+			return "Running";
+		default:
+			return status ?? "Updated";
+	}
+}
+
+function statusClass(status: string | null | undefined): string {
+	switch (status) {
+		case "error":
+			return "text-red-600";
+		case "done":
+			return "text-emerald-600";
+		case "running":
+			return "text-blue-600";
+		default:
+			return "text-[var(--nz-text-muted)]";
+	}
+}
+
+const triggerClassName =
+	"relative inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-transparent p-0 text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)]";
+---
+
+<div class="nz-notifications-shell relative">
+  <details id="nz-notifications-details" class="group/nznotes">
+    <summary
+      class={`${triggerClassName} list-none [&::-webkit-details-marker]:hidden`}
+      aria-label="Notifications"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="h-4 w-4"
+        aria-hidden="true"
+      >
+        <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+        <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      </svg>
+      {
+        badgeCount > 0 && (
+          <span
+            class="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-medium text-white"
+            data-nz-notifications-badge
+          >
+            {badgeCount > 9 ? "9+" : badgeCount}
+          </span>
+        )
+      }
+    </summary>
+    <div
+      class="absolute right-0 top-[calc(100%+0.55rem)] z-[500] max-w-[calc(100vw-1rem)] rounded-xl border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-3.5 shadow-lg sm:w-[22rem] sm:max-w-none"
+      style="width:min(17.5rem, calc(100vw - 1rem));"
+      id="nz-notifications-panel"
+    >
+      <div>
+        <p class="text-xs font-medium text-[var(--nz-text)]">Notifications</p>
+        <p class="mt-1 text-xs text-[var(--nz-text-muted)]">
+          Organization invitations and recent deployment activity.
+        </p>
+      </div>
+
+      <div class="nz-notifications-inner mt-3 max-h-80 space-y-3 overflow-y-auto">
+        {
+          invitationCount > 0 ? (
+            <div class="space-y-2">
+              <p class="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--nz-text-subtle)]">
+                Invitations
+              </p>
+              {invitationsSafe.map((invitation) => (
+                <div class={cardClass}>
+                  <p class="text-xs font-medium text-[var(--nz-text)]">
+                    {invitation.organization?.name}
+                  </p>
+                  <p class="mt-1 text-[10px] text-[var(--nz-text-muted)]">
+                    Role: {invitation.role}
+                  </p>
+                  <p class="text-[10px] text-[var(--nz-text-subtle)]">
+                    Expires:{ " "}
+                    {new Date(invitation.expiresAt).toLocaleString()}
+                  </p>
+                  <button
+                    type="button"
+                    class="nz-invitation-accept mt-2 inline-flex h-7 items-center justify-center rounded-md border border-[var(--nz-border-strong)] bg-[var(--nz-bg-hover)] px-2 text-xs text-[var(--nz-text)] transition-colors hover:bg-[var(--nz-bg-muted)]"
+                    data-invitation-id={invitation.id}
+                  >
+                    Accept invitation
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null
+        }
+
+        <div class="space-y-2">
+          <p class="text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--nz-text-subtle)]">
+            Recent deployments
+          </p>
+          {
+            recentDeployments.length === 0 ? (
+              <div class={cardClass}>
+                {
+                  invitationCount === 0 ? (
+                    <>
+                      <p class="text-xs font-medium text-[var(--nz-text)]">
+                        You&apos;re all caught up
+                      </p>
+                      <p class="mt-1 text-xs leading-5 text-[var(--nz-text-muted)]">
+                        Invitations and deployment updates will appear here.
+                      </p>
+                    </>
+                  ) : (
+                    <p class="text-xs font-medium text-[var(--nz-text)]">
+                      No recent deployment activity
+                    </p>
+                  )
+                }
+              </div>
+            ) : (
+              recentDeployments.map((deployment) => {
+                const name =
+                  deployment.application?.name ??
+                  deployment.compose?.name ??
+                  deployment.title ??
+                  "Deployment";
+                return (
+                  <a
+                    href="/dashboard/deployments"
+                    class={`nz-close-notifications block ${cardClass} no-underline transition-colors hover:bg-[var(--nz-bg-hover)]`}
+                  >
+                    <p class="text-xs font-medium text-[var(--nz-text)]">{name}</p>
+                    {deployment.title ? (
+                      <p class="mt-0.5 text-[10px] text-[var(--nz-text-muted)]">
+                        {deployment.title}
+                      </p>
+                    ) : null}
+                    <p
+                      class={`mt-1 text-[10px] font-medium ${statusClass(deployment.status)}`}
+                    >
+                      {statusLabel(deployment.status)}
+                    </p>
+                    <p class="mt-1 text-[10px] text-[var(--nz-text-subtle)]">
+                      {new Date(deployment.createdAt).toLocaleString()}
+                    </p>
+                  </a>
+                );
+              })
+            )
+          }
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <dialog
+    id="nz-accept-invite-dialog"
+    class="max-w-sm rounded-lg border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-4 shadow-lg backdrop:bg-black/20"
+  >
+    <p class="text-sm font-medium text-[var(--nz-text)]">Accept Invitation</p>
+    <p class="mt-1 text-xs text-[var(--nz-text-muted)]">Join this organization?</p>
+    <div class="mt-4 flex justify-end gap-2">
+      <button
+        type="button"
+        class="nz-cancel-accept-invite rounded-md border border-[var(--nz-border-strong)] bg-[var(--nz-bg-muted)] px-2 py-1 text-xs text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="nz-confirm-accept-invite rounded-md bg-[var(--nz-primary)] px-2 py-1 text-xs text-[var(--nz-primary-fg)] hover:bg-[var(--nz-primary-hover)]"
+      >
+        Accept
+      </button>
+    </div>
+  </dialog>
+</div>
+
+<script>
+  import { NZ_TOAST_EVENT } from "@/lib/nzToast";
+
+  (() => {
+    const toast = (
+      msg: string,
+      kind?: "success" | "error",
+      description?: string,
+    ) =>
+      document.dispatchEvent(
+        new CustomEvent(NZ_TOAST_EVENT, {
+          bubbles: true,
+          detail: kind
+            ? { message: msg, variant: kind, description }
+            : { message: msg, description },
+        }),
+      );
+
+    const root = (): HTMLElement | null =>
+      document.querySelector(".nz-notifications-shell");
+
+    const detailsEl = (): HTMLDetailsElement | null =>
+      root()?.querySelector("#nz-notifications-details") ?? null;
+
+    const clearUnreadBadge = () => {
+      root()?.querySelector("[data-nz-notifications-badge]")?.remove();
+    };
+
+    const bindDetailsOpen = () => {
+      const details = detailsEl();
+      if (!details || details.dataset.nzBadgeBound === "1") return;
+      details.dataset.nzBadgeBound = "1";
+      details.addEventListener("toggle", () => {
+        if (details.open) clearUnreadBadge();
+      });
+      if (details.open) clearUnreadBadge();
+    };
+
+    bindDetailsOpen();
+    document.addEventListener("astro:page-load", bindDetailsOpen);
+    document.addEventListener("astro:after-swap", bindDetailsOpen);
+
+    document.addEventListener("mousedown", (event) => {
+      const shell = root();
+      const details = detailsEl();
+      if (!shell || !details?.open || !(event.target instanceof Node))
+        return;
+      if (!shell.contains(event.target)) details.open = false;
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const details = detailsEl();
+      if (details) details.open = false;
+    });
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        const tgt = event.target instanceof Element ? event.target : null;
+        const inviteBtn = tgt?.closest("[data-invitation-id].nz-invitation-accept");
+        if (!(inviteBtn instanceof HTMLButtonElement)) return;
+        const id = inviteBtn.dataset.invitationId?.trim();
+        const dialog =
+          inviteBtn.closest(".nz-notifications-shell")?.querySelector(
+            "#nz-accept-invite-dialog",
+          );
+        if (!id || !(dialog instanceof HTMLDialogElement)) return;
+        event.preventDefault();
+        dialog.dataset.invitationId = id;
+        dialog.showModal();
+      },
+      true,
+    );
+
+    document.addEventListener("click", async (event) => {
+      const tgt = event.target instanceof Element ? event.target : null;
+      if (!tgt?.closest(".nz-cancel-accept-invite")) return;
+      const dialog = tgt.closest("dialog");
+      if (dialog instanceof HTMLDialogElement) dialog.close();
+    });
+
+    document.addEventListener("click", async (event) => {
+      const tgt = event.target instanceof Element ? event.target : null;
+      if (!tgt?.closest(".nz-confirm-accept-invite")) return;
+
+      const dialog = tgt.closest("dialog") as HTMLDialogElement | null;
+      const invitationId =
+        typeof dialog?.dataset.invitationId === "string"
+          ? dialog.dataset.invitationId.trim()
+          : "";
+      dialog?.close();
+      if (!invitationId) return;
+
+      try {
+        const res = await fetch("/api/auth/organization/accept-invitation", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ invitationId }),
+        });
+
+        let errMsg = "";
+        try {
+          const data = (await res.json()) as {
+            message?: unknown;
+            error?: { message?: string };
+          };
+          if (!res.ok || data?.error)
+            errMsg =
+              typeof data?.error?.message === "string"
+                ? data.error.message
+                : typeof data.message === "string"
+                  ? data.message
+                  : "";
+        } catch {
+          if (!res.ok) errMsg = "Error accepting invitation";
+        }
+
+        if (!res.ok) {
+          toast(errMsg || "Error accepting invitation", "error");
+          return;
+        }
+        toast("Invitation accepted", "success");
+        window.location.reload();
+      } catch {
+        toast("Error accepting invitation", "error");
+      }
+    });
+  })();
+</script>

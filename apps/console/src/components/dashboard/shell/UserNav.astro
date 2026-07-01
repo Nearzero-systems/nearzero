@@ -1,0 +1,223 @@
+---
+import {
+	NEARZERO_DOCS_URL,
+	NEARZERO_SUPPORT_URL,
+	normalizeExternalUrl,
+} from "@/lib/branding";
+import { getFallbackAvatarInitials } from "@/lib/user-utils";
+import { getDefaultSettingsHref } from "@/lib/settings-nav";
+import type { NavContext } from "@/components/dashboard/navMenu";
+
+type UserRow = {
+	firstName?: string | null;
+	lastName?: string | null;
+	email?: string | null;
+	image?: string | null;
+} | null;
+
+interface Props {
+	auth: { user?: UserRow; role?: string | null } | null;
+	orgSlug?: string | null;
+	whitelabeling?: NavContext["whitelabeling"];
+	/** Icon-only trigger for the agent sidebar rail */
+	compact?: boolean;
+	/** Avatar + name stacked for agent primary sidebar footer */
+	rail?: boolean;
+}
+
+const { auth, orgSlug = null, whitelabeling = null, compact = false, rail = false } =
+	Astro.props;
+const iconOnly = compact && !rail;
+
+const user = auth?.user ?? null;
+const displayName =
+	`${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
+	user?.email ||
+	"Account";
+const initials = getFallbackAvatarInitials(displayName);
+const settingsHref = getDefaultSettingsHref(orgSlug);
+const docsUrl = normalizeExternalUrl(whitelabeling?.docsUrl, NEARZERO_DOCS_URL);
+const supportUrl = normalizeExternalUrl(
+	whitelabeling?.supportUrl,
+	NEARZERO_SUPPORT_URL,
+);
+const supportExternal = !supportUrl.startsWith("mailto:");
+const menuLinkClass =
+	"flex w-full cursor-pointer rounded-md px-2 py-1 text-left text-xs no-underline text-inherit hover:bg-[var(--nz-bg-hover)]";
+---
+
+<details
+  class:list={[
+    "group/nz-user relative",
+    rail ? "w-full" : iconOnly ? "w-auto" : "w-full",
+  ]}
+>
+  <summary
+    class:list={[
+      "flex cursor-pointer list-none rounded-md text-xs transition-colors hover:bg-[var(--nz-bg-hover)] [&::-webkit-details-marker]:hidden",
+      rail
+        ? "w-full flex-col items-center gap-1 p-1 text-center"
+        : iconOnly
+          ? "items-center justify-center p-1"
+          : "w-full items-center gap-2 px-2 py-1 text-left",
+    ]}
+    aria-label={iconOnly ? displayName : undefined}
+  >
+    {user?.image ? (
+      <>
+        <img
+          src={user.image}
+          alt={displayName}
+          class="size-7 shrink-0 rounded-md object-cover"
+          data-avatar-image
+        />
+        <span
+          class="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--nz-bg-hover)] text-[10px] text-[var(--nz-text)]"
+          data-avatar-fallback
+          hidden
+        >
+          {initials}
+        </span>
+      </>
+    ) : (
+      <span
+        class="flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--nz-bg-hover)] text-[10px] text-[var(--nz-text)]"
+      >
+        {initials}
+      </span>
+    )}
+    {
+      rail ? (
+        <span class="nz-user-rail-name w-full truncate text-[10px] font-medium leading-tight text-[var(--nz-text)]">
+          {displayName}
+        </span>
+      ) : !iconOnly ? (
+        <>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-xs font-medium text-[var(--nz-text)]">
+              {displayName}
+            </p>
+            <p class="truncate text-[10px] text-[var(--nz-text-subtle)]">
+              {user?.email}
+            </p>
+          </div>
+          <svg
+            class="size-3.5 shrink-0 text-[var(--nz-text-subtle)] transition-transform duration-200 group-open/nz-user:rotate-180"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </>
+      ) : null
+    }
+  </summary>
+  <div
+    class:list={[
+      "nz-user-nav-menu absolute z-[60] rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-1 shadow-none",
+      rail || iconOnly
+        ? "bottom-0 left-[calc(100%+0.5rem)] w-56"
+        : "bottom-[calc(100%+0.375rem)] left-0 w-full",
+    ]}
+    style={rail || iconOnly ? undefined : "width: var(--radix-dropdown-menu-trigger-width, 100%);"}
+  >
+    <div class="flex items-start justify-between gap-2 px-2 py-1">
+      <div class="min-w-0 flex-1">
+        <p class="text-xs font-medium text-[var(--nz-text)]">My Account</p>
+        <span class="mt-0.5 block truncate text-[10px] font-normal text-[var(--nz-text-subtle)]">
+          {user?.email}
+        </span>
+      </div>
+      <button
+        type="button"
+        class="nz-theme-toggle nz-theme-toggle--plain shrink-0"
+        aria-label="Toggle theme"
+        aria-pressed="false"
+        title="Dark mode"
+      >
+        <svg
+          class="nz-theme-icon-dark"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+        </svg>
+        <svg
+          class="nz-theme-icon-light"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2" />
+          <path d="M12 20v2" />
+          <path d="m4.93 4.93 1.41 1.41" />
+          <path d="m17.66 17.66 1.41 1.41" />
+          <path d="M2 12h2" />
+          <path d="M20 12h2" />
+          <path d="m6.34 17.66-1.41 1.41" />
+          <path d="m19.07 4.93-1.41 1.41" />
+        </svg>
+      </button>
+    </div>
+    <div class="-mx-1 my-1 h-px bg-[var(--nz-border)]" role="presentation"></div>
+    <div class="flex flex-col gap-px">
+      <a class={menuLinkClass} href={settingsHref} data-astro-reload>
+        Settings
+      </a>
+      <a
+        class={menuLinkClass}
+        href={docsUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Documentation
+      </a>
+      <a
+        class={menuLinkClass}
+        href={supportUrl}
+        target={supportExternal ? "_blank" : undefined}
+        rel={supportExternal ? "noopener noreferrer" : undefined}
+      >
+        Support
+      </a>
+    </div>
+    <div class="-mx-1 my-1 h-px bg-[var(--nz-border)]" role="presentation"></div>
+    <button
+      type="button"
+      class="nz-user-sign-out w-full cursor-pointer rounded-md px-2 py-1 text-left text-xs text-red-600 hover:bg-[var(--nz-bg-hover)] focus:text-red-600"
+    >
+      Log out
+    </button>
+  </div>
+</details>
+
+<script>
+  import { bindAvatarFallbacks } from "@/scripts/avatar-fallback";
+  import { bindThemeToggle } from "@/scripts/theme";
+
+  function boot() {
+    bindThemeToggle();
+    bindAvatarFallbacks();
+  }
+  boot();
+  document.addEventListener("astro:page-load", boot);
+  document.addEventListener("astro:after-swap", boot);
+</script>

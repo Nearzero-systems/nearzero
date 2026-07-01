@@ -1,0 +1,1 @@
+ALTER TABLE "notification" ADD COLUMN "nearzeroBackup" boolean DEFAULT false NOT NULL;

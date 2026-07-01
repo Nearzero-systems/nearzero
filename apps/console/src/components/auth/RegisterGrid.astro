@@ -1,0 +1,477 @@
+---
+import AuthGrid from "./AuthGrid.astro";
+import AuthButtonSpinner from "./AuthButtonSpinner.astro";
+import {
+	authBtnClass,
+	authControlClass,
+	authMutedText,
+	authResendBtnClass,
+} from "@/lib/auth-form-classes";
+import {
+	HEARD_ABOUT_OPTIONS,
+	MIGRATION_OPTIONS,
+	MONTHLY_CALL_VOLUME_OPTIONS,
+	ON_PREM_OPTIONS,
+	ROLE_OPTIONS,
+	isOnboardingRegisterStep,
+	parseRegisterStep,
+	stepSubtitle,
+	stepTitle,
+} from "@/lib/register-onboarding";
+import {
+	ALL_SOCIAL_AUTH_PROVIDERS,
+	type SocialAuthProviderId,
+} from "@/lib/social-auth-providers";
+
+interface Props {
+	loginHref?: string;
+	invitationToken?: string;
+	initialEmail?: string;
+	lockEmail?: boolean;
+	initialStep?: string;
+	workspaceSetupMode?: boolean;
+	inviteMemberSetupMode?: boolean;
+	enabledSocialProviders?: SocialAuthProviderId[];
+	socialProvidersKnown?: boolean;
+}
+
+const {
+	loginHref = "/",
+	invitationToken = "",
+	initialEmail = "",
+	lockEmail = false,
+	initialStep = "",
+	workspaceSetupMode = false,
+	inviteMemberSetupMode = false,
+	enabledSocialProviders = ALL_SOCIAL_AUTH_PROVIDERS,
+	socialProvidersKnown = false,
+} = Astro.props;
+
+const showGithub =
+	!socialProvidersKnown || enabledSocialProviders.includes("github");
+const showGoogle =
+	!socialProvidersKnown || enabledSocialProviders.includes("google");
+const showOAuth = showGithub || showGoogle;
+
+const parsedStep = parseRegisterStep(initialStep);
+const isOnboardingStep = isOnboardingRegisterStep(parsedStep);
+const isVerifyStep = parsedStep === "verify";
+const showSignupStage = !isOnboardingStep;
+const initialTitle = workspaceSetupMode
+	? "Create your workspace"
+	: inviteMemberSetupMode
+		? parsedStep === "profile"
+			? "Welcome to the team"
+			: stepTitle(parsedStep)
+		: isOnboardingStep || isVerifyStep
+			? stepTitle(parsedStep)
+			: "Welcome to Nearzero";
+const initialSubtitle = workspaceSetupMode
+	? "Your invitation is no longer active. Enter your name and workspace name to continue."
+	: inviteMemberSetupMode
+		? parsedStep === "profile"
+			? "Enter your name to finish joining the workspace."
+			: stepSubtitle(parsedStep)
+		: isOnboardingStep
+			? stepSubtitle(parsedStep)
+			: "";
+
+const skipBtnClass =
+	"inline-flex w-auto min-w-[9rem] items-center justify-center gap-2 self-center border-0 bg-transparent px-5 py-1.5 text-xs font-normal text-[#9ca3af] transition-colors duration-200 hover:bg-transparent hover:text-[#6b7280] disabled:cursor-not-allowed disabled:opacity-70";
+const onboardingSelectClass =
+	"w-full rounded-md border border-[#e5e7eb] bg-[#f7f7f8] px-2 py-1 text-sm text-[#111827] outline-none transition-colors focus:border-[#d1d5db]";
+const onboardingBtnClass =
+	"inline-flex w-auto min-w-[9rem] items-center justify-center gap-2 self-center rounded-md border border-[#e5e7eb] bg-[#f7f7f8] px-5 py-1.5 text-xs font-normal text-[#111827] transition-colors duration-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70";
+---
+
+<div
+	id="nz-register-root"
+	class="contents"
+	data-initial-email={initialEmail}
+	data-invitation-token={invitationToken}
+	data-login-href={loginHref}
+	data-initial-step={initialStep}
+	data-workspace-setup={workspaceSetupMode ? "1" : "0"}
+	data-invite-member-setup={inviteMemberSetupMode ? "1" : "0"}
+	data-enabled-providers={enabledSocialProviders.join(",")}
+	data-social-providers-known={socialProvidersKnown ? "1" : "0"}
+>
+	<AuthGrid>
+		<div slot="c4" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-end gap-1 pb-1 text-center">
+			<p class={`hidden text-xs uppercase tracking-wide ${authMutedText}`} data-register-progress></p>
+			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl" data-register-title>
+				{initialTitle}
+			</h1>
+		</div>
+		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
+			<p class={`text-sm ${authMutedText} ${isVerifyStep ? "" : "hidden"}`} data-otp-subtitle-verify>
+				We sent a one-time code to <span class="font-medium text-[#111827]" data-otp-verify-email></span>.
+			</p>
+			<p class={`text-sm ${authMutedText} ${initialSubtitle ? "" : "hidden"}`} data-register-subtitle>
+				{initialSubtitle}
+			</p>
+			<p class={`text-sm ${authMutedText} ${showSignupStage && !isVerifyStep ? "" : "hidden"}`} data-register-login-link>
+				Already have an account?{" "}
+				<a href={loginHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Log in</a>
+			</p>
+		</div>
+		<div slot="c10" class="mx-auto flex h-full min-h-0 w-full max-w-[30rem] flex-col justify-center gap-1.5 overflow-visible px-1">
+			<div data-register-stage="signup" class={showSignupStage ? "" : "hidden"}>
+				<div data-otp-stage="email">
+					<form data-otp-email-form class="flex flex-col gap-2">
+						<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+							<span>Email</span>
+							<input
+								type="email"
+								name="email"
+								data-otp-email-input
+								autocomplete="email"
+								inputmode="email"
+								spellcheck="false"
+								required
+								placeholder="me@company.com"
+								value={initialEmail}
+								readonly={lockEmail}
+								class={`${authControlClass}${lockEmail ? " cursor-not-allowed opacity-80" : ""}`}
+							/>
+						</label>
+						<button type="submit" data-otp-email-submit data-default-label="Create an account" class={authBtnClass}>
+							<AuthButtonSpinner />
+							<span data-otp-btn-label>Create an account</span>
+						</button>
+					</form>
+				</div>
+				<div data-otp-stage="verify" class="hidden">
+					<form data-otp-verify-form class="flex flex-col gap-2">
+						<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+							<span>Verification code</span>
+							<input
+								type="text"
+								name="code"
+								data-otp-code-input
+								inputmode="numeric"
+								autocomplete="one-time-code"
+								maxlength="6"
+								required
+								placeholder="000000"
+								class={authControlClass}
+							/>
+						</label>
+						<button type="submit" data-otp-verify-submit data-verify="1" data-default-label="Verify and continue" class={authBtnClass}>
+							<AuthButtonSpinner />
+							<span data-otp-btn-label>Verify and continue</span>
+						</button>
+					</form>
+				</div>
+			</div>
+
+			<div data-register-stage="profile" class={parsedStep === "profile" ? "min-h-0 w-full" : "hidden min-h-0 w-full"}>
+				<form data-onboarding-profile-form class="flex flex-col gap-2.5">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Your name</span>
+						<input type="text" data-profile-name autocomplete="name" placeholder="Your name" class={authControlClass} />
+					</label>
+					<label class={`flex flex-col gap-1 text-sm font-medium text-[#111827] ${inviteMemberSetupMode ? "hidden" : ""}`}>
+						<span>Organization name</span>
+						<input type="text" data-profile-workspace autocomplete="organization" placeholder="Acme Inc." class={authControlClass} />
+					</label>
+				</form>
+			</div>
+
+			<div data-register-stage="role" class={parsedStep === "role" ? "min-h-0 w-full" : "hidden min-h-0 w-full"}>
+				<form data-onboarding-role-form class="flex min-h-0 flex-col gap-2.5">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>What best describes you?</span>
+						<select data-role-select class={onboardingSelectClass} required>
+							<option value="">Select one</option>
+							{ROLE_OPTIONS.map((option) => (
+								<option value={option}>{option}</option>
+							))}
+						</select>
+					</label>
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Do you need on-prem deployment for compliance or data residency?</span>
+						<select data-onprem-select class={onboardingSelectClass} required>
+							<option value="">Select one</option>
+							{ON_PREM_OPTIONS.map((option) => (
+								<option value={option}>{option}</option>
+							))}
+						</select>
+					</label>
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Expected monthly deploy volume</span>
+						<select data-call-volume-select class={onboardingSelectClass} required>
+							<option value="">Select one</option>
+							{MONTHLY_CALL_VOLUME_OPTIONS.map((option) => (
+								<option value={option}>{option}</option>
+							))}
+						</select>
+					</label>
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Are you migrating from another provider?</span>
+						<select data-migration-select class={onboardingSelectClass} required>
+							<option value="">Select one</option>
+							{MIGRATION_OPTIONS.map((option) => (
+								<option value={option}>{option}</option>
+							))}
+						</select>
+					</label>
+				</form>
+			</div>
+
+			<div data-register-stage="workspace" class={parsedStep === "workspace" ? "min-h-0 w-full" : "hidden min-h-0 w-full"}>
+				<form data-onboarding-heard-form class="flex min-h-0 flex-col gap-2.5">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>How did you hear about us?</span>
+						<select data-heard-about-select class={onboardingSelectClass} required>
+							<option value="">Select an option</option>
+							{HEARD_ABOUT_OPTIONS.map((option) => (
+								<option value={option}>{option}</option>
+							))}
+						</select>
+					</label>
+				</form>
+			</div>
+
+			<div data-register-stage="invite" class={parsedStep === "invite" && !inviteMemberSetupMode ? "min-h-0 w-full" : "hidden min-h-0 w-full"}>
+				<form id="nz-onboarding-invite-form" data-onboarding-invite-form class="flex min-h-0 flex-col">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Teammate emails</span>
+						<textarea
+							data-invite-emails
+							rows="2"
+							placeholder="colleague@company.com, teammate@company.com"
+							class={`${authControlClass} min-h-[3.25rem] resize-none py-2`}
+						></textarea>
+					</label>
+				</form>
+			</div>
+		</div>
+		<div slot="c13" class="mx-auto flex h-full w-full max-w-[36rem] flex-col justify-center gap-2">
+			<div
+				data-onboarding-actions
+				class={
+					isOnboardingStep && parsedStep !== "invite"
+						? "flex w-full max-w-[30rem] flex-col items-center gap-2"
+						: "hidden w-full max-w-[30rem] flex-col items-center gap-2"
+				}
+			>
+				<button
+					type="button"
+					data-onboarding-continue
+					data-default-label={
+						workspaceSetupMode
+							? "Create workspace"
+							: inviteMemberSetupMode && parsedStep === "workspace"
+								? "Finish"
+								: "Continue"
+					}
+					class={onboardingBtnClass}
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>
+						{workspaceSetupMode
+							? "Create workspace"
+							: inviteMemberSetupMode && parsedStep === "workspace"
+								? "Finish"
+								: "Continue"}
+					</span>
+				</button>
+				<button
+					type="button"
+					data-onboarding-skip
+					data-default-label="Skip"
+					class={`${skipBtnClass} ${workspaceSetupMode || inviteMemberSetupMode ? "hidden" : "hidden"}`}
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Skip</span>
+				</button>
+			</div>
+			<div
+				data-onboarding-invite-actions
+				class={
+					parsedStep === "invite"
+						? "flex w-full max-w-[30rem] flex-col items-center gap-2"
+						: "hidden w-full max-w-[30rem] flex-col items-center gap-2"
+				}
+			>
+				<button
+					type="submit"
+					form="nz-onboarding-invite-form"
+					data-invite-submit
+					data-default-label="Send invites and finish"
+					class={onboardingBtnClass}
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Send invites and finish</span>
+				</button>
+				<button type="button" data-invite-skip data-default-label="Skip for now" class={skipBtnClass}>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Skip for now</span>
+				</button>
+			</div>
+			<div
+				data-register-oauth
+				data-otp-oauth-panel
+				class:list={[
+					"flex flex-col gap-2",
+					{
+						hidden: !showSignupStage || isVerifyStep || !showOAuth,
+					},
+				]}
+			>
+				<button type="button" id="nz-register-github" data-social-auth="github" data-default-label="Continue with GitHub" class:list={[authBtnClass, { hidden: !showGithub }]}>
+					<AuthButtonSpinner />
+					<svg data-auth-btn-icon class="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true"><path fill="#24292f" d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.4-4-1.4-.6-1.4-1.5-1.8-1.5-1.8-1.2-.8.1-.8.1-.8 1.4.1 2.1 1.4 2.1 1.4 1.2 2.1 3.2 1.5 4 .9.1-.9.5-1.5.9-1.9-2.7-.3-5.4-1.4-5.4-6a4.7 4.7 0 0 1 1.3-3.3c-.1-.3-.6-1.5.1-3.2 0 0 1.1-.4 3.4 1.3a11.8 11.8 0 0 1 6.2 0c2.3-1.7 3.4-1.3 3.4-1.3.7 1.7.3 2.9.1 3.2a4.7 4.7 0 0 1 1.3 3.3c0 4.6-2.7 5.7-5.4 6 .5.4 1 1.2 1 2.5v3.7c0 .3.2.6.8.5A12 12 0 0 0 12 .3z"/></svg>
+					<span id="nz-register-github-label" data-auth-btn-label>Continue with GitHub</span>
+				</button>
+				<button type="button" id="nz-register-google" data-social-auth="google" data-default-label="Continue with Google" class:list={[authBtnClass, { hidden: !showGoogle }]}>
+					<AuthButtonSpinner />
+					<svg data-auth-btn-icon class="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+					<span id="nz-register-google-label" data-auth-btn-label>Continue with Google</span>
+				</button>
+			</div>
+			<div
+				data-otp-verify-footer
+				class={`${isVerifyStep ? "" : "hidden "}flex w-full flex-col items-center gap-2 pt-2 text-center`}
+			>
+				<button type="button" data-otp-resend-btn data-default-label="Resend code" class={authResendBtnClass}>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Resend code</span>
+				</button>
+				<button
+					type="button"
+					data-otp-use-different-email
+					class={`block w-full text-xs underline-offset-2 hover:underline ${authMutedText}`}
+				>
+					Use different email
+				</button>
+			</div>
+		</div>
+		<div slot="c16" class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-3 text-center text-[11px] text-[#a3a3a3] sm:text-xs">
+			<div
+				data-register-legal
+				data-otp-legal-footer
+				class={showSignupStage && !isVerifyStep ? "flex flex-col items-center gap-3" : "hidden flex-col items-center gap-3"}
+			>
+				<p class="max-w-[20rem] text-balance sm:max-w-[24rem]">
+					By signing up, you agree to our{" "}
+					<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Terms of Service</span>
+					{" "}and{" "}
+					<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Privacy Policy</span>.
+				</p>
+			</div>
+		</div>
+	</AuthGrid>
+</div>
+
+<script>
+	import { invitationPath, resolveInvitationTokenFromPage } from "@/lib/invitation-routes";
+	import type { SocialAuthProviderId } from "@/lib/social-auth-providers";
+	import { bindAuthOtpFlow } from "@/scripts/auth-otp-flow";
+	import { parseRegisterStep, registerStepPath, isOnboardingRegisterStep } from "@/lib/register-onboarding";
+	import {
+		bindRegisterOnboarding,
+		patchRegisterUrlStep,
+	} from "@/scripts/register-onboarding";
+	import {
+		applySocialAuthProviderVisibility,
+		bindSocialAuthFlow,
+	} from "@/scripts/auth-social-flow";
+
+	function bindRegister() {
+		const root = document.getElementById("nz-register-root");
+		if (!root) return;
+
+		const step = parseRegisterStep(
+			root.dataset.initialStep ||
+				new URL(window.location.href).searchParams.get("step"),
+		);
+		const inviteToken =
+			root.dataset.invitationToken?.trim() ||
+			resolveInvitationTokenFromPage() ||
+			"";
+
+		if (isOnboardingRegisterStep(step)) {
+			if (
+				inviteToken &&
+				root.dataset.workspaceSetup !== "1" &&
+				root.dataset.inviteMemberSetup !== "1"
+			) {
+				window.location.href = invitationPath(inviteToken);
+				return;
+			}
+			void bindRegisterOnboarding(root);
+			return;
+		}
+
+		if (root.dataset.registerBound !== "1") {
+			root.dataset.registerBound = "1";
+			const pendingEmail = sessionStorage.getItem("nz-register-pending-email") ?? "";
+			const inviteEmail = root.dataset.initialEmail?.trim() || "";
+
+			const afterSignupVerifyUrl = inviteToken
+				? invitationPath(inviteToken, inviteEmail)
+				: registerStepPath("profile", "/register", {
+						token: inviteToken || undefined,
+						email: inviteEmail || undefined,
+					});
+
+			bindAuthOtpFlow({
+				root,
+				callbackUrl: "/dashboard/agent",
+				intent: "signup",
+				loginHref: root.dataset.loginHref || "/",
+				invitationToken: inviteToken,
+				afterSignupVerifyUrl,
+				onEnterVerifyStage: () => {
+					patchRegisterUrlStep("verify");
+					const titleEl = root.querySelector<HTMLElement>("[data-register-title]");
+					if (titleEl) titleEl.textContent = "Verify your email";
+				},
+				initialStage: step === "verify" && pendingEmail ? "verify" : "email",
+				initialPendingEmail: step === "verify" ? pendingEmail : "",
+			});
+
+			const enabledProviders = (root.dataset.enabledProviders || "")
+				.split(",")
+				.filter((value): value is SocialAuthProviderId =>
+					value === "github" || value === "google",
+				);
+			const providersKnown = root.dataset.socialProvidersKnown === "1";
+			applySocialAuthProviderVisibility(
+				root,
+				enabledProviders,
+				providersKnown,
+			);
+
+			const githubBtn = root.querySelector<HTMLButtonElement>("#nz-register-github");
+			const googleBtn = root.querySelector<HTMLButtonElement>("#nz-register-google");
+			bindSocialAuthFlow({
+				githubButton: githubBtn,
+				googleButton: googleBtn,
+				enabledProviders,
+				providersKnown,
+				resolveCallbackUrl: () =>
+					inviteToken
+						? invitationPath(inviteToken, inviteEmail)
+						: registerStepPath("profile"),
+				actionLabel: "signup",
+			});
+		}
+
+		if (step === "verify") {
+			const titleEl = root.querySelector<HTMLElement>("[data-register-title]");
+			const loginLink = root.querySelector<HTMLElement>("[data-register-login-link]");
+			const subtitleEl = root.querySelector<HTMLElement>("[data-register-subtitle]");
+			const otpVerifySubtitle = root.querySelector<HTMLElement>("[data-otp-subtitle-verify]");
+			if (titleEl) titleEl.textContent = "Verify your email";
+			loginLink?.classList.add("hidden");
+			subtitleEl?.classList.add("hidden");
+			otpVerifySubtitle?.classList.remove("hidden");
+		}
+	}
+
+	bindRegister();
+	document.addEventListener("astro:page-load", bindRegister);
+</script>

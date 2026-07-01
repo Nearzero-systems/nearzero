@@ -1,0 +1,547 @@
+---
+import { formatDistanceToNow } from "date-fns";
+import SettingsEmptyState from "@/components/dashboard/settings/SettingsEmptyState.astro";
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { ST } from "@/lib/settings-hub-ui";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { createServerTrpcClient } from "@/lib/server-api";
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import SshKeyActionsMenu from "@/components/dashboard/settings/servers/SshKeyActionsMenu.astro";
+
+interface Props {
+	embedded?: boolean;
+	request?: Request;
+	sshKeys?: Array<{
+		sshKeyId: string;
+		name: string;
+		description?: string | null;
+		createdAt: string;
+	}>;
+	sshKeyServerUsage?: Record<string, string[]>;
+	canCreate?: boolean;
+	canDelete?: boolean;
+}
+
+const {
+	embedded = false,
+	request = Astro.request,
+	sshKeys: sshKeysProp,
+	sshKeyServerUsage: sshKeyServerUsageProp = {},
+	canCreate: canCreateProp,
+	canDelete: canDeleteProp,
+} = Astro.props;
+
+const bootstrap = embedded
+	? { ok: true as const }
+	: await bootstrapSettingsDashboardPage(request, {
+			gate: settingsDashboardGates.sshKeys,
+		});
+
+const loadFailed = !embedded && bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = !embedded && bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+let sshKeys: Array<{
+	sshKeyId: string;
+	name: string;
+	description?: string | null;
+	createdAt: string;
+}> = sshKeysProp ?? [];
+let canCreate = canCreateProp ?? false;
+let canDelete = canDeleteProp ?? false;
+let sshKeyServerUsage: Record<string, string[]> = sshKeyServerUsageProp;
+
+if (!embedded && bootstrap.ok) {
+	const api = createServerTrpcClient(request) as any;
+	try {
+		const [keys, permissions, orgServers] = await Promise.all([
+			api.sshKey.all.query(),
+			api.user.getPermissions.query(),
+			api.server.all.query(),
+		]);
+		sshKeys = keys;
+		canCreate = !!permissions?.sshKeys?.create;
+		canDelete = !!permissions?.sshKeys?.delete;
+		sshKeyServerUsage = {};
+		for (const server of orgServers as Array<{ sshKeyId?: string | null; name: string }>) {
+			if (!server.sshKeyId) continue;
+			if (!sshKeyServerUsage[server.sshKeyId]) {
+				sshKeyServerUsage[server.sshKeyId] = [];
+			}
+			sshKeyServerUsage[server.sshKeyId].push(server.name);
+		}
+	} catch {
+		sshKeys = [];
+	}
+}
+
+function attachedServerNames(sshKeyId: string) {
+	return sshKeyServerUsage[sshKeyId] ?? [];
+}
+
+function deleteBlockedTitle(sshKeyId: string) {
+	const names = attachedServerNames(sshKeyId);
+	if (names.length === 0) return "";
+	const label = names.join(", ");
+	return `Attached to ${names.length === 1 ? "server" : "servers"}: ${label}. Remove ${names.length === 1 ? "that server" : "those servers"} first.`;
+}
+
+---
+
+{
+	loadFailed ? (
+		<div class="flex min-h-[45vh] flex-col items-center justify-center gap-2 p-10 text-center text-xs text-muted-foreground">
+			<span>Could not load this page.</span>
+		</div>
+	) : forbidden ? (
+		<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 px-10 text-center text-xs text-muted-foreground">
+			<span>You do not have access to this section.</span>
+			<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+		</div>
+	) : (
+		<>
+			{
+				embedded ? (
+					<div
+						id="nz-ssh-keys-root"
+						data-ssh-key-usage={JSON.stringify(sshKeyServerUsage)}
+					>
+						<div class="nz-deployments-table-scroll scrollbar-hide">
+							<div class={`${ST.tableWrap} border-0 rounded-none`}>
+								<table class={`${ST.table} nz-deployments-table w-full`}>
+									<thead class={ST.thead}>
+										<tr>
+											<th class={ST.th}>Name</th>
+											<th class={ST.th}>Description</th>
+											<th class={ST.th}>Created</th>
+											<th class={ST.thRight}>Actions</th>
+										</tr>
+									</thead>
+									<tbody>
+										{
+											sshKeys.length === 0 ? (
+												<tr class="nz-deployments-empty-row">
+													<td colspan="4" class="p-0">
+														<div class={ST.empty}>
+															<p class="font-medium text-[var(--nz-text)]">No SSH keys yet</p>
+															<p class={ST.emptyText}>Add an SSH key to connect servers for remote deployments.</p>
+														</div>
+													</td>
+												</tr>
+											) : (
+												sshKeys.map((sshKey) => (
+													<tr class={`${ST.tr} nz-data-table-row`}>
+														<td class={`${ST.td} font-medium`}>{sshKey.name}</td>
+														<td class={`${ST.td} text-muted-foreground`}>{sshKey.description ?? "—"}</td>
+														<td class={ST.tdMuted}>{formatDistanceToNow(new Date(sshKey.createdAt), { addSuffix: true })}</td>
+														<td class={ST.tdRight}>
+															<SshKeyActionsMenu
+																sshKey={sshKey}
+																canDelete={canDelete}
+																deleteBlocked={attachedServerNames(sshKey.sshKeyId).length > 0}
+																deleteBlockedTitle={deleteBlockedTitle(sshKey.sshKeyId)}
+															/>
+														</td>
+													</tr>
+												))
+											)
+										}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					</div>
+				) : (
+					<div
+						class="w-full"
+						id="nz-ssh-keys-root"
+						data-ssh-key-usage={JSON.stringify(sshKeyServerUsage)}
+					>
+						<div class={ST.panel}>
+							{
+								sshKeys.length === 0 ? (
+									<SettingsEmptyState message="You don't have any SSH keys yet." />
+								) : (
+									<>
+										<div class={ST.toolbar}>
+											<span />
+											{canCreate ? (
+												<button type="button" id="nz-ssh-create-open-list" class="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm text-primary-foreground">
+													Add SSH Key
+												</button>
+											) : null}
+										</div>
+										<div class={ST.tableWrap}>
+											<table class={ST.table}>
+												<thead class={ST.thead}>
+													<tr>
+														<th class={ST.th}>Name</th>
+														<th class={ST.th}>Description</th>
+														<th class={ST.th}>Created</th>
+														<th class={ST.thRight}>Actions</th>
+													</tr>
+												</thead>
+												<tbody>
+													{
+														sshKeys.map((sshKey) => (
+															<tr class={ST.tr}>
+																<td class={`${ST.td} font-medium`}>{sshKey.name}</td>
+																<td class={`${ST.td} text-muted-foreground`}>{sshKey.description ?? "—"}</td>
+																<td class={ST.tdMuted}>{formatDistanceToNow(new Date(sshKey.createdAt), { addSuffix: true })}</td>
+																<td class={ST.tdRight}>
+																	<SshKeyActionsMenu
+																sshKey={sshKey}
+																canDelete={canDelete}
+																deleteBlocked={attachedServerNames(sshKey.sshKeyId).length > 0}
+																deleteBlockedTitle={deleteBlockedTitle(sshKey.sshKeyId)}
+															/>
+																</td>
+															</tr>
+														))
+													}
+												</tbody>
+											</table>
+										</div>
+										<div class={ST.footer}><span class={ST.total}>{sshKeys.length} total</span></div>
+									</>
+								)
+							}
+						</div>
+					</div>
+				)
+			}
+
+			<NzModal
+				id="nz-ssh-form-dialog"
+				title="SSH Key"
+				description="In this section you can add one of your keys or generate a new one."
+				size="md"
+				form
+				formId="nz-ssh-form"
+				showClose={false}
+			>
+				<div id="nz-ssh-generate-row" class="flex flex-wrap gap-2">
+					<button type="button" class="nz-modal__btn nz-modal__btn--ghost" id="nz-ssh-gen-rsa">Generate RSA SSH Key</button>
+					<button type="button" class="nz-modal__btn nz-modal__btn--ghost" id="nz-ssh-gen-ed25519">Generate ED25519 SSH Key</button>
+				</div>
+				<p id="nz-ssh-form-error" class="nz-modal__callout hidden text-destructive" />
+				<input type="hidden" id="nz-ssh-form-id" value="" />
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Name</span>
+					<input id="nz-ssh-name" required placeholder="Personal projects" class="nz-modal__input" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Description</span>
+					<input id="nz-ssh-description" placeholder="Used on my personal Hetzner VPS" class="nz-modal__input" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Private Key</span>
+					<textarea id="nz-ssh-private" rows="5" placeholder="-----BEGIN RSA PRIVATE KEY-----" class="nz-modal__textarea nz-modal__textarea--code" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Public Key</span>
+					<input id="nz-ssh-public" placeholder="ssh-rsa AAAAB3NzaC1yc2E" class="nz-modal__input font-mono text-xs" />
+				</label>
+				<div class="flex flex-wrap gap-2">
+					<button type="button" class="nz-modal__btn nz-modal__btn--ghost" id="nz-ssh-dl-private">Download private key</button>
+					<button type="button" class="nz-modal__btn nz-modal__btn--ghost" id="nz-ssh-dl-public">Download public key</button>
+				</div>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button
+					slot="footer"
+					type="submit"
+					id="nz-ssh-form-submit"
+					data-default-label="Create"
+					class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Create</span>
+				</button>
+			</NzModal>
+
+			<NzModal id="nz-ssh-delete-dialog" title="Delete SSH key" description="This SSH key will be removed from your organization." variant="danger" size="sm" showClose={false}>
+				<p class="text-xs text-muted-foreground">Are you sure you want to delete this SSH key?</p>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close id="nz-ssh-delete-cancel">Cancel</button>
+				<button slot="footer" type="button" id="nz-ssh-delete-confirm" class="nz-modal__btn nz-modal__btn--danger">Delete</button>
+			</NzModal>
+		</>
+	)
+}
+
+<script>
+	import { setButtonLoadingVisuals } from "@/lib/auth-button-state";
+	import { trpcMutate, trpcQuery } from "@/lib/client-api";
+	import { bindDropdown, closeDialog, openDialog, showToast } from "@/scripts/ui";
+
+	const SSH_FORM_DIALOG = "nz-ssh-form-dialog";
+	const SSH_DELETE_DIALOG = "nz-ssh-delete-dialog";
+
+	function readSshKeyUsage(root: HTMLElement) {
+		try {
+			return JSON.parse(root.dataset.sshKeyUsage ?? "{}") as Record<string, string[]>;
+		} catch {
+			return {};
+		}
+	}
+
+	function attachedServersForKey(
+		usage: Record<string, string[]>,
+		sshKeyId: string,
+	) {
+		return usage[sshKeyId] ?? [];
+	}
+
+	function bindSshKeysPage() {
+		const root = document.getElementById("nz-ssh-keys-root");
+		if (!root || root.dataset.bound === "1") return;
+		root.dataset.bound = "1";
+
+		let sshKeyServerUsage = readSshKeyUsage(root);
+
+		const form = document.getElementById("nz-ssh-form");
+		const formId = document.getElementById("nz-ssh-form-id");
+		const nameEl = document.getElementById("nz-ssh-name");
+		const descEl = document.getElementById("nz-ssh-description");
+		const privateEl = document.getElementById("nz-ssh-private");
+		const publicEl = document.getElementById("nz-ssh-public");
+		const formSubmit = document.getElementById("nz-ssh-form-submit");
+		const formError = document.getElementById("nz-ssh-form-error");
+		const genRow = document.getElementById("nz-ssh-generate-row");
+		const deleteConfirm = document.getElementById("nz-ssh-delete-confirm");
+
+		if (
+			!(form instanceof HTMLFormElement) ||
+			!(formId instanceof HTMLInputElement) ||
+			!(nameEl instanceof HTMLInputElement) ||
+			!(descEl instanceof HTMLInputElement) ||
+			!(privateEl instanceof HTMLTextAreaElement) ||
+			!(publicEl instanceof HTMLInputElement) ||
+			!(formSubmit instanceof HTMLButtonElement) ||
+			!(formError instanceof HTMLElement) ||
+			!(genRow instanceof HTMLElement) ||
+			!(deleteConfirm instanceof HTMLButtonElement)
+		) return;
+
+		let pendingDeleteId = "";
+
+		const setSshFormSubmitLabel = (label: "Create" | "Update") => {
+			formSubmit.dataset.defaultLabel = label;
+			const labelEl = formSubmit.querySelector<HTMLElement>("[data-auth-btn-label]");
+			if (labelEl) labelEl.textContent = label;
+		};
+
+		const setSshFormBusy = (busy: boolean) => {
+			formSubmit.disabled = busy;
+			formSubmit.setAttribute("aria-busy", busy ? "true" : "false");
+			setButtonLoadingVisuals(formSubmit, busy);
+			const cancel = document.querySelector(
+				`#${SSH_FORM_DIALOG} [data-nz-modal-close]`,
+			);
+			if (cancel instanceof HTMLButtonElement) cancel.disabled = busy;
+			for (const el of [nameEl, descEl, privateEl, publicEl]) {
+				el.disabled = busy;
+			}
+		};
+
+		const closeSshMenu = (sshKeyId: string) => {
+			const menu = document.getElementById(`nz-ssh-menu-${sshKeyId}`);
+			const trigger = document.getElementById(`nz-ssh-menu-trigger-${sshKeyId}`);
+			menu?.classList.add("hidden");
+			if (trigger) {
+				trigger.setAttribute("aria-expanded", "false");
+				menu?.style.removeProperty("position");
+				menu?.style.removeProperty("top");
+				menu?.style.removeProperty("right");
+				menu?.style.removeProperty("left");
+				menu?.style.removeProperty("minWidth");
+				menu?.style.removeProperty("zIndex");
+			}
+		};
+
+		root.querySelectorAll("[id^='nz-ssh-menu-trigger-']").forEach((trigger) => {
+			const sshKeyId = trigger.id.replace("nz-ssh-menu-trigger-", "");
+			if (sshKeyId) bindDropdown(trigger.id, `nz-ssh-menu-${sshKeyId}`);
+		});
+
+		const openCreate = () => {
+			setSshFormBusy(false);
+			formId.value = "";
+			nameEl.value = "";
+			descEl.value = "";
+			privateEl.value = "";
+			publicEl.value = "";
+			setSshFormSubmitLabel("Create");
+			genRow.classList.remove("hidden");
+			formError.classList.add("hidden");
+			openDialog(SSH_FORM_DIALOG);
+		};
+
+		const openEdit = async (sshKeyId: string) => {
+			setSshFormBusy(false);
+			formError.classList.add("hidden");
+			formId.value = sshKeyId;
+			setSshFormSubmitLabel("Update");
+			genRow.classList.add("hidden");
+			try {
+				const data = await trpcQuery<any>("sshKey.one", { sshKeyId });
+				nameEl.value = data.name ?? "";
+				descEl.value = data.description ?? "";
+				privateEl.value = data.privateKey ?? "";
+				publicEl.value = data.publicKey ?? "";
+				openDialog(SSH_FORM_DIALOG);
+			} catch (err) {
+				showToast(err instanceof Error ? err.message : "Failed to load SSH key", "error");
+			}
+		};
+
+		const downloadKey = (content: string, keyType: "private" | "public") => {
+			if (!content.trim()) return;
+			const keyName = nameEl.value.trim();
+			const pub = publicEl.value.trim();
+			const isEd25519 = pub.startsWith("ssh-ed25519");
+			const defaultName = isEd25519 ? "id_ed25519" : "id_rsa";
+			const filename = keyName
+				? `${keyName}_${keyType}_${defaultName}${keyType === "public" ? ".pub" : ""}`
+				: `${defaultName}${keyType === "public" ? ".pub" : ""}`;
+			const blob = new Blob([content], { type: "text/plain" });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		};
+
+		for (const createId of ["nz-ssh-create-open", "nz-ssh-create-open-list"]) {
+			document.getElementById(createId)?.addEventListener("click", (e) => {
+				e.preventDefault();
+				openCreate();
+			});
+		}
+
+		root.addEventListener("click", (e) => {
+			const item = e.target instanceof Element ? e.target.closest("[data-ssh-menu-action]") : null;
+			if (!(item instanceof HTMLButtonElement) || item.disabled) return;
+			const action = item.dataset.sshMenuAction ?? "";
+			const sshKeyId = item.dataset.sshKeyId ?? "";
+			if (!action || !sshKeyId) return;
+			e.preventDefault();
+			closeSshMenu(sshKeyId);
+
+			if (action === "edit") {
+				void openEdit(sshKeyId);
+				return;
+			}
+
+			if (action === "delete") {
+				sshKeyServerUsage = readSshKeyUsage(root);
+				const attached = attachedServersForKey(sshKeyServerUsage, sshKeyId);
+				if (attached.length > 0 || item.dataset.deleteBlocked === "1") {
+					const names = attached.join(", ");
+					showToast(
+						`This SSH key is attached to ${attached.length === 1 ? "server" : "servers"}: ${names}. Remove ${attached.length === 1 ? "that server" : "those servers"} first.`,
+						"error",
+					);
+					return;
+				}
+				pendingDeleteId = sshKeyId;
+				openDialog(SSH_DELETE_DIALOG);
+			}
+		});
+
+		document.getElementById("nz-ssh-gen-rsa")?.addEventListener("click", async () => {
+			try {
+				const data = await trpcMutate<{ privateKey: string; publicKey: string }>("sshKey.generate", { type: "rsa" });
+				privateEl.value = data.privateKey;
+				publicEl.value = data.publicKey;
+				showToast("SSH Key Generated", "success");
+			} catch (err) {
+				showToast(
+					err instanceof Error ? err.message : "Error generating the SSH Key",
+					"error",
+				);
+			}
+		});
+
+		document.getElementById("nz-ssh-gen-ed25519")?.addEventListener("click", async () => {
+			try {
+				const data = await trpcMutate<{ privateKey: string; publicKey: string }>("sshKey.generate", { type: "ed25519" });
+				privateEl.value = data.privateKey;
+				publicEl.value = data.publicKey;
+				showToast("SSH Key Generated", "success");
+			} catch (err) {
+				showToast(
+					err instanceof Error ? err.message : "Error generating the SSH Key",
+					"error",
+				);
+			}
+		});
+
+		document.getElementById("nz-ssh-dl-private")?.addEventListener("click", () => downloadKey(privateEl.value, "private"));
+		document.getElementById("nz-ssh-dl-public")?.addEventListener("click", () => downloadKey(publicEl.value, "public"));
+
+		form.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			if (formSubmit.getAttribute("aria-busy") === "true") return;
+			formError.classList.add("hidden");
+			setSshFormBusy(true);
+			const sshKeyId = formId.value.trim();
+			const payload = {
+				name: nameEl.value.trim(),
+				description: descEl.value.trim() || undefined,
+				privateKey: privateEl.value,
+				publicKey: publicEl.value,
+				organizationId: "",
+				sshKeyId: sshKeyId || "",
+			};
+			try {
+				if (sshKeyId) {
+					await trpcMutate("sshKey.update", payload);
+					showToast("SSH key updated successfully", "success");
+				} else {
+					await trpcMutate("sshKey.create", payload);
+					showToast("SSH key created successfully", "success");
+				}
+				closeDialog(SSH_FORM_DIALOG);
+				window.location.reload();
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : "Request failed";
+				formError.textContent = msg;
+				formError.classList.remove("hidden");
+				showToast(sshKeyId ? "Error updating the SSH key" : "Error creating the SSH key", "error");
+			} finally {
+				setSshFormBusy(false);
+			}
+		});
+
+		deleteConfirm.addEventListener("click", async () => {
+			if (!pendingDeleteId) return;
+			deleteConfirm.disabled = true;
+			try {
+				await trpcMutate("sshKey.remove", { sshKeyId: pendingDeleteId });
+				showToast("SSH Key deleted successfully", "success");
+				closeDialog(SSH_DELETE_DIALOG);
+				window.location.reload();
+			} catch (err) {
+				showToast(
+					err instanceof Error ? err.message : "Error deleting SSH Key",
+					"error",
+				);
+			} finally {
+				deleteConfirm.disabled = false;
+				pendingDeleteId = "";
+			}
+		});
+
+		document.getElementById("nz-ssh-delete-cancel")?.addEventListener("click", () => {
+			pendingDeleteId = "";
+		});
+	}
+
+	function boot() { bindSshKeysPage(); }
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

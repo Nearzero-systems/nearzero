@@ -1,0 +1,107 @@
+---
+import Button from "@/components/ui/Button.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import DockerTerminalShell from "@/components/dashboard/terminal/DockerTerminalShell.astro";
+import {
+	DATABASE_VARIANT_CONFIG,
+	type DatabaseServiceVariant,
+} from "@/components/dashboard/services/databaseVariantConfig";
+
+interface Props {
+	variant: DatabaseServiceVariant;
+	dbId: string;
+	canDeploy: boolean;
+	applicationStatus: string;
+	showStopButton?: boolean;
+	serviceName?: string;
+}
+
+const {
+	variant,
+	dbId,
+	canDeploy,
+	applicationStatus,
+	showStopButton = true,
+	serviceName = "",
+} = Astro.props;
+
+const config = DATABASE_VARIANT_CONFIG[variant];
+const status = applicationStatus.toLowerCase();
+const showDeploy = canDeploy && (status === "idle" || status === "error");
+const showStop =
+	showStopButton && canDeploy && (status === "done" || status === "running");
+const hasDb = Boolean(dbId?.trim());
+---
+
+{
+	hasDb ?
+		<div class="nz-db-general-panel">
+			<NzModal id="nz-db-act-dialog" title="Confirm action" size="sm" showClose={false}>
+				<p id="nz-db-act-desc" class="text-sm text-muted-foreground"></p>
+				<p
+					id="nz-db-act-error"
+					role="alert"
+					class="mt-3 hidden whitespace-pre-line rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-6 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+				></p>
+				<button slot="footer" type="button" id="nz-db-act-cancel" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+					Cancel
+				</button>
+				<button slot="footer" type="button" id="nz-db-act-run" class="nz-modal__btn nz-modal__btn--primary">
+					Continue
+				</button>
+			</NzModal>
+
+			<section
+				id="nz-db-deploy-panel"
+				class="nz-db-deploy-panel hidden"
+				data-nz-db-deploy-panel
+				aria-label="Build logs"
+			>
+				<div class="nz-db-deploy-panel__header">
+					<button
+						type="button"
+						class="nz-db-deploy-panel__toggle"
+						data-nz-db-deploy-panel-toggle
+						aria-expanded="true"
+					>
+						<span class="inline-flex size-4 shrink-0 items-center justify-center">
+							<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform" data-nz-db-deploy-chevron aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+						</span>
+						<span class="font-medium">Build Logs</span>
+						<span id="nz-db-deploy-status" class="nz-db-deploy-panel__status" data-state="running">Running</span>
+					</button>
+					<button
+						type="button"
+						class="nz-modal__btn nz-modal__btn--ghost text-xs"
+						data-close-db-logs
+					>
+						Dismiss
+					</button>
+				</div>
+				<div class="nz-db-deploy-panel__body" data-nz-db-deploy-panel-body>
+					<div
+						id="nz-db-logs-body"
+						class="nz-db-deploy-panel__logs scrollbar-hide"
+					>
+						<div
+							id="nz-db-logs-spinner"
+							class="flex min-h-[8rem] items-center justify-center text-muted-foreground"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-6 animate-spin" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<DockerTerminalShell
+				id="nz-db-terminal-dialog"
+				hostId="nz-db-terminal-host"
+				containerSelectId="nz-db-terminal-container"
+				shellSelectId="nz-db-terminal-way"
+				closeButtonId="nz-db-terminal-close-request"
+				sectionLabel={variant}
+				nameLabel={serviceName || config.label}
+				defaultShell="sh"
+			/>
+		</div>
+	:	null}

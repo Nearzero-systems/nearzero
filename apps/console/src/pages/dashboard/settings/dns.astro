@@ -1,0 +1,7 @@
+---
+const dest = new URL("/dashboard/domains", Astro.url);
+for (const [k, v] of Astro.url.searchParams) {
+	dest.searchParams.set(k, v);
+}
+return Astro.redirect(dest.pathname + dest.search);
+---

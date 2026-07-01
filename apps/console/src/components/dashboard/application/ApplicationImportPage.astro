@@ -1,0 +1,579 @@
+---
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import Button from "@/components/ui/Button.astro";
+import { providerOptions } from "@/components/dashboard/projects/shared";
+import {
+	environmentApplicationNewHref,
+	projectWorkspaceHref,
+} from "@/lib/project-workspace-nav";
+import {
+	listReadyRuntimeServers,
+	runtimeServerRequirementMessage,
+} from "@/lib/runtime-server-options";
+import "@/styles/application-import.css";
+
+interface ServerOption {
+	serverId: string;
+	name: string;
+	ipAddress?: string | null;
+	port?: number | null;
+	setupStatus?: string | null;
+	serverStatus?: string | null;
+}
+
+interface GitAccountOption {
+	id: string;
+	label: string;
+}
+
+interface Props {
+	projectId: string;
+	environmentId: string;
+	projectName: string;
+	environmentName: string;
+	projectSlug: string;
+	canDeploy: boolean;
+	isCommunity?: boolean;
+	servers: ServerOption[];
+	githubAccounts: GitAccountOption[];
+	gitlabAccounts: GitAccountOption[];
+	bitbucketAccounts: GitAccountOption[];
+	giteaAccounts: GitAccountOption[];
+	dnsZoneId?: string | null;
+	domainPrefix?: string;
+	isProduction?: boolean;
+	zoneName?: string | null;
+}
+
+const {
+	projectId,
+	environmentId,
+	projectName,
+	environmentName,
+	projectSlug,
+	canDeploy,
+	isCommunity = true,
+	servers,
+	githubAccounts,
+	gitlabAccounts,
+	bitbucketAccounts,
+	giteaAccounts,
+	dnsZoneId = null,
+	domainPrefix = "",
+	isProduction = false,
+	zoneName = null,
+} = Astro.props;
+
+const backHref = projectWorkspaceHref(projectId, environmentId, "overview");
+const pageHref = environmentApplicationNewHref(projectId, environmentId);
+const fieldClass =
+	"nz-app-import-input flex h-9 w-full rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-elevated,#ffffff)] px-3 py-1 text-sm shadow-none outline-none";
+const labelClass = "nz-app-import-label";
+const fieldHintClass = "nz-app-import-field-hint";
+
+const gitProvidersJson = JSON.stringify({
+	github: githubAccounts,
+	gitlab: gitlabAccounts,
+	bitbucket: bitbucketAccounts,
+	gitea: giteaAccounts,
+});
+const serversJson = JSON.stringify(servers);
+const providerOptionsJson = JSON.stringify(providerOptions);
+const readyServers = listReadyRuntimeServers(servers);
+const needsReadyServer = !isCommunity && readyServers.length === 0;
+const serverRequirementMessage = runtimeServerRequirementMessage(servers);
+---
+
+<div
+	id="nz-app-import-page"
+	class="nz-app-import-page nz-dashboard-content h-full min-h-0 w-full"
+	data-project-id={projectId}
+	data-environment-id={environmentId}
+	data-project-slug={projectSlug}
+	data-can-deploy={canDeploy ? "1" : "0"}
+	data-community={isCommunity ? "1" : "0"}
+	data-dns-zone-id={dnsZoneId ?? ""}
+	data-domain-prefix={domainPrefix}
+	data-environment-name={environmentName}
+	data-is-production={isProduction ? "1" : "0"}
+	data-zone-name={zoneName ?? ""}
+	data-page-href={pageHref}
+>
+	<div class="nz-app-import-page__inner">
+		<header class="nz-app-import-page__header">
+			<div class="nz-app-import-page__toolbar">
+				<div class="nz-app-import-page__toolbar-start">
+					<a href={backHref} class="nz-app-import-page__back">← Overview</a>
+				</div>
+				<h1 id="nz-app-import-title" class="nz-app-import-page__title">Create a new application</h1>
+				<div class="nz-app-import-page__toolbar-end">
+					<a
+						class="nz-app-import-page__service-link hidden"
+						data-app-import-build-service
+						href="#"
+					>
+						Open service
+					</a>
+					<button
+						type="button"
+						id="nz-app-import-empty-toggle"
+						class="nz-app-import-page__empty-link"
+						data-app-import-empty-toggle
+					>
+						Create without Git
+					</button>
+				</div>
+			</div>
+		</header>
+
+		<p id="nz-app-import-error" class="nz-app-import-error hidden" role="alert"></p>
+
+		<nav
+			class="nz-app-import-stepper nz-app-import-stepper--sr-only"
+			data-app-import-progress
+			aria-label="Application setup progress"
+		>
+			<ol class="nz-app-import-stepper__list">
+				<li class="nz-app-import-stepper__item" data-step-indicator="provider">
+					<span class="nz-app-import-stepper__dot" aria-hidden="true">1</span>
+					<span class="nz-app-import-stepper__label">Provider</span>
+				</li>
+				<li class="nz-app-import-stepper__item" data-step-indicator="repos">
+					<span class="nz-app-import-stepper__dot" aria-hidden="true">2</span>
+					<span class="nz-app-import-stepper__label">Repository</span>
+				</li>
+				<li class="nz-app-import-stepper__item" data-step-indicator="configure">
+					<span class="nz-app-import-stepper__dot" aria-hidden="true">3</span>
+					<span class="nz-app-import-stepper__label">Configure</span>
+				</li>
+			</ol>
+		</nav>
+
+		<div class="nz-app-import-main">
+				<!-- Git wizard -->
+				<div data-app-import-git-panel>
+			<section
+				class="nz-app-import-panel nz-app-import-panel--provider"
+				data-wizard-step="provider"
+				data-app-import-step="provider"
+				aria-label="Choose a Git provider"
+			>
+				<div class="nz-app-import-provider-stage">
+					<p class="nz-app-import-hero-lead">
+						Connect a Git provider or paste a public repository URL to deploy in this environment.
+					</p>
+					<div class="nz-app-import-provider-grid">
+						{
+							providerOptions.map((opt) => (
+								<button
+									type="button"
+									class="nz-app-import-provider-card"
+									data-app-import-provider={opt.key}
+									style={`--provider-accent: ${opt.accent}`}
+								>
+									<svg viewBox="0 0 24 24" class="nz-app-import-provider-card__icon" aria-hidden="true">
+										<path fill="currentColor" d={opt.iconPath} />
+									</svg>
+									<span class="nz-app-import-provider-card__label">{opt.label}</span>
+								</button>
+							))
+						}
+					</div>
+					<div id="nz-app-import-connect-cta" class="nz-app-import-connect hidden">
+						<p class="text-sm text-[var(--nz-text-muted,#6b7280)]" data-app-import-connect-msg></p>
+						<div class="nz-app-import-connect__actions">
+							<a
+								href="/dashboard/settings/git-providers"
+								class="text-sm font-medium text-[var(--nz-text)] underline"
+							>
+								Settings → Git providers
+							</a>
+							<button type="button" class="text-sm font-medium text-[var(--nz-text)] underline" data-app-import-oauth-connect>
+								Connect account
+							</button>
+						</div>
+					</div>
+					<div class="nz-app-import-or" role="separator">
+						<span>OR</span>
+					</div>
+					<div class="nz-app-import-public-repo">
+						<label class="nz-app-import-public-repo__field">
+							<span class={labelClass}>Public repository URL</span>
+							<input
+								id="nz-app-import-public-url"
+								type="url"
+								class={fieldClass}
+								placeholder="https://github.com/owner/repo"
+								autocomplete="off"
+								spellcheck="false"
+							/>
+						</label>
+						<button
+							type="button"
+							class="nz-app-import-btn nz-app-import-btn--primary nz-app-import-public-repo__submit inline-flex items-center justify-center gap-2"
+							data-app-import-public-continue
+							data-default-label="Continue"
+						>
+							<AuthButtonSpinner />
+							<span data-auth-btn-label>Continue</span>
+						</button>
+					</div>
+				</div>
+			</section>
+
+			<section
+				class="nz-app-import-panel nz-app-import-panel--repos hidden"
+				data-wizard-step="repos"
+				data-app-import-step="repos"
+			>
+				<div class="nz-app-import-repos-toolbar">
+					<label class="grid gap-1">
+						<span class={labelClass}>Account</span>
+						<select id="nz-app-import-account" class={fieldClass}></select>
+					</label>
+					<label class="grid gap-1 nz-app-import-repos-search">
+						<span class={labelClass}>Search</span>
+						<input
+							id="nz-app-import-repo-search"
+							type="search"
+							class={fieldClass}
+							placeholder="Filter repositories…"
+							autocomplete="off"
+						/>
+					</label>
+				</div>
+				<div class="nz-app-import-repos-list-region">
+					<div id="nz-app-import-repos-status" class="nz-app-import-repos-status">
+						Select a provider to load repositories.
+					</div>
+					<div
+						id="nz-app-import-repos-loading"
+						class="nz-app-import-repos-loading hidden"
+						role="status"
+						aria-live="polite"
+						aria-hidden="true"
+					>
+						<span class="sr-only">Loading repositories</span>
+						<svg viewBox="0 0 24 24" class="nz-app-import-repos-loading__icon" aria-hidden="true">
+							<circle cx="12" cy="12" r="9" class="opacity-20" stroke="currentColor" stroke-width="2" fill="none"></circle>
+							<path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+						</svg>
+					</div>
+					<ul id="nz-app-import-repo-list" class="nz-app-import-repo-list scrollbar-hide" role="list"></ul>
+				</div>
+				<div class="nz-app-import-panel__actions nz-app-import-panel__actions--repos">
+					<button type="button" class="nz-app-import-btn nz-app-import-btn--ghost" data-app-import-back="provider">
+						Back
+					</button>
+				</div>
+			</section>
+
+			<section
+				class="nz-app-import-panel nz-app-import-panel--configure hidden"
+				data-wizard-step="configure"
+				data-app-import-step="configure"
+			>
+				<div class="nz-app-import-panel__scroll">
+				<div class="nz-app-import-repo-summary hidden" data-app-import-selected-repo-wrap>
+					<span class="nz-app-import-repo-summary__eyebrow">Repository</span>
+					<span class="nz-app-import-repo-summary__name" data-app-import-selected-repo-name></span>
+					<span class="nz-app-import-repo-summary__meta" data-app-import-selected-repo-meta></span>
+				</div>
+				<div class="nz-app-import-config-grid">
+					<label class="nz-app-import-field">
+						<span class={labelClass}>Display name</span>
+						<input id="nz-app-import-name" class={fieldClass} required />
+					</label>
+					<label class="nz-app-import-field">
+						<span class={labelClass}>App name</span>
+						<input id="nz-app-import-appname" class={fieldClass} value={`${projectSlug}-`} required />
+					</label>
+					<p class={`${fieldHintClass} nz-app-import-config-grid__wide`}>
+						A unique suffix is added automatically when the service is created.
+					</p>
+					<label id="nz-app-import-branch-wrap" class="nz-app-import-field">
+						<span class={labelClass}>Branch</span>
+						<select id="nz-app-import-branch" class={fieldClass} required></select>
+						<input
+							id="nz-app-import-branch-text"
+							class={`${fieldClass} hidden`}
+							value="main"
+							placeholder="main"
+							autocomplete="off"
+							tabindex="-1"
+							aria-hidden="true"
+						/>
+					</label>
+					<label id="nz-app-import-build-path-manual-wrap" class="nz-app-import-field">
+						<span class={labelClass}>Build path</span>
+						<input id="nz-app-import-build-path" class={fieldClass} value="/" autocomplete="off" />
+					</label>
+					<div
+						id="nz-app-import-build-path-picker-wrap"
+						class="nz-app-import-field hidden"
+					>
+						<span class={labelClass}>Build path</span>
+						<div class="relative">
+							<button
+								id="nz-app-import-build-path-picker"
+								type="button"
+								class={`${fieldClass} min-h-9 items-center justify-between text-left`}
+								aria-haspopup="listbox"
+								aria-expanded="false"
+							>
+								<span class="flex min-w-0 items-center gap-2" data-build-path-picker-label></span>
+								<span class="shrink-0 text-[var(--nz-text-muted,#6b7280)]">v</span>
+							</button>
+							<div
+								id="nz-app-import-build-path-menu"
+								class="hidden absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-elevated,#ffffff)] p-1 shadow-lg"
+								role="listbox"
+							></div>
+						</div>
+					</div>
+					<label id="nz-app-import-build-path-other-wrap" class="nz-app-import-field nz-app-import-config-grid__wide hidden">
+						<span class={fieldHintClass}>Custom build path</span>
+						<input
+							id="nz-app-import-build-path-other"
+							class={fieldClass}
+							value="/"
+							autocomplete="off"
+						/>
+					</label>
+					<label id="nz-app-import-server-wrap" class="nz-app-import-field nz-app-import-config-grid__wide hidden">
+						<span class={labelClass}>{isCommunity ? "Server (optional)" : "Server"}</span>
+						<select id="nz-app-import-server" class={fieldClass}></select>
+						{!isCommunity && needsReadyServer ? (
+							<span class={fieldHintClass}>{serverRequirementMessage}</span>
+						) : null}
+					</label>
+					<label class="nz-app-import-field nz-app-import-config-grid__wide">
+						<span class={labelClass}>Description</span>
+						<textarea id="nz-app-import-description" class={`${fieldClass} nz-app-import-textarea`} placeholder="Optional notes about this application"></textarea>
+					</label>
+					<div
+						id="nz-app-import-domain-preview"
+						class="hidden rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-muted,#f9fafb)] px-3 py-2 text-xs text-[var(--nz-text-muted,#6b7280)] nz-app-import-config-grid__wide"
+					></div>
+					<label
+						id="nz-app-import-managed-port-wrap"
+						class="hidden grid gap-2 nz-app-import-config-grid__wide"
+					>
+						<span class={labelClass}>Service port</span>
+						<input
+							id="nz-app-import-managed-port"
+							type="number"
+							min="1"
+							max="65535"
+							class={fieldClass}
+							value="3000"
+						/>
+					</label>
+					<label
+						id="nz-app-import-managed-domain-wrap"
+						class="hidden flex items-center gap-2 text-sm nz-app-import-config-grid__wide"
+					>
+						<input id="nz-app-import-managed-domain" type="checkbox" checked />
+						<span id="nz-app-import-managed-domain-label"
+							>Assign managed domain for this application</span
+						>
+					</label>
+					<div class="nz-app-import-config-grid__wide grid gap-3 rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-muted,#f9fafb)] p-3">
+						<div>
+							<p class={labelClass}>Advanced build commands</p>
+							<p class={fieldHintClass}>Optional - leave blank to let Nearzero detect commands.</p>
+						</div>
+						<label class="nz-app-import-field">
+							<span class={labelClass}>Install command</span>
+							<input id="nz-app-import-install-command" class={fieldClass} placeholder="pnpm install --frozen-lockfile" />
+						</label>
+						<label class="nz-app-import-field">
+							<span class={labelClass}>Build command</span>
+							<input id="nz-app-import-build-command" class={fieldClass} placeholder="cd apps/web && pnpm run build" />
+						</label>
+						<label class="nz-app-import-field">
+							<span class={labelClass}>Start command</span>
+							<input id="nz-app-import-start-command" class={fieldClass} placeholder="cd apps/web && pnpm run start" />
+						</label>
+					</div>
+				</div>
+				<section class="nz-app-import-env-section" aria-label="Environment variables">
+					<div class="nz-app-import-env-section__head">
+						<h2 class="nz-app-import-env-section__title">Environment variables</h2>
+						<p class="nz-app-import-env-section__lead">
+							Optional - edit anytime on the application page.
+						</p>
+					</div>
+					<div id="nz-app-import-env-rows" class="nz-app-import-env-rows"></div>
+					<button
+						type="button"
+						class="nz-app-import-btn nz-app-import-btn--ghost nz-app-import-env-section__add"
+						data-app-import-add-env
+					>
+						+ Add variable
+					</button>
+					<label class="nz-app-import-field nz-app-import-env-section__paste">
+						<span class={labelClass}>Paste .env format</span>
+						<textarea
+							id="nz-app-import-env-paste"
+							class={`${fieldClass} nz-app-import-env-paste`}
+							placeholder="KEY=value"
+							spellcheck="false"
+						></textarea>
+					</label>
+				</section>
+				</div>
+				<div class="nz-app-import-panel__actions nz-app-import-panel__actions--sticky">
+					<button type="button" class="nz-app-import-btn nz-app-import-btn--ghost" data-app-import-back="repos">
+						Back
+					</button>
+					<div class="nz-app-import-panel__actions-primary">
+						{
+							canDeploy ? (
+								<button
+									type="button"
+									class="nz-app-import-btn nz-app-import-btn--primary inline-flex items-center justify-center gap-2"
+									data-app-import-submit="deploy"
+									data-default-label="Create & deploy"
+									disabled={needsReadyServer}
+									aria-disabled={needsReadyServer ? "true" : "false"}
+									title={needsReadyServer ? serverRequirementMessage : undefined}
+								>
+									<AuthButtonSpinner />
+									<span data-auth-btn-label>Create &amp; deploy</span>
+								</button>
+							) : (
+								<button
+									type="button"
+									class="nz-app-import-btn nz-app-import-btn--primary inline-flex items-center justify-center gap-2"
+									data-app-import-submit="create_only"
+									data-default-label="Create application"
+									disabled={needsReadyServer}
+									aria-disabled={needsReadyServer ? "true" : "false"}
+									title={needsReadyServer ? serverRequirementMessage : undefined}
+								>
+									<AuthButtonSpinner />
+									<span data-auth-btn-label>Create application</span>
+								</button>
+							)
+						}
+					</div>
+				</div>
+			</section>
+				</div>
+
+				<!-- Empty application -->
+				<section
+					class="nz-app-import-panel hidden"
+					data-app-import-empty-panel
+					aria-label="Create empty application"
+				>
+			<p class="nz-app-import-panel__lead">
+				Skip Git import — configure source later on the application page.
+			</p>
+			<div class="nz-app-import-config-grid">
+				<label class="grid gap-2">
+					<span class={labelClass}>Name</span>
+					<input id="nz-app-import-empty-name" class={fieldClass} placeholder="Frontend" required />
+				</label>
+				<label id="nz-app-import-empty-server-wrap" class="hidden grid gap-2">
+					<span class={labelClass}>{isCommunity ? "Server (optional)" : "Server"}</span>
+					<select id="nz-app-import-empty-server" class={fieldClass}></select>
+					{!isCommunity && needsReadyServer ? (
+						<span class="text-xs text-[var(--nz-text-muted,#6b7280)]">
+							{serverRequirementMessage}
+						</span>
+					) : null}
+				</label>
+				<label class="grid gap-2">
+					<span class={labelClass}>App name</span>
+					<input id="nz-app-import-empty-appname" class={fieldClass} value={`${projectSlug}-`} required />
+				</label>
+				<label class="grid gap-2 nz-app-import-config-grid__wide">
+					<span class={labelClass}>Description</span>
+					<textarea id="nz-app-import-empty-description" class={`${fieldClass} min-h-20 py-2`}></textarea>
+				</label>
+			</div>
+			<div class="nz-app-import-panel__actions">
+				<button type="button" class="nz-app-import-btn nz-app-import-btn--ghost" data-app-import-empty-cancel>
+					Back to Git import
+				</button>
+				<Button
+					type="button"
+					data-app-import-empty-submit
+					disabled={needsReadyServer}
+					aria-disabled={needsReadyServer ? "true" : "false"}
+					title={needsReadyServer ? serverRequirementMessage : undefined}
+				>
+					Create application
+				</Button>
+			</div>
+				</section>
+
+				<section
+					class="nz-app-import-build hidden"
+					data-app-import-build-panel
+					aria-live="polite"
+					aria-label="Deployment progress"
+				>
+					<div class="nz-app-import-build__stack">
+						<article class="nz-app-import-build__meta">
+							<div class="nz-app-import-build__meta-head">
+								<div class="nz-app-import-build__meta-copy">
+									<p class="nz-app-import-build__eyebrow">Deployment</p>
+									<h2 class="nz-app-import-build__title">Building application</h2>
+								</div>
+								<span
+									class="nz-app-import-build__status"
+									data-app-import-build-status
+									data-state="running"
+								>
+									Queued
+								</span>
+							</div>
+							<p class="nz-app-import-build__message" data-app-import-build-message>
+								Creating the application and waiting for build logs.
+							</p>
+						</article>
+
+						<div class="nz-app-import-build__logs-card">
+							<div class="nz-app-import-build__logs-head">
+								<span class="nz-app-import-build__logs-label">Build logs</span>
+								<button
+									type="button"
+									class="nz-app-import-build__copy"
+									data-app-import-build-copy
+								>
+									Copy
+								</button>
+							</div>
+							<div
+								class="nz-app-import-build__logs-viewport"
+								data-app-import-build-logs-viewport
+							>
+								<pre data-app-import-build-logs>Waiting for deployment worker...</pre>
+							</div>
+						</div>
+					</div>
+				</section>
+
+		</div>
+	</div>
+</div>
+
+<script is:inline id="nz-app-import-providers-json" type="application/json" set:html={gitProvidersJson} />
+<script is:inline id="nz-app-import-servers-json" type="application/json" set:html={serversJson} />
+<script is:inline id="nz-app-import-provider-options-json" type="application/json" set:html={providerOptionsJson} />
+
+<script>
+	import { mountApplicationImportPage } from "@/scripts/env-app-git-wizard";
+
+	function boot() {
+		const root = document.getElementById("nz-app-import-page");
+		if (!root) return;
+		mountApplicationImportPage(root);
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

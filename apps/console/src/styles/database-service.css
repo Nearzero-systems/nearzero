@@ -1,0 +1,73 @@
+#nz-app-deploy-root .nz-db-deploy-meta__grid {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item dd .nz-db-type-pill {
+	vertical-align: middle;
+}
+
+#nz-app-deploy-root .nz-db-overview-actions {
+	flex-wrap: wrap;
+	gap: 0.375rem;
+}
+
+.nz-db-type-pill {
+	display: inline-flex;
+	align-items: center;
+	white-space: nowrap;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 9999px;
+	padding: 0.125rem 0.5rem;
+	background: var(--nz-surface, #ffffff);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-db-general-panel {
+	display: flex;
+	width: 100%;
+	flex-direction: column;
+}
+
+.nz-db-deploy-panel {
+	@apply overflow-hidden border-b bg-background;
+}
+
+.nz-db-deploy-panel__header {
+	@apply flex items-center justify-between gap-3 border-b px-2 py-1;
+}
+
+.nz-db-deploy-panel__toggle {
+	@apply flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-xs font-medium text-foreground;
+}
+
+.nz-db-deploy-panel__status {
+	@apply ml-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide;
+}
+
+.nz-db-deploy-panel__status[data-state="running"] {
+	@apply bg-yellow-600/15 text-yellow-700 dark:text-yellow-500;
+}
+
+.nz-db-deploy-panel__status[data-state="done"] {
+	@apply bg-emerald-600/15 text-emerald-700 dark:text-emerald-400;
+}
+
+.nz-db-deploy-panel__status[data-state="error"] {
+	@apply bg-red-600/15 text-destructive;
+}
+
+.nz-db-deploy-panel__body {
+	@apply border-t bg-[#fafafa] dark:bg-[#050506];
+}
+
+.nz-db-deploy-panel__logs {
+	@apply max-h-[min(420px,50dvh)] min-h-[12rem] overflow-y-auto p-4 font-mono text-xs;
+}
+
+@media (max-width: 640px) {
+	#nz-app-deploy-root .nz-db-deploy-meta__grid {
+		grid-template-columns: 1fr;
+	}
+}

@@ -1,0 +1,451 @@
+---
+import type { ProjectWorkspaceService } from "./projectWorkspaceTypes";
+
+interface Props {
+	services: ProjectWorkspaceService[];
+	compact?: boolean;
+}
+
+const { services, compact = false } = Astro.props;
+
+type CanvasNode =
+	| {
+			nodeKind: "service";
+			service: ProjectWorkspaceService;
+			key: string;
+			href: string;
+			row: number;
+			lane: "service" | "database";
+	  }
+	| {
+			nodeKind: "domain";
+			service: ProjectWorkspaceService;
+			host: string;
+			key: string;
+			href: string;
+			row: number;
+			lane: "domain";
+			relatedServiceKey: string;
+	  };
+
+type CanvasConnection = {
+	key: string;
+	fromKey: string;
+	toKey: string;
+	label: string;
+};
+
+type CanvasLayout = {
+	nodes: CanvasNode[];
+	connections: CanvasConnection[];
+	rowCount: number;
+};
+
+function serviceStatusLabel(status: string) {
+	const normalized = status.toLowerCase();
+	if (normalized === "done") return "Running";
+	if (normalized === "running") return "Deploying";
+	if (normalized === "error") return "Error";
+	return "Not running";
+}
+
+function isDatabaseService(kind: ProjectWorkspaceService["serviceKind"]) {
+	return !["application", "compose"].includes(kind);
+}
+
+function buildCanvasLayout(items: ProjectWorkspaceService[]): CanvasLayout {
+	const nodes: CanvasNode[] = [];
+	const connections: CanvasConnection[] = [];
+	let rowCursor = 0;
+
+	for (const service of items) {
+		const serviceKey = `service-${service.serviceId}`;
+		const domains = service.supportsDomain ? (service.domains ?? []) : [];
+		const rowSpan = Math.max(1, domains.length);
+		nodes.push({
+			nodeKind: "service",
+			service,
+			key: serviceKey,
+			href: service.href,
+			row: rowCursor + (rowSpan - 1) / 2,
+			lane: isDatabaseService(service.serviceKind) ? "database" : "service",
+		});
+
+		for (const [domainIndex, domain] of domains.entries()) {
+			const domainKey = `domain-${domain.domainId}`;
+			nodes.push({
+				nodeKind: "domain",
+				service,
+				host: domain.host,
+				key: domainKey,
+				href: service.href,
+				row: rowCursor + domainIndex,
+				lane: "domain",
+				relatedServiceKey: serviceKey,
+			});
+			connections.push({
+				key: `connection-${service.serviceId}-${domain.domainId}`,
+				fromKey: serviceKey,
+				toKey: domainKey,
+				label: "Domain",
+			});
+		}
+
+		rowCursor += rowSpan;
+	}
+
+	return {
+		nodes,
+		connections,
+		rowCount: Math.max(1, rowCursor),
+	};
+}
+
+function gridNodeStyle(index: number, total: number) {
+	if (total === 1) {
+		return "left:50%;top:32%;width:min(18rem,42%);transform:translateX(-50%);";
+	}
+	const cols = Math.min(3, Math.max(2, Math.ceil(Math.sqrt(total))));
+	const col = index % cols;
+	const row = Math.floor(index / cols);
+	const left = 8 + col * 30;
+	const top = 12 + row * 34;
+	return `left:${left}%;top:${top}%;width:min(14rem,30%);`;
+}
+
+function pairedNodeStyle(node: CanvasNode) {
+	const top = 4.5 + node.row * 10.25;
+	const left = node.lane === "domain" ? 51 : node.lane === "database" ? 31 : 11;
+	return `left:${left}%;top:${top}rem;width:min(22rem,28%);`;
+}
+
+function serviceIcon(kind: ProjectWorkspaceService["serviceKind"]) {
+	switch (kind) {
+		case "application":
+			return "◫";
+		case "compose":
+			return "▦";
+		case "postgres":
+			return "▤";
+		case "mysql":
+		case "mariadb":
+			return "▥";
+		case "mongo":
+			return "◉";
+		case "redis":
+			return "▧";
+		case "libsql":
+			return "◌";
+		default:
+			return "▣";
+	}
+}
+
+function serviceCardClass(service: ProjectWorkspaceService) {
+	return [
+		"nz-project-overview-card",
+		"nz-project-overview-card--node",
+		isDatabaseService(service.serviceKind)
+			? "nz-project-overview-card--database"
+			: "",
+	]
+		.filter(Boolean)
+		.join(" ");
+}
+
+function serviceDetailLabel(service: ProjectWorkspaceService) {
+	return service.serviceKind === "application" ? "Framework" : "Runtime";
+}
+
+function serviceDetailValue(service: ProjectWorkspaceService) {
+	if (service.serviceKind === "application") {
+		return service.framework ?? "Unknown";
+	}
+	return service.appName ?? service.name;
+}
+
+const canvasLayout = buildCanvasLayout(services);
+const canvasNodes = canvasLayout.nodes;
+const hasConnections = canvasLayout.connections.length > 0;
+const canvasHeightRem = Math.max(18, 7.5 + canvasLayout.rowCount * 10.25);
+const canvasStyle = hasConnections ? `min-height:${canvasHeightRem}rem;` : "";
+---
+
+<div
+	class:list={[
+		"nz-project-overview__canvas",
+		compact ? "nz-project-overview__canvas--compact" : "",
+	]}
+	style={canvasStyle}
+	data-nz-service-diagram
+>
+	<div class="nz-project-overview__grid" aria-hidden="true"></div>
+	{
+		hasConnections ? (
+			<svg class="nz-project-overview__connections" aria-hidden="true">
+				{canvasLayout.connections.map((connection) => (
+					<line
+						data-diagram-connection={connection.key}
+						data-from-node={connection.fromKey}
+						data-to-node={connection.toKey}
+					/>
+				))}
+			</svg>
+		) : null
+	}
+	{
+		hasConnections
+			? canvasLayout.connections.map((connection) => (
+					<span
+						class="nz-project-overview-connection-label"
+						data-diagram-connection-label={connection.key}
+						aria-hidden="true"
+						hidden
+					>
+						{connection.label}
+					</span>
+				))
+			: null
+	}
+
+	{
+		canvasNodes.map((node, index) =>
+			node.nodeKind === "service" ? (
+				<a
+					href={node.href}
+					class={serviceCardClass(node.service)}
+					data-diagram-node={node.key}
+					data-service-href={node.href}
+					style={
+						hasConnections
+							? pairedNodeStyle(node)
+							: gridNodeStyle(index, canvasNodes.length)
+					}
+					aria-label={`${node.service.name} (${node.service.type})`}
+				>
+					<div class="nz-project-overview-card__header">
+						<span class="nz-project-overview-card__icon">
+							{serviceIcon(node.service.serviceKind)}
+						</span>
+						<span class="truncate">{node.service.name}</span>
+					</div>
+					<div class="nz-project-overview-card__body">
+						<div class="nz-project-overview-row nz-project-overview-row--strong">
+							<span>{node.service.type}</span>
+							<span class="nz-project-overview-pill">
+								{serviceStatusLabel(node.service.status)}
+							</span>
+						</div>
+						<div class="nz-project-overview-row">
+							<span>{serviceDetailLabel(node.service)}</span>
+							<span class="truncate">
+								{serviceDetailValue(node.service)}
+							</span>
+						</div>
+					</div>
+				</a>
+			) : (
+				<a
+					href={node.href}
+					class="nz-project-overview-card nz-project-overview-card--node nz-project-overview-card--domain"
+					data-diagram-node={node.key}
+					data-service-href={node.href}
+					style={
+						hasConnections
+							? pairedNodeStyle(node)
+							: gridNodeStyle(index, canvasNodes.length)
+					}
+					aria-label={`Domain ${node.host} for ${node.service.name}`}
+				>
+					<div class="nz-project-overview-card__header">
+						<span class="nz-project-overview-card__icon">◎</span>
+						<span class="truncate">{node.host}</span>
+					</div>
+					<div class="nz-project-overview-card__body">
+						<div class="nz-project-overview-row nz-project-overview-row--strong">
+							<span>Domain</span>
+							<span class="nz-project-overview-pill">Live</span>
+						</div>
+						<div class="nz-project-overview-row">
+							<span>Service</span>
+							<span class="truncate">{node.service.name}</span>
+						</div>
+					</div>
+				</a>
+			),
+		)
+	}
+</div>
+
+<script>
+	function updateServiceDiagramConnections(diagram: HTMLElement) {
+		const svg = diagram.querySelector(".nz-project-overview__connections");
+		if (!(svg instanceof SVGSVGElement)) return;
+
+		const diagramRect = diagram.getBoundingClientRect();
+		const scrollLeft = diagram.scrollLeft;
+		const scrollTop = diagram.scrollTop;
+		const width = Math.max(diagram.scrollWidth, diagram.clientWidth);
+		const height = Math.max(diagram.scrollHeight, diagram.clientHeight);
+		svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+		svg.style.width = `${width}px`;
+		svg.style.height = `${height}px`;
+
+		const getNode = (key: string | undefined) => {
+			if (!key) return null;
+			return diagram.querySelector(
+				`[data-diagram-node="${CSS.escape(key)}"]`,
+			);
+		};
+
+		const lines = Array.from(
+			svg.querySelectorAll("[data-diagram-connection]"),
+		).filter((line): line is SVGLineElement => line instanceof SVGLineElement);
+
+		for (const line of lines) {
+			const fromNode = getNode(line.dataset.fromNode);
+			const toNode = getNode(line.dataset.toNode);
+			const label = diagram.querySelector(
+				`[data-diagram-connection-label="${CSS.escape(line.dataset.diagramConnection ?? "")}"]`,
+			);
+			if (!(fromNode instanceof HTMLElement) || !(toNode instanceof HTMLElement)) {
+				line.setAttribute("visibility", "hidden");
+				if (label instanceof HTMLElement) label.hidden = true;
+				continue;
+			}
+
+			const fromRect = fromNode.getBoundingClientRect();
+			const toRect = toNode.getBoundingClientRect();
+			const x1 = fromRect.right - diagramRect.left + scrollLeft;
+			const y1 = fromRect.top + fromRect.height / 2 - diagramRect.top + scrollTop;
+			const x2 = toRect.left - diagramRect.left + scrollLeft;
+			const y2 = toRect.top + toRect.height / 2 - diagramRect.top + scrollTop;
+			line.setAttribute("x1", `${x1}`);
+			line.setAttribute("y1", `${y1}`);
+			line.setAttribute("x2", `${x2}`);
+			line.setAttribute("y2", `${y2}`);
+			line.removeAttribute("visibility");
+
+			if (label instanceof HTMLElement) {
+				label.hidden = false;
+				label.style.left = `${(x1 + x2) / 2}px`;
+				label.style.top = `${(y1 + y2) / 2}px`;
+			}
+		}
+	}
+
+	function bindServiceDiagram() {
+		const diagrams = document.querySelectorAll("[data-nz-service-diagram]");
+		for (const diagram of diagrams) {
+			if (!(diagram instanceof HTMLElement) || diagram.dataset.dragBound === "1") {
+				continue;
+			}
+			diagram.dataset.dragBound = "1";
+			updateServiceDiagramConnections(diagram);
+			const nodes = Array.from(
+				diagram.querySelectorAll("[data-diagram-node]"),
+			).filter((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement);
+
+			const resizeObserver = new ResizeObserver(() => {
+				updateServiceDiagramConnections(diagram);
+			});
+			resizeObserver.observe(diagram);
+			for (const node of nodes) resizeObserver.observe(node);
+
+			for (const node of nodes) {
+				node.draggable = false;
+				node.addEventListener("dragstart", (event) => event.preventDefault());
+
+				let didDrag = false;
+				let suppressNextClick = false;
+				let startX = 0;
+				let startY = 0;
+
+				node.addEventListener("pointerdown", (event) => {
+					if (!(event instanceof PointerEvent)) return;
+					if (event.button !== 0) return;
+					didDrag = false;
+					suppressNextClick = false;
+					startX = event.clientX;
+					startY = event.clientY;
+
+					const diagramRect = diagram.getBoundingClientRect();
+					const nodeRect = node.getBoundingClientRect();
+					const offsetX = event.clientX - nodeRect.left;
+					const offsetY = event.clientY - nodeRect.top;
+					const pointerId = event.pointerId;
+					node.setPointerCapture(pointerId);
+
+					const onMove = (moveEvent: PointerEvent) => {
+						if (moveEvent.pointerId !== pointerId) return;
+						if (
+							!didDrag &&
+							Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) <
+								6
+						) {
+							return;
+						}
+						if (!didDrag) {
+							didDrag = true;
+							suppressNextClick = true;
+							node.classList.add("nz-project-overview-card--dragging");
+						}
+						moveEvent.preventDefault();
+						const nextLeft = Math.min(
+							diagram.scrollWidth - nodeRect.width - 8,
+							Math.max(
+								8,
+								moveEvent.clientX -
+									diagramRect.left +
+									diagram.scrollLeft -
+									offsetX,
+							),
+						);
+						const nextTop = Math.min(
+							diagram.scrollHeight - nodeRect.height - 8,
+							Math.max(
+								8,
+								moveEvent.clientY -
+									diagramRect.top +
+									diagram.scrollTop -
+									offsetY,
+							),
+						);
+						node.style.left = `${nextLeft}px`;
+						node.style.top = `${nextTop}px`;
+						node.style.right = "auto";
+						node.style.transform = "none";
+						updateServiceDiagramConnections(diagram);
+					};
+
+					const onUp = (upEvent: PointerEvent) => {
+						if (upEvent.pointerId !== pointerId) return;
+						node.classList.remove("nz-project-overview-card--dragging");
+						node.removeEventListener("pointermove", onMove);
+						node.removeEventListener("pointerup", onUp);
+						node.removeEventListener("pointercancel", onUp);
+						if (node.hasPointerCapture(pointerId)) {
+							node.releasePointerCapture(pointerId);
+						}
+						updateServiceDiagramConnections(diagram);
+					};
+
+					node.addEventListener("pointermove", onMove);
+					node.addEventListener("pointerup", onUp);
+					node.addEventListener("pointercancel", onUp);
+				});
+
+				node.addEventListener("click", (event) => {
+					if (suppressNextClick) {
+						event.preventDefault();
+						suppressNextClick = false;
+					}
+				});
+			}
+		}
+	}
+
+	bindServiceDiagram();
+	document.addEventListener("astro:page-load", bindServiceDiagram);
+	document.addEventListener("astro:after-swap", bindServiceDiagram);
+</script>

@@ -1,0 +1,682 @@
+/* Project workspace — agent-style secondary sidebar, content stays neutral */
+
+.nz-agent-main-region:has(#nz-project-workspace) {
+	overflow: hidden;
+	border-radius: 0;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-project-workspace {
+	flex: 1;
+	min-height: 0;
+}
+
+.nz-project-workspace {
+	display: flex;
+	gap: 0;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-project-secondary-column {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-self: stretch;
+	width: 17rem;
+	min-width: 17rem;
+	height: 100%;
+	min-height: 0;
+	overflow: visible;
+	border-right: none;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-project-secondary-column::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: 1px;
+	background-color: var(--nz-border, #eceef3);
+	pointer-events: none;
+	z-index: 2;
+}
+
+.nz-project-secondary-column.nz-agent-secondary-column--collapsed {
+	width: 0;
+	min-width: 0;
+	overflow: visible;
+}
+
+.nz-project-secondary-column.nz-agent-secondary-column--collapsed .nz-agent-sessions {
+	opacity: 0;
+	pointer-events: none;
+	overflow: hidden;
+}
+
+.nz-project-secondary-column .nz-agent-secondary-toggle {
+	z-index: 30;
+}
+
+.nz-project-secondary-column .nz-agent-sessions {
+	display: flex;
+	width: 17rem;
+	height: 100%;
+	min-height: 0;
+	flex: 1;
+	flex-direction: column;
+	border-radius: 0;
+	border-right: none;
+}
+
+.nz-project-secondary-column .nz-agent-sessions__header {
+	border-bottom-color: var(--nz-border, #eceef3);
+}
+
+.nz-project-workspace-main {
+	display: flex;
+	min-width: 0;
+	min-height: 0;
+	flex: 1;
+	overflow: hidden;
+	border-radius: 0;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-project-secondary-head {
+	display: flex;
+	flex-direction: column;
+	gap: 0.125rem;
+	width: 100%;
+	text-align: left;
+}
+
+.nz-project-secondary-head__title {
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-secondary-list {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.nz-project-secondary-list .nz-project-nav-item {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	border-radius: 0.375rem;
+	padding: 0.25rem 0.5rem;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--nz-text-muted, #6b7280);
+	text-decoration: none;
+	transition:
+		background-color 0.15s ease,
+		color 0.15s ease;
+}
+
+.nz-project-secondary-list .nz-project-nav-item:hover {
+	background-color: var(--nz-bg-hover, #ececef);
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-secondary-list .nz-project-nav-item--active {
+	background-color: var(--nz-bg-hover, #ececef);
+	color: var(--nz-text, #111827);
+	font-weight: 500;
+}
+
+.nz-project-workspace-panel {
+	height: 100%;
+	min-height: 0;
+	width: 100%;
+	min-width: 0;
+	overflow: auto;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-project-workspace-panel:has(#nz-app-deploy-root) {
+	display: flex;
+	flex-direction: column;
+}
+
+.nz-project-workspace-panel:has(#nz-app-deploy-root) .nz-dashboard-content--service {
+	flex: 0 0 auto;
+	min-height: 0 !important;
+}
+
+.nz-project-panel__head {
+	padding: 0.625rem 0.75rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+.nz-project-panel__title {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-panel__desc {
+	margin-top: 0.125rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-panel__body {
+	padding: 0.75rem;
+}
+
+.nz-project-stat-grid {
+	display: grid;
+	gap: 0.5rem;
+	grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+}
+
+.nz-project-stat {
+	padding: 0.625rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-muted, #f7f7f8);
+}
+
+.nz-project-stat__label {
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-stat__value {
+	margin-top: 0.25rem;
+	font-size: 1.125rem;
+	font-weight: 600;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-env-editor {
+	width: 100%;
+	min-height: 12rem;
+	padding: 0.5rem 0.625rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-elevated, #ffffff);
+	color: var(--nz-text, #111827);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	resize: none !important;
+}
+
+.nz-project-env-editor:focus {
+	outline: none;
+	border-color: var(--nz-border-strong, #e5e7eb);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--nz-text-muted) 18%, transparent);
+}
+
+/* Services section embeds the environment dashboard */
+.nz-project-workspace-panel:has(#nz-environment-root) {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+#nz-project-workspace #nz-environment-root {
+	flex: 1;
+	min-height: 0;
+}
+
+.nz-project-overview {
+	display: flex;
+	min-height: 100%;
+	min-height: 0;
+	flex-direction: column;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-project-overview__topbar {
+	display: flex;
+	min-height: 3rem;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.625rem 0.875rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	background-color: var(--nz-surface, #ffffff);
+}
+
+.nz-project-overview__topbar [data-env-service-root] {
+	position: relative;
+	z-index: 20;
+}
+
+.nz-project-overview__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	border-radius: 999px;
+	color: #34d399;
+	font-size: 0.6875rem;
+	font-weight: 500;
+}
+
+.nz-project-overview__status::before {
+	width: 0.375rem;
+	height: 0.375rem;
+	content: "";
+	border-radius: 999px;
+	background: currentColor;
+}
+
+.nz-project-overview__canvas {
+	position: relative;
+	flex: 0 0 auto;
+	height: clamp(18rem, 48vh, 30rem);
+	min-height: 18rem;
+	overflow: auto;
+	margin: 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background:
+		radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--nz-text-muted) 16%, transparent) 1px, transparent 0) 0 0 / 12px 12px,
+		var(--nz-bg-elevated, #ffffff);
+	scrollbar-width: thin;
+}
+
+.nz-project-overview__empty {
+	display: flex;
+	min-height: clamp(14rem, 34vh, 22rem);
+	align-items: center;
+	justify-content: center;
+	flex-direction: column;
+	margin: 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-bg-elevated, #ffffff);
+	text-align: center;
+}
+
+.nz-project-overview__grid {
+	position: absolute;
+	inset: 0;
+	background:
+		linear-gradient(90deg, transparent 49%, color-mix(in srgb, var(--nz-text-muted) 8%, transparent) 50%, transparent 51%),
+		linear-gradient(0deg, transparent 49%, color-mix(in srgb, var(--nz-text-muted) 8%, transparent) 50%, transparent 51%);
+	background-size: 6rem 6rem;
+	opacity: 0.35;
+}
+
+.nz-project-overview__connections {
+	position: absolute;
+	top: 0;
+	left: 0;
+	z-index: 1;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.nz-project-overview__connections line {
+	stroke: color-mix(in srgb, #34d399 56%, var(--nz-text-muted) 44%);
+	stroke-width: 1.5;
+	stroke-dasharray: 5 5;
+	stroke-linecap: round;
+	opacity: 0.9;
+}
+
+.nz-project-overview-connection-label {
+	position: absolute;
+	z-index: 3;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 1.25rem;
+	border: 1px solid color-mix(in srgb, #34d399 36%, var(--nz-border) 64%);
+	border-radius: 999px;
+	background: color-mix(in srgb, #34d399 14%, var(--nz-bg-elevated) 86%);
+	padding: 0 0.5rem;
+	color: color-mix(in srgb, #059669 88%, var(--nz-text) 12%);
+	font-size: 0.625rem;
+	font-weight: 600;
+	line-height: 1;
+	pointer-events: none;
+	transform: translate(-50%, -50%);
+	white-space: nowrap;
+}
+
+.nz-project-overview-connection-label[hidden] {
+	display: none;
+}
+
+.nz-project-overview-card {
+	position: absolute;
+	z-index: 2;
+	width: min(14rem, 28%);
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-bg-elevated, #ffffff);
+	box-shadow: none;
+	color: var(--nz-text, #111827);
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
+	text-decoration: none;
+	transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.nz-project-overview-card:hover {
+	border-color: var(--nz-border-strong, #e5e7eb);
+	background: var(--nz-bg-hover, #f3f4f6);
+	box-shadow: none;
+}
+
+.nz-project-overview-card--dragging {
+	cursor: grabbing;
+	box-shadow: none;
+}
+
+.nz-project-overview-card--network {
+	left: 5%;
+	top: 38%;
+}
+
+.nz-project-overview-card--node:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--nz-text-muted) 45%, transparent);
+	outline-offset: 2px;
+}
+
+.nz-project-overview-card--domain .nz-project-overview-card__header {
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-overview-card--database .nz-project-overview-card__icon {
+	color: #0ea5e9;
+}
+
+.nz-project-overview-card--database {
+	border-color: color-mix(in srgb, #0ea5e9 24%, var(--nz-border) 76%);
+}
+
+.nz-project-overview-card__header {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.625rem 0.75rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+.nz-project-overview-card__icon {
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-overview-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	padding: 0.625rem;
+}
+
+.nz-project-overview-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	font-size: 0.6875rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-overview-row--strong {
+	color: var(--nz-text, #111827);
+	font-weight: 600;
+}
+
+.nz-project-overview-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	color: #34d399;
+	font-weight: 600;
+}
+
+.nz-project-overview-pill::before,
+.nz-project-overview-dot {
+	width: 0.3125rem;
+	height: 0.3125rem;
+	content: "";
+	border-radius: 999px;
+	background: currentColor;
+}
+
+.nz-project-overview-dot {
+	display: inline-block;
+	color: #34d399;
+}
+
+.nz-project-overview-dot--muted {
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-overview-service-row {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 0.5rem;
+	border-radius: 0.375rem;
+	background: var(--nz-bg-muted, #f7f7f8);
+	padding: 0.5rem;
+	font-size: 0.6875rem;
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-overview-service-icon {
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-services {
+	margin: 0 0.75rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-bg-elevated, #ffffff);
+}
+
+.nz-project-services--flat {
+	margin: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+}
+
+.nz-project-services-page .nz-project-services--flat .nz-project-services__list {
+	border-top: none;
+	border-bottom: none;
+}
+
+.nz-project-services__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.625rem 0.75rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+.nz-project-services__head h2 {
+	font-size: 0.75rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-services__view-all {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 0.375rem;
+	padding: 0.25rem 0.5rem;
+	font-size: 0.6875rem;
+	font-weight: 500;
+	color: var(--nz-text-muted, #6b7280);
+	text-decoration: none;
+}
+
+.nz-project-services__view-all:hover {
+	background: var(--nz-bg-hover, #ececef);
+	color: var(--nz-text, #111827);
+}
+
+.nz-project-services__list {
+	display: grid;
+	gap: 0;
+}
+
+.nz-project-service-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.625rem 0.75rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	font-size: 0.75rem;
+	color: inherit;
+	transition: background-color 0.12s ease;
+}
+
+.nz-project-service-item__link {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border-radius: inherit;
+}
+
+.nz-project-service-item[data-has-actions="1"] .nz-project-service-item__link {
+	right: 3.25rem;
+}
+
+.nz-project-service-item__main,
+.nz-project-service-item__status {
+	position: relative;
+	z-index: 2;
+	pointer-events: none;
+}
+
+.nz-project-service-item__actions {
+	position: relative;
+	display: inline-flex;
+	min-width: 2.25rem;
+	z-index: 10;
+	margin-left: 0.25rem;
+	pointer-events: auto;
+}
+
+.nz-project-service-menu-trigger,
+.nz-project-service-menu {
+	position: relative;
+	z-index: 11;
+	pointer-events: auto;
+}
+
+.nz-project-service-item:hover {
+	background: var(--nz-bg-hover, #ececef);
+}
+
+.nz-project-service-item--clickable {
+	cursor: pointer;
+}
+
+.nz-project-service-item__main {
+	flex: 1;
+	min-width: 0;
+}
+
+.nz-project-service-item:last-child {
+	border-bottom: 0;
+}
+
+.nz-project-service-item__status {
+	flex-shrink: 0;
+	color: var(--nz-text-muted, #6b7280);
+	font-size: 0.6875rem;
+}
+
+.nz-project-services__empty {
+	padding: 0.75rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-analytics-bars {
+	display: grid;
+	gap: 0.75rem;
+	margin-top: 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	padding: 0.75rem;
+	background: var(--nz-bg-elevated, #ffffff);
+}
+
+.nz-project-analytics-bar {
+	display: grid;
+	grid-template-columns: 7rem minmax(0, 1fr);
+	align-items: center;
+	gap: 0.75rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-analytics-bar div {
+	height: 0.375rem;
+	overflow: hidden;
+	border-radius: 999px;
+	background: var(--nz-bg-muted, #f7f7f8);
+}
+
+.nz-project-analytics-bar i {
+	display: block;
+	height: 100%;
+	border-radius: inherit;
+	background: #34d399;
+}
+
+.nz-project-log-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+	gap: 0.75rem;
+}
+
+.nz-project-log-card {
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-bg-elevated, #ffffff);
+	padding: 0.75rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-project-log-card p + p {
+	margin-top: 0.375rem;
+}
+
+html.dark .nz-project-secondary-column,
+html.dark .nz-project-workspace-main,
+html.dark .nz-project-workspace-panel,
+html.dark .nz-project-overview {
+	background-color: var(--nz-surface);
+}
+
+html.dark .nz-project-overview__canvas {
+	background:
+		radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--nz-text-muted) 20%, transparent) 1px, transparent 0) 0 0 / 12px 12px,
+		var(--nz-surface);
+}
+
+html.dark .nz-project-overview__empty {
+	background: var(--nz-surface);
+}

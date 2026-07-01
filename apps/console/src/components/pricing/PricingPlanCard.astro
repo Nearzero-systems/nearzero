@@ -1,0 +1,95 @@
+---
+import type { PricingPlanDefinition } from "@nearzero/spec";
+
+interface Props {
+  plan: PricingPlanDefinition;
+  currentBillingKey?: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+  ctaMethod?: "get" | "post";
+  ctaPrimary?: boolean;
+  ctaDisabled?: boolean;
+  hiddenFields?: Record<string, string>;
+  note?: string;
+  currentBadgeLabel?: string;
+  className?: string;
+}
+
+const {
+  plan,
+  currentBillingKey = "",
+  ctaLabel = plan.marketingCtaLabel,
+  ctaHref = "",
+  ctaMethod = "get",
+  ctaPrimary = false,
+  ctaDisabled = false,
+  hiddenFields = {},
+  note = "",
+  currentBadgeLabel = "Current",
+  className = "",
+} = Astro.props;
+
+const isCurrent = currentBillingKey === plan.billingKey;
+const buttonClass = ctaPrimary
+  ? "inline-flex w-full items-center justify-center rounded-md bg-[#111827] px-2 py-1 text-xs text-white transition-colors hover:bg-[#1f2937] disabled:cursor-default disabled:bg-[#111827] disabled:opacity-70"
+  : "inline-flex w-full items-center justify-center rounded-md border border-[#d9dbe3] bg-[#f7f7f8] px-2 py-1 text-xs text-[#111827] transition-colors hover:bg-white disabled:cursor-default disabled:opacity-70";
+---
+
+<article class={`flex h-full flex-col bg-white ${className}`}>
+  <div class="flex min-h-[124px] flex-col gap-2 border-b border-[#eceef3] px-4 py-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h3 class="font-display text-[28px] font-semibold tracking-tight text-[#111827]">
+          {plan.title}
+        </h3>
+        <p class="mt-1 text-xs text-[#6b7280]">{plan.billingDetail}</p>
+      </div>
+      {isCurrent ? (
+        <span class="inline-flex shrink-0 items-center rounded-md border border-[#d7ead8] bg-[#f3faf3] px-2 py-1 text-xs text-[#325c35]">
+          {currentBadgeLabel}
+        </span>
+      ) : null}
+    </div>
+
+    <div class="space-y-1">
+      <p class="text-sm font-medium text-[#111827]">{plan.priceHeadline}</p>
+      <p class="text-xs text-[#6b7280]">{plan.priceSubline}</p>
+    </div>
+  </div>
+
+  <div class="flex flex-1 flex-col gap-4 px-4 py-4">
+    <p class="text-sm leading-6 text-[#111827]">{plan.summary}</p>
+
+    <ul class="space-y-2 border-t border-[#eceef3] pt-4 text-xs text-[#6b7280]">
+      {plan.features.map((feature) => (
+        <li class="flex items-start gap-2">
+          <span class="mt-[2px] text-[#b6becb]" aria-hidden="true">✓</span>
+          <span>{feature}</span>
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  <div class="mt-auto border-t border-[#eceef3] px-4 py-4">
+    {note ? <p class="mb-2 text-xs text-[#6b7280]">{note}</p> : null}
+
+    {ctaMethod === "post" && ctaHref ? (
+      <form method="POST" action={ctaHref}>
+        {Object.entries(hiddenFields).map(([key, value]) => (
+          <input type="hidden" name={key} value={value} />
+        ))}
+        <button type="submit" class={buttonClass} disabled={ctaDisabled}>
+          {ctaLabel}
+        </button>
+      </form>
+    ) : ctaHref ? (
+      <a href={ctaHref} class={buttonClass} aria-disabled={ctaDisabled ? "true" : undefined}>
+        {ctaLabel}
+      </a>
+    ) : (
+      <button type="button" class={buttonClass} disabled>
+        {ctaLabel}
+      </button>
+    )}
+  </div>
+</article>

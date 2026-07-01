@@ -1,0 +1,799 @@
+---
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import OrgCertificatesPanel from "@/components/dashboard/domains/OrgCertificatesPanel.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.domainsHub,
+});
+
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+
+type ZoneRow = {
+	dnsZoneId: string;
+	name: string;
+	status: string;
+	nameservers?: string[];
+	records: Array<{
+		dnsRecordId: string;
+		name: string;
+		type: string;
+		value: string;
+		ttl?: number | null;
+		priority?: number | null;
+		managedBy?: string;
+	}>;
+};
+
+type HostnameRow = {
+	domainId: string;
+	host: string;
+	https: boolean;
+	dnsMode: string;
+	serviceLabel: string | null;
+	projectName: string | null;
+	environmentName: string | null;
+	status: string;
+	href: string | null;
+};
+
+type BindingRow = {
+	environmentId: string;
+	environmentName: string;
+	projectId: string;
+	projectName: string;
+	dnsZoneId: string | null;
+	zoneName: string | null;
+	domainPrefix: string | null;
+};
+
+type ReadinessInfo = {
+	platformApex: string | null;
+	platformDefaultEnabled: boolean;
+	webServerIp: string | null;
+	zones: Array<{ name: string; status: string; recordCount: number }>;
+};
+
+let permissions: {
+	domain?: { read?: boolean; create?: boolean; update?: boolean; delete?: boolean };
+	certificate?: { read?: boolean; create?: boolean; update?: boolean; delete?: boolean };
+} | null = null;
+
+let zones: ZoneRow[] = [];
+let health: Array<{ name: string; status: string; recordCount: number; lastError?: string | null }> = [];
+let dnsReadiness: ReadinessInfo | null = null;
+let hostnames: HostnameRow[] = [];
+let bindings: BindingRow[] = [];
+let projects: unknown[] = [];
+let servers: Array<{ serverId: string; name: string; ipAddress: string }> = [];
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		permissions = await api.user.getPermissions.query();
+		const canDomain = !!permissions?.domain?.read;
+		const canCert = !!permissions?.certificate?.read;
+
+		if (canDomain) {
+			const [
+				zonesResult,
+				healthResult,
+				readinessResult,
+				hostnamesResult,
+				bindingsResult,
+				projectsResult,
+			] = await Promise.all([
+				api.dns.zones.list.query() as Promise<ZoneRow[]>,
+				api.dns.health.query() as Promise<typeof health>,
+				api.dns.readiness.query() as Promise<ReadinessInfo>,
+				api.domain.listCentralized.query() as Promise<HostnameRow[]>,
+				api.environment.listDnsBindings.query() as Promise<BindingRow[]>,
+				api.project.all.query() as Promise<unknown[]>,
+			]);
+			zones = zonesResult;
+			health = healthResult;
+			dnsReadiness = readinessResult;
+			hostnames = hostnamesResult;
+			bindings = bindingsResult;
+			projects = projectsResult;
+		}
+		if (canCert) {
+			servers = ((await api.server.withSSHKey.query()) as typeof servers) || [];
+		}
+	} catch {
+		zones = [];
+		health = [];
+		dnsReadiness = null;
+		hostnames = [];
+		bindings = [];
+	}
+}
+
+const searchParams = new URL(Astro.request.url).searchParams;
+const qParam = (searchParams.get("q") ?? "").trim();
+const statusFilter = searchParams.get("status") ?? "all";
+const tabParam = searchParams.get("tab") ?? "hostnames";
+
+const canDomainRead = !!permissions?.domain?.read;
+const canDomainCreate = !!permissions?.domain?.create;
+const canDomainUpdate = !!permissions?.domain?.update;
+const canCertRead = !!permissions?.certificate?.read;
+const canCertCreate = !!permissions?.certificate?.create;
+
+const tabs = [
+	...(canDomainRead ? [{ id: "hostnames", label: "Hostnames" }] : []),
+	...(canDomainRead ? [{ id: "zones", label: "DNS zones" }] : []),
+	...(canDomainRead ? [{ id: "bindings", label: "Environment bindings" }] : []),
+	...(canCertRead ? [{ id: "certificates", label: "Certificates" }] : []),
+];
+
+const activeTab =
+	tabs.find((t) => t.id === tabParam)?.id ?? tabs[0]?.id ?? "hostnames";
+
+function hostnameMatchesFilters(row: HostnameRow) {
+	if (statusFilter !== "all" && row.status !== statusFilter) return false;
+	if (!qParam) return true;
+	const q = qParam.toLowerCase();
+	return `${row.host} ${row.serviceLabel ?? ""} ${row.projectName ?? ""} ${row.environmentName ?? ""} ${row.dnsMode}`
+		.toLowerCase()
+		.includes(q);
+}
+
+function zoneMatchesFilters(zone: ZoneRow) {
+	if (statusFilter !== "all" && zone.status !== statusFilter) return false;
+	if (!qParam) return true;
+	const q = qParam.toLowerCase();
+	const recordText = zone.records
+		.map((r) => `${r.name} ${r.type} ${r.value}`)
+		.join(" ")
+		.toLowerCase();
+	return `${zone.name} ${zone.status} ${recordText}`.toLowerCase().includes(q);
+}
+
+const filteredHostnames = hostnames.filter(hostnameMatchesFilters);
+const filteredZones = zones.filter(zoneMatchesFilters);
+
+const statusBadge: Record<string, string> = {
+	published: "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
+	active: "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
+	draft: "bg-secondary text-secondary-foreground",
+	pending: "bg-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-500 text-yellow-600",
+	error: "bg-red-600/20 dark:bg-red-500/15 text-destructive",
+	failed: "bg-red-600/20 dark:bg-red-500/15 text-destructive",
+	unassigned: "bg-secondary text-secondary-foreground",
+	ready: "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
+	pending_dns: "bg-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-500 text-yellow-600",
+};
+
+const badgeClass =
+	"inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap capitalize";
+
+const dnsModeLabel: Record<string, string> = {
+	external: "External DNS",
+	nearzero_managed: "Nearzero DNS",
+	platform: "Platform",
+};
+
+const hostnameStatusOptions = [
+	"all",
+	...Array.from(new Set(hostnames.map((h) => h.status).filter(Boolean))),
+];
+const zoneStatusOptions = [
+	"all",
+	...Array.from(new Set(zones.map((z) => z.status).filter(Boolean))),
+];
+const statusOptions = activeTab === "zones" ? zoneStatusOptions : hostnameStatusOptions;
+
+const platformEnabled = dnsReadiness?.platformDefaultEnabled ?? false;
+const platformApexDomain = dnsReadiness?.platformApex ?? null;
+
+function domainHealthMessage(row: { status: string; lastError?: string | null }): string {
+	if (row.status !== "error") return row.status;
+	const raw = row.lastError ?? "";
+	if (/coredns|no such image|no such container|docker/i.test(raw)) {
+		return "Managed DNS setup is not ready. Complete server/DNS setup, then publish again.";
+	}
+	if (/timeout|unreachable|connection/i.test(raw)) {
+		return "Managed DNS health check could not reach the DNS runtime.";
+	}
+	return "Managed DNS needs attention.";
+}
+
+function collectParentDomains(hostnameRows: HostnameRow[], zoneRows: ZoneRow[]): string[] {
+	const roots = new Set<string>();
+	for (const zone of zoneRows) {
+		roots.add(zone.name.replace(/\.$/, "").toLowerCase());
+	}
+	for (const row of hostnameRows) {
+		roots.add(row.host.replace(/\.$/, "").toLowerCase());
+	}
+	return Array.from(roots).sort();
+}
+
+const parentDomains = collectParentDomains(hostnames, zones);
+const showReadinessBanner =
+	(platformEnabled && !!platformApexDomain) ||
+	zones.length > 0 ||
+	health.some((row) => row.status === "error");
+---
+
+{
+	forbidden ? (
+		<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+			<span>You do not have access to domains.</span>
+		</div>
+	) : loadFailed ? (
+		<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 p-10 text-center text-xs text-muted-foreground">
+			<span>Could not load domains. Try refreshing the page.</span>
+		</div>
+	) : (
+		<div
+			class="nz-dashboard-content h-full min-h-0 w-full"
+			id="nz-domains-root"
+			transition:animate="none"
+			data-can-domain-create={canDomainCreate ? "1" : "0"}
+			data-can-domain-update={canDomainUpdate ? "1" : "0"}
+			data-can-cert-create={canCertCreate ? "1" : "0"}
+		>
+			<div class="nz-deployments-surface text-xs">
+				{
+					showReadinessBanner ? (
+					<div class="nz-domains-readiness mb-3 rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] px-4 py-3 text-[11px] text-[var(--nz-text-muted)]">
+						<p>
+							<strong class="text-[var(--nz-text)]">Domain routing</strong>{" "}
+							{zones.length > 0 || platformEnabled ? "has DNS configuration for this organization." : "is ready to be configured."}
+						</p>
+						{
+							platformEnabled && platformApexDomain ? (
+								<p class="mt-1">
+									Platform domain: <code>{platformApexDomain}</code>.
+								</p>
+							) : null
+						}
+						{
+							zones.length > 0 ? (
+								<p class="mt-1">
+									{zones.length} managed DNS zone{zones.length === 1 ? "" : "s"} added.
+								</p>
+							) : null
+						}
+						{
+							health.some((h) => h.status === "error") ? (
+								<p class="mt-1 text-destructive">
+									{health
+										.filter((h) => h.status === "error")
+										.map((h) => `${h.name}: ${domainHealthMessage(h)}`)
+										.join(" · ")}
+								</p>
+							) : null
+					}
+				</div>
+					) : null
+				}
+
+				<div class="nz-deployments-toolbar">
+					<div class="nz-deployments-toolbar-primary">
+						<h1 class={ST.pageTitle}>Domains</h1>
+					</div>
+					<form method="get" class="nz-domains-controls-row" id="nz-domains-filter-form">
+						<input type="hidden" name="tab" value={activeTab} id="nz-domains-tab-input" />
+						{
+							tabs.length > 1 ? (
+								<div class="nz-domains-tablist" role="tablist" aria-label="Domain sections">
+									{
+										tabs.map((tab) => (
+											<button
+												type="button"
+												class={`nz-domains-tab ${tab.id === activeTab ? "nz-domains-tab--active" : ""}`}
+												data-domains-tab={tab.id}
+												role="tab"
+												aria-selected={tab.id === activeTab ? "true" : "false"}
+											>
+												{tab.label}
+											</button>
+										))
+									}
+								</div>
+							) : (
+								<div class="min-w-0 flex-1" />
+							)
+						}
+						<div class="nz-domains-controls-actions">
+							{
+								activeTab !== "certificates" ? (
+									<div id="nz-domains-search-root" class="relative shrink-0" data-domains-search-wrap>
+										<button
+											id="nz-domains-search-toggle"
+											type="button"
+											aria-label="Search domains"
+											aria-expanded={qParam ? "true" : "false"}
+											aria-controls="nz-domains-search-panel"
+											class="inline-flex h-7 w-7 items-center justify-center rounded-md bg-transparent p-0 text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)]"
+										>
+											<svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+										</button>
+										<label
+											id="nz-domains-search-panel"
+											class:list={[
+												"pointer-events-none absolute right-0 top-1/2 z-20 flex h-8 -translate-y-1/2 items-center gap-1 overflow-hidden rounded-md border border-[var(--nz-border)] bg-transparent shadow-none transition-all duration-200 ease-in-out",
+												qParam ? "w-44 px-2 opacity-100 pointer-events-auto sm:w-52" : "w-0 px-0 opacity-0 pointer-events-none border-transparent",
+											]}
+										>
+											<input
+												id="nz-domains-search"
+												name="q"
+												type="search"
+												placeholder="Search..."
+												value={qParam}
+												class="min-w-0 w-full bg-transparent text-xs text-[var(--nz-text)] outline-none placeholder:text-[var(--nz-text-subtle)]"
+											/>
+										</label>
+									</div>
+								) : null
+							}
+							{
+								activeTab !== "certificates" ? (
+									<select name="status" class={ST.filterSelect} onchange="this.form.submit()">
+										{statusOptions.map((status) => (
+											<option value={status} selected={statusFilter === status}>
+												{status === "all" ? "All statuses" : status.replace("_", " ")}
+											</option>
+										))}
+									</select>
+								) : null
+							}
+							<div class="relative shrink-0">
+								<button
+									type="button"
+									class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent bg-[var(--nz-primary)] px-3 text-xs font-medium text-[var(--nz-primary-fg)] shadow-none transition-colors hover:bg-[var(--nz-primary-hover)]"
+									data-domains-add-toggle
+									aria-haspopup="menu"
+									aria-expanded="false"
+								>
+									Add New
+									<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+								</button>
+								<div
+									class="absolute right-0 top-full z-30 mt-1 hidden min-w-48 overflow-hidden rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-elevated)] p-1 shadow-md"
+									data-domains-add-menu
+									role="menu"
+								>
+									{
+										canDomainCreate ? (
+											<>
+												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="hostname" role="menuitem">Add domain or subdomain</button>
+												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="bind-env" role="menuitem">Bind zone to environment</button>
+												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="dns-zone" role="menuitem">Add DNS zone (advanced)</button>
+											</>
+										) : null
+									}
+									{
+										canCertCreate ? (
+											<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="certificate" role="menuitem">Upload certificate</button>
+										) : null
+									}
+								</div>
+							</div>
+						</div>
+					</form>
+				</div>
+
+				<!-- Hostnames tab -->
+				<div class={`nz-deployments-table-region ${activeTab === "hostnames" ? "" : "hidden"}`} data-domains-panel="hostnames">
+					<div class="nz-deployments-table-scroll scrollbar-hide">
+						<div class={`${ST.tableWrap} border-0 rounded-none`}>
+							<table class={`${ST.table} nz-deployments-table w-full`}>
+								<thead class={ST.thead}>
+									<tr>
+										<th class={ST.th}>Hostname</th>
+										<th class={ST.th}>DNS mode</th>
+										<th class={ST.th}>Service</th>
+										<th class={ST.th}>Project / Env</th>
+										<th class={ST.th}>Status</th>
+										<th class={ST.thRight}>Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{
+										filteredHostnames.length === 0 ? (
+											<tr class="nz-deployments-empty-row">
+												<td colspan="6" class="p-0">
+													<div class={ST.empty}>
+														<p class="font-medium text-[var(--nz-text)]">No hostnames yet</p>
+														<p class={ST.emptyText}>
+															Add a domain like example.com, then add subdomains under it when needed.
+														</p>
+													</div>
+												</td>
+											</tr>
+										) : (
+											filteredHostnames.map((row) => (
+												<tr class={`${ST.tr} nz-data-table-row`}>
+													<td class={ST.td}>
+														<a
+															href={`${row.https ? "https" : "http"}://${row.host}`}
+															target="_blank"
+															rel="noopener noreferrer"
+															class="font-medium underline-offset-2 hover:underline"
+														>
+															{row.host}
+														</a>
+													</td>
+													<td class={ST.tdMuted}>{dnsModeLabel[row.dnsMode] ?? row.dnsMode}</td>
+													<td class={ST.td}>{row.serviceLabel ?? "—"}</td>
+													<td class={ST.tdMuted}>
+														{row.projectName
+															? `${row.projectName} / ${row.environmentName ?? ""}`
+															: "—"}
+													</td>
+													<td class={ST.td}>
+														<span class={`${badgeClass} ${statusBadge[row.status] ?? ""}`}>
+															{row.status.replace("_", " ")}
+														</span>
+													</td>
+													<td class={ST.tdRight}>
+														<div class="flex items-center justify-end gap-1">
+															{
+																row.status === "unassigned" && canDomainUpdate ? (
+																	<button type="button" class={ST.actionBtn} data-connect-domain={row.domainId}>Connect service</button>
+																) : null
+															}
+															{
+																row.href ? (
+																	<a href={row.href} class={ST.actionBtn}>Manage</a>
+																) : null
+															}
+															{
+																row.status !== "unassigned" && canDomainUpdate ? (
+																	<button type="button" class={ST.actionBtn} data-unassign-domain={row.domainId}>Disconnect</button>
+																) : null
+															}
+															<button type="button" class={ST.actionBtn} data-validate-domain={row.host}>Validate DNS</button>
+														</div>
+													</td>
+												</tr>
+											))
+										)
+									}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<!-- DNS zones tab -->
+				<div class={`nz-deployments-table-region ${activeTab === "zones" ? "" : "hidden"}`} data-domains-panel="zones">
+					{
+						zones.length >= 2 && canDomainUpdate ? (
+							<div class="mb-2 flex justify-end px-1">
+								<button type="button" id="nz-dns-zones-apply-all" class={ST.filterBtn}>Apply all zones</button>
+							</div>
+						) : null
+					}
+					<div class="nz-deployments-table-scroll scrollbar-hide">
+							<div class={`${ST.tableWrap} border-0 rounded-none`}>
+								<table class={`${ST.table} nz-deployments-table nz-domains-table w-full min-w-[760px]`}>
+									<colgroup>
+										<col class="w-[22%]" />
+										<col class="w-[10%]" />
+										<col class="w-[8%]" />
+										<col />
+										<col class="w-[13rem]" />
+									</colgroup>
+									<thead class={ST.thead}>
+									<tr>
+										<th class={ST.th}>Zone</th>
+										<th class={ST.th}>Status</th>
+										<th class={ST.th}>Records</th>
+										<th class={ST.th}>Health</th>
+										<th class={ST.thRight}>Actions</th>
+									</tr>
+								</thead>
+								<tbody>
+									{
+										filteredZones.length === 0 ? (
+											<tr class="nz-deployments-empty-row">
+												<td colspan="5" class="p-0">
+													<div class={ST.empty}>
+														<p class="font-medium text-[var(--nz-text)]">No DNS zones</p>
+														<p class={ST.emptyText}>Use Add New if Nearzero should host DNS for your domain.</p>
+													</div>
+												</td>
+											</tr>
+										) : (
+											filteredZones.map((zone) => {
+												const zoneHealth = health.find((row) => row.name === zone.name);
+												const rowBadge = statusBadge[zone.status] ?? "bg-secondary text-secondary-foreground";
+												return (
+													<tr class={`${ST.tr} nz-data-table-row`} data-zone-id={zone.dnsZoneId}>
+															<td class={ST.td}>
+																<span class="block truncate font-medium">{zone.name}</span>
+																<span class="mt-0.5 block truncate text-[10px] text-[var(--nz-text-muted)]">
+																	NS {(zone.nameservers?.length ? zone.nameservers : [`ns1.${zone.name}`, `ns2.${zone.name}`]).join(", ")}
+																</span>
+															</td>
+															<td class={ST.td}><span class={`${badgeClass} ${rowBadge}`}>{zone.status}</span></td>
+															<td class={ST.tdMuted}>{zone.records.length}</td>
+																<td class={`${ST.tdMuted} whitespace-normal leading-5`}>
+																	{
+																		zoneHealth?.status === "error" && (zoneHealth as { lastError?: string }).lastError
+																			? domainHealthMessage(zoneHealth)
+																		: zoneHealth
+																			? `${zoneHealth.status} (${zoneHealth.recordCount})`
+																			: "—"
+																}
+															</td>
+															<td class={ST.tdRight}>
+																<div class="flex flex-wrap items-center justify-end gap-1">
+																	<button type="button" class={ST.actionBtn} data-zone-records={zone.dnsZoneId}>View records</button>
+																{
+																	canDomainUpdate ? (
+																		<button type="button" class={`${ST.actionBtn} nz-dns-publish`} data-zone-id={zone.dnsZoneId}>Apply to DNS</button>
+																	) : null
+																}
+															</div>
+														</td>
+													</tr>
+												);
+											})
+										)
+									}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+
+				<!-- Bindings tab -->
+				<div class={`nz-deployments-table-region ${activeTab === "bindings" ? "" : "hidden"}`} data-domains-panel="bindings">
+					<div class="nz-deployments-table-scroll scrollbar-hide">
+						<div class={`${ST.tableWrap} border-0 rounded-none`}>
+							<table class={`${ST.table} nz-deployments-table w-full`}>
+							<thead class={ST.thead}>
+								<tr>
+									<th class={ST.th}>Project</th>
+									<th class={ST.th}>Environment</th>
+									<th class={ST.th}>DNS zone</th>
+									<th class={ST.th}>Prefix</th>
+									<th class={ST.thRight}>Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								{
+									bindings.length === 0 ? (
+										<tr class="nz-deployments-empty-row">
+											<td colspan="5" class="p-0">
+												<div class={ST.empty}>
+													<p class="font-medium text-[var(--nz-text)]">No environment bindings</p>
+													<p class={ST.emptyText}>Bind a DNS zone to an environment from Add New.</p>
+												</div>
+											</td>
+										</tr>
+									) : (
+										bindings.map((row) => (
+											<tr class={ST.tr}>
+												<td class={ST.td}>{row.projectName}</td>
+												<td class={ST.td}>{row.environmentName}</td>
+												<td class={ST.tdMuted}>{row.zoneName ?? "None (external DNS)"}</td>
+												<td class={ST.tdMuted}>{row.domainPrefix ?? "—"}</td>
+												<td class={ST.tdRight}>
+													{
+														canDomainUpdate ? (
+															<button
+																type="button"
+																class={ST.actionBtn}
+																data-edit-binding={row.environmentId}
+																data-binding-project={row.projectId}
+																data-binding-zone={row.dnsZoneId ?? ""}
+																data-binding-prefix={row.domainPrefix ?? ""}
+															>
+																Edit
+															</button>
+														) : null
+													}
+												</td>
+											</tr>
+										))
+									)
+								}
+							</tbody>
+						</table>
+						</div>
+					</div>
+				</div>
+
+				<!-- Certificates tab -->
+				<div class={`nz-deployments-table-region ${activeTab === "certificates" ? "" : "hidden"}`} data-domains-panel="certificates">
+					<OrgCertificatesPanel request={Astro.request} servers={servers} embedded />
+				</div>
+			</div>
+
+			<!-- Modals -->
+			<NzModal id="nz-dns-create-dialog" title="Add DNS zone" description="Optional — only if Nearzero hosts authoritative DNS. Not required for Cloudflare users." size="sm" form formId="nz-dns-create-form" showClose={false}>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Zone name</span>
+					<input name="name" required placeholder="example.com" class="nz-modal__input" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">DNS admin email</span>
+					<span class="text-[10px] text-muted-foreground">Stored in the zone file. Not used for login.</span>
+					<input name="soaEmail" required type="email" placeholder="hostmaster@example.com" class="nz-modal__input" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Nameservers</span>
+					<span class="text-[10px] text-muted-foreground">Optional. Separate values with commas or spaces. Defaults to ns1/ns2 for this zone.</span>
+					<input name="nameservers" placeholder="ns1.example.com, ns2.example.com" class="nz-modal__input" />
+				</label>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Create DNS zone</button>
+			</NzModal>
+
+			<NzModal id="nz-dns-records-dialog" title="Zone records" size="lg" showClose={false}>
+				<p id="nz-dns-records-meta" class="text-xs text-muted-foreground" />
+				<form id="nz-dns-record-form" class="grid gap-2 rounded-md border border-[var(--nz-border)] p-3 sm:grid-cols-[1fr_7rem_1.4fr_6rem_6rem_auto]">
+					<input type="hidden" id="nz-dns-record-zone-id" />
+					<input name="name" required placeholder="@ or api" class="nz-modal__input" />
+					<select name="type" id="nz-dns-record-type" class="nz-modal__input">
+						<option value="A">A</option>
+						<option value="AAAA">AAAA</option>
+						<option value="CNAME">CNAME</option>
+						<option value="TXT">TXT</option>
+						<option value="MX">MX</option>
+						<option value="CAA">CAA</option>
+						<option value="NS">NS</option>
+					</select>
+					<input name="value" required placeholder="Value" class="nz-modal__input" />
+					<input name="ttl" type="number" min="1" placeholder="TTL" class="nz-modal__input" />
+					<input name="priority" id="nz-dns-record-priority" type="number" min="0" placeholder="Priority" class="nz-modal__input hidden" />
+					<button type="submit" class="nz-modal__btn nz-modal__btn--primary">Add</button>
+				</form>
+				<div class={ST.tableWrap}>
+					<table class={ST.table}>
+						<thead class={ST.thead}><tr><th class={ST.th}>Name</th><th class={ST.th}>Type</th><th class={ST.th}>Value</th><th class={ST.th}>TTL</th><th class={ST.thRight}>Actions</th></tr></thead>
+						<tbody id="nz-dns-records-body" />
+					</table>
+				</div>
+			</NzModal>
+
+			<NzModal id="nz-add-hostname-dialog" title="Add domain or subdomain" description="Add example.com first, then add subdomains like api.example.com under it." size="md" form formId="nz-add-hostname-form" showClose={false}>
+				<label class="flex items-center gap-2 text-xs">
+					<input id="nz-add-hostname-subdomain-mode" type="checkbox" />
+					Add as subdomain of an existing domain
+				</label>
+				<div id="nz-add-hostname-full-row" class="nz-modal__field">
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Domain or hostname</span>
+						<input id="nz-add-hostname-host" name="host" placeholder="example.com or app.example.com" class="nz-modal__input" />
+					</label>
+				</div>
+				<div id="nz-add-hostname-subdomain-row" class="hidden space-y-2">
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Parent domain</span>
+						<select id="nz-add-hostname-parent" class="nz-modal__input">
+							<option value="">Select domain</option>
+							{parentDomains.map((domain) => <option value={domain}>{domain}</option>)}
+						</select>
+					</label>
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Subdomain</span>
+						<input id="nz-add-hostname-prefix" placeholder="api" class="nz-modal__input" />
+						<span class="text-[10px] text-muted-foreground">Creates api.example.com when parent is example.com</span>
+					</label>
+					<p id="nz-add-hostname-subdomain-preview" class="text-[11px] text-muted-foreground" />
+				</div>
+				<fieldset class="nz-modal__field">
+					<span class="nz-modal__label">DNS mode</span>
+					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="external" checked /> External DNS (Cloudflare, registrar)</label>
+					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="nearzero_managed" /> Nearzero DNS (org zone)</label>
+					{
+						platformEnabled ? (
+							<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="platform" /> Platform domain</label>
+						) : null
+					}
+				</fieldset>
+				<div id="nz-add-hostname-zone-row" class="nz-modal__field hidden">
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Org DNS zone</span>
+						<select id="nz-add-hostname-zone" class="nz-modal__input">
+							<option value="">Select zone</option>
+							{zones.map((z) => <option value={z.dnsZoneId}>{z.name}</option>)}
+						</select>
+					</label>
+				</div>
+				<label class="flex items-center gap-2 text-xs">
+					<input id="nz-add-hostname-connect" type="checkbox" />
+					Connect to service now
+				</label>
+				<div id="nz-add-hostname-connect-fields" class="hidden space-y-2">
+					<select id="nz-add-hostname-project" class="nz-modal__input" />
+					<select id="nz-add-hostname-env" class="nz-modal__input" />
+					<select id="nz-add-hostname-service" class="nz-modal__input" />
+					<input id="nz-add-hostname-port" type="number" value="3000" min="1" max="65535" class="nz-modal__input" placeholder="Port" />
+					<input id="nz-add-hostname-path" type="text" value="/" class="nz-modal__input" placeholder="Path prefix, e.g. / or /api" />
+				</div>
+				<label class="flex items-center gap-2 text-xs"><input id="nz-add-hostname-https" type="checkbox" /> Enable HTTPS</label>
+				<select id="nz-add-hostname-cert" class="nz-modal__input">
+					<option value="letsencrypt">Let's Encrypt</option>
+					<option value="none">None</option>
+				</select>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Add domain</button>
+			</NzModal>
+
+			<NzModal id="nz-connect-service-dialog" title="Connect service" size="md" form formId="nz-connect-service-form" showClose={false}>
+				<input type="hidden" id="nz-connect-service-domain-id" />
+				<select id="nz-connect-service-project" class="nz-modal__input" required />
+				<select id="nz-connect-service-env" class="nz-modal__input" required />
+				<select id="nz-connect-service-service" class="nz-modal__input" required />
+				<input id="nz-connect-service-port" type="number" value="3000" min="1" max="65535" class="nz-modal__input" />
+				<input id="nz-connect-service-path" type="text" value="/" class="nz-modal__input" placeholder="Path prefix, e.g. / or /api" />
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Connect</button>
+			</NzModal>
+
+			<NzModal id="nz-bind-env-dialog" title="Bind zone to environment" size="md" form formId="nz-bind-env-form" showClose={false}>
+				<select id="nz-bind-env-project" class="nz-modal__input" required />
+				<select id="nz-bind-env-environment" class="nz-modal__input" required />
+				<select id="nz-bind-env-zone" class="nz-modal__input" />
+				<input id="nz-bind-env-prefix" type="text" placeholder="Domain prefix (optional)" class="nz-modal__input" />
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Save binding</button>
+			</NzModal>
+
+			<NzModal id="nz-cert-form-dialog" title="Upload certificate" size="lg" form formId="nz-cert-form" showClose={false}>
+				<input type="hidden" id="nz-cert-form-id" value="" />
+				<p id="nz-cert-form-error" class="nz-modal__callout hidden text-destructive" />
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Certificate name</span>
+					<input id="nz-cert-name" required placeholder="Production wildcard" class="nz-modal__input" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Certificate (PEM)</span>
+					<textarea id="nz-cert-data" required rows="8" placeholder="-----BEGIN CERTIFICATE-----" class="nz-modal__textarea nz-modal__textarea--code" />
+				</label>
+				<label class="nz-modal__field">
+					<span class="nz-modal__label">Private key (PEM)</span>
+					<textarea id="nz-cert-private" required rows="8" placeholder="-----BEGIN PRIVATE KEY-----" class="nz-modal__textarea nz-modal__textarea--code" />
+				</label>
+				<div id="nz-cert-server-row" class="nz-modal__field hidden">
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">Server</span>
+						<select id="nz-cert-server" class="nz-modal__select">
+							<option value="nearzero">Nearzero (Local)</option>
+							{servers.map((s) => <option value={s.serverId}>{s.name} ({s.ipAddress})</option>)}
+						</select>
+					</label>
+				</div>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
+				<button slot="footer" type="submit" id="nz-cert-form-submit" class="nz-modal__btn nz-modal__btn--primary">Create</button>
+			</NzModal>
+
+			<NzModal id="nz-cert-delete-dialog" title="Delete certificate" description="This certificate will be removed from Traefik." variant="danger" size="sm" showClose={false}>
+				<p class="text-xs text-muted-foreground">Are you sure you want to delete this certificate?</p>
+				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close id="nz-cert-delete-cancel">Cancel</button>
+				<button slot="footer" type="button" id="nz-cert-delete-confirm" class="nz-modal__btn nz-modal__btn--danger">Delete</button>
+			</NzModal>
+
+			<script is:inline type="application/json" id="nz-dns-zones-json" set:html={JSON.stringify(zones)} />
+			<script is:inline type="application/json" id="nz-domains-projects-json" set:html={JSON.stringify(projects)} />
+			<script is:inline type="application/json" id="nz-domains-zones-options-json" set:html={JSON.stringify(zones.map((z) => ({ dnsZoneId: z.dnsZoneId, name: z.name })))} />
+		</div>
+	)
+}
+
+<script>
+	import { initDomainsHub } from "@/scripts/domains-hub";
+	import { refreshNzModalListeners } from "@/scripts/modal-animations";
+
+	function boot() {
+		refreshNzModalListeners();
+		initDomainsHub();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

@@ -1,0 +1,5 @@
+{
+	"buildCommand": "cd ../.. && bun run server:build && bun run console:build",
+	"installCommand": "cd ../.. && bun install",
+	"framework": "astro"
+}

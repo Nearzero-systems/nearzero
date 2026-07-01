@@ -1,0 +1,63 @@
+name: nearzero
+
+services:
+  platform:
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:latest}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
+      NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
+      NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}
+    ports:
+      - "${NEARZERO_PLATFORM_PORT:-3000}:3000"
+      - "${NEARZERO_CONSOLE_PORT:-4321}:4321"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - nearzero-data:/etc/nearzero
+    depends_on:
+      monitoring:
+        condition: service_healthy
+    restart: unless-stopped
+
+  monitoring:
+    container_name: nearzero-monitoring
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}
+    environment:
+      METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
+      HOST_PROC: /host/proc
+      HOST_SYS: /host/sys
+      NEARZERO_HOST_ROOT: /host/root
+    ports:
+      - "127.0.0.1:${NEARZERO_METRICS_PORT:-4500}:${NEARZERO_METRICS_PORT:-4500}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host/root:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/etc/os-release:ro
+      - /proc:/host/proc:ro
+      - /etc/nearzero/monitoring/monitoring.db:/app/monitoring.db
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${NEARZERO_METRICS_PORT:-4500}/health >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  schedules:
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:latest}
+    profiles: ["schedules"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+    restart: unless-stopped
+
+volumes:
+  nearzero-data:

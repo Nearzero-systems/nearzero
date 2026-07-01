@@ -1,0 +1,142 @@
+---
+import Favicon from "../components/Favicon.astro";
+import ThemeInit from "../components/ThemeInit.astro";
+import "../styles/global.css";
+import "../styles/globals.css";
+import "../styles/nearzero-theme.css";
+const { title = "Nearzero", forceLightTheme = false } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <Favicon />
+    <title>{title}</title>
+    <ThemeInit forceLight={forceLightTheme} />
+  </head>
+  <body class="bg-[var(--nz-bg-elevated)] text-[var(--nz-text)]">
+    <slot />
+    <div
+      id="toast-root"
+      class="pointer-events-none fixed bottom-4 right-4 z-[600] flex max-w-[min(100vw-2rem,22rem)] flex-col items-end"
+      aria-live="polite"
+    ></div>
+    <script is:inline>
+      window.nzShowToast = function (input) {
+        const detail =
+          typeof input === "string"
+            ? { message: String(input ?? "") }
+            : input && typeof input === "object"
+              ? input
+              : { message: "" };
+        document.dispatchEvent(
+          new CustomEvent("nz-toast", {
+            bubbles: true,
+            detail,
+          }),
+        );
+      };
+
+      (() => {
+        const root = document.getElementById("toast-root");
+        if (!(root instanceof HTMLElement)) return;
+
+        let timerId = /** @type {ReturnType<typeof setTimeout>|null} */ (null);
+        /** @type {HTMLElement|null} */
+        let currentToast = null;
+
+        const tearDown = () => {
+          currentToast?.remove();
+          currentToast = null;
+          if (timerId) window.clearTimeout(timerId);
+          timerId = null;
+        };
+
+        const show = (detail) => {
+          const msg = String(detail?.message || "").trim();
+          if (!msg) return;
+
+          tearDown();
+
+          const variantClass =
+            detail?.variant === "error"
+              ? "nz-toast nz-toast--error"
+              : detail?.variant === "success"
+                ? "nz-toast nz-toast--success"
+                : "nz-toast";
+
+          const node = document.createElement("div");
+          node.role = "status";
+          node.className = `${variantClass} pointer-events-auto w-full`.trim();
+
+          const titleEl = document.createElement("p");
+          titleEl.className = "nz-toast__title";
+          titleEl.textContent = msg;
+          node.appendChild(titleEl);
+
+          const desc =
+            typeof detail?.description === "string"
+              ? detail.description.trim()
+              : "";
+          if (desc) {
+            const p = document.createElement("p");
+            p.className = "nz-toast__desc";
+            p.textContent = desc;
+            node.appendChild(p);
+          }
+
+          const actions = Array.isArray(detail?.actions) ? detail.actions : [];
+          if (actions.length) {
+            const row = document.createElement("div");
+            row.className = "nz-toast__actions";
+            for (const action of actions) {
+              if (!action?.id || !action?.label) continue;
+              const btn = document.createElement("button");
+              btn.type = "button";
+              const toneClass =
+                action.tone === "primary"
+                  ? "nz-toast__action nz-toast__action--primary"
+                  : action.tone === "danger"
+                    ? "nz-toast__action nz-toast__action--danger"
+                    : "nz-toast__action";
+              btn.className = toneClass;
+              btn.textContent = action.label;
+              btn.addEventListener("click", () => {
+                document.dispatchEvent(
+                  new CustomEvent("nz-toast-action", {
+                    bubbles: true,
+                    detail: {
+                      toastId: detail?.toastId,
+                      actionId: action.id,
+                    },
+                  }),
+                );
+                tearDown();
+              });
+              row.appendChild(btn);
+            }
+            node.appendChild(row);
+          }
+
+          root.appendChild(node);
+          currentToast = node;
+
+          if (!detail?.persistent) timerId = window.setTimeout(tearDown, 6500);
+        };
+
+        document.addEventListener("nz-toast", (ev) => {
+          const ce = /** @type {CustomEvent} */ (ev);
+          show(ce.detail || {});
+        });
+      })();
+    </script>
+    {!forceLightTheme && (
+      <script>
+        import { initTheme } from "@/scripts/theme";
+        initTheme();
+        document.addEventListener("astro:page-load", () => initTheme());
+      </script>
+    )}
+  </body>
+</html>

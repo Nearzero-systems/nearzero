@@ -1,0 +1,28 @@
+---
+/** Matrix "N" favicon — matches AgentDotMatrixIcon. */
+const faviconHref = "/favicon.svg?v=2";
+---
+<link rel="icon" href={faviconHref} type="image/svg+xml" sizes="any" />
+<link rel="shortcut icon" href={faviconHref} type="image/svg+xml" />
+<link rel="apple-touch-icon" href={faviconHref} />
+<script is:inline define:vars={{ faviconHref }}>
+	function ensureNearzeroFavicon() {
+		const href = faviconHref;
+		for (const el of document.querySelectorAll('link[rel="icon"]')) {
+			if (el instanceof HTMLLinkElement && el.getAttribute("href") === href) {
+				return;
+			}
+		}
+		for (const el of document.querySelectorAll('link[rel="icon"]')) {
+			el.remove();
+		}
+		const link = document.createElement("link");
+		link.rel = "icon";
+		link.type = "image/svg+xml";
+		link.sizes = "any";
+		link.href = href;
+		document.head.appendChild(link);
+	}
+	ensureNearzeroFavicon();
+	document.addEventListener("astro:page-load", ensureNearzeroFavicon);
+</script>

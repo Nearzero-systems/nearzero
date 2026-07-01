@@ -1,0 +1,26 @@
+---
+import AgentDashboard from "@/components/dashboard/agent/AgentDashboard.astro";
+import DashboardAsyncRegion from "@/components/dashboard/DashboardAsyncRegion.astro";
+import Dashboard from "@/layouts/Dashboard.astro";
+import { getSession } from "@/lib/backendProxy";
+import { pageTitle } from "@/lib/branding";
+import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+	return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+}
+const isFragment = isDashboardFragmentRequest(Astro.request);
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+---
+
+{
+	isFragment ? (
+		<AgentDashboard request={Astro.request} />
+	) : (
+		<Dashboard title={pageTitle("Agent")} user={session.user}>
+			<DashboardAsyncRegion routeId="dashboard:agent" search={Astro.url.search} orgSlug={orgSlug} label="Loading agent..." />
+		</Dashboard>
+	)
+}

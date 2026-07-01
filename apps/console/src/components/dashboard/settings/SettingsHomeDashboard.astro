@@ -1,0 +1,110 @@
+---
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { buildSettingsSections } from "@/lib/settings-nav";
+import { scopeDashboardHref } from "@/lib/org-routes";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+import type { NavContext } from "@/components/dashboard/navMenu";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.always,
+});
+
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+
+let ctx: NavContext = {
+	auth: null,
+	permissions: undefined,
+	orgSlug,
+};
+let sections: ReturnType<typeof buildSettingsSections> = [];
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		const [member, perm] = await Promise.all([
+			api.user.get.query(),
+			api.user.getPermissions.query(),
+		]);
+		ctx = {
+			auth:
+				member && typeof member === "object"
+					? { role: (member as { role?: string | null }).role ?? null }
+					: null,
+			permissions: (perm ?? null) as NavContext["permissions"],
+			orgSlug,
+		};
+		sections = buildSettingsSections(ctx);
+	} catch {
+		sections = [];
+	}
+}
+
+const agentHref = scopeDashboardHref("/dashboard/agent", orgSlug);
+---
+
+{
+	forbidden ? (
+		<p class="text-sm text-[#6b7280]">You do not have access to settings.</p>
+	) : loadFailed ? (
+		<p class="text-sm text-[#6b7280]">Could not load settings. Try refreshing.</p>
+	) : (
+		<div class="space-y-8">
+			<div>
+				<p class="text-sm leading-relaxed text-[#6b7280]">
+					Configure your workspace, platform, team, and Agent. Use the menu on the left to jump to any section.
+				</p>
+			</div>
+
+			<div class="rounded-lg border border-[#eceef3] bg-[#fafafa] p-4">
+				<p class="text-xs font-medium uppercase tracking-wide text-[#9ca3af]">
+					Quick start
+				</p>
+				<ul class="mt-3 space-y-2 text-sm text-[#111827]">
+					<li>
+						<a href={agentHref} class="font-medium underline-offset-2 hover:underline">
+							Open Agent
+						</a>
+						<span class="text-[#6b7280]"> — deploy and debug with your copilot</span>
+					</li>
+					<li>
+						<a
+							href={scopeDashboardHref("/dashboard/projects", ctx.orgSlug)}
+							class="font-medium underline-offset-2 hover:underline"
+						>
+							Projects
+						</a>
+						<span class="text-[#6b7280]"> — applications, compose, and databases</span>
+					</li>
+				</ul>
+			</div>
+
+			<div>
+				<ul class="divide-y divide-[#eceef3] rounded-lg border border-[#eceef3] bg-white">
+					{
+						sections.flatMap((section) =>
+							section.items.map((item) => (
+								<li>
+									<a
+										href={item.href}
+										data-astro-prefetch="hover"
+										class="flex items-center justify-between px-4 py-3 text-sm text-[#111827] no-underline transition-colors hover:bg-[#f7f7f8]"
+									>
+										<span>{item.label}</span>
+										<span class="text-[#9ca3af]" aria-hidden="true">
+											→
+										</span>
+									</a>
+								</li>
+							)),
+						)
+					}
+				</ul>
+			</div>
+		</div>
+	)
+}

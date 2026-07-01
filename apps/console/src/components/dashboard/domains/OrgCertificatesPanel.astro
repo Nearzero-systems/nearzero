@@ -1,0 +1,144 @@
+---
+import {
+	extractLeafCommonName,
+	getCertificateChainExpirationDetails,
+	getCertificateChainInfo,
+	getExpirationStatus,
+} from "@/lib/certificate-utils";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+interface Props {
+	request: Request;
+	servers: Array<{ serverId: string; name: string; ipAddress: string }>;
+	embedded?: boolean;
+}
+
+const { request, embedded = false } = Astro.props;
+
+type CertView = {
+	certificateId: string;
+	name: string;
+	certificateData: string;
+	autoRenew?: boolean | null;
+	server?: { name: string; ipAddress: string } | null;
+	commonName: string | null;
+	expiration: ReturnType<typeof getExpirationStatus>;
+	chainInfo: ReturnType<typeof getCertificateChainInfo>;
+	chainDetails: ReturnType<typeof getCertificateChainExpirationDetails> | null;
+};
+
+let certificates: CertView[] = [];
+let permissions: {
+	certificate?: { create?: boolean; update?: boolean; delete?: boolean };
+} | null = null;
+
+try {
+	const api = createServerTrpcClient(request) as any;
+	const [rawCerts, perms] = await Promise.all([
+		api.certificates.all.query(),
+		api.user.getPermissions.query(),
+	]);
+	permissions = perms;
+	certificates = (rawCerts || []).map((certificate: any) => {
+		const chainInfo = getCertificateChainInfo(certificate.certificateData);
+		return {
+			certificateId: certificate.certificateId,
+			name: certificate.name,
+			certificateData: certificate.certificateData,
+			autoRenew: certificate.autoRenew,
+			server: certificate.server,
+			commonName: extractLeafCommonName(certificate.certificateData),
+			expiration: getExpirationStatus(certificate.certificateData),
+			chainInfo,
+			chainDetails: chainInfo.isChain
+				? getCertificateChainExpirationDetails(certificate.certificateData)
+				: null,
+		};
+	});
+} catch {
+	certificates = [];
+}
+
+const canUpdate = !!permissions?.certificate?.update;
+const canDelete = !!permissions?.certificate?.delete;
+---
+
+<div
+	class="flex min-h-0 w-full flex-1 flex-col"
+	id="nz-certificates-root"
+	data-has-servers={Astro.props.servers.length > 0 ? "1" : "0"}
+	data-show-server-on-create="1"
+	data-embedded={embedded ? "1" : "0"}
+>
+	<div class="nz-deployments-table-scroll scrollbar-hide">
+		<div class={`${ST.tableWrap} border-0 rounded-none`}>
+			<table class={`${ST.table} nz-deployments-table w-full`}>
+				<thead class={ST.thead}>
+					<tr>
+						<th class={ST.th}>Name</th>
+						<th class={ST.th}>Common name</th>
+						<th class={ST.th}>Server</th>
+						<th class={ST.th}>Expiration</th>
+						<th class={ST.thRight}>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					{
+						certificates.length === 0 ? (
+							<tr class="nz-deployments-empty-row">
+								<td colspan="5" class="p-0">
+									<div class={ST.empty}>
+										<p class="font-medium text-[var(--nz-text)]">No certificates uploaded yet</p>
+										<p class={ST.emptyText}>Use Add New to upload one.</p>
+									</div>
+								</td>
+							</tr>
+						) : (
+							certificates.map((certificate) => (
+								<tr class={`${ST.tr} nz-data-table-row`}>
+									<td class={ST.td}>
+										<span class="font-medium">{certificate.name}</span>
+									</td>
+									<td class={ST.tdMuted}>{certificate.commonName ?? "—"}</td>
+									<td class={ST.tdMuted}>
+										{certificate.server
+											? `${certificate.server.name} (${certificate.server.ipAddress})`
+											: "Nearzero (Local)"}
+									</td>
+									<td class={ST.td}>
+										<span class={`text-xs ${certificate.expiration.className}`}>
+											{certificate.expiration.message}
+										</span>
+									</td>
+									<td class={ST.tdRight}>
+										<div class="flex items-center justify-end gap-1">
+											{canUpdate ? (
+												<button
+													type="button"
+													class={ST.actionBtn}
+													data-cert-edit={certificate.certificateId}
+												>
+													Edit
+												</button>
+											) : null}
+											{canDelete ? (
+												<button
+													type="button"
+													class={ST.actionBtn}
+													data-cert-delete={certificate.certificateId}
+												>
+													Delete
+												</button>
+											) : null}
+										</div>
+									</td>
+								</tr>
+							))
+						)
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>

@@ -1,0 +1,58 @@
+---
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import WebServerSettingsPanel from "@/components/dashboard/settings/web-server/WebServerSettingsPanel.astro";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.webServer,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+let webServerSettings: { serverIp?: string | null; enableDockerCleanup?: boolean } | null = null;
+const nearzeroVersion = "0.0.1";
+let releaseTag = "";
+let traefikDashboardEnabled = false;
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		[webServerSettings, releaseTag, traefikDashboardEnabled] = await Promise.all([
+			api.settings.getWebServerSettings.query(),
+			api.settings.getReleaseTag.query(),
+			api.settings.haveTraefikDashboardPortEnabled.query({}),
+		]);
+	} catch {
+		/* partial ok */
+	}
+}
+
+const versionLabel =
+	releaseTag === "nightly" || releaseTag === "feature"
+		? `${nearzeroVersion} (${releaseTag})`
+		: nearzeroVersion;
+---
+
+<div class="w-full">
+	{
+		loadFailed ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-2 p-10 text-center text-xs text-muted-foreground">
+				<span>Could not load this page.</span>
+				<span class="text-xs">Try refreshing.</span>
+			</div>
+		) : forbidden ? (
+			<div class="flex min-h-[45vh] flex-col items-center justify-center gap-3 px-10 text-center text-xs text-muted-foreground">
+				<span>You do not have access to this section.</span>
+				<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+			</div>
+		) : (
+			<WebServerSettingsPanel
+				webServerSettings={webServerSettings}
+				versionLabel={versionLabel}
+				traefikDashboardEnabled={traefikDashboardEnabled}
+			/>
+		)
+	}
+</div>

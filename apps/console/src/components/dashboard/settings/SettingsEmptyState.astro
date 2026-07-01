@@ -1,0 +1,15 @@
+---
+import { ST } from "@/lib/settings-hub-ui";
+
+interface Props {
+	message: string;
+	class?: string;
+}
+
+const { message, class: className } = Astro.props;
+---
+
+<div class:list={[ST.empty, className]}>
+	<p class={ST.emptyText}>{message}</p>
+	<slot />
+</div>

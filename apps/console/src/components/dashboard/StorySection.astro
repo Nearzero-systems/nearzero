@@ -1,0 +1,40 @@
+---
+import { badgeClass, cardClass, mutedCardClass } from "./demoShared";
+
+interface Props {
+  steps: Array<{
+    index: string;
+    title: string;
+    description: string;
+    actions: Array<{ title: string; copy: string; href: string }>;
+  }>;
+}
+
+const { steps } = Astro.props;
+---
+
+<div class="space-y-px">
+  {steps.map((step) => (
+    <div class="grid gap-px xl:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+      <div class={`${cardClass} flex flex-col justify-between gap-3`}>
+        <div>
+          <span class={badgeClass}>{step.index}</span>
+          <h2 class="mt-3 text-base font-semibold tracking-tight text-[#111827]">
+            {step.title}
+          </h2>
+          <p class="mt-2 text-xs leading-6 text-[#6b7280]">
+            {step.description}
+          </p>
+        </div>
+      </div>
+      <div class={`${cardClass} grid gap-px md:grid-cols-2`}>
+        {step.actions.map((action) => (
+          <a class={`${mutedCardClass} transition-colors hover:bg-white`} href={action.href}>
+            <p class="text-xs font-medium text-[#111827]">{action.title}</p>
+            <p class="mt-2 text-xs leading-6 text-[#6b7280]">{action.copy}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+  ))}
+</div>

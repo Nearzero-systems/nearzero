@@ -1,0 +1,36 @@
+---
+import SidebarIcon from "../../SidebarIcon.astro";
+import SidebarAnimatedIcon from "./SidebarAnimatedIcon.tsx";
+import {
+	isSidebarAnimatedIcon,
+	type SidebarAnimatedIconName,
+} from "./sidebarAnimatedIcons";
+
+interface Props {
+	name: string;
+	animated?: boolean;
+}
+
+const { name, animated = false } = Astro.props;
+const iconClass = "inline-flex size-4 shrink-0 text-current";
+const useAnimated = animated && isSidebarAnimatedIcon(name);
+---
+
+{
+	useAnimated ? (
+		<span class="nz-sidebar-nav-icon-slot inline-flex size-4 shrink-0 items-center justify-center">
+			<SidebarIcon
+				name={name}
+				class={`${iconClass} nz-sidebar-nav-icon-fallback`}
+				aria-hidden="true"
+			/>
+			<SidebarAnimatedIcon
+				client:load
+				name={name as SidebarAnimatedIconName}
+				className={`${iconClass} nz-sidebar-nav-icon-animated`}
+			/>
+		</span>
+	) : (
+		<SidebarIcon name={name} class={iconClass} />
+	)
+}

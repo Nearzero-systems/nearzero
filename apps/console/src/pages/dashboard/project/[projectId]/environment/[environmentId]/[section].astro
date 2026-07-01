@@ -1,0 +1,63 @@
+---
+import Dashboard from "@/layouts/Dashboard.astro";
+import DashboardAsyncRegion from "@/components/dashboard/DashboardAsyncRegion.astro";
+import ProjectWorkspaceDashboard from "@/components/dashboard/project/ProjectWorkspaceDashboard.astro";
+import { pageTitle } from "@/lib/branding";
+import { getSession } from "@/lib/backendProxy";
+import {
+	isProjectWorkspaceSection,
+	normalizeProjectWorkspaceSection,
+} from "@/lib/project-workspace-nav";
+import type { DashboardContextLabels } from "@/lib/dashboard-context-server";
+import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+	return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+}
+
+const routeParams = Object.fromEntries(
+	Object.entries(Astro.params).filter(([, v]) => typeof v === "string"),
+) as Record<string, string>;
+
+const projectId = routeParams.projectId ?? "";
+const environmentId = routeParams.environmentId ?? "";
+const rawSection = routeParams.section ?? "overview";
+
+if (!isProjectWorkspaceSection(rawSection)) {
+	return Astro.redirect(
+		`/dashboard/project/${projectId}/environment/${environmentId}/overview`,
+	);
+}
+
+const section = normalizeProjectWorkspaceSection(rawSection);
+const isFragment = isDashboardFragmentRequest(Astro.request);
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+const dashboardContext: DashboardContextLabels = {};
+---
+
+{
+	isFragment ? (
+		<ProjectWorkspaceDashboard
+			request={Astro.request}
+			projectId={projectId}
+			environmentId={environmentId}
+			section={section}
+		/>
+	) : (
+		<Dashboard
+			title={pageTitle(dashboardContext.projectName ?? "Project")}
+			user={session.user}
+			dashboardContext={dashboardContext}
+		>
+			<DashboardAsyncRegion
+				routeId="dashboard:project-environment-section"
+				params={{ projectId, environmentId, section }}
+				search={Astro.url.search}
+				orgSlug={orgSlug}
+				label="Loading project..."
+			/>
+		</Dashboard>
+	)
+}

@@ -1,0 +1,197 @@
+---
+import AuthGrid from "./AuthGrid.astro";
+import AuthButtonSpinner from "./AuthButtonSpinner.astro";
+import {
+	authBtnClass,
+	authControlClass,
+	authMutedText,
+	authResendBtnClass,
+} from "@/lib/auth-form-classes";
+
+import {
+	ALL_SOCIAL_AUTH_PROVIDERS,
+	type SocialAuthProviderId,
+} from "@/lib/social-auth-providers";
+
+interface Props {
+	callbackUrl: string;
+	registerHref?: string;
+	initialEmail?: string;
+	enabledSocialProviders?: SocialAuthProviderId[];
+	socialProvidersKnown?: boolean;
+}
+
+const {
+	callbackUrl,
+	registerHref = "/register",
+	initialEmail = "",
+	enabledSocialProviders = ALL_SOCIAL_AUTH_PROVIDERS,
+	socialProvidersKnown = false,
+} = Astro.props;
+
+const showGithub =
+	!socialProvidersKnown || enabledSocialProviders.includes("github");
+const showGoogle =
+	!socialProvidersKnown || enabledSocialProviders.includes("google");
+const showOAuth = showGithub || showGoogle;
+
+---
+
+<div
+	id="nz-login-root"
+	class="contents"
+	data-callback-url={callbackUrl}
+	data-register-href={registerHref}
+	data-initial-email={initialEmail}
+	data-enabled-providers={enabledSocialProviders.join(",")}
+	data-social-providers-known={socialProvidersKnown ? "1" : "0"}
+>
+	<AuthGrid>
+		<div slot="c4" class="mx-auto flex h-full w-full max-w-[30rem] items-end justify-center pb-1 text-center">
+			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">Welcome to Nearzero</h1>
+		</div>
+		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
+			<p class={`text-sm ${authMutedText} hidden`} data-otp-subtitle-verify>
+				We sent a one-time code to <span class="font-medium text-[#111827]" data-otp-verify-email></span>.
+			</p>
+			<p class={`text-sm ${authMutedText}`} data-otp-subtitle-email>
+				Don't have an account?{" "}
+				<a href={registerHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Sign up</a>
+			</p>
+		</div>
+		<div slot="c10" class="mx-auto flex h-full w-full max-w-[30rem] flex-col justify-center gap-1.5">
+			<div data-otp-stage="email">
+				<form data-otp-email-form class="flex flex-col gap-2">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Email</span>
+						<input
+							type="email"
+							name="email"
+							data-otp-email-input
+							autocomplete="email"
+							inputmode="email"
+							spellcheck="false"
+							required
+							placeholder="me@company.com"
+							value={initialEmail}
+							class={authControlClass}
+						/>
+					</label>
+					<button type="submit" data-otp-email-submit data-default-label="Continue" class={authBtnClass}>
+						<AuthButtonSpinner />
+						<span data-otp-btn-label>Continue</span>
+					</button>
+				</form>
+			</div>
+			<div data-otp-stage="verify" class="hidden">
+				<form data-otp-verify-form class="flex flex-col gap-2">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Verification code</span>
+						<input
+							type="text"
+							name="code"
+							data-otp-code-input
+							inputmode="numeric"
+							autocomplete="one-time-code"
+							maxlength="6"
+							required
+							placeholder="000000"
+							class={authControlClass}
+						/>
+					</label>
+					<button type="submit" data-otp-verify-submit data-verify="1" data-default-label="Verify and continue" class={authBtnClass}>
+						<AuthButtonSpinner />
+						<span data-otp-btn-label>Verify and continue</span>
+					</button>
+				</form>
+			</div>
+		</div>
+		<div slot="c13" class="mx-auto flex h-full w-full max-w-[36rem] flex-col justify-center gap-2">
+			<div data-otp-oauth-panel class:list={["flex flex-col gap-2", { hidden: !showOAuth }]}>
+				<button type="button" id="nz-login-github" data-social-auth="github" data-default-label="Login with GitHub" class:list={[authBtnClass, { hidden: !showGithub }]}>
+					<AuthButtonSpinner />
+					<svg data-auth-btn-icon class="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true"><path fill="#24292f" d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.2.8-.5v-2c-3.3.7-4-1.4-4-1.4-.6-1.4-1.5-1.8-1.5-1.8-1.2-.8.1-.8.1-.8 1.4.1 2.1 1.4 2.1 1.4 1.2 2.1 3.2 1.5 4 .9.1-.9.5-1.5.9-1.9-2.7-.3-5.4-1.4-5.4-6a4.7 4.7 0 0 1 1.3-3.3c-.1-.3-.6-1.5.1-3.2 0 0 1.1-.4 3.4 1.3a11.8 11.8 0 0 1 6.2 0c2.3-1.7 3.4-1.3 3.4-1.3.7 1.7.3 2.9.1 3.2a4.7 4.7 0 0 1 1.3 3.3c0 4.6-2.7 5.7-5.4 6 .5.4 1 1.2 1 2.5v3.7c0 .3.2.6.8.5A12 12 0 0 0 12 .3z"/></svg>
+					<span id="nz-login-github-label" data-auth-btn-label>Login with GitHub</span>
+				</button>
+				<button type="button" id="nz-login-google" data-social-auth="google" data-default-label="Login with Google" class:list={[authBtnClass, { hidden: !showGoogle }]}>
+					<AuthButtonSpinner />
+					<svg data-auth-btn-icon class="h-4 w-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+					<span id="nz-login-google-label" data-auth-btn-label>Login with Google</span>
+				</button>
+			</div>
+			<div data-otp-verify-footer class="hidden flex w-full flex-col items-center gap-2 pt-2 text-center">
+				<button type="button" data-otp-resend-btn data-default-label="Resend code" class={authResendBtnClass}>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Resend code</span>
+				</button>
+				<button
+					type="button"
+					data-otp-use-different-email
+					class={`block w-full text-xs underline-offset-2 hover:underline ${authMutedText}`}
+				>
+					Use different email
+				</button>
+			</div>
+		</div>
+		<div slot="c16" data-otp-legal-footer class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-3 px-3 text-center text-[11px] leading-relaxed text-[#a3a3a3] sm:text-xs">
+			<p class="max-w-[20rem] text-balance sm:max-w-[24rem]">
+				By continuing, you agree to our{" "}
+				<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Terms of Service</span>
+				{" "}and{" "}
+				<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Privacy Policy</span>.
+			</p>
+			<!-- <p class="cursor-pointer underline underline-offset-2 transition-colors hover:text-[#111827]">Are you an AI agent? Log in with this skill</p> -->
+		</div>
+	</AuthGrid>
+</div>
+
+<script>
+	import type { SocialAuthProviderId } from "@/lib/social-auth-providers";
+	import { bindAuthOtpFlow } from "@/scripts/auth-otp-flow";
+	import {
+		applySocialAuthProviderVisibility,
+		bindSocialAuthFlow,
+	} from "@/scripts/auth-social-flow";
+
+	function bindLogin() {
+		const root = document.getElementById("nz-login-root");
+		if (!root) return;
+		const callbackUrl = root.dataset.callbackUrl || "/dashboard/agent";
+
+		bindAuthOtpFlow({
+			root,
+			callbackUrl,
+			intent: "login",
+			registerHref: root.dataset.registerHref || "/register",
+		});
+
+		if (root.dataset.oauthBound === "1") return;
+		root.dataset.oauthBound = "1";
+
+		const enabledProviders = (root.dataset.enabledProviders || "")
+			.split(",")
+			.filter((value): value is SocialAuthProviderId =>
+				value === "github" || value === "google",
+			);
+		const providersKnown = root.dataset.socialProvidersKnown === "1";
+		applySocialAuthProviderVisibility(
+			root,
+			enabledProviders,
+			providersKnown,
+		);
+
+		const githubBtn = root.querySelector<HTMLButtonElement>("#nz-login-github");
+		const googleBtn = root.querySelector<HTMLButtonElement>("#nz-login-google");
+		bindSocialAuthFlow({
+			githubButton: githubBtn,
+			googleButton: googleBtn,
+			enabledProviders,
+			providersKnown,
+			resolveCallbackUrl: () => callbackUrl,
+			actionLabel: "login",
+		});
+	}
+
+	bindLogin();
+	document.addEventListener("astro:page-load", bindLogin);
+</script>

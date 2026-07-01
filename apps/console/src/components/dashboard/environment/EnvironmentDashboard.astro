@@ -1,0 +1,378 @@
+---
+import EnvironmentServiceLauncher from "@/components/dashboard/environment/EnvironmentServiceLauncher.astro";
+import { IS_COMMUNITY } from "@/lib/branding";
+import {
+	formatServiceSource,
+	formatServiceStatusLabel,
+	isServiceDeleteDisabled,
+	SERVICE_STATUS_BADGE_BASE,
+	serviceDeleteDisabledReason,
+	serviceStatusBadgeClass,
+} from "@/lib/service-status-ui";
+
+const serviceMenuItemClass =
+	"flex w-full cursor-pointer rounded-md px-2 py-1 text-left text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]";
+const serviceMenuItemDisabledClass =
+	"cursor-not-allowed opacity-50 hover:bg-transparent";
+import { ST } from "@/lib/settings-hub-ui";
+import { loadEnvironmentDnsContext } from "@/lib/environment-dns-context";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+interface Props {
+	request: Request;
+	projectId: string;
+	environmentId: string;
+}
+
+const { request, projectId, environmentId } = Astro.props;
+
+const api = createServerTrpcClient(request);
+
+let environment: Awaited<ReturnType<typeof api.environment.one.query>> | null =
+	null;
+let servers: Array<{
+	serverId: string;
+	name: string;
+	ipAddress?: string | null;
+	port?: number | null;
+	setupStatus?: string | null;
+	serverStatus?: string | null;
+}> = [];
+const isCommunity = IS_COMMUNITY;
+try {
+	environment = await api.environment.one.query({ environmentId });
+} catch {
+	environment = null;
+}
+
+// Ready runtime servers are supplementary: a failure here (e.g. missing
+// "server:read" permission or a transient error) must NOT make the page render
+// "Environment not found". Fetch independently and degrade gracefully.
+if (environment) {
+	servers = await api.server.all.query().catch(() => []);
+} else {
+	servers = [];
+}
+
+const projectName = environment?.project?.name ?? "Project";
+const isProduction = environment?.name?.trim().toLowerCase() === "production";
+const dnsContext = await loadEnvironmentDnsContext(api, environment);
+const dnsZoneId = dnsContext.dnsZoneId;
+const domainPrefix = dnsContext.domainPrefix;
+const dnsZoneName = dnsContext.zoneName;
+
+type ServiceKind =
+	| "application"
+	| "compose"
+	| "postgres"
+	| "mysql"
+	| "mongo"
+	| "redis"
+	| "mariadb"
+	| "libsql";
+
+type ServiceRow = {
+	name: string;
+	type: string;
+	source: string;
+	status: string;
+	href: string;
+	serviceKind: ServiceKind;
+	serviceId: string;
+	supportsDomain: boolean;
+};
+
+function mapDatabaseRow(
+	item: { name: string; applicationStatus?: string | null },
+	opts: {
+		type: string;
+		id: string;
+		kind: ServiceKind;
+		pathSegment: string;
+	},
+): ServiceRow {
+	return {
+		name: item.name,
+		type: opts.type,
+		source: "Docker",
+		status: item.applicationStatus ?? "idle",
+		href: `/dashboard/project/${projectId}/environment/${environmentId}/services/${opts.pathSegment}/${opts.id}`,
+		serviceKind: opts.kind,
+		serviceId: opts.id,
+		supportsDomain: false,
+	};
+}
+
+const dbLinks: ServiceRow[] = environment ? [
+	...(environment.postgres ?? []).map((item: { name: string; postgresId: string; applicationStatus?: string | null }) =>
+		mapDatabaseRow(item, {
+			type: "Postgres",
+			id: item.postgresId,
+			kind: "postgres",
+			pathSegment: "postgres",
+		}),
+	),
+	...(environment.mysql ?? []).map((item: { name: string; mysqlId: string; applicationStatus?: string | null }) =>
+		mapDatabaseRow(item, {
+			type: "MySQL",
+			id: item.mysqlId,
+			kind: "mysql",
+			pathSegment: "mysql",
+		}),
+	),
+	...(environment.mongo ?? []).map((item: { name: string; mongoId: string; applicationStatus?: string | null }) =>
+		mapDatabaseRow(item, {
+			type: "Mongo",
+			id: item.mongoId,
+			kind: "mongo",
+			pathSegment: "mongo",
+		}),
+	),
+	...(environment.redis ?? []).map((item: { name: string; redisId: string; applicationStatus?: string | null }) =>
+		mapDatabaseRow(item, {
+			type: "Redis",
+			id: item.redisId,
+			kind: "redis",
+			pathSegment: "redis",
+		}),
+	),
+	...(environment.mariadb ?? []).map((item: { name: string; mariadbId: string; applicationStatus?: string | null }) =>
+		mapDatabaseRow(item, {
+			type: "MariaDB",
+			id: item.mariadbId,
+			kind: "mariadb",
+			pathSegment: "mariadb",
+		}),
+	),
+	...(environment.libsql ?? []).map((item: { name: string; libsqlId: string; applicationStatus?: string | null }) =>
+		mapDatabaseRow(item, {
+			type: "libSQL",
+			id: item.libsqlId,
+			kind: "libsql",
+			pathSegment: "libsql",
+		}),
+	),
+] : [];
+
+const serviceOptions = environment ? [
+	...(environment.applications ?? []).map((item: { name: string; applicationId: string; serverId?: string | null }) => ({
+		id: item.applicationId,
+		name: item.name,
+		type: "application" as const,
+		serverId: item.serverId ?? null,
+	})),
+	...(environment.compose ?? []).map((item: { name: string; composeId: string; serverId?: string | null }) => ({
+		id: item.composeId,
+		name: item.name,
+		type: "compose" as const,
+		serverId: item.serverId ?? null,
+	})),
+] : [];
+
+const serviceRows: ServiceRow[] = environment ? [
+	...(environment.applications ?? []).map((item: {
+		name: string;
+		appName?: string | null;
+		applicationId: string;
+		applicationStatus?: string | null;
+		sourceType?: string | null;
+	}) => ({
+		name: item.name,
+		type: "Application",
+		source: item.sourceType ?? "—",
+		status: item.applicationStatus ?? "idle",
+		href: `/dashboard/project/${projectId}/environment/${environmentId}/services/application/${item.applicationId}`,
+		serviceKind: "application" as const,
+		serviceId: item.applicationId,
+		supportsDomain: true,
+	})),
+	...(environment.compose ?? []).map((item: {
+		name: string;
+		appName?: string | null;
+		composeId: string;
+		composeStatus?: string | null;
+		sourceType?: string | null;
+	}) => ({
+		name: item.name,
+		type: "Compose",
+		source: item.sourceType ?? "compose",
+		status: item.composeStatus ?? "idle",
+		href: `/dashboard/project/${projectId}/environment/${environmentId}/services/compose/${item.composeId}`,
+		serviceKind: "compose" as const,
+		serviceId: item.composeId,
+		supportsDomain: true,
+	})),
+	...dbLinks,
+] : [];
+---
+
+<div class="nz-dashboard-content h-full min-h-0 w-full">
+	{
+		!environmentId ? (
+			<p class="px-2 py-4 text-xs text-[#6b7280]">Missing environment id.</p>
+		) : !environment ? (
+			<p class="px-2 py-4 text-xs text-[#6b7280]">Environment not found.</p>
+		) : (
+			<div id="nz-environment-root" class="nz-dashboard-content h-full min-h-0 w-full">
+				<div class="nz-environment-surface text-xs">
+					<div class="nz-environment-toolbar">
+						<div class="nz-environment-toolbar-primary">
+							<h1 class={ST.pageTitle}>{projectName}</h1>
+							<EnvironmentServiceLauncher
+								projectId={projectId}
+								environmentId={environmentId}
+								projectName={projectName}
+								servers={servers ?? []}
+								services={serviceOptions}
+								isCommunity={isCommunity}
+								dnsZoneId={dnsZoneId}
+								domainPrefix={domainPrefix}
+								environmentName={environment.name}
+								isProduction={isProduction}
+								dnsZoneName={dnsZoneName}
+							/>
+						</div>
+					</div>
+
+					<div class="nz-environment-services-region">
+						<div class="nz-environment-services-scroll scrollbar-hide">
+							<div class={ST.tableWrap}>
+								<table class={`${ST.table} nz-environment-services-table`}>
+									<thead class={ST.thead}>
+										<tr>
+											<th class={ST.th}>Service</th>
+											<th class={ST.th}>Type</th>
+											<th class={ST.th}>Source</th>
+											<th class={ST.th}>Status</th>
+											<th class={ST.thRight}>
+												<span class="sr-only">Actions</span>
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{serviceRows.map((service) => {
+											const menuKey = `${service.serviceKind}-${service.serviceId}`;
+											const statusBadge = serviceStatusBadgeClass(service.status);
+											const statusLabel = formatServiceStatusLabel(service.status);
+											return (
+												<tr
+													class={`${ST.tr} nz-data-table-row`}
+													data-service-row
+													data-service-kind={service.serviceKind}
+													data-service-id={service.serviceId}
+													data-service-name={service.name}
+													data-service-status={service.status}
+													data-service-href={service.href}
+												>
+													<td class={ST.td}>
+														<a
+															href={service.href}
+															class="truncate font-medium text-[var(--nz-text)] underline-offset-2 transition-colors hover:text-[var(--nz-text)] hover:underline"
+														>
+															{service.name}
+														</a>
+													</td>
+													<td class={ST.tdMuted}>{service.type}</td>
+													<td class={ST.tdMuted}>
+														{formatServiceSource(service.source)}
+													</td>
+													<td class={ST.td}>
+														<span class={`${SERVICE_STATUS_BADGE_BASE} ${statusBadge}`}>
+															{statusLabel}
+														</span>
+													</td>
+													<td class={ST.tdRight}>
+														<div class="relative flex items-center justify-end">
+															<button
+																type="button"
+																id={`nz-svc-menu-trigger-${menuKey}`}
+																data-svc-menu-trigger
+																class="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md px-0 py-0 text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)]"
+																aria-expanded="false"
+																aria-haspopup="true"
+																aria-label={`Actions for ${service.name}`}
+															>
+																···
+															</button>
+															<div
+																id={`nz-svc-menu-${menuKey}`}
+																data-svc-menu
+																class="absolute right-0 top-full z-50 mt-1 hidden min-w-[10.5rem] overflow-hidden rounded-md border border-[var(--nz-border,#eceef3)] bg-[var(--nz-bg-elevated,#ffffff)] p-1 text-xs shadow-none"
+																role="menu"
+															>
+																<a
+																	href={service.href}
+																	class={serviceMenuItemClass}
+																	role="menuitem"
+																	data-svc-open
+																>
+																	Open service
+																</a>
+																{
+																	service.supportsDomain ? (
+																		<button
+																			type="button"
+																			data-svc-manage-domain
+																			class={serviceMenuItemClass}
+																			role="menuitem"
+																		>
+																			Manage domain
+																		</button>
+																	) : null
+																}
+																<button
+																	type="button"
+																	data-svc-remove
+																	disabled={isServiceDeleteDisabled(service.status)}
+																	title={
+																		isServiceDeleteDisabled(service.status)
+																			? serviceDeleteDisabledReason(service.status)
+																			: undefined
+																	}
+																	class:list={[
+																		serviceMenuItemClass,
+																		"text-red-600",
+																		isServiceDeleteDisabled(service.status) &&
+																			serviceMenuItemDisabledClass,
+																	]}
+																	role="menuitem"
+																>
+																	Delete service
+																</button>
+															</div>
+														</div>
+													</td>
+												</tr>
+											);
+										})}
+									</tbody>
+								</table>
+							</div>
+							{
+								serviceRows.length === 0 ? (
+									<div class="nz-environment-empty-state">
+										<p class="font-medium text-[var(--nz-text)]">No services yet</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											Add an application, compose stack, or database to get started.
+										</p>
+									</div>
+								) : null
+							}
+						</div>
+					</div>
+				</div>
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { bindEnvironmentServicesTable } from "@/scripts/environment-dashboard";
+
+	function boot() {
+		bindEnvironmentServicesTable();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>

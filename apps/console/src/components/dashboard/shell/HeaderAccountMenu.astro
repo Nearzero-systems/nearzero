@@ -1,0 +1,167 @@
+---
+import { getFallbackAvatarInitials } from "@/lib/user-utils";
+import { scopeDashboardHref } from "@/lib/org-routes";
+import { getDefaultSettingsHref } from "@/lib/settings-nav";
+
+type NavPermissions = {
+	traefikFiles?: { read?: boolean };
+	docker?: { read?: boolean };
+	organization?: { update?: boolean };
+} | null;
+
+type UserRow = {
+	firstName?: string | null;
+	lastName?: string | null;
+	email?: string | null;
+	image?: string | null;
+} | null;
+
+interface Props {
+	auth: { user?: UserRow; role?: string | null } | null;
+	permissions?: NavPermissions;
+	orgSlug?: string | null;
+}
+
+const { auth, permissions, orgSlug = null } = Astro.props;
+
+const user = auth?.user ?? null;
+const displayName =
+	`${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
+	user?.email ||
+	"Account";
+const initials = getFallbackAvatarInitials(displayName);
+const dash = (path: string) => scopeDashboardHref(path, orgSlug);
+const settingsHref = getDefaultSettingsHref(orgSlug);
+const profileHref = dash("/dashboard/settings/profile");
+---
+
+<button
+	type="button"
+	id="nz-header-account-trigger"
+	class="inline-flex h-7 w-7 items-center justify-center overflow-hidden rounded-md border border-[#e5e7eb] bg-white p-0 text-xs transition-colors hover:bg-[#ececef]"
+	aria-label="Open account menu"
+	aria-haspopup="dialog"
+	aria-controls="nz-header-account-dialog"
+>
+	{user?.image ? (
+		<>
+			<img
+				src={user.image}
+				alt=""
+				class="size-full object-cover"
+				data-avatar-image
+			/>
+			<span
+				class="flex size-full items-center justify-center bg-[#ececef] text-[10px] font-medium text-[#111827]"
+				data-avatar-fallback
+				hidden
+			>
+				{initials}
+			</span>
+		</>
+	) : (
+		<span class="flex size-full items-center justify-center bg-[#ececef] text-[10px] font-medium text-[#111827]">
+			{initials}
+		</span>
+	)}
+</button>
+
+<dialog
+	id="nz-header-account-dialog"
+	class="w-[calc(100%-2rem)] max-w-sm rounded-lg border border-[#e5e7eb] bg-white p-0 shadow-xl backdrop:bg-black/20"
+>
+	<div class="border-b border-[#eceef3] px-4 py-4">
+		<div class="flex items-center gap-3">
+			{user?.image ? (
+				<>
+					<img
+						src={user.image}
+						alt=""
+						class="size-10 rounded-md object-cover"
+						data-avatar-image
+					/>
+					<span
+						class="flex size-10 items-center justify-center rounded-md bg-[#ececef] text-sm font-medium text-[#111827]"
+						data-avatar-fallback
+						hidden
+					>
+						{initials}
+					</span>
+				</>
+			) : (
+				<span class="flex size-10 items-center justify-center rounded-md bg-[#ececef] text-sm font-medium text-[#111827]">
+					{initials}
+				</span>
+			)}
+			<div class="min-w-0 flex-1">
+				<p class="truncate text-sm font-semibold text-[#111827]">{displayName}</p>
+				<p class="truncate text-xs text-[#6b7280]">{user?.email}</p>
+			</div>
+		</div>
+	</div>
+	<nav class="flex flex-col gap-px p-2" aria-label="Account">
+		<a
+			href={profileHref}
+			class="rounded-md px-3 py-2 text-sm text-[#111827] no-underline hover:bg-[#f7f7f8]"
+		>
+			Profile
+		</a>
+		<a
+			href={settingsHref}
+			data-astro-reload
+			class="rounded-md px-3 py-2 text-sm text-[#111827] no-underline hover:bg-[#f7f7f8]"
+		>
+			Settings
+		</a>
+		<a
+			href={dash("/dashboard/projects")}
+			class="rounded-md px-3 py-2 text-sm text-[#111827] no-underline hover:bg-[#f7f7f8]"
+		>
+			Projects
+		</a>
+		{permissions?.organization?.update && (
+			<a
+				href={dash("/dashboard/servers")}
+				class="rounded-md px-3 py-2 text-sm text-[#111827] no-underline hover:bg-[#f7f7f8]"
+			>
+				Servers
+			</a>
+		)}
+	</nav>
+	<div class="border-t border-[#eceef3] p-2">
+		<button
+			type="button"
+			class="nz-user-sign-out w-full rounded-md px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+		>
+			Log out
+		</button>
+	</div>
+</dialog>
+
+<script>
+	import { bindAvatarFallbacks } from "@/scripts/avatar-fallback";
+
+	(() => {
+		const bind = () => {
+			const trigger = document.getElementById("nz-header-account-trigger");
+			const dialog = document.getElementById("nz-header-account-dialog");
+			bindAvatarFallbacks();
+			if (!(trigger instanceof HTMLButtonElement)) return;
+			if (!(dialog instanceof HTMLDialogElement)) return;
+			if (trigger.dataset.bound === "1") return;
+			trigger.dataset.bound = "1";
+
+			trigger.addEventListener("click", () => {
+				if (dialog.open) dialog.close();
+				else dialog.showModal();
+			});
+
+			dialog.addEventListener("click", (event) => {
+				if (event.target === dialog) dialog.close();
+			});
+		};
+		bind();
+		document.addEventListener("astro:page-load", bind);
+		document.addEventListener("astro:after-swap", bind);
+	})();
+</script>

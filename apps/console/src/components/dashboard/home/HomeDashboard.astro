@@ -1,0 +1,219 @@
+---
+import { formatDistanceToNow } from "date-fns";
+import Button from "@/components/ui/Button.astro";
+import Card from "@/components/ui/Card.astro";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+interface Props {
+	request: Request;
+}
+
+const { request } = Astro.props;
+const api = createServerTrpcClient(request);
+
+let auth: any = null;
+let homeStats: any = null;
+let permissions: any = null;
+let deployments: any = null;
+
+try {
+	[auth, homeStats, permissions] = await Promise.all([
+		api.user.get.query(),
+		api.project.homeStats.query(),
+		api.user.getPermissions.query(),
+	]);
+	if (permissions?.deployment?.read) {
+		deployments = await api.deployment.allCentralized.query();
+	}
+} catch {
+	// partial render on fetch failure
+}
+
+const firstName = auth?.user?.firstName?.trim();
+const canReadDeployments = !!permissions?.deployment?.read;
+
+const totals = homeStats ?? {
+	projects: 0,
+	environments: 0,
+	applications: 0,
+	compose: 0,
+	databases: 0,
+	services: 0,
+};
+const statusBreakdown = homeStats?.status ?? {
+	running: 0,
+	error: 0,
+	idle: 0,
+};
+
+const statusDotClass: Record<string, string> = {
+	done: "bg-emerald-500",
+	running: "bg-amber-500",
+	error: "bg-red-500",
+	idle: "bg-muted-foreground/40",
+};
+
+function getServiceInfo(d: (typeof deployments extends (infer U)[] | null ? U : never)) {
+	const app = (d as { application?: Record<string, unknown> }).application;
+	const comp = (d as { compose?: Record<string, unknown> }).compose;
+	const serverName =
+		((d as { server?: { name?: string } }).server?.name ??
+			(app as { server?: { name?: string } })?.server?.name ??
+			(comp as { server?: { name?: string } })?.server?.name ??
+			"Nearzero") as string;
+	if (app?.environment && (app.environment as { project?: unknown }).project) {
+		const env = app.environment as { name: string; environmentId: string; project: { name: string; projectId: string } };
+		return {
+			name: app.name as string,
+			environment: env.name,
+			projectName: env.project.name,
+			serverName,
+			href: `/dashboard/project/${env.project.projectId}/environment/${env.environmentId}/services/application/${(app as { applicationId: string }).applicationId}`,
+		};
+	}
+	if (comp?.environment && (comp.environment as { project?: unknown }).project) {
+		const env = comp.environment as { name: string; environmentId: string; project: { name: string; projectId: string } };
+		return {
+			name: comp.name as string,
+			environment: env.name,
+			projectName: env.project.name,
+			serverName,
+			href: `/dashboard/project/${env.project.projectId}/environment/${env.environmentId}/services/compose/${(comp as { composeId: string }).composeId}`,
+		};
+	}
+	return null;
+}
+
+const recentDeployments = [...(deployments ?? [])]
+	.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+	.slice(0, 10);
+
+const now = Date.now();
+const weekMs = 7 * 24 * 60 * 60 * 1000;
+const lastStart = now - weekMs;
+const prevStart = now - 2 * weekMs;
+let lastCount = 0;
+let prevCount = 0;
+for (const d of deployments ?? []) {
+	const t = new Date(d.createdAt).getTime();
+	if (t >= lastStart) lastCount++;
+	else if (t >= prevStart) prevCount++;
+}
+let deployDelta: string;
+if (prevCount > 0) {
+	const pct = Math.round(((lastCount - prevCount) / prevCount) * 100);
+	deployDelta = `${pct >= 0 ? "+" : ""}${pct}% vs prev 7d`;
+} else if (lastCount > 0) {
+	deployDelta = "no prior data";
+} else {
+	deployDelta = "no activity yet";
+}
+---
+
+<div class="w-full">
+	<Card class="h-full bg-sidebar p-2.5 rounded-xl min-h-[85vh]">
+		<div class="rounded-xl bg-background shadow-md p-6 flex flex-col gap-6 h-full">
+			<div class="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+				<h1 class="text-3xl font-semibold tracking-tight">
+					{firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+				</h1>
+				<Button href="/dashboard/projects" variant="secondary" size="sm" class="h-auto gap-1 px-2 py-1 text-xs rounded-md">
+					Go to projects
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+				</Button>
+			</div>
+
+			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+				<div class="rounded-xl border bg-background p-5 min-h-[140px] flex flex-col justify-between">
+					<span class="text-xs uppercase tracking-wider text-muted-foreground">Projects</span>
+					<div class="flex flex-col gap-1">
+						<span class="text-3xl font-semibold tracking-tight">{totals.projects}</span>
+						<span class="text-xs text-muted-foreground">{totals.environments} {totals.environments === 1 ? "environment" : "environments"}</span>
+					</div>
+				</div>
+				<div class="rounded-xl border bg-background p-5 min-h-[140px] flex flex-col justify-between">
+					<span class="text-xs uppercase tracking-wider text-muted-foreground">Services</span>
+					<div class="flex flex-col gap-1">
+						<span class="text-3xl font-semibold tracking-tight">{totals.services}</span>
+						<span class="text-xs text-muted-foreground">{totals.applications} apps · {totals.compose} compose · {totals.databases} db</span>
+					</div>
+				</div>
+				<div class="rounded-xl border bg-background p-5 min-h-[140px] flex flex-col justify-between">
+					<span class="text-xs uppercase tracking-wider text-muted-foreground">Deploys / 7d</span>
+					<div class="flex flex-col gap-1">
+						<span class="text-3xl font-semibold tracking-tight">{lastCount}</span>
+						<span class="text-xs text-muted-foreground">{deployDelta}</span>
+					</div>
+				</div>
+				<div class="rounded-xl border bg-background p-5 min-h-[140px] flex flex-col gap-3">
+					<span class="text-xs uppercase tracking-wider text-muted-foreground">Status</span>
+					<ul class="flex flex-col gap-1.5">
+						<li class="flex items-center gap-2.5 text-sm">
+							<span class="size-2 rounded-full shrink-0 bg-emerald-500" aria-hidden="true"></span>
+							<span class="font-semibold tabular-nums w-8">{statusBreakdown.running}</span>
+							<span class="text-muted-foreground">running</span>
+						</li>
+						<li class="flex items-center gap-2.5 text-sm">
+							<span class="size-2 rounded-full shrink-0 bg-red-500" aria-hidden="true"></span>
+							<span class="font-semibold tabular-nums w-8">{statusBreakdown.error}</span>
+							<span class="text-muted-foreground">errored</span>
+						</li>
+						<li class="flex items-center gap-2.5 text-sm">
+							<span class="size-2 rounded-full shrink-0 bg-muted-foreground/40" aria-hidden="true"></span>
+							<span class="font-semibold tabular-nums w-8">{statusBreakdown.idle}</span>
+							<span class="text-muted-foreground">idle</span>
+						</li>
+					</ul>
+				</div>
+			</div>
+
+			<div class="rounded-xl border bg-background">
+				<div class="flex items-center justify-between px-5 py-4 border-b">
+					<div class="flex items-center gap-2">
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-4 text-muted-foreground" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+						<h2 class="text-sm font-semibold">Recent deployments</h2>
+					</div>
+					{canReadDeployments && (
+						<a href="/dashboard/deployments" class="text-xs text-muted-foreground hover:text-foreground transition-colors">view all →</a>
+					)}
+				</div>
+				{!canReadDeployments ? (
+					<div class="min-h-[400px] flex flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground p-10">
+						<span>You do not have permission to view deployments.</span>
+					</div>
+				) : recentDeployments.length === 0 ? (
+					<div class="min-h-[400px] flex flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground p-10">
+						<span>No deployments yet.</span>
+					</div>
+				) : (
+					<ul class="divide-y">
+						{recentDeployments.map((d) => {
+							const info = getServiceInfo(d);
+							if (!info) return null;
+							const status = (d.status ?? "idle") as string;
+							return (
+								<li>
+									<a href={info.href} class="flex items-center gap-4 px-5 py-4 hover:bg-muted/40 transition-colors">
+										<span class={`size-2 rounded-full shrink-0 ${statusDotClass[status] ?? statusDotClass.idle}`} aria-hidden="true"></span>
+										<div class="flex flex-col min-w-0 flex-1">
+											<span class="text-sm truncate">{info.name}</span>
+											<span class="text-xs text-muted-foreground truncate">{info.projectName} · {info.environment}</span>
+										</div>
+										<span class="text-xs text-muted-foreground w-36 hidden lg:flex items-center justify-end gap-1.5 truncate">
+											<span class="truncate">{info.serverName}</span>
+										</span>
+										<span class="text-xs text-muted-foreground w-20 text-right hidden sm:inline">{status}</span>
+										<span class="text-xs text-muted-foreground w-24 text-right hidden md:inline">
+											{formatDistanceToNow(new Date(d.createdAt), { addSuffix: true })}
+										</span>
+										<span class="text-xs text-muted-foreground hover:text-foreground transition-colors">logs →</span>
+									</a>
+								</li>
+							);
+						})}
+					</ul>
+				)}
+			</div>
+		</div>
+	</Card>
+</div>

@@ -1,0 +1,312 @@
+---
+import ProjectWorkspaceShell from "@/components/dashboard/project/ProjectWorkspaceShell.astro";
+import ProjectOverviewPanel from "@/components/dashboard/project/ProjectOverviewPanel.astro";
+import ProjectServicesPanel from "@/components/dashboard/project/ProjectServicesPanel.astro";
+import { loadEnvironmentDnsContext } from "@/lib/environment-dns-context";
+import { IS_COMMUNITY } from "@/lib/branding";
+import { normalizeProjectWorkspaceSection } from "@/lib/project-workspace-nav";
+import { createServerTrpcClient } from "@/lib/server-api";
+import type {
+	ProjectWorkspaceService,
+	ProjectWorkspaceServiceKind,
+} from "./projectWorkspaceTypes";
+
+interface Props {
+	request: Request;
+	projectId: string;
+	environmentId: string;
+	section?: string;
+}
+
+const { request, projectId, environmentId } = Astro.props;
+const activeSection = normalizeProjectWorkspaceSection(Astro.props.section);
+
+const api = createServerTrpcClient(request) as any;
+
+let environment: Awaited<ReturnType<typeof api.environment.one.query>> | null =
+	null;
+let servers: Array<{
+	serverId: string;
+	name: string;
+	ipAddress?: string | null;
+	port?: number | null;
+	setupStatus?: string | null;
+	serverStatus?: string | null;
+}> = [];
+const isCommunity = IS_COMMUNITY;
+
+try {
+	environment = await api.environment.one.query({ environmentId });
+} catch {
+	environment = null;
+}
+
+// Servers and DNS zones are supplementary: a failure here (e.g. missing
+// "server:read" permission or a transient error) must NOT make the whole
+// workspace render "Environment not found". Fetch them independently and
+// degrade gracefully so the environment still loads.
+if (environment) {
+	servers = await api.server.all.query().catch(() => []);
+} else {
+	servers = [];
+}
+
+const projectName = environment?.project?.name ?? "Project";
+const environmentName = environment?.name ?? "Environment";
+const applications = environment?.applications ?? [];
+const compose = environment?.compose ?? [];
+
+type BuildPlanSummary = {
+	framework?: string | null;
+};
+
+function formatFrameworkName(framework: string | null | undefined) {
+	const value = (framework ?? "").trim().toLowerCase();
+	if (!value) return null;
+	const labels: Record<string, string> = {
+		"@angular/core": "Angular",
+		"@remix-run/react": "Remix",
+		"@sveltejs/kit": "SvelteKit",
+		angular: "Angular",
+		astro: "Astro",
+		next: "Next.js",
+		nextjs: "Next.js",
+		node: "Node.js",
+		nodejs: "Node.js",
+		nuxt: "Nuxt",
+		react: "React",
+		remix: "Remix",
+		svelte: "SvelteKit",
+		sveltekit: "SvelteKit",
+		vite: "Vite",
+		vue: "Vue.js",
+	};
+	return labels[value] ?? value.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatBuildType(buildType: string | null | undefined) {
+	const value = (buildType ?? "").trim().toLowerCase();
+	const labels: Record<string, string> = {
+		dockerfile: "Dockerfile",
+		heroku_buildpacks: "Heroku Buildpacks",
+		nixpacks: "Nixpacks",
+		paketo_buildpacks: "Paketo Buildpacks",
+		railpack: "Railpack",
+		static: "Static",
+	};
+	return labels[value] ?? null;
+}
+
+function applicationFrameworkLabel(item: {
+	buildType?: string | null;
+	deployments?: Array<{ buildPlan?: BuildPlanSummary | null }>;
+}) {
+	const latestBuildPlan = item.deployments?.find(
+		(deployment) => deployment.buildPlan,
+	)?.buildPlan;
+	return (
+		formatFrameworkName(latestBuildPlan?.framework) ??
+		formatBuildType(item.buildType) ??
+		null
+	);
+}
+
+function mapDatabaseService(
+	item: { name: string; appName?: string | null; applicationStatus?: string | null },
+	opts: {
+		type: string;
+		id: string;
+		kind: ProjectWorkspaceServiceKind;
+		pathSegment: string;
+	},
+): ProjectWorkspaceService {
+	return {
+		name: item.name,
+		appName: item.appName ?? null,
+		type: opts.type,
+		status: item.applicationStatus ?? "idle",
+		href: `/dashboard/project/${projectId}/environment/${environmentId}/services/${opts.pathSegment}/${opts.id}`,
+		serviceKind: opts.kind,
+		serviceId: opts.id,
+		supportsDomain: false,
+	};
+}
+
+const databaseServices: ProjectWorkspaceService[] = environment
+	? [
+			...(environment.postgres ?? []).map(
+				(item: { name: string; appName?: string | null; postgresId: string; applicationStatus?: string | null }) =>
+					mapDatabaseService(item, {
+						type: "Postgres",
+						id: item.postgresId,
+						kind: "postgres",
+						pathSegment: "postgres",
+					}),
+			),
+			...(environment.mysql ?? []).map(
+				(item: { name: string; appName?: string | null; mysqlId: string; applicationStatus?: string | null }) =>
+					mapDatabaseService(item, {
+						type: "MySQL",
+						id: item.mysqlId,
+						kind: "mysql",
+						pathSegment: "mysql",
+					}),
+			),
+			...(environment.mongo ?? []).map(
+				(item: { name: string; appName?: string | null; mongoId: string; applicationStatus?: string | null }) =>
+					mapDatabaseService(item, {
+						type: "Mongo",
+						id: item.mongoId,
+						kind: "mongo",
+						pathSegment: "mongo",
+					}),
+			),
+			...(environment.redis ?? []).map(
+				(item: { name: string; appName?: string | null; redisId: string; applicationStatus?: string | null }) =>
+					mapDatabaseService(item, {
+						type: "Redis",
+						id: item.redisId,
+						kind: "redis",
+						pathSegment: "redis",
+					}),
+			),
+			...(environment.mariadb ?? []).map(
+				(item: { name: string; appName?: string | null; mariadbId: string; applicationStatus?: string | null }) =>
+					mapDatabaseService(item, {
+						type: "MariaDB",
+						id: item.mariadbId,
+						kind: "mariadb",
+						pathSegment: "mariadb",
+					}),
+			),
+			...(environment.libsql ?? []).map(
+				(item: { name: string; appName?: string | null; libsqlId: string; applicationStatus?: string | null }) =>
+					mapDatabaseService(item, {
+						type: "libSQL",
+						id: item.libsqlId,
+						kind: "libsql",
+						pathSegment: "libsql",
+					}),
+			),
+		]
+	: [];
+
+const allServices: ProjectWorkspaceService[] = [
+	...(applications.map(
+		(item: {
+			name: string;
+			appName?: string | null;
+			applicationId: string;
+			applicationStatus?: string | null;
+			serverId?: string | null;
+			domains?: ProjectWorkspaceService["domains"];
+			buildType?: string | null;
+			deployments?: Array<{ buildPlan?: BuildPlanSummary | null }>;
+		}) => ({
+			name: item.name,
+			appName: item.appName ?? null,
+			framework: applicationFrameworkLabel(item),
+			type: "Application",
+			status: item.applicationStatus ?? "idle",
+			href: `/dashboard/project/${projectId}/environment/${environmentId}/services/application/${item.applicationId}`,
+			serviceKind: "application" as const,
+			serviceId: item.applicationId,
+			serverId: item.serverId ?? null,
+			supportsDomain: true,
+			domains: item.domains ?? [],
+		}),
+	) ?? []),
+	...(compose.map(
+		(item: {
+			name: string;
+			appName?: string | null;
+			composeId: string;
+			composeStatus?: string | null;
+			serverId?: string | null;
+			domains?: ProjectWorkspaceService["domains"];
+		}) => ({
+			name: item.name,
+			appName: item.appName ?? null,
+			type: "Compose",
+			status: item.composeStatus ?? "idle",
+			href: `/dashboard/project/${projectId}/environment/${environmentId}/services/compose/${item.composeId}`,
+			serviceKind: "compose" as const,
+			serviceId: item.composeId,
+			serverId: item.serverId ?? null,
+			supportsDomain: true,
+			domains: item.domains ?? [],
+		}),
+	) ?? []),
+	...databaseServices,
+];
+
+function findDeployedServices(services: ProjectWorkspaceService[]) {
+	return services.filter((service) => service.status.toLowerCase() === "done");
+}
+
+const activeServices = findDeployedServices(allServices);
+
+const dnsContext = await loadEnvironmentDnsContext(api, environment);
+const dnsZoneName = dnsContext.zoneName;
+const domainPrefix = dnsContext.domainPrefix;
+const isProduction =
+	environment?.name?.trim().toLowerCase() === "production";
+const serviceOptions = environment
+	? [
+			...(environment.applications ?? []).map(
+				(item: { name: string; applicationId: string; serverId?: string | null }) => ({
+					id: item.applicationId,
+					name: item.name,
+					type: "application" as const,
+					serverId: item.serverId ?? null,
+				}),
+			),
+			...(environment.compose ?? []).map(
+				(item: { name: string; composeId: string; serverId?: string | null }) => ({
+					id: item.composeId,
+					name: item.name,
+					type: "compose" as const,
+					serverId: item.serverId ?? null,
+				}),
+			),
+		]
+	: [];
+---
+
+{
+	!environmentId ? (
+		<p class="px-2 py-4 text-xs text-[#6b7280]">Missing environment id.</p>
+	) : !environment ? (
+		<p class="px-2 py-4 text-xs text-[#6b7280]">Environment not found.</p>
+	) : (
+		<ProjectWorkspaceShell
+			projectId={projectId}
+			environmentId={environmentId}
+			projectName={projectName}
+			environmentName={environmentName}
+			activeSection={activeSection}
+		>
+			{
+				activeSection === "overview" ? (
+					<ProjectOverviewPanel
+						projectId={projectId}
+						environmentId={environmentId}
+						projectName={projectName}
+						environmentName={environmentName}
+						services={allServices}
+						activeServices={activeServices}
+						servers={servers ?? []}
+						serviceOptions={serviceOptions}
+						isCommunity={isCommunity}
+						dnsZoneId={environment.dnsZoneId ?? null}
+						domainPrefix={domainPrefix}
+						isProduction={isProduction}
+						dnsZoneName={dnsZoneName}
+					/>
+				) : activeSection === "services" ? (
+					<ProjectServicesPanel services={allServices} />
+				) : null
+			}
+		</ProjectWorkspaceShell>
+	)
+}

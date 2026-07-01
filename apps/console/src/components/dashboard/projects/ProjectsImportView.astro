@@ -1,0 +1,169 @@
+---
+import {
+  buttonClass,
+  dashboardLoadingSpinnerMinimalHtml,
+} from "../demoShared";
+import type { ProviderAccount, ProviderOption } from "./shared";
+
+interface Props {
+  providerOptions: ProviderOption[];
+  providerAccounts: Record<ProviderOption["key"], ProviderAccount[]>;
+  visible?: boolean;
+  /** Hide provider + search row until the first repo list fetch finishes (avoids flash while spinner shows). */
+  suppressImportToolbarInitially?: boolean;
+}
+
+const {
+  providerOptions,
+  providerAccounts,
+  visible = false,
+  suppressImportToolbarInitially = false,
+} = Astro.props;
+const compactFieldClass =
+  "font-sans flex w-full items-center justify-between rounded-md border border-[#d9dbe3] bg-white px-2 py-1 text-left text-xs text-[#111827]";
+const compactMenuItemClass =
+  "font-sans flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[#6b7280] transition-colors hover:bg-[#f7f7f8] hover:text-[#111827]";
+---
+
+<div
+  class:list={[
+    "project-view min-h-[calc(100dvh-77px)] overflow-visible px-4 py-4 sm:px-6",
+    { hidden: !visible },
+  ]}
+  data-project-view="import"
+>
+  <div class="mx-auto w-full max-w-[1100px]">
+    <div class="border-b border-[#eceef3] pb-4">
+      <p class="text-xs text-[#6b7280]">
+        Projects
+      </p>
+      <h2 class="font-display mt-2 text-[22px] font-semibold tracking-tight text-[#111827] sm:text-[28px]">
+        Import Git Repository
+      </h2>
+    </div>
+
+    <div
+      class="mt-4 overflow-visible"
+      data-project-import-shell
+      data-provider-accounts={JSON.stringify(providerAccounts)}
+      data-provider-options={JSON.stringify(providerOptions)}
+    >
+      <div
+        class:list={[
+          "grid gap-2 overflow-visible lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)]",
+          { hidden: suppressImportToolbarInitially },
+        ]}
+        data-project-import-toolbar
+        aria-hidden={suppressImportToolbarInitially ? "true" : "false"}
+      >
+        <details
+          class="relative z-20 min-w-0 w-full overflow-visible [&_summary::-webkit-details-marker]:hidden"
+          data-project-account-details
+        >
+          <summary
+            class={`${compactFieldClass} relative z-10 flex cursor-pointer list-none items-center justify-between gap-2 select-none`}
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            data-project-account-summary
+          >
+            <span class="flex min-w-0 items-center gap-2">
+              <svg
+                viewBox="0 0 24 24"
+                class="h-4 w-4 shrink-0"
+                aria-hidden="true"
+                data-project-account-icon
+                style={`color:${providerOptions[0]?.accent ?? "#24292f"}`}
+              >
+                <path
+                  fill="currentColor"
+                  d={providerOptions[0]?.iconPath ?? ""}
+                  data-project-account-icon-path
+                ></path>
+              </svg>
+              <span class="truncate" data-project-account-label>GitHub</span>
+            </span>
+
+            <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 text-[#6b7280]" aria-hidden="true">
+              <path fill="currentColor" d="M7 10l5 5 5-5z"></path>
+            </svg>
+          </summary>
+
+          <div
+            class="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-md border border-[#eceef3] bg-white p-2 shadow-sm"
+            data-project-account-menu
+            role="listbox"
+          >
+            <div data-project-account-items class="space-y-1"></div>
+            <div class="mt-2 border-t border-[#eceef3] pt-2">
+              <button
+                type="button"
+                class={compactMenuItemClass}
+                data-project-account-add
+              >
+                <span class="text-sm leading-none">+</span>
+                <span>Add account</span>
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <label class="font-sans flex items-center gap-2 rounded-md border border-[#d9dbe3] bg-white px-2 py-1 text-xs text-[#6b7280]">
+          <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M10 4a6 6 0 1 0 3.87 10.58l4.28 4.27 1.41-1.41-4.27-4.28A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"
+            ></path>
+          </svg>
+          <input
+            type="search"
+            placeholder="Search repositories"
+            class="w-full bg-transparent text-xs text-[#111827] outline-none placeholder:text-[#9aa3b2]"
+            data-project-search
+          />
+        </label>
+      </div>
+
+      <div class="mt-6" data-project-repo-list set:html={dashboardLoadingSpinnerMinimalHtml()} />
+
+      <div hidden aria-hidden="true" data-dashboard-loading-spinner set:html={dashboardLoadingSpinnerMinimalHtml()} />
+
+      <div hidden aria-hidden="true" data-project-row-template>
+        <div class="font-sans flex flex-col gap-3 border-b border-[#eceef3] px-2 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <div class="flex h-9 w-9 items-center justify-center rounded-md border border-[#eceef3] bg-[#fafafa]">
+                <span class="flex items-center justify-center" data-row-icon aria-hidden="true"></span>
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-xs font-medium text-[#111827]" data-row-name></p>
+                <p class="mt-1 text-xs text-[#6b7280]" data-row-meta></p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class={`${buttonClass} shrink-0`}
+            data-project-repo-select
+            data-provider-key=""
+            data-provider-label=""
+            data-repo-key=""
+            data-repo-name=""
+            data-repo-full=""
+            data-repo-branch=""
+            data-repo-preset=""
+            data-repo-root=""
+            data-repo-build=""
+            data-repo-output=""
+            data-repo-env-key=""
+            data-repo-env-value=""
+          >
+            Import
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Import UI runtime lives in ProjectsSection.astro (single inline script runs before showView(initial)). -->

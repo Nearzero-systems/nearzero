@@ -1,0 +1,152 @@
+---
+import DatabaseServiceContent from "@/components/dashboard/services/DatabaseServiceContent.astro";
+import ProjectWorkspaceShell from "@/components/dashboard/project/ProjectWorkspaceShell.astro";
+import type { DatabaseServiceVariant } from "@/components/dashboard/services/databaseVariantConfig";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+interface Props {
+	request: Request;
+	variant: DatabaseServiceVariant;
+	dbId: string;
+	projectId: string;
+	environmentId: string;
+}
+
+const { request, variant, dbId, projectId, environmentId } = Astro.props;
+
+const api = createServerTrpcClient(request);
+
+type DbRow = {
+	name?: string;
+	description?: string | null;
+	applicationStatus?: string;
+	appName?: string;
+	serverId?: string;
+	externalPort?: number | null;
+};
+
+let row: DbRow | null = null;
+let permissions: Awaited<
+	ReturnType<typeof api.user.getPermissions.query>
+> | null = null;
+let projectName = "Project";
+let environmentName = "Environment";
+
+if (environmentId?.trim()) {
+	try {
+		const environment = await api.environment.one.query({ environmentId });
+		projectName = environment.project?.name ?? projectName;
+		environmentName = environment.name ?? environmentName;
+	} catch {
+		/* keep defaults */
+	}
+}
+
+if (typeof dbId === "string" && dbId.trim()) {
+	try {
+		let fetched: unknown;
+		if (variant === "postgres") {
+			fetched = await api.postgres.one.query({ postgresId: dbId });
+		} else if (variant === "mysql") {
+			fetched = await api.mysql.one.query({ mysqlId: dbId });
+		} else if (variant === "mongo") {
+			fetched = await api.mongo.one.query({ mongoId: dbId });
+		} else if (variant === "redis") {
+			fetched = await api.redis.one.query({ redisId: dbId });
+		} else if (variant === "mariadb") {
+			fetched = await api.mariadb.one.query({ mariadbId: dbId });
+		} else {
+			fetched = await api.libsql.one.query({ libsqlId: dbId });
+		}
+		row =
+			fetched !== null && fetched !== undefined && typeof fetched === "object" ?
+				(fetched as DbRow)
+			:	null;
+	} catch {
+		row = null;
+	}
+}
+
+try {
+	permissions = await api.user.getPermissions.query();
+} catch {
+	permissions = null;
+}
+
+const canDeploy = permissions?.deployment?.create ?? false;
+const applicationStatus =
+	typeof row?.applicationStatus === "string" ? row.applicationStatus : "idle";
+const appName = typeof row?.appName === "string" ? row.appName : "";
+const serverId = typeof row?.serverId === "string" ? row.serverId : "";
+const serviceName = typeof row?.name === "string" ? row.name : "";
+const serviceDescription =
+	typeof row?.description === "string" ? row.description : "";
+const externalPort =
+	typeof row?.externalPort === "number" ? row.externalPort : null;
+const hasDb = Boolean(row);
+
+type DeploymentHistoryRow = {
+	deploymentId: string;
+	title: string;
+	description?: string | null;
+	status: string | null;
+	createdAt: string;
+};
+
+let deploymentHistory: DeploymentHistoryRow[] = [];
+if (hasDb && dbId?.trim()) {
+	try {
+		const rows = await api.deployment.allByDatabase.query({
+			serviceId: dbId,
+		});
+		deploymentHistory = (rows ?? []).map((d: DeploymentHistoryRow) => ({
+			deploymentId: d.deploymentId,
+			title: d.title,
+			description: d.description ?? null,
+			status: d.status,
+			createdAt: d.createdAt,
+		}));
+	} catch {
+		deploymentHistory = [];
+	}
+}
+
+const contentProps = {
+	variant,
+	dbId,
+	projectId,
+	environmentId,
+	canDeploy,
+	applicationStatus,
+	appName,
+	serverId,
+	serviceName,
+	serviceDescription,
+	externalPort,
+	hasDb,
+	deploymentHistory,
+};
+---
+
+{
+	projectId && environmentId ?
+		<ProjectWorkspaceShell
+			projectId={projectId}
+			environmentId={environmentId}
+			projectName={projectName}
+			environmentName={environmentName}
+			activeSection="services"
+		>
+			<DatabaseServiceContent {...contentProps} />
+		</ProjectWorkspaceShell>
+	:	<div class="nz-dashboard-content h-full min-h-0 w-full">
+			<DatabaseServiceContent {...contentProps} />
+		</div>
+}
+
+<script>
+	import { bootDatabaseDashboard } from "@/scripts/database-dashboard";
+	bootDatabaseDashboard();
+	document.addEventListener("astro:page-load", bootDatabaseDashboard);
+	document.addEventListener("astro:after-swap", bootDatabaseDashboard);
+</script>

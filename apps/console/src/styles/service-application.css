@@ -1,0 +1,1258 @@
+/* Application service — deploy / provider / build (Nearzero surface) */
+
+#nz-app-deploy-root {
+	--nz-app-pad-x: 0.75rem;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: none;
+	gap: 0;
+	min-height: 0;
+	padding: 0;
+	background-color: var(--nz-surface, #ffffff);
+	color: var(--nz-text, #111827);
+}
+
+.nz-app-live-url-banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem 0.75rem;
+	margin: 0.5rem 0.75rem 0;
+	padding: 0.5rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background: var(--nz-bg-muted, #f9fafb);
+	font-size: 0.75rem;
+}
+
+.nz-app-live-url-banner.hidden {
+	display: none;
+}
+
+.nz-app-live-url-banner__link {
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.nz-app-live-url-banner__dismiss {
+	margin-left: auto;
+	font-size: 0.6875rem;
+	color: var(--nz-text-muted, #6b7280);
+	text-decoration: underline;
+	background: none;
+	border: none;
+	cursor: pointer;
+}
+
+#nz-app-deploy-root .nz-app-section {
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-app-deploy-root .nz-app-section:last-child {
+	border-bottom: none;
+}
+
+#nz-app-deploy-root .nz-app-section__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	min-height: 0;
+	padding: 0.75rem var(--nz-app-pad-x);
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-app-deploy-root .nz-app-section__title {
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1.2rem;
+	letter-spacing: 0;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-section__desc {
+	margin-top: 0.125rem;
+	font-size: 0.8125rem;
+	line-height: 1.125rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-app-deploy-root .nz-app-section__body {
+	padding: 0.75rem var(--nz-app-pad-x) 0.875rem;
+}
+
+#nz-app-deploy-root .nz-app-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+#nz-app-deploy-root .nz-app-toolbar__toggles {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	margin-left: auto;
+}
+
+/* Service toolbar — Domains-style title row + tab controls row. */
+#nz-app-deploy-root .nz-deployments-toolbar {
+	flex-shrink: 0;
+}
+
+/* Match project Overview topbar (.nz-project-overview__topbar) */
+#nz-app-deploy-root .nz-deployments-toolbar-primary {
+	min-height: 3rem;
+	padding: 0.625rem 0.875rem;
+	gap: 1rem;
+}
+
+#nz-app-deploy-root .nz-deployments-toolbar-primary .nz-app-service-header__main h1 {
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+	font-weight: 600;
+	letter-spacing: normal;
+}
+
+#nz-app-deploy-root .nz-app-service-toolbar-primary {
+	justify-content: space-between;
+}
+
+#nz-app-deploy-root .nz-app-service-header__main {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+#nz-app-deploy-root .nz-app-service-header__back {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: center;
+	padding: 0.25rem;
+	border-radius: 0.25rem;
+	color: var(--nz-text-muted, #6b7280);
+	transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+#nz-app-deploy-root .nz-app-service-header__back svg {
+	display: block;
+	width: 0.75rem;
+	height: 0.75rem;
+}
+
+/* Toolbar right actions (Visit, etc.) — compact px-2 py-1 */
+#nz-app-deploy-root .nz-domains-controls-actions .nz-app-btn,
+#nz-app-deploy-root .nz-domains-controls-actions a.nz-app-btn,
+#nz-app-deploy-root .nz-domains-controls-actions button.nz-app-btn,
+#nz-app-deploy-root .nz-app-service-actions .nz-app-btn,
+#nz-app-deploy-root .nz-app-service-actions a.nz-app-btn,
+#nz-app-deploy-root .nz-app-service-actions button.nz-app-btn,
+#nz-app-deploy-root .nz-app-settings-actions__row .nz-app-btn,
+#nz-app-deploy-root .nz-app-settings-actions__row a.nz-app-btn,
+#nz-app-deploy-root .nz-app-settings-actions__row button.nz-app-btn {
+	height: auto !important;
+	min-height: 0 !important;
+	padding: 0.25rem 0.5rem !important;
+	line-height: 1rem;
+}
+
+#nz-app-deploy-root .nz-app-service-actions {
+	flex-wrap: wrap;
+	gap: 0.375rem;
+}
+
+#nz-app-deploy-root .nz-app-service-header__back:hover {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.25rem 0.5rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-muted, #f7f7f8);
+	font-size: 0.75rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+}
+
+/* iOS-style switch toggles (Autodeploy / Clean cache) */
+#nz-app-deploy-root .nz-app-switch {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	cursor: pointer;
+	user-select: none;
+	font-size: 0.75rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-switch__input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+#nz-app-deploy-root .nz-app-switch__track {
+	position: relative;
+	display: inline-flex;
+	flex-shrink: 0;
+	width: 1.75rem;
+	height: 1rem;
+	border-radius: 9999px;
+	background-color: var(--nz-border-strong, #d1d5db);
+	transition: background-color 0.18s ease;
+}
+
+#nz-app-deploy-root .nz-app-switch__thumb {
+	position: absolute;
+	top: 50%;
+	left: 0.125rem;
+	width: 0.75rem;
+	height: 0.75rem;
+	border-radius: 9999px;
+	background-color: #ffffff;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+	transform: translateY(-50%);
+	transition: transform 0.18s ease;
+}
+
+#nz-app-deploy-root .nz-app-switch__input:checked + .nz-app-switch__track {
+	background-color: var(--nz-primary, #111827);
+}
+
+#nz-app-deploy-root
+	.nz-app-switch__input:checked
+	+ .nz-app-switch__track
+	.nz-app-switch__thumb {
+	transform: translate(0.75rem, -50%);
+}
+
+#nz-app-deploy-root .nz-app-switch__input:focus-visible + .nz-app-switch__track {
+	outline: 2px solid var(--nz-primary, #111827);
+	outline-offset: 2px;
+}
+
+/* Tab panels — hidden must win over inner layout display rules */
+#nz-app-deploy-root [data-app-tab-panel].hidden {
+	display: none;
+}
+
+#nz-app-deploy-root [data-app-tab-panel]:not(.hidden) {
+	display: block;
+	min-width: 0;
+}
+
+/* Overview stack — deployment meta card + settings panels */
+#nz-app-deploy-root .nz-app-overview-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: 0.75rem;
+	overflow: visible;
+}
+
+#nz-app-deploy-root .nz-app-settings-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: 0.75rem;
+}
+
+#nz-app-deploy-root .nz-app-settings-actions-card {
+	padding: 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-app-deploy-root .nz-app-setting-panel--danger .nz-app-setting-panel__title {
+	color: var(--nz-danger, #dc2626);
+}
+
+#nz-app-deploy-root .nz-app-settings-list {
+	padding: 0;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta {
+	padding: 1rem 1.25rem 1.125rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__grid {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	column-gap: 1.5rem;
+	row-gap: 1rem;
+	margin: 0;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item {
+	display: flex;
+	flex-direction: column;
+	gap: 0.375rem;
+	min-width: 0;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item--domain dd {
+	overflow-wrap: anywhere;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item--full {
+	grid-column: 1 / -1;
+	gap: 0.375rem;
+	padding-top: 1rem;
+	margin-top: 0.25rem;
+	border-top: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item dt {
+	font-size: 0.6875rem;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item dd {
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.35rem;
+	color: var(--nz-text, #111827);
+	word-break: break-word;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	font-weight: 500;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__status-dot {
+	flex-shrink: 0;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 9999px;
+	background-color: var(--nz-text-muted, #9ca3af);
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__status-dot[data-state="done"] {
+	background-color: #10b981;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__status-dot[data-state="error"] {
+	background-color: #ef4444;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__status-dot[data-state="running"] {
+	background-color: #f59e0b;
+}
+
+#nz-app-deploy-root .nz-app-deploy-meta__item dd a {
+	color: var(--nz-text, #111827);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* Vercel-style deployment settings bars (Source / Build / Deployments) */
+#nz-app-deploy-root .nz-app-settings-stack {
+	overflow: visible;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-app-deploy-root .nz-app-setting-panel {
+	overflow: visible;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel {
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-app-deploy-root .nz-app-setting-panel:last-child {
+	border-bottom: none;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__trigger {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 0.5rem;
+	box-sizing: border-box;
+	border: 0;
+	background-color: var(--nz-surface, #ffffff);
+	color: var(--nz-text, #111827);
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+}
+
+#nz-app-deploy-root .nz-app-settings-stack > .nz-app-setting-panel > .nz-app-setting-panel__trigger,
+#nz-app-deploy-root .nz-app-settings-stack > .nz-app-setting-panel > .nz-app-setting-panel__trigger--static {
+	padding-top: 0.5rem;
+	padding-bottom: 0.5rem;
+	padding-left: 0.75rem;
+	padding-right: 0.75rem;
+	min-height: 2.25rem;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__trigger:hover {
+	background-color: var(--nz-bg-hover, #f3f4f6);
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__trigger--static {
+	cursor: default;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__trigger--static:hover {
+	background-color: var(--nz-surface, #ffffff);
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__chevron {
+	flex-shrink: 0;
+	width: 0.875rem;
+	height: 0.875rem;
+	color: var(--nz-text-muted, #6b7280);
+	transition: transform 0.18s ease;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__title-wrap {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__title {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-setting-hint {
+	position: relative;
+	flex-shrink: 0;
+}
+
+#nz-app-deploy-root .nz-app-setting-hint__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.125rem;
+	height: 1.125rem;
+	border-radius: 9999px;
+	border: 1px solid var(--nz-border, #d1d5db);
+	background-color: var(--nz-surface, #ffffff);
+	color: var(--nz-text-muted, #6b7280);
+	cursor: pointer;
+}
+
+#nz-app-deploy-root .nz-app-setting-hint__btn svg {
+	width: 0.75rem;
+	height: 0.75rem;
+}
+
+#nz-app-deploy-root .nz-app-setting-hint__btn:hover,
+#nz-app-deploy-root .nz-app-setting-hint__btn:focus-visible {
+	border-color: var(--nz-border-strong, #9ca3af);
+	color: var(--nz-text, #111827);
+	outline: none;
+}
+
+#nz-app-deploy-root .nz-app-setting-hint__tooltip {
+	position: absolute;
+	z-index: 80;
+	left: calc(100% + 0.5rem);
+	top: 50%;
+	width: max-content;
+	max-width: min(18rem, 70vw);
+	padding: 0.375rem 0.5rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-surface, #ffffff);
+	box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+	font-size: 0.75rem;
+	font-weight: 400;
+	line-height: 1.125rem;
+	color: var(--nz-text, #111827);
+	white-space: nowrap;
+	text-align: left;
+	pointer-events: none;
+	opacity: 0;
+	visibility: hidden;
+	transform: translateY(-50%);
+	transition:
+		opacity 0.12s ease,
+		visibility 0.12s ease;
+}
+
+#nz-app-deploy-root .nz-app-setting-hint:hover .nz-app-setting-hint__tooltip,
+#nz-app-deploy-root .nz-app-setting-hint:focus-within .nz-app-setting-hint__tooltip {
+	opacity: 1;
+	visibility: visible;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__title-wrap {
+	white-space: nowrap;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__title {
+	white-space: nowrap;
+}
+
+#nz-app-deploy-root .nz-app-setting-panel__body {
+	overflow: hidden;
+	max-height: 4000px;
+	padding: 0.5rem 0.75rem; /* py-2 px-3 — expanded content */
+	border-top: 1px solid var(--nz-border, #eceef3);
+	background-color: var(--nz-surface, #ffffff);
+	opacity: 1;
+	transition:
+		max-height 0.24s ease,
+		opacity 0.18s ease,
+		padding 0.2s ease;
+}
+
+#nz-app-deploy-root .nz-app-collapse[data-collapsed="true"] .nz-app-setting-panel__chevron,
+#nz-app-deploy-root .nz-app-collapse[data-collapsed="true"] .nz-app-collapse__chevron {
+	transform: rotate(0deg);
+}
+
+#nz-app-deploy-root .nz-app-collapse[data-collapsed="false"] .nz-app-setting-panel__chevron,
+#nz-app-deploy-root .nz-app-collapse[data-collapsed="false"] .nz-app-collapse__chevron {
+	transform: rotate(90deg);
+}
+
+#nz-app-deploy-root .nz-app-setting-panel--open .nz-app-setting-panel__chevron {
+	transform: rotate(90deg);
+}
+
+#nz-app-deploy-root .nz-app-collapse[data-collapsed="true"] .nz-app-setting-panel__body,
+#nz-app-deploy-root .nz-app-collapse[data-collapsed="true"] .nz-app-collapse__body {
+	max-height: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+	border-top-width: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+
+@media (max-width: 900px) {
+	#nz-app-deploy-root .nz-app-deploy-meta__grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 520px) {
+	#nz-app-deploy-root .nz-app-deploy-meta__grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+#nz-app-deploy-root .nz-app-settings-actions {
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-app-deploy-root .nz-app-settings-actions__body {
+	padding-top: 0.75rem;
+	padding-bottom: 0.75rem;
+}
+
+#nz-app-deploy-root .nz-app-settings-actions__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 0.5rem;
+}
+
+/* Settings rows */
+#nz-app-deploy-root .nz-app-setting-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.625rem 0;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-app-deploy-root .nz-app-setting-row:last-child {
+	border-bottom: none;
+}
+
+#nz-app-deploy-root .nz-app-setting-row__title {
+	font-size: 0.8125rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-setting-row__desc {
+	margin-top: 0.125rem;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-app-deploy-root .nz-app-section--danger .nz-app-section__title {
+	color: var(--nz-danger, #dc2626);
+}
+
+#nz-app-deploy-root button.nz-app-btn,
+#nz-app-deploy-root a.nz-app-btn,
+#nz-app-deploy-root .nz-app-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.25rem;
+	height: 2rem !important;
+	min-height: 2rem !important;
+	padding: 0 0.75rem !important;
+	border-radius: 0.375rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	background-color: transparent;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+	color: var(--nz-text, #111827);
+	transition:
+		background-color 0.12s ease,
+		border-color 0.12s ease,
+		color 0.12s ease;
+}
+
+#nz-app-deploy-root .nz-app-btn:hover:not(:disabled) {
+	background-color: var(--nz-bg-hover, #ececef);
+	border-color: var(--nz-border-strong, #e5e7eb);
+}
+
+#nz-app-deploy-root .nz-app-btn--primary {
+	border-color: var(--nz-primary, #111827);
+	background-color: var(--nz-primary, #111827);
+	color: var(--nz-primary-fg, #ffffff);
+}
+
+#nz-app-deploy-root .nz-app-btn--primary:hover:not(:disabled) {
+	background-color: var(--nz-primary-hover, #1f2937);
+	border-color: var(--nz-primary-hover, #1f2937);
+}
+
+#nz-app-deploy-root .nz-app-btn--danger {
+	border-color: color-mix(in srgb, #ef4444 35%, var(--nz-border));
+	background-color: color-mix(in srgb, #ef4444 8%, var(--nz-surface));
+	color: #b91c1c;
+}
+
+html.dark #nz-app-deploy-root .nz-app-btn--danger {
+	color: #fca5a5;
+}
+
+#nz-app-deploy-root .nz-app-provider-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.125rem;
+	padding: 0.125rem;
+	margin-bottom: 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-muted, #f7f7f8);
+}
+
+#nz-app-deploy-root .nz-app-provider-tab {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 0.25rem 0.5rem;
+	border: 1px solid transparent;
+	border-radius: 0.25rem;
+	background: transparent;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+	color: var(--nz-text-muted, #6b7280);
+	cursor: pointer;
+	transition:
+		background-color 0.12s ease,
+		color 0.12s ease,
+		border-color 0.12s ease;
+}
+
+#nz-app-deploy-root .nz-app-provider-tab:hover {
+	color: var(--nz-text, #111827);
+	background-color: var(--nz-bg-hover, #ececef);
+}
+
+#nz-app-deploy-root .nz-app-provider-tab[data-active="true"] {
+	border-color: var(--nz-border-strong, #e5e7eb);
+	background-color: var(--nz-bg-elevated, #ffffff);
+	color: var(--nz-text, #111827);
+	box-shadow: none;
+}
+
+#nz-app-deploy-root .nz-app-field {
+	display: grid;
+	gap: 0.25rem;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-field--wide {
+	grid-column: 1 / -1;
+}
+
+#nz-app-deploy-root .nz-app-input,
+#nz-app-deploy-root .nz-app-select {
+	width: 100%;
+	height: 2rem;
+	padding: 0.25rem 0.75rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-elevated, #ffffff);
+	color: var(--nz-text, #111827);
+	font-size: 0.75rem;
+	line-height: 1rem;
+	outline: none;
+	resize: none;
+	transition: border-color 0.12s ease;
+}
+
+#nz-app-deploy-root textarea.nz-app-input {
+	height: auto;
+	min-height: 2rem;
+}
+
+#nz-app-deploy-root .nz-app-input:focus,
+#nz-app-deploy-root .nz-app-select:focus {
+	border-color: var(--nz-border-strong, #e5e7eb);
+	box-shadow: 0 0 0 1px var(--nz-border-strong, #e5e7eb);
+}
+
+#nz-app-deploy-root .nz-app-form-grid {
+	display: grid;
+	gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+	#nz-app-deploy-root .nz-app-form-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+#nz-app-deploy-root .nz-app-form-actions {
+	display: flex;
+	justify-content: flex-end;
+	grid-column: 1 / -1;
+	padding-top: 0.25rem;
+}
+
+#nz-app-deploy-root .nz-app-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 2rem 1rem;
+	text-align: center;
+	border: 1px dashed var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-muted, #f7f7f8);
+}
+
+#nz-app-deploy-root .nz-app-empty-state--compact {
+	padding: 1.25rem 1rem;
+}
+
+#nz-app-deploy-root .nz-app-empty-state p {
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-app-deploy-root .nz-app-empty-state a {
+	color: var(--nz-text, #111827);
+	font-weight: 500;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+#nz-app-deploy-root .nz-app-callout {
+	border-radius: 0.375rem;
+	border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--nz-border));
+	background-color: color-mix(in srgb, #f59e0b 10%, var(--nz-surface));
+	padding: 0.5rem 0.625rem;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-meta-box {
+	display: grid;
+	gap: 0.375rem;
+	padding: 0.625rem 0.75rem;
+	border: 1px dashed var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	font-size: 0.75rem;
+	line-height: 1.25rem;
+}
+
+#nz-app-deploy-root .nz-app-meta-box .text-muted-foreground,
+#nz-app-deploy-root .nz-app-meta-box span:first-child {
+	color: var(--nz-text-muted, #6b7280);
+}
+
+#nz-app-deploy-root .nz-app-build-grid {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.375rem;
+}
+
+#nz-app-deploy-root .nz-app-build-option {
+	display: inline-flex;
+	align-items: center;
+	cursor: pointer;
+}
+
+#nz-app-deploy-root .nz-app-build-option input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+#nz-app-deploy-root .nz-app-build-option span {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.25rem 0.5rem;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.375rem;
+	background-color: var(--nz-bg-muted, #f7f7f8);
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+	color: var(--nz-text-muted, #6b7280);
+	transition:
+		background-color 0.12s ease,
+		border-color 0.12s ease,
+		color 0.12s ease;
+}
+
+#nz-app-deploy-root .nz-app-build-option:hover span {
+	color: var(--nz-text, #111827);
+	background-color: var(--nz-bg-hover, #ececef);
+}
+
+#nz-app-deploy-root .nz-app-build-option input:checked + span {
+	border-color: var(--nz-border-strong, #e5e7eb);
+	background-color: var(--nz-bg-elevated, #ffffff);
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-check-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 500;
+	color: var(--nz-text, #111827);
+}
+
+#nz-app-deploy-root .nz-app-deployments-section .nz-app-setting-panel__body {
+	padding: 0;
+}
+
+#nz-app-deploy-root .nz-app-deployment-list {
+	display: grid;
+	max-height: min(26rem, 55dvh);
+	overflow: auto;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	min-height: 0;
+	padding: 0.5rem 0.75rem; /* py-2 px-3 */
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+#nz-app-deploy-root .nz-app-deployment-row:last-child {
+	border-bottom: none;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row:hover {
+	background-color: transparent;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__main {
+	display: block;
+	min-width: 0;
+	flex: 1 1 auto;
+	padding: 0;
+	text-align: left;
+	background: transparent;
+	border: 0;
+	border-radius: 0.25rem;
+	cursor: pointer;
+	appearance: none;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__main:hover,
+#nz-app-deploy-root .nz-app-deployment-row__main:focus-visible {
+	background: transparent;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__main:focus-visible {
+	outline: 2px solid var(--nz-border-strong, #d1d5db);
+	outline-offset: 2px;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__line {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75rem;
+	min-width: 0;
+	width: 100%;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__commit {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+	letter-spacing: 0.02em;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__main:hover .nz-app-deployment-row__commit {
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__meta {
+	flex-shrink: 0;
+	font-size: 0.75rem;
+	color: var(--nz-text-muted, #6b7280);
+	white-space: nowrap;
+}
+
+#nz-app-deploy-root .nz-app-deployment-row__actions {
+	display: flex;
+	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.375rem;
+}
+
+#nz-app-deploy-root .nz-app-rollback-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+#nz-app-deploy-root .nz-app-status-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	white-space: nowrap;
+	border-radius: 9999px;
+	padding: 0.125rem 0.5rem;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1rem;
+}
+
+#nz-app-deploy-root .nz-app-status-pill::before {
+	content: "";
+	width: 0.375rem;
+	height: 0.375rem;
+	border-radius: 9999px;
+	background-color: currentColor;
+}
+
+#nz-app-deploy-root .nz-app-status-pill[data-state="done"] {
+	background-color: #dcfce7;
+	color: #10b981;
+}
+
+#nz-app-deploy-root .nz-app-status-pill[data-state="running"] {
+	background-color: #fef3c7;
+	color: #f59e0b;
+}
+
+#nz-app-deploy-root .nz-app-status-pill[data-state="error"] {
+	background-color: #fee2e2;
+	color: #ef4444;
+}
+
+.nz-app-log-dialog {
+	width: min(72rem, calc(100vw - 2rem));
+	max-height: min(48rem, calc(100dvh - 2rem));
+	padding: 0;
+	border: 1px solid var(--nz-border, #eceef3);
+	border-radius: 0.5rem;
+	background: var(--nz-surface, #ffffff);
+	color: var(--nz-text, #111827);
+	box-shadow: 0 18px 60px rgba(15, 23, 42, 0.18);
+}
+
+.nz-app-log-dialog__panel {
+	display: flex;
+	min-height: 22rem;
+	max-height: min(48rem, calc(100dvh - 2rem));
+	flex-direction: column;
+}
+
+.nz-app-log-dialog__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.625rem 0.75rem;
+	border-bottom: 1px solid var(--nz-border, #eceef3);
+}
+
+.nz-app-log-dialog__header-line {
+	display: flex;
+	min-width: 0;
+	flex: 1 1 auto;
+	align-items: baseline;
+	gap: 0.375rem;
+	margin: 0;
+	font-size: 0.8125rem;
+	line-height: 1.25rem;
+}
+
+.nz-app-log-dialog__label {
+	flex-shrink: 0;
+	font-size: 0.6875rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--nz-text-muted, #6b7280);
+}
+
+.nz-app-log-dialog__sep {
+	color: var(--nz-text-muted, #9ca3af);
+}
+
+.nz-app-log-dialog__commit {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	color: var(--nz-text, #111827);
+}
+
+.nz-app-log-dialog__actions {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+}
+
+.nz-app-log-dialog__body {
+	min-height: 20rem;
+	max-height: min(40rem, calc(100dvh - 8rem));
+	margin: 0;
+	overflow: auto;
+	background-color: var(--nz-bg-muted, #f7f7f8);
+}
+
+.nz-app-log-dialog__output {
+	padding: 0.5rem 0.625rem 0.75rem;
+	font-size: 0.6875rem;
+	line-height: 1.35rem;
+}
+
+.nz-app-log-line {
+	display: grid;
+	grid-template-columns: 2.75rem minmax(0, 1fr);
+	gap: 0.625rem;
+	padding: 0.0625rem 0;
+}
+
+.nz-app-log-line__num {
+	text-align: right;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-variant-numeric: tabular-nums;
+	color: var(--nz-text-subtle, #9ca3af);
+	user-select: none;
+}
+
+.nz-app-log-line__text {
+	min-width: 0;
+	white-space: pre-wrap;
+	word-break: break-word;
+	color: var(--nz-text-muted, #4b5563);
+}
+
+.nz-app-log-line--error {
+	border-radius: 0.25rem;
+	background-color: #fef2f2;
+}
+
+.nz-app-log-line--error .nz-app-log-line__num {
+	color: #f87171;
+}
+
+.nz-app-log-line--error .nz-app-log-line__text {
+	color: #b91c1c;
+}
+
+html.dark .nz-app-log-dialog__body {
+	background-color: #0a0a0b;
+}
+
+html.dark .nz-app-log-line__text {
+	color: #d1d5db;
+}
+
+html.dark .nz-app-log-line--error {
+	background-color: rgba(127, 29, 29, 0.35);
+}
+
+html.dark .nz-app-log-line--error .nz-app-log-line__text {
+	color: #fecaca;
+}
+
+@media (max-width: 640px) {
+	#nz-app-deploy-root .nz-app-deployment-row,
+	.nz-app-log-dialog__header {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	#nz-app-deploy-root .nz-app-deployment-row__actions,
+	.nz-app-log-dialog__actions {
+		justify-content: flex-start;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#nz-app-deploy-root .nz-app-setting-panel__body,
+	#nz-app-deploy-root .nz-app-setting-panel__chevron {
+		transition: none;
+	}
+}
+
+html.dark #nz-app-deploy-root .nz-app-section__head,
+html.dark #nz-app-deploy-root .nz-app-provider-tab[data-active="true"] {
+	background-color: var(--nz-surface);
+}
+
+html.dark #nz-app-deploy-root .nz-app-deploy-meta,
+html.dark #nz-app-deploy-root .nz-app-settings-stack {
+	background-color: var(--nz-surface, #0b0b0d);
+}
+
+html.dark #nz-app-deploy-root .nz-app-setting-panel__trigger {
+	background-color: var(--nz-surface, #0b0b0d);
+}
+
+html.dark #nz-app-deploy-root .nz-app-setting-panel__trigger:hover {
+	background-color: var(--nz-bg-hover, #141416);
+}
+
+html.dark #nz-app-deploy-root .nz-app-btn:hover:not(:disabled),
+html.dark #nz-app-deploy-root .nz-app-provider-tab:hover {
+	background-color: var(--nz-bg-hover);
+	color: var(--nz-text);
+}
+
+/* ============================================================
+   Unified compact Overview + Settings panels
+   - All text → text-xs (0.75rem / 1rem), except the main
+     service-name heading (which lives outside these panels).
+   - All padded containers → px-2 py-1 (0.5rem / 0.25rem).
+   Scoped strictly to the Overview and Settings tab panels.
+   ============================================================ */
+#nz-app-deploy-root [data-app-tab-panel="overview"] *,
+#nz-app-deploy-root [data-app-tab-panel="settings"] * {
+	font-size: 0.75rem;
+	line-height: 1rem;
+}
+
+/* Elements that set their own element-level font-size need an
+   explicit override to win over (id, class, element) specificity. */
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-deploy-meta__item dt,
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-deploy-meta__item dd,
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-setting-panel__title,
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-empty-state p,
+#nz-app-deploy-root [data-app-tab-panel="settings"] .nz-app-empty-state p {
+	font-size: inherit;
+	line-height: inherit;
+}
+
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-deploy-meta__item dt {
+	font-size: 0.6875rem;
+	line-height: 1rem;
+}
+
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-deploy-meta__item dd {
+	font-size: 0.8125rem;
+	line-height: 1.35rem;
+}
+
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-setting-panel__title {
+	font-size: 0.8125rem;
+	line-height: 1.25rem;
+}
+
+/* Legacy section toggles in overview (if any) → px-2 py-1 */
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-section__head,
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-collapse__toggle,
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-collapse__toggle.nz-app-section__head {
+	padding: 0.25rem 0.5rem;
+}
+
+/* Preserve overview layout padding (wins over generic compact rules) */
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-overview-stack,
+#nz-app-deploy-root [data-app-tab-panel="settings"] .nz-app-settings-tab {
+	padding: 0.75rem;
+}
+
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-deploy-meta {
+	padding: 1rem 1.25rem 1.125rem;
+}
+
+#nz-app-deploy-root [data-app-tab-panel="settings"] .nz-app-setting-row {
+	padding: 0.5rem 0;
+}
+
+/* Accordion headers — py-2 (explicit sides beat compact * rules) */
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-settings-stack > .nz-app-setting-panel > .nz-app-setting-panel__trigger,
+#nz-app-deploy-root [data-app-tab-panel="overview"] .nz-app-settings-stack > .nz-app-setting-panel > .nz-app-setting-panel__trigger--static,
+#nz-app-deploy-root [data-app-tab-panel="settings"] .nz-app-settings-stack > .nz-app-setting-panel > .nz-app-setting-panel__trigger {
+	padding-top: 0.5rem;
+	padding-bottom: 0.5rem;
+	padding-left: 0.75rem;
+	padding-right: 0.75rem;
+}

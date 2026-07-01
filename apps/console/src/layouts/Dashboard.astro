@@ -1,0 +1,1171 @@
+---
+import SidebarIcon from "../components/SidebarIcon.astro";
+import DashboardSidebar from "../components/dashboard/DashboardSidebar.astro";
+import DesktopSidebar from "../components/dashboard/shell/DesktopSidebar.astro";
+import AgentWorkspaceShell from "../components/dashboard/agent/AgentWorkspaceShell.astro";
+import NotificationsBell from "../components/dashboard/shell/NotificationsBell.astro";
+import OrganizationSwitcher from "../components/dashboard/shell/OrganizationSwitcher.astro";
+import DashboardBreadcrumb from "../components/dashboard/shell/DashboardBreadcrumb.astro";
+import { parseDashboardPath } from "../lib/dashboard-context";
+import {
+	resolveDashboardContext,
+	type DashboardContextLabels,
+} from "../lib/dashboard-context-server";
+import SettingsShell from "../components/dashboard/settings/SettingsShell.astro";
+import NzModal from "../components/ui/NzModal.astro";
+import { isSettingsAreaPath } from "../lib/settings-nav";
+import { getActiveDashboardSection } from "../components/dashboard/sidebarShared";
+import type { NavContext } from "../components/dashboard/navMenu";
+import { createServerTrpcClient } from "../lib/server-api";
+import { ViewTransitions } from "astro:transitions";
+import Favicon from "../components/Favicon.astro";
+import ThemeInit from "../components/ThemeInit.astro";
+import AuthButtonSpinner from "../components/auth/AuthButtonSpinner.astro";
+import "../styles/global.css";
+import "../styles/globals.css";
+import "../styles/nearzero-content.css";
+import "../styles/nearzero-overlays.css";
+import "../styles/nearzero-theme.css";
+import "../styles/settings-hub.css";
+import "../styles/agent-workspace.css";
+import "../styles/nearzero-modals.css";
+import "../styles/nearzero-terminal-shell.css";
+import { pageTitle } from "../lib/branding";
+import { normalizeDashboardPath } from "../lib/org-routes";
+
+type DeployRowLocal = {
+	deploymentId: string;
+	status?: string | null;
+	title?: string | null;
+	createdAt: string | Date;
+	application?: { name?: string | null } | null;
+	compose?: { name?: string | null } | null;
+};
+
+type OrgRowLocal = {
+	id: string;
+	name?: string | null;
+	slug?: string | null;
+	logo?: string | null;
+	ownerId?: string | null;
+	members?: { isDefault?: boolean | null }[] | null;
+};
+
+type EnvironmentCrumbRow = {
+	environmentId: string;
+	name?: string | null;
+	isDefault?: boolean | null;
+};
+
+type ProjectCrumbRow = {
+	projectId: string;
+	name: string;
+	environments: EnvironmentCrumbRow[];
+};
+
+type DashboardMember = {
+	user?: {
+		firstName?: string | null;
+		lastName?: string | null;
+		email?: string | null;
+		image?: string | null;
+		id?: string;
+	};
+	role?: string | null;
+};
+
+const api = createServerTrpcClient(Astro.request);
+
+const {
+	title = pageTitle("Console"),
+	dashboardContext: dashboardContextProp = {} as DashboardContextLabels,
+	user = null,
+} = Astro.props;
+const pathname = Astro.url.pathname;
+const routeContext = parseDashboardPath(pathname);
+const section = String(Astro.url.searchParams.get("section") || "").toLowerCase();
+
+const activeSection = getActiveDashboardSection(pathname, section);
+
+let authMember: DashboardMember | null = user ? { user } : null;
+let permissions: NavContext["permissions"] | null = null;
+let organizations: OrgRowLocal[] = [];
+let activeOrganization: OrgRowLocal | null = null;
+let whitelabeling: NavContext["whitelabeling"] | null = null;
+let invitations: unknown[] | null = [];
+let deployments: DeployRowLocal[] = [];
+let breadcrumbEnvironments: EnvironmentCrumbRow[] = [];
+let breadcrumbProjects: ProjectCrumbRow[] = [];
+
+try {
+	/* AppRouter is typed loosely — widen calls for astro check compatibility. */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const tc = api as any;
+	const [member, perm, orgs, wl, invs] = await Promise.all([
+		tc.user.get.query(),
+		tc.user.getPermissions.query(),
+		tc.organization.all.query(),
+		tc.whitelabeling.get.query(),
+		tc.user.getInvitations.query(),
+	]);
+	authMember = member != null ? (member as DashboardMember) : authMember;
+	permissions = (perm ?? null) as NavContext["permissions"];
+	organizations =
+		Array.isArray(orgs) ?
+			(orgs as OrgRowLocal[]).map((r) => ({ ...r }))
+		:	[];
+	whitelabeling = (wl ?? null) as NavContext["whitelabeling"];
+	invitations = Array.isArray(invs) ? invs : [];
+
+	const active = await tc.organization.active.query().catch(() => null);
+	activeOrganization =
+		active && typeof active === "object" && "id" in active ?
+			(active as OrgRowLocal)
+		:	null;
+
+} catch {
+	/* Keep the shell renderable if optional chrome data is temporarily unavailable. */
+}
+
+const dashboardContextResolved = await resolveDashboardContext(
+	Astro.request,
+	pathname,
+);
+const dashboardContext = {
+	...dashboardContextResolved,
+	...dashboardContextProp,
+};
+
+if (routeContext.projectId) {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const tc = api as any;
+		const [envRows, projectRows] = await Promise.all([
+			tc.environment.byProjectId
+				.query({ projectId: routeContext.projectId })
+				.catch(() => []),
+			tc.project.all.query().catch(() => []),
+		]);
+		breadcrumbEnvironments =
+			Array.isArray(envRows) ?
+				envRows
+					.map((row) => ({
+						environmentId: String(row?.environmentId ?? ""),
+						name:
+							typeof row?.name === "string" ? row.name
+							: row?.name == null ? null
+							: String(row.name),
+						isDefault: Boolean(row?.isDefault),
+					}))
+					.filter((row) => row.environmentId)
+			:	[];
+		breadcrumbProjects =
+			Array.isArray(projectRows) ?
+				projectRows
+					.map((row) => ({
+						projectId: String(row?.projectId ?? ""),
+						name:
+							typeof row?.name === "string" ? row.name
+							: row?.name == null ? "Project"
+							: String(row.name),
+						environments:
+							Array.isArray(row?.environments) ?
+								row.environments
+									.map((env: {
+										environmentId?: string;
+										name?: string | null;
+										isDefault?: boolean;
+									}) => ({
+										environmentId: String(env?.environmentId ?? ""),
+										name:
+											typeof env?.name === "string" ? env.name
+											: env?.name == null ? null
+											: String(env.name),
+										isDefault: Boolean(env?.isDefault),
+									}))
+									.filter((env: { environmentId: string }) => env.environmentId)
+							:	[],
+					}))
+					.filter((row) => row.projectId)
+			:	[];
+	} catch {
+		breadcrumbEnvironments = [];
+		breadcrumbProjects = [];
+	}
+}
+
+const brandLabel = whitelabeling?.appName?.trim() || "Nearzero";
+const dashboardRole = authMember?.role ?? null;
+const invitationRows = invitations ?? [];
+const orgSlug =
+	activeOrganization?.slug?.trim() ||
+	normalizeDashboardPath(pathname).orgSlug ||
+	null;
+
+const inSettingsArea = isSettingsAreaPath(pathname);
+const { dashboardPath } = normalizeDashboardPath(pathname);
+const isAgentArea =
+	dashboardPath === "/dashboard/agent" ||
+	dashboardPath.startsWith("/dashboard/agent/");
+/** Project environment routes (workspace, import wizard, service detail, etc.) — icon rail, sidebar collapsed by default. */
+const isProjectEnvironmentShellArea =
+	/^\/dashboard\/project\/[^/]+\/environment\/[^/]+/.test(dashboardPath);
+const usesCollapsedSidebarShell =
+	isAgentArea || isProjectEnvironmentShellArea;
+const sidebarAuth = authMember ? { role: authMember.role ?? null } : null;
+
+const canAddEnvironment = Boolean(
+	routeContext.projectId &&
+		(dashboardRole === "owner" ||
+			dashboardRole === "admin" ||
+			(permissions as { environment?: { create?: boolean } } | null)
+				?.environment?.create),
+);
+
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <Favicon />
+    <title>{title}</title>
+    <ThemeInit />
+    <ViewTransitions fallback="none" />
+  </head>
+  <body class="nz-app-shell h-screen overflow-hidden bg-[var(--nz-bg-elevated)] text-[var(--nz-text)]">
+    <div class="relative h-screen overflow-hidden bg-[var(--nz-bg)]">
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,var(--nz-grid-line)_1px,transparent_1px),linear-gradient(to_bottom,var(--nz-grid-line)_1px,transparent_1px)] bg-[size:clamp(160px,17vw,250px)_clamp(104px,16vh,176px)]"
+      ></div>
+
+      <div class="relative grid h-screen grid-rows-[42px_minmax(0,1fr)] gap-px bg-[var(--nz-grid-line)]">
+        <header
+          class="sticky top-0 z-40 shrink-0 rounded-md bg-[color-mix(in_srgb,var(--nz-bg-elevated)_92%,transparent)] backdrop-blur-sm"
+        >
+          <div class="flex h-10 items-center justify-between gap-3 px-3 md:px-4">
+            <div class="flex min-w-0 flex-1 items-center gap-2 overflow-visible">
+              <button
+                id="mobile-nav-toggle"
+                type="button"
+                aria-label="Open navigation"
+                aria-expanded="false"
+                aria-controls="mobile-nav-sheet"
+                class="relative z-[260] inline-flex items-center justify-center rounded-md bg-transparent px-2 py-1 text-xs text-[var(--nz-text-muted)] transition-colors hover:bg-[var(--nz-bg-hover)] hover:text-[var(--nz-text)] lg:hidden"
+              >
+                <SidebarIcon name="menu" class="h-4 w-4" />
+              </button>
+
+              <OrganizationSwitcher
+                brandLabel={brandLabel}
+                organizations={organizations}
+                activeOrganization={activeOrganization}
+                dashboardRole={dashboardRole}
+              />
+              <DashboardBreadcrumb
+                projectName={dashboardContext.projectName}
+                environmentName={dashboardContext.environmentName}
+                isProductionEnvironment={dashboardContext.isProductionEnvironment}
+                projectId={routeContext.projectId}
+                activeEnvironmentId={routeContext.environmentId}
+                currentPathname={pathname}
+                orgSlug={orgSlug}
+                projects={breadcrumbProjects}
+                environments={breadcrumbEnvironments}
+                canAddEnvironment={canAddEnvironment}
+              />
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <div id="dashboard-notifications-mount" class="relative shrink-0">
+                <NotificationsBell
+                  deployments={deployments}
+                  invitations={invitationRows}
+                />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div
+          class:list={[
+            "grid h-full min-h-0 grid-cols-1 gap-px bg-[var(--nz-grid-line)]",
+            !usesCollapsedSidebarShell &&
+              "lg:grid-cols-[17rem_minmax(0,1fr)]",
+          ]}
+          data-nz-dashboard-frame
+        >
+          {
+            !usesCollapsedSidebarShell ? (
+              <div
+                class="dashboard-sidebar-host hidden h-full min-h-0 lg:block"
+                transition:animate="none"
+              >
+                <DesktopSidebar
+                  activeSection={activeSection}
+                  dashboardAuth={authMember}
+                  permissions={permissions}
+                  orgSlug={orgSlug}
+                  whitelabeling={whitelabeling}
+                />
+              </div>
+            ) : null
+          }
+
+          <main
+            transition:animate="none"
+            class="min-h-0 h-full overflow-hidden"
+          >
+            <div
+              class:list={[
+                "nz-dashboard-shell h-full min-h-0 bg-[var(--nz-surface)]",
+                usesCollapsedSidebarShell
+                  ? "overflow-hidden rounded-none p-0"
+                  : "overflow-y-auto rounded-md p-2 scrollbar-hide",
+              ]}
+              data-nz-shell-mode={usesCollapsedSidebarShell ? "workspace" : "normal"}
+              data-nz-org-slug={orgSlug ?? ""}
+            >
+              {
+                inSettingsArea ? (
+                  <SettingsShell
+                    pathname={pathname}
+                    auth={sidebarAuth}
+                    permissions={permissions}
+                    orgSlug={orgSlug}
+                  >
+                    <slot />
+                  </SettingsShell>
+                ) : usesCollapsedSidebarShell ? (
+                  <AgentWorkspaceShell
+                    activeSection={activeSection}
+                    orgSlug={orgSlug}
+                    permissions={permissions}
+                    whitelabeling={whitelabeling}
+                    dashboardAuth={authMember}
+                  >
+                    <slot />
+                  </AgentWorkspaceShell>
+                ) : (
+                  <slot />
+                )
+              }
+            </div>
+          </main>
+        </div>
+
+        <DashboardSidebar
+          activeSection={activeSection}
+          dashboardAuth={authMember}
+          permissions={permissions}
+          orgSlug={orgSlug}
+          whitelabeling={whitelabeling}
+        />
+      </div>
+    </div>
+
+    <div
+      id="toast-root"
+      class="pointer-events-none fixed bottom-4 right-4 z-[600] flex max-w-[min(100vw-2rem,22rem)] flex-col items-end"
+      aria-live="polite"
+    ></div>
+
+    <dialog
+      id="nz-org-upsert-dialog"
+      class="nz-modal nz-modal--md w-[calc(100%-2rem)]"
+      data-nz-modal
+    >
+      <div class="nz-modal__panel">
+      <div class="p-2">
+        <h2 id="nz-org-upsert-title" class="text-lg font-semibold text-[#111827]">
+          Add organization
+        </h2>
+        <p
+          id="nz-org-upsert-desc"
+          class="mt-1 text-xs text-[#6b7280]"
+        >
+          Create a new organization to manage your projects.
+        </p>
+        <form id="nz-org-upsert-form" class="grid gap-2 py-2">
+          <input id="nz-org-upsert-org-id" type="hidden" value="" />
+          <label class="grid gap-1 text-xs font-medium text-[#111827]">
+            Name
+            <input
+              id="nz-org-name"
+              required
+              name="name"
+              autocomplete="organization"
+              class="rounded-md border border-[#d9dbe3] bg-white px-2 py-1.5 text-xs outline-none placeholder:text-[#9ca3af]"
+              placeholder="Organization name"
+            />
+          </label>
+          <label class="grid gap-1 text-xs font-medium text-[#111827]">
+            Logo URL
+            <input
+              id="nz-org-logo"
+              name="logo"
+              class="rounded-md border border-[#d9dbe3] bg-white px-2 py-1.5 text-xs outline-none placeholder:text-[#9ca3af]"
+              placeholder="https://example.com/logo.png"
+            />
+          </label>
+          <div class="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              id="nz-org-upsert-cancel"
+              class="rounded-md border border-[#d9dbe3] bg-white px-2 py-1 text-xs text-[#111827] hover:bg-[#f7f7f8] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              id="nz-org-upsert-submit"
+              data-default-label="Save organization"
+              class="inline-flex items-center justify-center gap-2 rounded-md bg-[#111827] px-2 py-1 text-xs text-white hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <AuthButtonSpinner />
+              <span data-auth-btn-label>Save organization</span>
+            </button>
+          </div>
+        </form>
+      </div>
+      </div>
+    </dialog>
+
+    <NzModal
+      id="nz-env-upsert-dialog"
+      title="Add environment"
+      description="Create a new environment in this project."
+      size="md"
+      form
+      formId="nz-env-upsert-form"
+    >
+      <input id="nz-env-upsert-project-id" type="hidden" value="" />
+      <div class="nz-modal__field">
+        <label class="nz-modal__label" for="nz-env-upsert-name">Name</label>
+        <input
+          id="nz-env-upsert-name"
+          name="name"
+          required
+          autocomplete="off"
+          class="nz-modal__input nz-modal__input--compact"
+          placeholder="staging"
+        />
+      </div>
+      <div class="nz-modal__field">
+        <label class="nz-modal__label" for="nz-env-upsert-description">
+          Description
+        </label>
+        <textarea
+          id="nz-env-upsert-description"
+          name="description"
+          class="nz-modal__textarea nz-modal__textarea--compact"
+          placeholder="Optional description"
+          rows="3"
+        ></textarea>
+      </div>
+      <Fragment slot="footer">
+        <button
+          type="button"
+          id="nz-env-upsert-cancel"
+          class="nz-modal__btn nz-modal__btn--ghost"
+          data-nz-modal-close
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          id="nz-env-upsert-submit"
+          data-default-label="Create environment"
+          class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+        >
+          <AuthButtonSpinner />
+          <span data-auth-btn-label>Create environment</span>
+        </button>
+      </Fragment>
+    </NzModal>
+
+    <NzModal
+      id="delete-service-dialog"
+      title="Delete service"
+      description="This service and its data will be removed."
+      variant="danger"
+      size="sm"
+      showClose={false}
+    >
+      <p id="delete-service-confirm-text" class="nz-modal__confirm text-xs text-muted-foreground">
+        Are you sure you want to delete <span class="font-semibold text-foreground">this service</span>?
+      </p>
+      <label class="nz-modal__field">
+        <span class="nz-modal__label">
+          Type <span id="delete-service-input-label" class="font-semibold text-foreground">service name</span> to confirm
+        </span>
+        <input
+          id="delete-service-input"
+          type="text"
+          class="nz-modal__input"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>
+        Cancel
+      </button>
+      <button
+        slot="footer"
+        type="button"
+        id="delete-service-confirm"
+        class="nz-modal__btn nz-modal__btn--danger inline-flex items-center justify-center gap-2"
+        data-default-label="Delete"
+        disabled
+      >
+        <AuthButtonSpinner />
+        <span data-auth-btn-label>Delete</span>
+      </button>
+    </NzModal>
+
+    <dialog
+      id="nz-org-delete-dialog"
+      class="w-[calc(100%-2rem)] max-w-md rounded-lg border border-[#e5e7eb] bg-white p-0 shadow-xl backdrop:bg-black/20"
+    >
+      <div class="p-6">
+        <p class="text-sm font-semibold text-[#111827]">
+          Delete Organization
+        </p>
+        <p id="nz-org-delete-message" class="mt-2 text-xs text-[#6b7280]">
+          Are you sure you want to delete this organization?
+        </p>
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            id="nz-org-delete-cancel"
+            class="rounded-md border border-[#d9dbe3] bg-white px-2 py-1 text-xs text-[#111827] hover:bg-[#f7f7f8]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            id="nz-org-delete-confirm"
+            class="rounded-md border border-[#fca5a5] bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </dialog>
+
+    <script is:inline>
+      window.nzShowToast = function (input) {
+        const detail =
+          typeof input === "string"
+            ? { message: String(input ?? "") }
+            : input && typeof input === "object"
+              ? input
+              : { message: "" };
+        document.dispatchEvent(
+          new CustomEvent("nz-toast", {
+            bubbles: true,
+            detail,
+          }),
+        );
+      };
+
+      (() => {
+        const root = document.getElementById("toast-root");
+        if (!(root instanceof HTMLElement)) return;
+
+        let timerId = /** @type {ReturnType<typeof setTimeout>|null} */ (null);
+        /** @type {HTMLElement|null} */
+        let currentToast = null;
+
+        const tearDown = () => {
+          currentToast?.remove();
+          currentToast = null;
+          if (timerId) window.clearTimeout(timerId);
+          timerId = null;
+        };
+
+        const show = (
+          detail,
+          ) => {
+          const msg = String(detail?.message || "").trim();
+          if (!msg) return;
+
+          tearDown();
+
+          const variantClass =
+            detail?.variant === "error"
+              ? "nz-toast nz-toast--error"
+              : detail?.variant === "success"
+                ? "nz-toast nz-toast--success"
+                : "nz-toast";
+
+          const node = document.createElement("div");
+          node.role = "status";
+          node.className = `${variantClass} pointer-events-auto w-full`.trim();
+
+          const titleEl = document.createElement("p");
+          titleEl.className = "nz-toast__title";
+          titleEl.textContent = msg;
+          node.appendChild(titleEl);
+
+          const desc =
+            typeof detail?.description === "string"
+              ? detail.description.trim()
+              : "";
+          if (desc) {
+            const p = document.createElement("p");
+            p.className = "nz-toast__desc";
+            p.textContent = desc;
+            node.appendChild(p);
+          }
+
+          root.appendChild(node);
+          currentToast = node;
+
+          if (!detail?.persistent)
+            timerId = window.setTimeout(tearDown, 6500);
+        };
+
+        document.addEventListener("nz-toast", (ev) => {
+          const ce = /** @type {CustomEvent} */ (ev);
+          show(ce.detail || {});
+        });
+      })();
+    </script>
+    <script>
+      import { setButtonLoadingVisuals } from "@/lib/auth-button-state";
+      import { NZ_TOAST_EVENT } from "@/lib/nzToast";
+      import { trpcMutate } from "@/lib/client-api";
+      import {
+        normalizeDashboardPath,
+        orgDashboardPath,
+        scopeDashboardHref,
+      } from "@/lib/org-routes";
+
+      function toast(message: string, variant?: "success" | "error") {
+        document.dispatchEvent(
+          new CustomEvent(NZ_TOAST_EVENT, {
+            bubbles: true,
+            detail: { message, variant },
+          }),
+        );
+      }
+
+      function closeOrgMenus() {
+        for (const el of document.querySelectorAll("details.nz-org-shell")) {
+          if (el instanceof HTMLDetailsElement) el.open = false;
+        }
+      }
+
+      function closeEnvMenus() {
+        for (const el of document.querySelectorAll("details.nz-env-crumb")) {
+          if (el instanceof HTMLDetailsElement) el.open = false;
+        }
+      }
+
+      function closeProjectMenus() {
+        for (const el of document.querySelectorAll("details.nz-project-crumb")) {
+          if (el instanceof HTMLDetailsElement) el.open = false;
+        }
+      }
+
+      function setOrgUpsertSubmitLabel(text: string) {
+        const btn = document.getElementById("nz-org-upsert-submit");
+        if (!(btn instanceof HTMLButtonElement)) return;
+        btn.dataset.defaultLabel = text;
+        const label = btn.querySelector<HTMLElement>("[data-auth-btn-label]");
+        if (label) label.textContent = text;
+      }
+
+      function setEnvUpsertFormBusy(busy: boolean) {
+        const submitBtn = document.getElementById("nz-env-upsert-submit");
+        const cancelBtn = document.getElementById("nz-env-upsert-cancel");
+        const nameEl = document.getElementById("nz-env-upsert-name");
+        const descEl = document.getElementById("nz-env-upsert-description");
+
+        if (submitBtn instanceof HTMLButtonElement) {
+          submitBtn.disabled = busy;
+          submitBtn.setAttribute("aria-busy", busy ? "true" : "false");
+          setButtonLoadingVisuals(submitBtn, busy);
+        }
+        if (cancelBtn instanceof HTMLButtonElement) cancelBtn.disabled = busy;
+        if (nameEl instanceof HTMLInputElement) nameEl.disabled = busy;
+        if (descEl instanceof HTMLTextAreaElement) descEl.disabled = busy;
+      }
+
+      function setOrgUpsertFormBusy(busy: boolean) {
+        const submitBtn = document.getElementById("nz-org-upsert-submit");
+        const cancelBtn = document.getElementById("nz-org-upsert-cancel");
+        const nameEl = document.getElementById("nz-org-name");
+        const logoEl = document.getElementById("nz-org-logo");
+
+        if (submitBtn instanceof HTMLButtonElement) {
+          submitBtn.disabled = busy;
+          submitBtn.setAttribute("aria-busy", busy ? "true" : "false");
+          setButtonLoadingVisuals(submitBtn, busy);
+        }
+        if (cancelBtn instanceof HTMLButtonElement) cancelBtn.disabled = busy;
+        if (nameEl instanceof HTMLInputElement) nameEl.disabled = busy;
+        if (logoEl instanceof HTMLInputElement) logoEl.disabled = busy;
+      }
+
+      function bindDashboardShellActions() {
+        if (document.documentElement.dataset.nzDashboardShellActions === "1")
+          return;
+        document.documentElement.dataset.nzDashboardShellActions = "1";
+
+        document.addEventListener("mousedown", (event) => {
+          if (!(event.target instanceof Element)) return;
+          if (!event.target.closest("details.nz-org-shell")) closeOrgMenus();
+          if (!event.target.closest("details.nz-project-crumb")) closeProjectMenus();
+          if (!event.target.closest("details.nz-env-crumb")) closeEnvMenus();
+        });
+
+        document.addEventListener("click", async (event) => {
+          const tgt =
+            event.target instanceof Element ? event.target : null;
+          if (!tgt) return;
+
+          if (tgt.closest(".nz-user-sign-out")) {
+            event.preventDefault();
+            try {
+              await fetch("/api/auth/sign-out", {
+                method: "POST",
+                credentials: "include",
+                headers: { "content-type": "application/json" },
+                body: "{}",
+              });
+            } catch {
+              //
+            }
+            window.location.href = "/";
+            return;
+          }
+
+          const activate = tgt.closest(
+            ".nz-org-set-active[data-organization-id]",
+          );
+          if (activate instanceof HTMLElement) {
+            event.preventDefault();
+            const organizationId =
+              activate.dataset.organizationId?.trim() ?? "";
+            const organizationSlug =
+              activate.dataset.organizationSlug?.trim() ?? "";
+            if (!organizationId) return;
+            try {
+              const res = await fetch("/api/auth/organization/set-active", {
+                method: "POST",
+                credentials: "include",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ organizationId }),
+              });
+              if (!res.ok) {
+                const txt = await res.text();
+                toast(
+                  txt.trim() ||
+                    "Error switching organization",
+                  "error",
+                );
+                return;
+              }
+              closeOrgMenus();
+              const { dashboardPath } = normalizeDashboardPath(window.location.pathname);
+              window.location.href = organizationSlug
+                ? orgDashboardPath(organizationSlug, dashboardPath)
+                : window.location.pathname;
+            } catch {
+              toast("Error switching organization", "error");
+            }
+            return;
+          }
+
+          const setDefaultBtn = tgt.closest(
+            "[data-organization-id].nz-org-set-default",
+          );
+          if (setDefaultBtn instanceof HTMLButtonElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (setDefaultBtn.disabled) return;
+            const organizationId =
+              setDefaultBtn.dataset.organizationId?.trim() ?? "";
+            if (!organizationId) return;
+            const prevDisabled = setDefaultBtn.disabled;
+            setDefaultBtn.disabled = true;
+            setDefaultBtn.setAttribute("aria-busy", "true");
+            try {
+              await trpcMutate("organization.setDefault", {
+                organizationId,
+              });
+              toast("Default organization updated", "success");
+              closeOrgMenus();
+              window.location.reload();
+            } catch (e) {
+              toast(
+                e instanceof Error ?
+                  e.message
+                :	"Error setting default organization",
+                "error",
+              );
+              setDefaultBtn.disabled = prevDisabled;
+              setDefaultBtn.setAttribute("aria-busy", "false");
+            }
+            return;
+          }
+
+          const openEnvCreate = tgt.closest(".nz-env-open-create");
+          if (openEnvCreate instanceof HTMLElement) {
+            event.preventDefault();
+            closeEnvMenus();
+            const projectId =
+              openEnvCreate.dataset.projectId?.trim() ?? "";
+            if (!projectId) return;
+            const projectInput = document.getElementById(
+              "nz-env-upsert-project-id",
+            );
+            if (projectInput instanceof HTMLInputElement) {
+              projectInput.value = projectId;
+            }
+            const nameEl = document.getElementById("nz-env-upsert-name");
+            if (nameEl instanceof HTMLInputElement) nameEl.value = "";
+            const descEl = document.getElementById("nz-env-upsert-description");
+            if (descEl instanceof HTMLTextAreaElement) descEl.value = "";
+            if (typeof window.nzOpenDialog === "function") {
+              window.nzOpenDialog("nz-env-upsert-dialog");
+            } else {
+              const dlg = document.getElementById("nz-env-upsert-dialog");
+              if (dlg instanceof HTMLDialogElement) dlg.showModal();
+            }
+            return;
+          }
+
+          if (tgt.closest(".nz-org-open-create")) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeOrgMenus();
+            const hid = document.getElementById("nz-org-upsert-org-id");
+            if (hid instanceof HTMLInputElement) hid.value = "";
+            const nameEl = document.getElementById("nz-org-name");
+            if (nameEl instanceof HTMLInputElement) nameEl.value = "";
+            const logoEl = document.getElementById("nz-org-logo");
+            if (logoEl instanceof HTMLInputElement) logoEl.value = "";
+            const titleEl = document.getElementById("nz-org-upsert-title");
+            if (titleEl) titleEl.textContent = "Add organization";
+            const descEl = document.getElementById("nz-org-upsert-desc");
+            if (descEl)
+              descEl.textContent =
+                "Create a new organization to manage your projects.";
+            setOrgUpsertSubmitLabel("Create organization");
+            setOrgUpsertFormBusy(false);
+            if (typeof window.nzOpenDialog === "function") {
+              window.nzOpenDialog("nz-org-upsert-dialog");
+            } else {
+              const dl = document.getElementById("nz-org-upsert-dialog");
+              if (dl instanceof HTMLDialogElement) dl.showModal();
+            }
+            return;
+          }
+
+          const editBtn = tgt.closest(".nz-org-edit");
+          if (editBtn instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeOrgMenus();
+            const orgId = editBtn.dataset.organizationId?.trim() ?? "";
+            const nm = editBtn.dataset.organizationName ?? "";
+            const lg = editBtn.dataset.organizationLogo ?? "";
+            const dl = document.getElementById("nz-org-upsert-dialog");
+            if (!(dl instanceof HTMLDialogElement) || !orgId) return;
+            const hid = document.getElementById("nz-org-upsert-org-id");
+            if (hid instanceof HTMLInputElement) hid.value = orgId;
+            const nameEl = document.getElementById("nz-org-name");
+            if (nameEl instanceof HTMLInputElement) nameEl.value = nm;
+            const logoEl = document.getElementById("nz-org-logo");
+            if (logoEl instanceof HTMLInputElement) logoEl.value = lg;
+            const titleEl = document.getElementById("nz-org-upsert-title");
+            if (titleEl) titleEl.textContent = "Update organization";
+            const descEl = document.getElementById("nz-org-upsert-desc");
+            if (descEl)
+              descEl.textContent =
+                "Update the organization name and logo";
+            setOrgUpsertSubmitLabel("Update organization");
+            setOrgUpsertFormBusy(false);
+            if (typeof window.nzOpenDialog === "function") {
+              window.nzOpenDialog("nz-org-upsert-dialog");
+            } else {
+              dl.showModal();
+            }
+            return;
+          }
+
+          const delBtn = tgt.closest(".nz-org-delete");
+          if (delBtn instanceof HTMLElement) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeOrgMenus();
+            const orgId = delBtn.dataset.organizationId?.trim() ?? "";
+            const dlg = document.getElementById("nz-org-delete-dialog");
+            if (!(dlg instanceof HTMLDialogElement) || !orgId) return;
+            dlg.dataset.organizationId = orgId;
+            const msgEl = document.getElementById(
+              "nz-org-delete-message",
+            );
+            if (msgEl)
+              msgEl.textContent = `Are you sure you want to delete ${delBtn.dataset.organizationName ?? "this organization"}?`;
+            dlg.showModal();
+            return;
+          }
+        });
+
+        document.getElementById("nz-org-upsert-cancel")?.addEventListener(
+          "click",
+          () => {
+            if (typeof window.nzCloseDialog === "function") {
+              window.nzCloseDialog("nz-org-upsert-dialog");
+              return;
+            }
+            const d = document.getElementById(
+              "nz-org-upsert-dialog",
+            );
+            if (d instanceof HTMLDialogElement) d.close();
+          },
+        );
+
+        document.getElementById("nz-env-upsert-cancel")?.addEventListener(
+          "click",
+          () => {
+            if (typeof window.nzCloseDialog === "function") {
+              window.nzCloseDialog("nz-env-upsert-dialog");
+              return;
+            }
+            const d = document.getElementById("nz-env-upsert-dialog");
+            if (d instanceof HTMLDialogElement) d.close();
+          },
+        );
+
+        document
+          .getElementById("nz-org-delete-cancel")
+          ?.addEventListener("click", () => {
+            const d = document.getElementById("nz-org-delete-dialog");
+            if (d instanceof HTMLDialogElement) d.close();
+          });
+
+        document
+          .getElementById("nz-org-delete-confirm")
+          ?.addEventListener("click", async () => {
+            const dlg = document.getElementById(
+              "nz-org-delete-dialog",
+            );
+            const orgId =
+              dlg instanceof HTMLDialogElement ?
+                dlg.dataset.organizationId?.trim() ?? ""
+              :	"";
+            if (dlg instanceof HTMLDialogElement) dlg.close();
+            if (!orgId) return;
+            try {
+              await trpcMutate("organization.delete", {
+                organizationId: orgId,
+              });
+              toast("Organization deleted successfully", "success");
+              window.location.reload();
+            } catch (e) {
+              toast(
+                e instanceof Error ? e.message : "Error deleting organization",
+                "error",
+              );
+            }
+          });
+
+        const envForm = document.getElementById("nz-env-upsert-form");
+        if (envForm instanceof HTMLFormElement) {
+          envForm.addEventListener("submit", async (evt) => {
+            evt.preventDefault();
+            const projectInput = document.getElementById(
+              "nz-env-upsert-project-id",
+            );
+            const nameEl = document.getElementById("nz-env-upsert-name");
+            const descEl = document.getElementById("nz-env-upsert-description");
+            const projectId =
+              projectInput instanceof HTMLInputElement ?
+                projectInput.value.trim()
+              :	"";
+            const name =
+              nameEl instanceof HTMLInputElement ? nameEl.value.trim() : "";
+            const description =
+              descEl instanceof HTMLTextAreaElement ?
+                descEl.value.trim()
+              :	"";
+            if (!projectId || !name) {
+              toast("Environment name is required", "error");
+              return;
+            }
+            if (name.toLowerCase() === "production") {
+              toast(
+                "You cannot create an environment named production",
+                "error",
+              );
+              return;
+            }
+            setEnvUpsertFormBusy(true);
+            let keepLocked = false;
+            try {
+              const created = await trpcMutate<{
+                environmentId: string;
+              }>("environment.create", {
+                projectId,
+                name,
+                ...(description ? { description } : {}),
+              });
+              const envId = created.environmentId;
+              const { orgSlug } = normalizeDashboardPath(
+                window.location.pathname,
+              );
+              const dash = (path: string) =>
+                scopeDashboardHref(path, orgSlug);
+              const path = window.location.pathname;
+              let nextHref = dash(
+                `/dashboard/project/${projectId}/environment/${envId}/overview`,
+              );
+              if (path.includes("/environment/")) {
+                const next = path.replace(
+                  /\/environment\/[^/]+/,
+                  `/environment/${envId}`,
+                );
+                nextHref = /\/environment\/[^/]+\/?$/.test(next)
+                  ? dash(
+                      `/dashboard/project/${projectId}/environment/${envId}/overview`,
+                    )
+                  : next;
+              }
+              keepLocked = true;
+              toast("Environment created", "success");
+              window.location.href = nextHref;
+            } catch (e) {
+              toast(
+                e instanceof Error ?
+                  e.message
+                :	"Error creating environment",
+                "error",
+              );
+            } finally {
+              if (!keepLocked) setEnvUpsertFormBusy(false);
+            }
+          });
+        }
+
+        const form = document.getElementById("nz-org-upsert-form");
+        if (form instanceof HTMLFormElement) {
+          form.addEventListener("submit", async (evt) => {
+            evt.preventDefault();
+            const submitBtn = document.getElementById("nz-org-upsert-submit");
+            if (
+              submitBtn instanceof HTMLButtonElement &&
+              submitBtn.disabled
+            ) {
+              return;
+            }
+
+            const hid =
+              document.getElementById("nz-org-upsert-org-id");
+            const orgId =
+              hid instanceof HTMLInputElement ? hid.value.trim() : "";
+            const nameEl =
+              document.getElementById("nz-org-name");
+            const logoEl =
+              document.getElementById("nz-org-logo");
+            const nm =
+              nameEl instanceof HTMLInputElement ?
+                nameEl.value.trim()
+              :	"";
+            const lgRaw =
+              logoEl instanceof HTMLInputElement ?
+                logoEl.value.trim()
+              :	"";
+
+            setOrgUpsertFormBusy(true);
+            let keepLocked = false;
+            try {
+              if (orgId) {
+                await trpcMutate("organization.update", {
+                  organizationId: orgId,
+                  name: nm,
+                  ...(lgRaw ? { logo: lgRaw } : {}),
+                });
+                toast(
+                  "Organization updated successfully",
+                  "success",
+                );
+              } else {
+                await trpcMutate("organization.create", {
+                  name: nm,
+                  ...(lgRaw ? { logo: lgRaw } : {}),
+                });
+                toast(
+                  "Organization created successfully",
+                  "success",
+                );
+              }
+              keepLocked = true;
+              if (typeof window.nzCloseDialog === "function") {
+                window.nzCloseDialog("nz-org-upsert-dialog");
+              } else {
+                const upsert = document.getElementById(
+                  "nz-org-upsert-dialog",
+                );
+                if (upsert instanceof HTMLDialogElement) upsert.close();
+              }
+              window.location.reload();
+            } catch (e) {
+              toast(
+                e instanceof Error ?
+                  e.message
+                : orgId ?
+                  "Failed to update organization"
+                : "Failed to create organization",
+                "error",
+              );
+            } finally {
+              if (!keepLocked) setOrgUpsertFormBusy(false);
+            }
+          });
+        }
+      }
+
+      bindDashboardShellActions();
+    </script>
+    <script>
+      import { bindEnvironmentServiceLauncher } from "@/components/dashboard/environment/environmentServiceLauncher";
+      import { bindProjectServicesList } from "@/scripts/environment-dashboard";
+      import { bindProjectWorkspace } from "@/scripts/project-workspace";
+      import { bootDatabaseDashboard } from "@/scripts/database-dashboard";
+      import { bindServersDashboard } from "@/scripts/servers-dashboard";
+      import { mountDeploymentsDashboard } from "@/scripts/deployments-dashboard";
+      import { initTheme } from "@/scripts/theme";
+      import {
+        initNzModals,
+        refreshNzModalListeners,
+      } from "@/scripts/modal-animations";
+      function bootDashboardShell() {
+        initTheme();
+        initNzModals();
+        refreshNzModalListeners();
+        bindEnvironmentServiceLauncher();
+        bindProjectServicesList();
+        bindProjectWorkspace();
+        bootDatabaseDashboard();
+        // Servers and Deployments mount their own binders from hoisted scripts
+        // inside their fragment components. Those hoisted scripts are NOT present
+        // in the HTML returned for client-side (async router) navigations, so the
+        // 3-dot menus / row clicks stayed unbound until a full refresh. Booting
+        // them from the persistent shell (which rebinds on every astro:page-load /
+        // astro:after-swap) guarantees they bind after fragment swaps too. Both
+        // binders are idempotent and no-op when their root is absent.
+        bindServersDashboard();
+        mountDeploymentsDashboard();
+      }
+      bootDashboardShell();
+      document.addEventListener("astro:page-load", bootDashboardShell);
+      document.addEventListener("astro:after-swap", bootDashboardShell);
+    </script>
+  </body>
+</html>

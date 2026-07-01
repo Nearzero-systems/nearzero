@@ -1,0 +1,89 @@
+---
+import EnvironmentServiceLauncher from "@/components/dashboard/environment/EnvironmentServiceLauncher.astro";
+import { projectWorkspaceHref } from "@/lib/project-workspace-nav";
+import type { RuntimeServerOption } from "@/lib/runtime-server-options";
+import ProjectServiceList from "./ProjectServiceList.astro";
+import ProjectServicesDiagram from "./ProjectServicesDiagram.astro";
+import type { ProjectWorkspaceService } from "./projectWorkspaceTypes";
+
+interface ServiceOption {
+	id: string;
+	name: string;
+	type: "application" | "compose";
+	serverId?: string | null;
+}
+
+interface Props {
+	projectId: string;
+	environmentId: string;
+	projectName: string;
+	environmentName: string;
+	services: ProjectWorkspaceService[];
+	activeServices: ProjectWorkspaceService[];
+	servers: RuntimeServerOption[];
+	serviceOptions: ServiceOption[];
+	isCommunity?: boolean;
+	dnsZoneId?: string | null;
+	domainPrefix?: string;
+	isProduction?: boolean;
+	dnsZoneName?: string | null;
+}
+
+const {
+	projectId,
+	environmentId,
+	projectName,
+	environmentName,
+	services,
+	activeServices,
+	servers,
+	serviceOptions,
+	isCommunity = true,
+	dnsZoneId = null,
+	domainPrefix = "",
+	isProduction = false,
+	dnsZoneName = null,
+} = Astro.props;
+---
+
+<section class="nz-project-overview" aria-label="Project overview">
+	<div class="nz-project-overview__topbar">
+		<p class="truncate text-xs font-semibold text-[var(--nz-text)]">
+			Overview
+		</p>
+		<EnvironmentServiceLauncher
+			projectId={projectId}
+			environmentId={environmentId}
+			projectName={projectName}
+			servers={servers}
+			services={serviceOptions}
+			isCommunity={isCommunity}
+			dnsZoneId={dnsZoneId}
+			domainPrefix={domainPrefix}
+			environmentName={environmentName}
+			isProduction={isProduction}
+			dnsZoneName={dnsZoneName}
+		/>
+	</div>
+
+	{
+		activeServices.length > 0 ? (
+			<ProjectServicesDiagram
+				services={activeServices}
+			/>
+		) : (
+			<div class="nz-project-overview__empty">
+				<p class="font-medium text-[var(--nz-text)]">No active services</p>
+				<p class="mt-1 text-xs text-[var(--nz-text-muted)]">
+					Deploy a service successfully to see live applications, databases, and compose services here.
+				</p>
+			</div>
+		)
+	}
+
+	<ProjectServiceList
+		title="All services"
+		services={services}
+		viewAllHref={projectWorkspaceHref(projectId, environmentId, "services")}
+	/>
+</section>

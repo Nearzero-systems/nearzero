@@ -1,0 +1,47 @@
+---
+/**
+ * Uppercase "N" on 3×3 — not H (no full middle row / no middle-right).
+ *
+ * ■ □ ■
+ * ■ ■ □
+ * ■ □ ■
+ */
+const N_PHASE: Record<number, number> = {
+	0: 0,
+	2: 1,
+	3: 2,
+	4: 3,
+	6: 4,
+	8: 5,
+};
+
+interface Props {
+	class?: string;
+}
+
+const { class: className = "" } = Astro.props;
+---
+
+<span
+	class:list={["nz-agent-dot-matrix inline-grid shrink-0 grid-cols-3 grid-rows-3", className]}
+	aria-hidden="true"
+>
+	{
+		Array.from({ length: 9 }, (_, index) => {
+			const isN = index in N_PHASE;
+			return (
+				<span
+					class:list={[
+						"nz-agent-dot-matrix__cell",
+						isN ? "nz-agent-dot-matrix__cell--n" : "nz-agent-dot-matrix__cell--muted",
+					]}
+					style={
+						isN
+							? `--nz-agent-dot-phase: ${N_PHASE[index]}`
+							: `--nz-agent-dot-i: ${index}`
+					}
+				/>
+			);
+		})
+	}
+</span>

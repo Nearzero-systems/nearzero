@@ -1,0 +1,54 @@
+---
+import "@/components/dashboard/shell/sidebar-agent-dot.css";
+import "@/components/dashboard/shell/sidebar-animated-icons.css";
+import "@/components/dashboard/shell/primary-sidebar.css";
+import SidebarNav from "./SidebarNav.astro";
+import UserNav from "./UserNav.astro";
+import type { NavContext } from "@/components/dashboard/navMenu";
+
+interface Props {
+	activeSection: string;
+	dashboardAuth: {
+		user?: {
+			firstName?: string | null;
+			lastName?: string | null;
+			email?: string | null;
+			image?: string | null;
+		};
+		role?: string | null;
+	} | null;
+	permissions: NavContext["permissions"] | null;
+	orgSlug?: string | null;
+	whitelabeling: NavContext["whitelabeling"] | null;
+}
+
+const {
+	activeSection,
+	dashboardAuth,
+	permissions,
+	orgSlug = null,
+	whitelabeling,
+} = Astro.props;
+
+const sidebarAuth = dashboardAuth
+	? { role: dashboardAuth.role ?? null }
+	: null;
+---
+
+<div
+	class="nz-dashboard-primary-sidebar flex h-full min-h-0 flex-col gap-2 rounded-md bg-[var(--nz-bg-elevated)] p-2"
+>
+	<div class="scrollbar-hide min-h-0 flex-1 overflow-y-auto">
+		<SidebarNav
+			section="main"
+			activeSection={activeSection}
+			auth={sidebarAuth}
+			permissions={permissions}
+			orgSlug={orgSlug}
+			whitelabeling={whitelabeling}
+		/>
+	</div>
+	<div class="mt-auto shrink-0">
+		<UserNav auth={dashboardAuth} orgSlug={orgSlug} whitelabeling={whitelabeling} />
+	</div>
+</div>

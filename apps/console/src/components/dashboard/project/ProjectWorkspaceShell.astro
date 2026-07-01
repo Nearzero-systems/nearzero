@@ -1,0 +1,81 @@
+---
+import {
+	PROJECT_WORKSPACE_SECTIONS,
+	projectWorkspaceHref,
+	type ProjectWorkspaceSection,
+} from "@/lib/project-workspace-nav";
+import "@/styles/agent-workspace.css";
+import "@/styles/project-workspace.css";
+
+interface Props {
+	projectId: string;
+	environmentId: string;
+	projectName: string;
+	environmentName: string;
+	activeSection: ProjectWorkspaceSection;
+}
+
+const {
+	projectId,
+	environmentId,
+	projectName,
+	environmentName,
+	activeSection,
+} = Astro.props;
+---
+
+<div
+	id="nz-project-workspace"
+	class="nz-project-workspace"
+	data-secondary-open="1"
+>
+	<div
+		class="nz-agent-secondary-column nz-project-secondary-column"
+		data-nz-project-secondary-column
+	>
+		<aside
+			id="nz-project-secondary-nav"
+			class="nz-agent-sessions"
+			aria-label="Project navigation"
+		>
+			<div class="nz-agent-sessions__header">
+				<div class="nz-project-secondary-head">
+					<p class="nz-project-secondary-head__title truncate">{projectName}</p>
+				</div>
+			</div>
+			<div class="scrollbar-hide nz-agent-sessions__list min-h-0 flex-1 overflow-y-auto">
+				<ul class="nz-project-secondary-list">
+					{
+						PROJECT_WORKSPACE_SECTIONS.map((item) => {
+							const active = item.id === activeSection;
+							return (
+								<li>
+									<a
+										href={projectWorkspaceHref(
+											projectId,
+											environmentId,
+											item.id,
+										)}
+										class:list={[
+											"nz-project-nav-item",
+											active ? "nz-project-nav-item--active" : "",
+										]}
+										aria-current={active ? "page" : undefined}
+									>
+										{item.label}
+									</a>
+								</li>
+							);
+						})
+					}
+				</ul>
+			</div>
+		</aside>
+	</div>
+
+	<div class="nz-project-workspace-main">
+		<div class="nz-project-workspace-panel scrollbar-hide">
+			<slot />
+		</div>
+	</div>
+</div>

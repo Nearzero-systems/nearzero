@@ -1,0 +1,76 @@
+---
+import Button from "@/components/ui/Button.astro";
+
+interface Props {
+	serverId?: string;
+	traefikDashboardEnabled?: boolean;
+	showNearzeroMenu?: boolean;
+	menuSuffix?: string;
+}
+
+const {
+	serverId = "",
+	traefikDashboardEnabled = false,
+	showNearzeroMenu = true,
+	menuSuffix = "",
+} = Astro.props;
+
+const suffix = menuSuffix || (serverId ? `-${serverId}` : "");
+const sidAttr = serverId ? serverId : "local";
+---
+
+<div class="contents">
+	{
+		showNearzeroMenu ? (
+			<div class="relative">
+				<Button type="button" variant="outline" id={`nz-ws-server-menu${suffix}`} aria-expanded="false" aria-haspopup="menu">
+					Server
+				</Button>
+				<div id={`nz-ws-server-panel${suffix}`} class="hidden absolute z-20 mt-1 min-w-[14rem] rounded-md border bg-popover p-1 shadow-md">
+					<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="reload-server" data-ws-server-id={sidAttr}>Reload</button>
+					<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-terminal" data-ws-server-id={sidAttr}>Terminal</button>
+					<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-logs" data-ws-server-id={sidAttr} data-ws-logs-app="nearzero">View Logs</button>
+					{!serverId ? (
+						<>
+							<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-gpu">GPU Setup</button>
+							<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-update-ip">Update Server IP</button>
+						</>
+					) : null}
+					<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-redis" data-ws-server-id={sidAttr}>Clean Redis</button>
+					<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-queue" data-ws-server-id={sidAttr}>Clean all deployment queue</button>
+					<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="reload-redis" data-ws-server-id={sidAttr}>Reload Redis</button>
+				</div>
+			</div>
+		) : null
+	}
+
+	<div class="relative">
+		<Button type="button" variant="outline" id={`nz-ws-traefik-menu${suffix}`} aria-expanded="false" aria-haspopup="menu">
+			Traefik
+		</Button>
+		<div id={`nz-ws-traefik-panel${suffix}`} class="hidden absolute z-20 mt-1 min-w-[14rem] rounded-md border bg-popover p-1 shadow-md">
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="reload-traefik" data-ws-server-id={serverId || undefined}>Reload</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-logs" data-ws-server-id={serverId || undefined} data-ws-logs-app="nearzero-traefik" data-ws-logs-type="standalone">View Logs</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-traefik-env" data-ws-server-id={serverId || undefined}>Modify Environment</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="toggle-traefik-dashboard" data-ws-server-id={serverId || undefined} data-traefik-dashboard={traefikDashboardEnabled ? "1" : "0"}>
+				{traefikDashboardEnabled ? "Disable" : "Enable"} Dashboard
+			</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="open-traefik-ports" data-ws-server-id={serverId || undefined}>Additional Port Mappings</button>
+		</div>
+	</div>
+
+	<div class="relative">
+		<Button type="button" variant="outline" id={`nz-ws-space-menu${suffix}`} aria-expanded="false" aria-haspopup="menu">
+			Space
+		</Button>
+		<div id={`nz-ws-space-panel${suffix}`} class="hidden absolute z-20 mt-1 min-w-[16rem] rounded-md border bg-popover p-1 shadow-md">
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-images" data-ws-server-id={serverId || undefined}>Clean unused images</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-volumes" data-ws-server-id={serverId || undefined}>Clean unused volumes</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-containers" data-ws-server-id={serverId || undefined}>Clean stopped containers</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-patch" data-ws-server-id={serverId || undefined}>Clean Patch Caches</button>
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-builder" data-ws-server-id={serverId || undefined}>Clean Docker Builder & System</button>
+			{!serverId ? <button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-monitoring">Clean Monitoring</button> : null}
+			<button type="button" class="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent" data-ws-action-type="clean-all" data-ws-server-id={serverId || undefined}>Clean all</button>
+		</div>
+	</div>
+</div>

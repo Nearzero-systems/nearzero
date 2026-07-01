@@ -1,0 +1,27 @@
+---
+import Dashboard from "@/layouts/Dashboard.astro";
+import DashboardAsyncRegion from "@/components/dashboard/DashboardAsyncRegion.astro";
+import AnalyticsDashboard from "@/components/dashboard/analytics/AnalyticsDashboard.astro";
+import { pageTitle } from "@/lib/branding";
+import { getSession } from "@/lib/backendProxy";
+import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
+import { normalizeDashboardPath } from "@/lib/org-routes";
+
+const session = await getSession(Astro.request);
+if (!session?.user) {
+  return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+}
+const isFragment = isDashboardFragmentRequest(Astro.request);
+const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
+---
+{
+  isFragment ? (
+    <div transition:animate="none">
+      <AnalyticsDashboard request={Astro.request} />
+    </div>
+  ) : (
+    <Dashboard title={pageTitle("Analytics")} user={session.user}>
+      <DashboardAsyncRegion routeId="dashboard:analytics" search={Astro.url.search} orgSlug={orgSlug} label="Loading analytics..." />
+    </Dashboard>
+  )
+}

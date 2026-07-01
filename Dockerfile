@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+FROM oven/bun:1.3.10 AS base
+WORKDIR /usr/src/app
+
+FROM base AS build
+COPY . /usr/src/app
+
+RUN apt-get update && apt-get install -y python3 make g++ git python3-pip pkg-config libsecret-1-dev curl && rm -rf /var/lib/apt/lists/*
+
+RUN bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx || true)
+
+ENV NODE_ENV=production
+RUN bun run --filter @nearzero/server build
+RUN bun run --filter @nearzero/platform build
+RUN bun run --filter @nearzero/console build
+
+FROM base AS nearzero
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN apt-get update && apt-get install -y curl unzip zip apache2-utils iproute2 rsync git-lfs && git lfs install && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/src/app/apps/platform/dist ./dist
+COPY --from=build /usr/src/app/apps/platform/drizzle ./drizzle
+COPY --from=build /usr/src/app/apps/platform/public ./public
+COPY --from=build /usr/src/app/apps/platform/package.json ./package.json
+COPY --from=build /usr/src/app/apps/console/dist ./console-dist
+COPY --from=build /usr/src/app/node_modules ./node_modules
+COPY docker/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
+RUN curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh --version 28.5.2 && rm get-docker.sh && curl https://rclone.org/install.sh | bash
+
+ARG NIXPACKS_VERSION=1.41.0
+RUN curl -sSL https://nixpacks.com/install.sh -o install.sh && chmod +x install.sh && ./install.sh
+
+ARG RAILPACK_VERSION=0.15.4
+RUN curl -sSL https://railpack.com/install.sh | bash
+
+EXPOSE 3000 4321
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+  CMD curl -fs http://localhost:3000/api/health || exit 1
+
+ENTRYPOINT ["./entrypoint.sh"]

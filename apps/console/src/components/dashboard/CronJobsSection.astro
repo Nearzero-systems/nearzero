@@ -1,0 +1,30 @@
+---
+import { cardClass, statusPillClass } from "./demoShared";
+
+interface Props {
+  rows: Array<{ name: string; schedule: string; target: string; status: string }>;
+}
+
+const { rows } = Astro.props;
+---
+
+<div class={cardClass}>
+  <p class="text-xs text-[#6b7280]">
+    Cron jobs
+  </p>
+  <div class="mt-4 divide-y divide-[#eceef3]">
+    {rows.map((row) => (
+      <div class="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p class="text-sm font-medium text-[#111827]">{row.name}</p>
+          <p class="mt-2 text-xs text-[#6b7280]">
+            {row.schedule} · {row.target}
+          </p>
+        </div>
+        <span class={`rounded-md border px-2 py-1 text-xs ${statusPillClass(row.status)}`}>
+          {row.status}
+        </span>
+      </div>
+    ))}
+  </div>
+</div>

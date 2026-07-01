@@ -1,0 +1,124 @@
+---
+import ApplicationImportPage from "@/components/dashboard/application/ApplicationImportPage.astro";
+import { IS_COMMUNITY } from "@/lib/branding";
+import { slugify } from "@/lib/slug";
+import { loadEnvironmentDnsContext } from "@/lib/environment-dns-context";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+interface Props {
+	request: Request;
+	projectId: string;
+	environmentId: string;
+}
+
+const { request, projectId, environmentId } = Astro.props;
+const api = createServerTrpcClient(request) as any;
+
+let environment: any = null;
+let servers: Array<{
+	serverId: string;
+	name: string;
+	ipAddress?: string | null;
+	port?: number | null;
+	setupStatus?: string | null;
+	serverStatus?: string | null;
+}> = [];
+let permissions: { deployment?: { create?: boolean } } | null = null;
+let githubProviders: any[] = [];
+let gitlabProviders: any[] = [];
+let bitbucketProviders: any[] = [];
+let giteaProviders: any[] = [];
+let dnsContext = {
+	dnsZoneId: null as string | null,
+	domainPrefix: "",
+	zoneName: null as string | null,
+};
+
+try {
+	[
+		environment,
+		servers,
+		permissions,
+		githubProviders,
+		gitlabProviders,
+		bitbucketProviders,
+		giteaProviders,
+	] = await Promise.all([
+		api.environment.one.query({ environmentId }),
+		api.server.all.query(),
+		api.user.getPermissions.query(),
+		api.github.githubProviders.query(),
+		api.gitlab.gitlabProviders.query(),
+		api.bitbucket.bitbucketProviders.query(),
+		api.gitea.giteaProviders.query(),
+	]);
+} catch {
+	environment = null;
+}
+
+if (environment && environment.project?.projectId === projectId) {
+	dnsContext = await loadEnvironmentDnsContext(api, environment);
+}
+
+const hasEnvironment = Boolean(environment && environment.project?.projectId === projectId);
+const projectName = environment?.project?.name ?? "Project";
+const environmentName = environment?.name ?? "Environment";
+const projectSlug = slugify(projectName);
+const isProduction = environmentName.trim().toLowerCase() === "production";
+const canDeploy = permissions?.deployment?.create ?? false;
+const isCommunity = IS_COMMUNITY;
+
+const mapGithub = (rows: any[]) =>
+	rows.map((p) => ({
+		id: p.githubId as string,
+		label:
+			(p.githubUsername as string | null) ??
+			(p.gitProvider?.name as string) ??
+			"GitHub",
+	}));
+
+const mapGitlab = (rows: any[]) =>
+	rows.map((p) => ({
+		id: p.gitlabId as string,
+		label: (p.gitProvider?.name as string) ?? "GitLab",
+	}));
+
+const mapBitbucket = (rows: any[]) =>
+	rows.map((p) => ({
+		id: p.bitbucketId as string,
+		label: (p.gitProvider?.name as string) ?? "Bitbucket",
+	}));
+
+const mapGitea = (rows: any[]) =>
+	rows.map((p) => ({
+		id: p.giteaId as string,
+		label: (p.gitProvider?.name as string) ?? "Gitea",
+	}));
+---
+
+{
+	hasEnvironment ? (
+		<ApplicationImportPage
+			projectId={projectId}
+			environmentId={environmentId}
+			projectName={projectName}
+			environmentName={environmentName}
+			projectSlug={projectSlug}
+			canDeploy={canDeploy}
+			isCommunity={isCommunity}
+			servers={servers ?? []}
+			githubAccounts={mapGithub(githubProviders ?? [])}
+			gitlabAccounts={mapGitlab(gitlabProviders ?? [])}
+			bitbucketAccounts={mapBitbucket(bitbucketProviders ?? [])}
+			giteaAccounts={mapGitea(giteaProviders ?? [])}
+			dnsZoneId={dnsContext.dnsZoneId}
+			domainPrefix={dnsContext.domainPrefix}
+			isProduction={isProduction}
+			zoneName={dnsContext.zoneName}
+		/>
+	) : (
+		<div class="nz-dashboard-content flex min-h-[45vh] items-center justify-center p-6 text-xs text-[var(--nz-text-muted)]">
+			Environment not found.
+		</div>
+	)
+}

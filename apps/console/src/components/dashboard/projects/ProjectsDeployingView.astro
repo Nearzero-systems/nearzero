@@ -1,0 +1,53 @@
+---
+import { dashboardSpinnerSvgHtml } from "../demoShared";
+---
+
+<div
+  class="project-view hidden min-h-[calc(100dvh-77px)] px-4 py-4 sm:px-6"
+  data-project-view="deploying"
+>
+  <div class="mx-auto w-full max-w-[980px] rounded-md border border-[#eceef3] bg-white px-4 py-5 sm:px-6 sm:py-6">
+    <div class="flex flex-col gap-3 border-b border-[#eceef3] pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p class="text-xs text-[#6b7280]">
+          Deploying
+        </p>
+        <h2 class="font-display mt-2 text-[22px] font-semibold tracking-tight text-[#111827] sm:text-[28px]">
+          Shipping <span data-deploy-project-name>—</span>
+        </h2>
+      </div>
+
+      <div
+        class="inline-flex items-center justify-center rounded-md border border-[#d9dbe3] bg-[#f7f7f8] px-2 py-1 text-[#6b7280]"
+        role="status"
+        aria-live="polite"
+        set:html={`<span class="sr-only">Deploy in progress</span>${dashboardSpinnerSvgHtml()}`}
+      >
+      </div>
+    </div>
+
+    <div class="mt-4 rounded-md border border-[#eceef3] bg-[#fafafa] px-4 py-4">
+      <div class="flex flex-wrap items-center gap-2 text-xs text-[#6b7280]">
+        <span data-deploy-provider-label>GitHub</span>
+        <span>&middot;</span>
+        <span data-deploy-repo-full>—</span>
+        <span>&middot;</span>
+        <span data-deploy-branch>main</span>
+        <span>&middot;</span>
+        <span data-deploy-preset>Other</span>
+      </div>
+      <p class="mt-2 text-xs leading-6 text-[#6b7280]" data-deploy-status-line>
+        Starting deployment…
+      </p>
+      <p class="mt-2 hidden text-xs font-mono text-[#374151]" data-deploy-deployment-id></p>
+      <p class="mt-2 hidden text-xs" data-deploy-logs-wrap>
+        <a
+          class="font-sans text-[#3f2a6d] underline decoration-[#3f2a6d]/40 underline-offset-2 hover:decoration-[#3f2a6d]"
+          data-deploy-logs-link
+          href="#"
+          >Open live build logs</a
+        >
+      </p>
+    </div>
+  </div>
+</div>

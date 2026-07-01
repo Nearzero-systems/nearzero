@@ -1,0 +1,368 @@
+---
+import { formatDate } from "date-fns";
+import SettingsEmptyState from "@/components/dashboard/settings/SettingsEmptyState.astro";
+import GitProviderModals from "@/components/dashboard/settings/GitProviderModals.astro";
+import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
+import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
+import { IS_COMMUNITY } from "@/lib/branding";
+import { getGitlabAuthUrl } from "@/lib/gitlab-utils";
+import { gitProviderUiOptions } from "@/lib/git-provider-ui";
+import { ST } from "@/lib/settings-hub-ui";
+import { createServerTrpcClient } from "@/lib/server-api";
+
+const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
+	gate: settingsDashboardGates.gitProviders,
+});
+
+const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
+const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
+
+let gitProviders: any[] = [];
+let organizationId = "";
+let userId = "";
+let authId = "";
+const baseUrl = Astro.url.origin;
+const configuredGitProviderBaseUrl =
+	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL ??
+	import.meta.env.PUBLIC_BACKEND_URL ??
+	baseUrl;
+const gitProviderBaseUrl = String(configuredGitProviderBaseUrl).replace(/\/+$/, "");
+const gitProviderBaseUrlIsLocal =
+	/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::|\/|$)/i.test(gitProviderBaseUrl);
+
+if (bootstrap.ok) {
+	const api = createServerTrpcClient(Astro.request) as any;
+	try {
+		const [providers, activeOrg, currentUser] = await Promise.all([
+			api.gitProvider.getAll.query(),
+			api.organization.active.query().catch(() => null),
+			api.user.get.query(),
+		]);
+		gitProviders = providers ?? [];
+		organizationId = activeOrg?.id ?? "";
+		userId = currentUser?.user?.id ?? currentUser?.id ?? "";
+		authId = currentUser?.id ?? currentUser?.user?.id ?? "";
+	} catch {
+		gitProviders = [];
+	}
+}
+
+const providerActionMap: Record<string, string> = {
+	github: "open-add-github",
+	gitlab: "open-add-gitlab",
+	bitbucket: "open-add-bitbucket",
+	gitea: "open-add-gitea",
+};
+---
+
+<div class="w-full">
+	{
+		loadFailed ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground p-10">
+				<span>Could not load this page.</span>
+				<span class="text-xs">Try refreshing.</span>
+			</div>
+		) : forbidden ? (
+			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-3 text-center text-xs text-muted-foreground px-10">
+				<span>You do not have access to this section.</span>
+				<a href="/dashboard/home" class="text-xs font-medium text-foreground underline-offset-4 hover:underline">Back to dashboard</a>
+			</div>
+		) : (
+			<div
+				class="w-full nz-dashboard-content"
+				id="nz-git-providers-root"
+				data-organization-id={organizationId}
+				data-user-id={userId}
+				data-auth-id={authId}
+				data-git-provider-base-url={gitProviderBaseUrl}
+				data-git-provider-base-url-local={gitProviderBaseUrlIsLocal ? "1" : "0"}
+				data-is-community={IS_COMMUNITY ? "1" : "0"}
+			>
+				<div class={ST.panel}>
+					<section class="nz-git-providers__section" aria-label="Available providers">
+						<h2 class="nz-git-providers__heading">Add provider</h2>
+						<div class="nz-git-providers__chips">
+							{
+								gitProviderUiOptions.map((option) => (
+									<button
+										type="button"
+										class="nz-git-provider-chip"
+										data-git-provider={option.key}
+										data-git-action={providerActionMap[option.key]}
+										aria-label={IS_COMMUNITY ? `Connect ${option.label}` : `Connect ${option.label} with Nearzero`}
+										style={`--nz-git-accent: ${option.accent}`}
+									>
+										<span class="nz-git-provider-chip__icon" aria-hidden="true">
+											<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+												<path d={option.iconPath} />
+											</svg>
+										</span>
+										<span class="nz-git-provider-chip__label">
+											{IS_COMMUNITY ? option.label : `${option.label} with Nearzero`}
+										</span>
+									</button>
+								))
+							}
+						</div>
+					</section>
+
+					{
+						gitProviders.length === 0 ? (
+							<SettingsEmptyState
+								message={
+									IS_COMMUNITY
+										? "Create your first Git provider to connect repositories for deployments."
+										: "Connect your first Git provider with Nearzero to deploy repositories."
+								}
+							/>
+						) : (
+							<div class={ST.tableWrap}>
+								<table class={ST.table}>
+									<thead class={ST.thead}>
+										<tr>
+											<th class={ST.th}>Name</th>
+											<th class={ST.th}>Provider</th>
+											<th class={ST.th}>Created</th>
+											<th class={ST.thRight}>Actions</th>
+										</tr>
+									</thead>
+									<tbody>
+										{
+											gitProviders.map((gitProvider) => {
+												const isGithub = gitProvider.providerType === "github";
+												const isGitlab = gitProvider.providerType === "gitlab";
+												const isBitbucket = gitProvider.providerType === "bitbucket";
+												const isGitea = gitProvider.providerType === "gitea";
+												const isManaged = gitProvider.connectionMode === "nearzero_managed";
+												const uiOption = gitProviderUiOptions.find(
+													(o) => o.key === gitProvider.providerType,
+												);
+												const haveGithubRequirements =
+													isGithub &&
+													(isManaged ||
+														(gitProvider.github?.githubPrivateKey &&
+															gitProvider.github?.githubAppId)) &&
+													gitProvider.github?.githubInstallationId;
+												const haveGitlabRequirements =
+													isGitlab &&
+													gitProvider.gitlab?.accessToken &&
+													gitProvider.gitlab?.refreshToken;
+												const haveGiteaRequirements =
+													isGitea &&
+													(isManaged
+														? gitProvider.gitea?.accessToken
+														: gitProvider.gitea?.clientId && gitProvider.gitea?.clientSecret);
+												const haveBitbucketRequirements =
+													isBitbucket &&
+													(isManaged
+														? gitProvider.bitbucket?.accessToken
+														: gitProvider.bitbucket?.apiToken ||
+															gitProvider.bitbucket?.appPassword);
+												const providerRef =
+													isGithub
+														? gitProvider.github?.githubId
+														: isGitlab
+															? gitProvider.gitlab?.gitlabId
+															: isBitbucket
+																? gitProvider.bitbucket?.bitbucketId
+																: gitProvider.gitea?.giteaId;
+
+												return (
+													<tr class={ST.tr}>
+														<td class={ST.td}>
+															<div class="nz-git-providers__name-cell">
+																<span class="font-medium">{gitProvider.name}</span>
+																{!gitProvider.isOwner ? (
+																	<span class="nz-git-providers__badge">Shared</span>
+																) : null}
+																{
+																	isBitbucket &&
+																	gitProvider.bitbucket?.appPassword &&
+																	!gitProvider.bitbucket?.apiToken ? (
+																		<span class="nz-git-providers__badge nz-git-providers__badge--warn">Deprecated</span>
+																	) : null
+																}
+															</div>
+														</td>
+														<td class={ST.tdMuted}>
+															<span class="nz-git-providers__type">
+																{
+																	uiOption ? (
+																		<span
+																			class="nz-git-providers__type-dot"
+																			style={`background-color: ${uiOption.accent}`}
+																			aria-hidden="true"
+																		/>
+																	) : null
+																}
+																<span class="capitalize">{gitProvider.providerType}</span>
+															</span>
+														</td>
+														<td class={ST.tdMuted}>
+															{formatDate(new Date(gitProvider.createdAt), "MMM d, yyyy HH:mm")}
+														</td>
+														<td class={ST.tdRight}>
+															<div class="nz-git-providers__actions">
+																{
+																	gitProvider.isOwner ? (
+																		<label class="nz-git-providers__share" title="Share with entire organization">
+																			<input
+																				type="checkbox"
+																				class="nz-git-providers__share-input"
+																				data-git-share={gitProvider.gitProviderId}
+																				checked={gitProvider.sharedWithOrganization}
+																			/>
+																			<span class="sr-only">Share with organization</span>
+																		</label>
+																	) : null
+																}
+																{
+																	IS_COMMUNITY && !haveGithubRequirements && isGithub && !isManaged ? (
+																		<>
+																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
+																			<a
+																				href={`${gitProvider.github?.githubAppName}/installations/new?state=gh_setup:${gitProvider.github?.githubId}`}
+																				class={ST.actionBtn}
+																				target="_blank"
+																				rel="noopener noreferrer"
+																				aria-label="Install GitHub app"
+																			>
+																				Install
+																			</a>
+																		</>
+																	) : null
+																}
+																{
+																	IS_COMMUNITY && !haveGitlabRequirements && isGitlab && !isManaged ? (
+																		<>
+																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
+																			<a
+																				href={getGitlabAuthUrl(
+																					gitProvider.gitlab?.applicationId || "",
+																					gitProvider.gitlab?.gitlabId || "",
+																					gitProvider.gitlab?.gitlabUrl || "https://gitlab.com",
+																					gitProviderBaseUrl,
+																				)}
+																				class={ST.actionBtn}
+																				target="_blank"
+																				rel="noopener noreferrer"
+																				aria-label="Authorize GitLab"
+																			>
+																				Authorize
+																			</a>
+																		</>
+																	) : null
+																}
+																{
+																	isManaged &&
+																	((isGithub && !haveGithubRequirements) ||
+																		(isGitlab && !haveGitlabRequirements) ||
+																		(isGitea && !haveGiteaRequirements) ||
+																		(isBitbucket && !haveBitbucketRequirements)) ? (
+																		<>
+																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
+																			<button
+																				type="button"
+																				class={ST.actionBtn}
+																				data-git-action={providerActionMap[gitProvider.providerType]}
+																			>
+																				Reconnect
+																			</button>
+																		</>
+																	) : null
+																}
+																{
+																	haveGithubRequirements && isGithub ? (
+																		<a
+																			href={gitProvider.github?.githubAppName}
+																			target="_blank"
+																			rel="noopener noreferrer"
+																			class={ST.actionBtn}
+																			aria-label="Open GitHub app"
+																		>
+																			Open
+																		</a>
+																	) : null
+																}
+																{
+																	gitProvider.isOwner ? (
+																		<>
+																			{
+																				IS_COMMUNITY &&
+																				!isManaged &&
+																				((isGithub && haveGithubRequirements) ||
+																					isGitlab ||
+																					isBitbucket ||
+																					isGitea) ? (
+																					<button
+																						type="button"
+																						class={ST.actionBtn}
+																						data-git-action="edit"
+																						data-provider-type={gitProvider.providerType}
+																						data-provider-ref={providerRef}
+																					>
+																						Edit
+																					</button>
+																				) : null
+																			}
+																			<button
+																				type="button"
+																				class={`${ST.actionBtn} text-destructive`}
+																				data-git-action="delete"
+																				data-git-provider-id={gitProvider.gitProviderId}
+																				data-shared={gitProvider.sharedWithOrganization ? "1" : "0"}
+																			>
+																				Delete
+																			</button>
+																		</>
+																	) : null
+																}
+															</div>
+														</td>
+													</tr>
+												);
+											})
+										}
+									</tbody>
+								</table>
+							</div>
+						)
+					}
+				</div>
+
+				{
+					IS_COMMUNITY ? (
+						<GitProviderModals
+							organizationId={organizationId}
+							userId={userId}
+							gitProviderBaseUrl={gitProviderBaseUrl}
+							gitProviderBaseUrlIsLocal={gitProviderBaseUrlIsLocal}
+							isCommunity={IS_COMMUNITY}
+						/>
+					) : null
+				}
+			</div>
+		)
+	}
+</div>
+
+<script>
+	import { mountGitProvidersDashboard } from "@/scripts/git-providers-dashboard";
+	import { refreshNzModalListeners } from "@/scripts/modal-animations";
+
+	const orgSwitch = document.getElementById("nz-git-github-org-switch");
+	const orgField = document.querySelector(".nz-github-org-field");
+	orgSwitch?.addEventListener("change", () => {
+		if (orgField instanceof HTMLElement) {
+			orgField.classList.toggle("hidden", !(orgSwitch instanceof HTMLInputElement && orgSwitch.checked));
+		}
+	});
+
+	function boot() {
+		mountGitProvidersDashboard();
+		refreshNzModalListeners();
+	}
+	boot();
+	document.addEventListener("astro:page-load", boot);
+	document.addEventListener("astro:after-swap", boot);
+</script>
