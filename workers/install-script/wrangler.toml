@@ -1,0 +1,12 @@
+name = "nearzero-install-script"
+main = "index.ts"
+compatibility_date = "2026-07-02"
+
+routes = [
+	{ pattern = "nearzero.dev/install.sh", zone_name = "nearzero.dev" },
+	{ pattern = "nearzero.dev/releases/*", zone_name = "nearzero.dev" },
+]
+
+[[r2_buckets]]
+binding = "INSTALL_BUCKET"
+bucket_name = "nearzero"
