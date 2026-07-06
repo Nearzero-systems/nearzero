@@ -151,6 +151,12 @@ export const getConsoleUrl = async () => {
 const TRUSTED_ORIGINS_CACHE_TTL_MS = 30 * 60_000;
 let trustedOriginsCache: { data: string[]; expiresAt: number } | null = null;
 
+const isUndefinedTableError = (error: unknown) => {
+	const cause = (error as { cause?: { code?: string } } | null)?.cause;
+	const code = cause?.code ?? (error as { code?: string } | null)?.code;
+	return code === "42P01";
+};
+
 export const getTrustedOrigins = async () => {
 	const runQuery = async () => {
 		const rows = await db
@@ -173,6 +179,9 @@ export const getTrustedOrigins = async () => {
 		};
 		return trustedOrigins;
 	} catch (error) {
+		if (isUndefinedTableError(error)) {
+			return trustedOriginsCache?.data ?? [];
+		}
 		console.error("Failed to fetch trusted origins:", error);
 		return trustedOriginsCache?.data ?? [];
 	}

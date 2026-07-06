@@ -19,7 +19,6 @@ import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import packageInfo from "../package.json";
 import { migration } from "./db/migration";
 import "./agent-deployment-bridge";
-import { routeRequest } from "./routes/index";
 import { setupDockerContainerLogsWebSocketServer } from "./wss/docker-container-logs";
 import { setupDockerContainerTerminalWebSocketServer } from "./wss/docker-container-terminal";
 import { setupDockerStatsMonitoringSocketServer } from "./wss/docker-stats";
@@ -118,6 +117,8 @@ void (async () => {
 			);
 			throw migrationError;
 		}
+
+		const { routeRequest } = await import("./routes/index");
 
 		const server = http.createServer(async (req, res) => {
 			try {
