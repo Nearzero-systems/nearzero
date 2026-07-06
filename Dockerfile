@@ -17,6 +17,7 @@ RUN bun run --filter @nearzero/console build
 FROM base AS nearzero
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NODE_PATH=/app/apps/platform/node_modules:/app/apps/console/node_modules:/app/packages/server/node_modules:/app/packages/agent/node_modules:/app/packages/trpc-openapi/node_modules
 
 RUN apt-get update && apt-get install -y curl unzip zip apache2-utils iproute2 rsync git-lfs && git lfs install && rm -rf /var/lib/apt/lists/*
 
@@ -26,6 +27,11 @@ COPY --from=build /usr/src/app/apps/platform/public ./public
 COPY --from=build /usr/src/app/apps/platform/package.json ./package.json
 COPY --from=build /usr/src/app/apps/console/dist ./console-dist
 COPY --from=build /usr/src/app/node_modules ./node_modules
+COPY --from=build /usr/src/app/apps/platform/node_modules ./apps/platform/node_modules
+COPY --from=build /usr/src/app/apps/console/node_modules ./apps/console/node_modules
+COPY --from=build /usr/src/app/packages/server ./packages/server
+COPY --from=build /usr/src/app/packages/agent ./packages/agent
+COPY --from=build /usr/src/app/packages/trpc-openapi ./packages/trpc-openapi
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
