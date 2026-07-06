@@ -12,6 +12,10 @@ RUN for dir in node_modules/.bun/node-pty@*/node_modules/node-pty; do \
       [ -d "$dir" ] || continue; \
       (cd "$dir" && (node scripts/prebuild.js || node-gyp rebuild) && node scripts/post-install.js); \
     done
+RUN for dir in node_modules/.bun/bcrypt@*/node_modules/bcrypt; do \
+      [ -d "$dir" ] || continue; \
+      (cd "$dir" && ../.bin/node-pre-gyp install --fallback-to-build); \
+    done
 
 ENV NODE_ENV=production
 RUN bun run --filter @nearzero/server build
