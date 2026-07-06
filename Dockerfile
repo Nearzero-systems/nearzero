@@ -35,6 +35,33 @@ COPY --from=build /usr/src/app/packages/trpc-openapi ./packages/trpc-openapi
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
+RUN set -eu; \
+    for modules in \
+      /app/apps/platform/node_modules \
+      /app/apps/console/node_modules \
+      /app/packages/server/node_modules \
+      /app/packages/agent/node_modules \
+      /app/packages/trpc-openapi/node_modules; do \
+      [ -d "$modules" ] || continue; \
+      for entry in "$modules"/*; do \
+        [ -e "$entry" ] || continue; \
+        name="$(basename "$entry")"; \
+        case "$name" in \
+          .*) continue ;; \
+          @*) \
+            mkdir -p "/app/node_modules/$name"; \
+            for scoped in "$entry"/*; do \
+              [ -e "$scoped" ] || continue; \
+              ln -sfn "$(readlink -f "$scoped")" "/app/node_modules/$name/$(basename "$scoped")"; \
+            done; \
+            ;; \
+          *) \
+            ln -sfn "$(readlink -f "$entry")" "/app/node_modules/$name"; \
+            ;; \
+        esac; \
+      done; \
+    done
+
 RUN curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh --version 28.5.2 && rm get-docker.sh && curl https://rclone.org/install.sh | bash
 
 ARG NIXPACKS_VERSION=1.41.0

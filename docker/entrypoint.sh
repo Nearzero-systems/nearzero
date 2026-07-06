@@ -17,7 +17,7 @@ node dist/wait-for-postgres.mjs
 node dist/server.mjs &
 pids="$pids $!"
 
-node console-dist/server/entry.mjs &
+HOST="${HOST:-0.0.0.0}" PORT="${NEARZERO_CONSOLE_PORT:-4321}" node console-dist/server/entry.mjs &
 pids="$pids $!"
 
 wait
