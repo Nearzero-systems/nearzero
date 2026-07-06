@@ -1,11 +1,14 @@
 import react from "@astrojs/react";
 import tailwind from "@astrojs/tailwind";
+import node from "@astrojs/node";
 import vercel from "@astrojs/vercel/serverless";
 import { defineConfig } from "astro/config";
 
+const isDockerBuild = process.env.NEARZERO_DOCKER_BUILD === "1";
+
 export default defineConfig({
 	output: "server",
-	adapter: vercel(),
+	adapter: isDockerBuild ? node({ mode: "standalone" }) : vercel(),
 	integrations: [tailwind(), react()],
 	// Prefetch linked pages on hover so client-side (View Transitions) navigation
 	// feels instant — the destination HTML is usually already cached by the time

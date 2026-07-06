@@ -12,7 +12,7 @@ RUN bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx 
 ENV NODE_ENV=production
 RUN bun run --filter @nearzero/server build
 RUN bun run --filter @nearzero/platform build
-RUN bun run --filter @nearzero/console build
+RUN bun run --filter @nearzero/console build:docker
 
 FROM base AS nearzero
 WORKDIR /app

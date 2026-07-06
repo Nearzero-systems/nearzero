@@ -9,6 +9,7 @@
 	"scripts": {
 		"dev": "astro dev --port 4321",
 		"build": "astro check && astro build && node scripts/patch-vercel-runtime.mjs",
+		"build:docker": "astro check && NEARZERO_DOCKER_BUILD=1 astro build",
 		"preview": "astro preview --port 4321",
 		"check": "astro check",
 		"check:watch": "astro check --watch",
@@ -16,6 +17,7 @@
 	},
 	"dependencies": {
 		"@animateicons/react": "^0.3.3",
+		"@astrojs/node": "8.3.4",
 		"@astrojs/react": "3.6.3",
 		"@base-ui/react": "^1.5.0",
 		"@better-auth/api-key": "1.5.4",
