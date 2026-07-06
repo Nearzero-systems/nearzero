@@ -5,9 +5,13 @@ WORKDIR /usr/src/app
 FROM base AS build
 COPY . /usr/src/app
 
-RUN apt-get update && apt-get install -y python3 make g++ git python3-pip pkg-config libsecret-1-dev curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3 make g++ git python3-pip pkg-config libsecret-1-dev curl node-gyp && rm -rf /var/lib/apt/lists/*
 
-RUN bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx || true)
+RUN bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx node-pty || true)
+RUN for dir in node_modules/.bun/node-pty@*/node_modules/node-pty; do \
+      [ -d "$dir" ] || continue; \
+      (cd "$dir" && (node scripts/prebuild.js || node-gyp rebuild) && node scripts/post-install.js); \
+    done
 
 ENV NODE_ENV=production
 RUN bun run --filter @nearzero/server build
