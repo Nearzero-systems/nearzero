@@ -50,6 +50,7 @@
     "generate:drizzle": "bunx @better-auth/cli generate --output auth-schema2.ts --config src/lib/auth-cli.ts"
   },
   "dependencies": {
+    "@nearzero/edition-contract": "workspace:*",
     "@better-auth/api-key": "1.5.4",
     "@better-auth/sso": "1.5.4",
     "@better-auth/utils": "0.3.1",

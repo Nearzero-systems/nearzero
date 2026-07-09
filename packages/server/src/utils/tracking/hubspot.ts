@@ -1,3 +1,5 @@
+import { tryGetEdition } from "@nearzero/edition-contract";
+
 interface HubSpotFormField {
 	objectTypeId: string;
 	name: string;
@@ -9,7 +11,7 @@ interface HubSpotFormData {
 	context: {
 		pageUri: string;
 		pageName: string;
-		hutk?: string; // HubSpot UTK from cookies
+		hutk?: string;
 	};
 }
 
@@ -19,10 +21,6 @@ interface SignUpFormData {
 	email?: string;
 }
 
-/**
- * Extract HubSpot UTK (User Token) from cookies
- * This is used for tracking and attribution in HubSpot
- */
 export function getHubSpotUTK(cookieHeader?: string): string | null {
 	if (!cookieHeader) return null;
 
@@ -40,9 +38,6 @@ export function getHubSpotUTK(cookieHeader?: string): string | null {
 	return null;
 }
 
-/**
- * Convert contact form data to HubSpot form format
- */
 export function formatContactDataForHubSpot(
 	contactData: SignUpFormData,
 	hutk?: string | null,
@@ -50,7 +45,7 @@ export function formatContactDataForHubSpot(
 	const formData: HubSpotFormData = {
 		fields: [
 			{
-				objectTypeId: "0-1", // Contact object type
+				objectTypeId: "0-1",
 				name: "firstname",
 				value: contactData.firstName || "",
 			},
@@ -71,7 +66,6 @@ export function formatContactDataForHubSpot(
 		},
 	};
 
-	// Add HubSpot UTK if available
 	if (hutk) {
 		formData.context.hutk = hutk;
 	}
@@ -79,47 +73,14 @@ export function formatContactDataForHubSpot(
 	return formData;
 }
 
-/**
- * Submit form data to HubSpot Forms API
- */
+/** Community edition does not submit signup data to hosted CRM integrations. */
 export async function submitToHubSpot(
-	contactData: SignUpFormData,
-	hutk?: string | null,
+	_contactData: SignUpFormData,
+	_cookieHeader?: string,
 ): Promise<boolean> {
-	try {
-		const portalId = process.env.HUBSPOT_PORTAL_ID;
-		const formGuid = process.env.HUBSPOT_FORM_GUID;
-
-		if (!portalId || !formGuid) {
-			console.error(
-				"HubSpot configuration missing: HUBSPOT_PORTAL_ID or HUBSPOT_FORM_GUID not set",
-			);
-			return false;
-		}
-
-		const formData = formatContactDataForHubSpot(contactData, hutk);
-		const response = await fetch(
-			`https://api.hsforms.com/submissions/v3/integration/submit/${portalId}/${formGuid}`,
-			{
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(formData),
-			},
-		);
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			console.error("HubSpot API error:", response.status, errorText);
-			return false;
-		}
-
-		const result = await response.json();
-		console.log("HubSpot submission successful:", result);
+	const edition = tryGetEdition();
+	if (!edition || edition.edition === "community") {
 		return true;
-	} catch (error) {
-		console.error("Error submitting to HubSpot:", error);
-		return false;
 	}
+	return false;
 }

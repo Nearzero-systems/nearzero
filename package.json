@@ -6,6 +6,9 @@
     "apps/platform",
     "apps/schedules",
     "packages/agent",
+    "packages/cloud",
+    "packages/edition-community",
+    "packages/edition-contract",
     "packages/trpc-openapi",
     "packages/server"
   ],
@@ -25,6 +28,7 @@
     "console:build": "bun run --filter @nearzero/console build",
     "test": "bun run --filter @nearzero/platform test",
     "verify:edition-split": "bun scripts/verify-edition-split.ts",
+    "publish:community": "bun scripts/prepare-community-publish.ts",
     "server:script": "bun run --filter @nearzero/server switch:dev",
     "server:dev": "bun run --filter @nearzero/server dev",
     "server:build": "bun run --filter @nearzero/server build",

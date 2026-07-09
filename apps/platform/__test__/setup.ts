@@ -1,4 +1,7 @@
+import { bootstrapCommunityEdition } from "@nearzero/edition-community";
 import { vi } from "vitest";
+
+bootstrapCommunityEdition();
 
 /**
  * Mock the DB module so tests that import from @nearzero/server (barrel)

@@ -1,4 +1,4 @@
-import { isCloudMode } from "./runtime-mode";
+import { getEdition } from "@nearzero/edition-contract";
 
 export const DEFAULT_BUILD_EXECUTION_TARGET = "deploy_server" as const;
 
@@ -41,37 +41,8 @@ export class ApplicationExecutionPlacementError extends Error {
 
 export const resolveApplicationExecutionPlacement = (
 	application: BuildExecutionApplication,
-): ApplicationExecutionPlacement => {
-	const deployServerId = application.serverId ?? null;
-
-	if (isCloudMode()) {
-		return {
-			mode: "cloud",
-			buildServerId: deployServerId,
-			deployServerId,
-			buildLocation: "remote",
-			requiresRegistryTransfer: false,
-		};
-	}
-
-	const buildServerId =
-		application.sourceType === "docker"
-			? deployServerId
-			: application.buildExecutionTarget === "nearzero_host"
-				? null
-				: deployServerId;
-
-	return {
-		mode: "community",
-		buildServerId,
-		deployServerId,
-		buildLocation: buildServerId ? "remote" : "local",
-		requiresRegistryTransfer:
-			application.sourceType !== "docker" &&
-			deployServerId !== null &&
-			buildServerId !== deployServerId,
-	};
-};
+): ApplicationExecutionPlacement =>
+	getEdition().resolveApplicationExecutionPlacement(application);
 
 export const assertApplicationExecutionPlacement = (
 	application: BuildExecutionApplication,

@@ -1,7 +1,7 @@
 import { db } from "@nearzero/server/db";
 import type { AuditAction, AuditResourceType } from "@nearzero/server/db/schema";
 import { auditLog } from "@nearzero/server/db/schema";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
+import { hasValidLicense } from "./license-key";
 import { and, desc, eq, gte, ilike, lte, or } from "drizzle-orm";
 
 export type { AuditAction, AuditResourceType };

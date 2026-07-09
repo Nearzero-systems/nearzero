@@ -4,6 +4,33 @@ import { basename, join, relative } from "node:path";
 const root = join(import.meta.dir, "..");
 const failures: string[] = [];
 
+const publicSourceRoots = [
+	"apps/console/src",
+	"apps/platform/server",
+	"packages/server/src",
+	"packages/agent/src",
+	"packages/edition-community/src",
+	"packages/edition-contract/src",
+];
+
+const forbiddenPublicImportPatterns = [
+	"@nearzero/cloud",
+	"/proprietary/",
+	"services/proprietary/",
+	"routers/proprietary/",
+	"routers/stripe",
+	"handlers/stripe/",
+	"managed-git-provider",
+];
+
+const forbiddenPublicPaths = [
+	"apps/platform/server/api/routers/proprietary",
+	"apps/platform/server/api/routers/stripe.ts",
+	"apps/platform/server/routes/handlers/stripe",
+	"packages/server/src/services/proprietary",
+	"packages/server/src/services/managed-git-provider.ts",
+];
+
 function read(path: string) {
 	return readFileSync(join(root, path), "utf8");
 }
@@ -26,13 +53,34 @@ function expectOrder(path: string, first: string, second: string, label: string)
 
 function walk(dir: string, output: string[] = []) {
 	for (const entry of readdirSync(dir)) {
-		if (entry === ".git" || entry === "node_modules" || entry === ".turbo") {
+		if (
+			entry === ".git" ||
+			entry === "node_modules" ||
+			entry === ".turbo" ||
+			entry === "dist"
+		) {
 			continue;
 		}
 		const absolute = join(dir, entry);
 		const stat = statSync(absolute);
 		if (stat.isDirectory()) {
 			walk(absolute, output);
+		} else if (/\.(ts|tsx|astro|mjs|js)$/.test(entry)) {
+			output.push(relative(root, absolute));
+		}
+	}
+	return output;
+}
+
+function walkAll(dir: string, output: string[] = []) {
+	for (const entry of readdirSync(dir)) {
+		if (entry === ".git" || entry === "node_modules" || entry === ".turbo") {
+			continue;
+		}
+		const absolute = join(dir, entry);
+		const stat = statSync(absolute);
+		if (stat.isDirectory()) {
+			walkAll(absolute, output);
 		} else {
 			output.push(relative(root, absolute));
 		}
@@ -41,26 +89,36 @@ function walk(dir: string, output: string[] = []) {
 }
 
 expectIncludes(
-	"packages/server/src/services/git-provider-policy.ts",
-	"Cloud/Enterprise",
-	"hosted edition policy label",
+	"apps/platform/server/edition-bootstrap.ts",
+	"bootstrapCommunityEdition",
+	"community edition bootstrap",
 );
 expectIncludes(
-	"packages/server/src/services/git-provider-policy.ts",
-	"assertByoGitProvidersAllowed",
-	"BYO git provider guard",
+	"apps/platform/server/server.ts",
+	"bootstrapEdition",
+	"platform edition bootstrap call",
 );
 expectIncludes(
-	"packages/server/src/services/git-provider-policy.ts",
-	"assertGitProviderConnectionAllowed",
-	"stored provider connection guard",
+	"packages/edition-community/src/community-edition.ts",
+	"allowsEnvAgentProviderKey(): boolean",
+	"community BYOK agent policy",
 );
 expectIncludes(
-	"packages/server/src/services/managed-git-provider.ts",
-	"assertHostedManagedGitProvidersAvailable();",
-	"managed providers hosted-only guard",
+	"packages/agent/src/engine/resolve-provider.ts",
+	"allowsEnvAgentProviderKey",
+	"agent provider edition gate",
+);
+expectIncludes(
+	"apps/platform/server/api/routers/settings.ts",
+	"getEditionManifest",
+	"edition manifest API",
 );
 
+expectIncludes(
+	"packages/server/src/services/git-provider-policy.ts",
+	"getEdition()",
+	"edition-backed git provider policy",
+);
 expectIncludes(
 	"apps/platform/server/api/routers/github.ts",
 	'assertByoGitProvidersAllowed("GitHub")',
@@ -136,6 +194,27 @@ expectIncludes(
 	"PR edition split pipeline guard",
 );
 
+for (const forbiddenPath of forbiddenPublicPaths) {
+	try {
+		statSync(join(root, forbiddenPath));
+		failures.push(`${forbiddenPath}: must not exist in the Community tree`);
+	} catch {
+		// expected
+	}
+}
+
+for (const sourceRoot of publicSourceRoots) {
+	for (const path of walk(join(root, sourceRoot))) {
+		if (path.includes("/__test__/")) continue;
+		const contents = read(path);
+		for (const pattern of forbiddenPublicImportPatterns) {
+			if (contents.includes(pattern)) {
+				failures.push(`${path}: forbidden public reference to ${pattern}`);
+			}
+		}
+	}
+}
+
 const managedSecretNames = [
 	"NEARZERO_GITHUB_APP_PRIVATE_KEY",
 	"NEARZERO_GITHUB_CLIENT_SECRET",
@@ -144,13 +223,15 @@ const managedSecretNames = [
 	"NEARZERO_BITBUCKET_CLIENT_SECRET",
 ];
 
-for (const path of walk(root)) {
+for (const path of walkAll(root)) {
 	const name = basename(path);
 	if (!name.includes(".env")) continue;
 	const contents = read(path);
 	for (const secretName of managedSecretNames) {
 		if (contents.includes(secretName)) {
-			failures.push(`${path}: managed Cloud/Enterprise secret ${secretName} must not be documented in env files`);
+			failures.push(
+				`${path}: managed Cloud/Enterprise secret ${secretName} must not be documented in env files`,
+			);
 		}
 	}
 }

@@ -1,4 +1,6 @@
 import "./load-env.js";
+import { bootstrapEdition } from "./edition-bootstrap.js";
+bootstrapEdition();
 import http from "node:http";
 import {
 	createDefaultMiddlewares,

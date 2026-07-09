@@ -49,12 +49,12 @@ import {
 } from "@nearzero/server/services/permission";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import { db } from "@nearzero/server/db";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { updateServersBasedOnQuantity } from "@/server/routes/handlers/stripe/webhook";
+import { updateServersBasedOnQuantity } from "@nearzero/server/services/server-billing-sync";
 import {
 	createTRPCRouter,
 	protectedProcedure,

@@ -13,7 +13,7 @@ import {
 	redis,
 	server,
 } from "@nearzero/server/db/schema";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";

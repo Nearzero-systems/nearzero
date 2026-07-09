@@ -11,7 +11,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import {
 	assertHostedManagedGitProvidersAvailable,
 	isNearzeroManagedConnection,
-} from "./git-provider-policy";
+} from "@nearzero/server/services/git-provider-policy";
 
 export type ManagedGitProviderType =
 	(typeof gitProviderType.enumValues)[number];

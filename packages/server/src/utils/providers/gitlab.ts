@@ -13,7 +13,7 @@ import {
 import {
 	getManagedGitlabConfig,
 	isNearzeroManagedGitProvider,
-} from "@nearzero/server/services/managed-git-provider";
+} from "@nearzero/server/services/managed-git-shared";
 import type { InferResultType } from "@nearzero/server/types/with";
 import { TRPCError } from "@trpc/server";
 import type { z } from "zod";

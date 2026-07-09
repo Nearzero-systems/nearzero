@@ -1,5 +1,5 @@
 import { EDITION_FEATURES } from "@nearzero/server/services/edition-policy";
-import { getAuditLogs } from "@nearzero/server/services/proprietary/audit-log";
+import { getAuditLogs } from "../../services/proprietary/audit-log";
 import { z } from "zod";
 import {
 	createTRPCRouter,

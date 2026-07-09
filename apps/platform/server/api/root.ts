@@ -29,11 +29,6 @@ import { portRouter } from "./routers/port";
 import { postgresRouter } from "./routers/postgres";
 import { previewDeploymentRouter } from "./routers/preview-deployment";
 import { projectRouter } from "./routers/project";
-import { auditLogRouter } from "./routers/proprietary/audit-log";
-import { customRoleRouter } from "./routers/proprietary/custom-role";
-import { licenseKeyRouter } from "./routers/proprietary/license-key";
-import { ssoRouter } from "./routers/proprietary/sso";
-import { whitelabelingRouter } from "./routers/proprietary/whitelabeling";
 import { redirectsRouter } from "./routers/redirects";
 import { redisRouter } from "./routers/redis";
 import { registryRouter } from "./routers/registry";
@@ -43,17 +38,15 @@ import { securityRouter } from "./routers/security";
 import { serverRouter } from "./routers/server";
 import { settingsRouter } from "./routers/settings";
 import { sshRouter } from "./routers/ssh-key";
-import { stripeRouter } from "./routers/stripe";
 import { swarmRouter } from "./routers/swarm";
 import { tagRouter } from "./routers/tag";
 import { userRouter } from "./routers/user";
 import { volumeBackupsRouter } from "./routers/volume-backups";
-/**
- * This is the primary router for your server.
- *
- * All routers added in /api/routers should be manually added here.
- */
 
+/**
+ * Community edition API router. Cloud-only routers (billing, SSO, audit logs,
+ * custom roles, whitelabeling, license keys) live in the private cloud package.
+ */
 export const appRouter = createTRPCRouter({
 	admin: adminRouter,
 	application: applicationRouter,
@@ -88,16 +81,10 @@ export const appRouter = createTRPCRouter({
 	server: serverRouter,
 	settings: settingsRouter,
 	sshKey: sshRouter,
-	stripe: stripeRouter,
 	swarm: swarmRouter,
 	user: userRouter,
 	organization: organizationRouter,
 	organizationSettings: organizationSettingsRouter,
-	licenseKey: licenseKeyRouter,
-	sso: ssoRouter,
-	whitelabeling: whitelabelingRouter,
-	customRole: customRoleRouter,
-	auditLog: auditLogRouter,
 	schedule: scheduleRouter,
 	rollback: rollbackRouter,
 	volumeBackups: volumeBackupsRouter,
@@ -106,5 +93,4 @@ export const appRouter = createTRPCRouter({
 	patch: patchRouter,
 });
 
-// export type definition of API
 export type AppRouter = typeof appRouter;

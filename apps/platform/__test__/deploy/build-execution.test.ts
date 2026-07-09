@@ -1,19 +1,19 @@
+import { bootstrapCloudEdition } from "@nearzero/cloud";
+import { bootstrapCommunityEdition } from "@nearzero/edition-community";
 import {
 	ApplicationExecutionPlacementError,
 	assertApplicationExecutionPlacement,
 	assertApplicationExecutionPlacementSnapshot,
 	resolveApplicationExecutionPlacement,
 } from "@nearzero/server/services/build-execution";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-const originalCommunity = process.env.COMMUNITY;
+beforeEach(() => {
+	bootstrapCommunityEdition();
+});
 
 afterEach(() => {
-	if (originalCommunity === undefined) {
-		delete process.env.COMMUNITY;
-	} else {
-		process.env.COMMUNITY = originalCommunity;
-	}
+	bootstrapCommunityEdition();
 });
 
 const application = (
@@ -33,7 +33,7 @@ const application = (
 
 describe("resolveApplicationExecutionPlacement", () => {
 	it("forces Cloud builds and deploys onto the selected application server", () => {
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
 
 		expect(
 			assertApplicationExecutionPlacement(
@@ -52,7 +52,7 @@ describe("resolveApplicationExecutionPlacement", () => {
 	});
 
 	it("rejects Cloud deployments without an application server", () => {
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
 
 		expect(() =>
 			assertApplicationExecutionPlacement(application()),
@@ -64,8 +64,6 @@ describe("resolveApplicationExecutionPlacement", () => {
 	});
 
 	it("runs Community applications locally when no server is selected", () => {
-		process.env.COMMUNITY = "true";
-
 		expect(
 			assertApplicationExecutionPlacement(application()),
 		).toEqual({
@@ -78,8 +76,6 @@ describe("resolveApplicationExecutionPlacement", () => {
 	});
 
 	it("builds and deploys on the selected server in Community mode", () => {
-		process.env.COMMUNITY = "true";
-
 		expect(
 			assertApplicationExecutionPlacement(
 				application({ serverId: "server-1" }),
@@ -94,7 +90,6 @@ describe("resolveApplicationExecutionPlacement", () => {
 	});
 
 	it("requires a registry for Community local-build remote-deploy placement", () => {
-		process.env.COMMUNITY = "true";
 		const input = application({
 			buildExecutionTarget: "nearzero_host",
 			serverId: "server-1",
@@ -127,8 +122,6 @@ describe("resolveApplicationExecutionPlacement", () => {
 	});
 
 	it("runs Docker image preparation on the selected deploy server", () => {
-		process.env.COMMUNITY = "true";
-
 		expect(
 			assertApplicationExecutionPlacement(
 				application({

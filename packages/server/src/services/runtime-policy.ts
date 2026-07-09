@@ -1,6 +1,6 @@
 import { db } from "@nearzero/server/db";
 import { server, type AuditResourceType } from "@nearzero/server/db/schema";
-import { createAuditLog } from "@nearzero/server/services/proprietary/audit-log";
+import { createAuditLog } from "@nearzero/server/services/audit-log";
 import { and, eq } from "drizzle-orm";
 import {
 	isCommunityMode,

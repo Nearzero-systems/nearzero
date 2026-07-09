@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { sanitizeProjectTree } from "@nearzero/server/services/agent-workspace";
 import { DEFAULT_PROJECT_ENVIRONMENT_NAME } from "@nearzero/server/services/environment";
-import * as auditLogModule from "@nearzero/server/services/proprietary/audit-log";
+import * as auditLogModule from "@nearzero/server/services/audit-log";
 
 describe("agent workspace helpers", () => {
 	it("redacts env fields in project trees", () => {

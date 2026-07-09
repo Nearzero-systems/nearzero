@@ -1,6 +1,6 @@
 import { db } from "@nearzero/server/db";
 import { member, organizationRole } from "@nearzero/server/db/schema";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import {

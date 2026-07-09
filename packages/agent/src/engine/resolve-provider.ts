@@ -1,4 +1,5 @@
 import { getOrgOpenRouterApiKey } from "@nearzero/server/services/agent-openrouter-key";
+import { tryGetEdition } from "@nearzero/edition-contract";
 import { getAgentConfig } from "../config";
 
 export type AgentProviderSource = "env" | "org";
@@ -15,8 +16,12 @@ export async function resolveProvider(input: {
 	aiId?: string | null;
 }): Promise<AgentProvider | null> {
 	const config = getAgentConfig();
+	const edition = tryGetEdition();
+	const allowsEnvProviderKey =
+		edition?.allowsEnvAgentProviderKey() ?? process.env.COMMUNITY === "false";
+
 	const envKey = config.openRouterApiKey.trim();
-	if (envKey) {
+	if (allowsEnvProviderKey && envKey) {
 		return {
 			source: "env",
 			baseUrl: config.openRouterBaseUrl,

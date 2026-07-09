@@ -1,13 +1,13 @@
 import {
+	assertHostedManagedGitProvidersAvailable,
 	findGitProviderById,
 	getAccessibleGitProviderIds,
 	isGitProviderConnectionAllowed,
 	removeGitProvider,
-	startManagedGitProviderConnection,
 	updateGitProvider,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
 import { TRPCError } from "@trpc/server";
 import { desc, eq, inArray } from "drizzle-orm";
 import {
@@ -90,12 +90,12 @@ export const gitProviderRouter = createTRPCRouter({
 
 	startManagedConnection: withPermission("gitProviders", "create")
 		.input(apiStartManagedGitProviderConnection)
-		.mutation(async ({ input, ctx }) => {
-			return await startManagedGitProviderConnection({
-				providerType: input.providerType,
-				organizationId: ctx.session.activeOrganizationId,
-				userId: ctx.session.userId,
-				returnTo: safeReturnTo(input.returnTo),
+		.mutation(async ({ input: _input, ctx: _ctx }) => {
+			assertHostedManagedGitProvidersAvailable();
+			throw new TRPCError({
+				code: "NOT_IMPLEMENTED",
+				message:
+					"Nearzero-managed git providers require Nearzero Cloud/Enterprise.",
 			});
 		}),
 

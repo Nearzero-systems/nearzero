@@ -43,7 +43,7 @@ vi.mock("@nearzero/server/db", () => ({
 	},
 }));
 
-vi.mock("@nearzero/server/services/proprietary/license-key", () => ({
+vi.mock("@nearzero/server/services/license-key", () => ({
 	hasValidLicense: vi.fn(() => Promise.resolve(false)),
 }));
 

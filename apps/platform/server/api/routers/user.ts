@@ -35,7 +35,7 @@ import {
 	hasPermission,
 	resolvePermissions,
 } from "@nearzero/server/services/permission";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
 import { TRPCError } from "@trpc/server";
 import * as bcrypt from "bcrypt";
 import { and, asc, desc, eq, gt, ne } from "drizzle-orm";

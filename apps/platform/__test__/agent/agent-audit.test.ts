@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
 	createAuditLog: vi.fn(),
 }));
 
-vi.mock("@nearzero/server/services/proprietary/audit-log", () => ({
+vi.mock("@nearzero/server/services/audit-log", () => ({
 	createAuditLog: mocks.createAuditLog,
 }));
 

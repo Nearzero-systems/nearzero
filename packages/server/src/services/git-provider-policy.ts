@@ -1,5 +1,4 @@
-import { TRPCError } from "@trpc/server";
-import { isCloudMode } from "./runtime-mode";
+import { getEdition } from "@nearzero/edition-contract";
 
 type GitProviderConnectionInput = {
 	connectionMode?: string | null;
@@ -9,7 +8,7 @@ type GitProviderConnectionInput = {
 const HOSTED_EDITION_LABEL = "Cloud/Enterprise";
 
 export function isHostedEditionMode(): boolean {
-	return isCloudMode();
+	return getEdition().edition === "cloud";
 }
 
 export function getGitProviderConnectionMode(
@@ -21,41 +20,30 @@ export function getGitProviderConnectionMode(
 export function isNearzeroManagedConnection(
 	input: GitProviderConnectionInput | null | undefined,
 ) {
-	return getGitProviderConnectionMode(input) === "nearzero_managed";
+	return getEdition().isNearzeroManagedConnection(input);
 }
 
 export function isGitProviderConnectionAllowed(
 	input: GitProviderConnectionInput | null | undefined,
 ) {
-	return !isHostedEditionMode() || isNearzeroManagedConnection(input);
+	return getEdition().isGitProviderConnectionAllowed(input);
 }
 
 export function assertGitProviderConnectionAllowed(
 	input: GitProviderConnectionInput | null | undefined,
 	providerLabel = "Git provider",
 ) {
-	if (!isGitProviderConnectionAllowed(input)) {
-		throw new TRPCError({
-			code: "FORBIDDEN",
-			message: `${HOSTED_EDITION_LABEL} workspaces must use the Nearzero-managed ${providerLabel} app.`,
-		});
-	}
+	getEdition().assertGitProviderConnectionAllowed(input, providerLabel);
 }
 
 export function assertByoGitProvidersAllowed(providerLabel = "Git provider") {
-	if (isHostedEditionMode()) {
-		throw new TRPCError({
-			code: "FORBIDDEN",
-			message: `${HOSTED_EDITION_LABEL} workspaces connect ${providerLabel} with the Nearzero-managed app.`,
-		});
-	}
+	getEdition().assertByoGitProvidersAllowed(providerLabel);
 }
 
 export function assertHostedManagedGitProvidersAvailable() {
-	if (!isHostedEditionMode()) {
-		throw new TRPCError({
-			code: "FORBIDDEN",
-			message: "Nearzero-managed git providers are only available in Cloud/Enterprise mode.",
-		});
-	}
+	getEdition().assertHostedManagedGitProvidersAvailable();
+}
+
+export function getHostedEditionLabel() {
+	return HOSTED_EDITION_LABEL;
 }

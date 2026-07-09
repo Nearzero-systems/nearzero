@@ -1,3 +1,5 @@
+import { bootstrapCloudEdition } from "@nearzero/cloud";
+import { bootstrapCommunityEdition } from "@nearzero/edition-community";
 import { shouldEnforceCloudBilling } from "@nearzero/server/constants";
 import {
 	EDITION_FEATURES,
@@ -11,8 +13,8 @@ import {
 	assertHostedManagedGitProvidersAvailable,
 	isHostedEditionMode,
 } from "@nearzero/server/services/git-provider-policy";
-import { hasValidLicense } from "@nearzero/server/services/proprietary/license-key";
-import { afterEach, describe, expect, it } from "vitest";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -25,14 +27,17 @@ function restoreEnv() {
 	Object.assign(process.env, ORIGINAL_ENV);
 }
 
+beforeEach(() => {
+	bootstrapCommunityEdition();
+});
+
 afterEach(() => {
 	restoreEnv();
+	bootstrapCommunityEdition();
 });
 
 describe("edition policy", () => {
 	it("defaults to Community mode and disables paid features", () => {
-		delete process.env.COMMUNITY;
-
 		expect(getRuntimeEdition()).toBe("community");
 		expect(isEditionFeatureEnabled(EDITION_FEATURES.sso)).toBe(false);
 		expect(isEditionFeatureEnabled(EDITION_FEATURES.customRoles)).toBe(false);
@@ -42,7 +47,7 @@ describe("edition policy", () => {
 	});
 
 	it("enables paid features in Cloud mode", () => {
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
 
 		expect(getRuntimeEdition()).toBe("cloud");
 		expect(isEditionFeatureEnabled(EDITION_FEATURES.sso)).toBe(true);
@@ -52,16 +57,14 @@ describe("edition policy", () => {
 		expect(hasAnyPaidEditionFeature()).toBe(true);
 	});
 
-	it("keeps the legacy license helper aligned with the runtime edition", async () => {
-		process.env.COMMUNITY = "true";
+	it("keeps the license helper aligned with the active edition", async () => {
 		await expect(hasValidLicense("org-1")).resolves.toBe(false);
 
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
 		await expect(hasValidLicense("org-1")).resolves.toBe(true);
 	});
 
 	it("never enforces Cloud billing in Community mode", () => {
-		process.env.COMMUNITY = "true";
 		process.env.NODE_ENV = "production";
 		process.env.STRIPE_SECRET_KEY = "sk_test_123";
 
@@ -69,7 +72,7 @@ describe("edition policy", () => {
 	});
 
 	it("enforces billing only when Cloud mode, production, and Stripe are configured", () => {
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
 		process.env.NODE_ENV = "production";
 		process.env.STRIPE_SECRET_KEY = "sk_test_123";
 		delete process.env.NEARZERO_DEV_BYPASS_BILLING;
@@ -78,7 +81,7 @@ describe("edition policy", () => {
 	});
 
 	it("respects the billing bypass even in Cloud mode", () => {
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
 		process.env.NODE_ENV = "production";
 		process.env.STRIPE_SECRET_KEY = "sk_test_123";
 		process.env.NEARZERO_DEV_BYPASS_BILLING = "true";
@@ -87,7 +90,6 @@ describe("edition policy", () => {
 	});
 
 	it("allows BYO git providers only in Community mode", () => {
-		process.env.COMMUNITY = "true";
 		expect(isHostedEditionMode()).toBe(false);
 		expect(() => assertByoGitProvidersAllowed("GitHub")).not.toThrow();
 		expect(() =>
@@ -99,7 +101,8 @@ describe("edition policy", () => {
 	});
 
 	it("requires Nearzero-managed git providers in Cloud/Enterprise mode", () => {
-		process.env.COMMUNITY = "false";
+		bootstrapCloudEdition();
+
 		expect(isHostedEditionMode()).toBe(true);
 		expect(() => assertByoGitProvidersAllowed("GitHub")).toThrow(
 			"Nearzero-managed app",

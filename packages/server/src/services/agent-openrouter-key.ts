@@ -1,4 +1,5 @@
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
+import { tryGetEdition } from "@nearzero/edition-contract";
 import { db } from "@nearzero/server/db";
 import { organizationSettings } from "@nearzero/server/db/schema";
 import { eq } from "drizzle-orm";
@@ -88,7 +89,11 @@ export async function clearOrgOpenRouterKey(organizationId: string) {
 export type AgentProviderSource = "env" | "org" | "none";
 
 export async function getAgentProviderStatus(organizationId: string) {
-	if (process.env.OPENROUTER_API_KEY?.trim()) {
+	const edition = tryGetEdition();
+	const allowsEnvProviderKey =
+		edition?.allowsEnvAgentProviderKey() ?? process.env.COMMUNITY === "false";
+
+	if (allowsEnvProviderKey && process.env.OPENROUTER_API_KEY?.trim()) {
 		return { configured: true, source: "env" as const };
 	}
 	if (await hasOrgOpenRouterKey(organizationId)) {

@@ -1,4 +1,10 @@
+import { getEdition, tryGetEdition } from "@nearzero/edition-contract";
+
 export function isCommunityMode(): boolean {
+	const edition = tryGetEdition();
+	if (edition) {
+		return edition.edition === "community";
+	}
 	return process.env.COMMUNITY !== "false";
 }
 
@@ -7,5 +13,9 @@ export function isCloudMode(): boolean {
 }
 
 export function requiresRemoteRuntimeServer(): boolean {
-	return isCloudMode();
+	const edition = tryGetEdition();
+	if (edition) {
+		return edition.requiresRemoteRuntimeServer();
+	}
+	return process.env.COMMUNITY === "false";
 }

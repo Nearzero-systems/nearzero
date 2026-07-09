@@ -9,7 +9,7 @@ import {
 import {
 	getManagedGithubConfig,
 	isNearzeroManagedGitProvider,
-} from "@nearzero/server/services/managed-git-provider";
+} from "@nearzero/server/services/managed-git-shared";
 import type { InferResultType } from "@nearzero/server/types/with";
 import { createAppAuth } from "@octokit/auth-app";
 import { TRPCError } from "@trpc/server";

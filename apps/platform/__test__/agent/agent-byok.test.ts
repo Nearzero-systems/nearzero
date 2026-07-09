@@ -1,5 +1,7 @@
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { bootstrapCloudEdition } from "@nearzero/cloud";
+import { bootstrapCommunityEdition } from "@nearzero/edition-community";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	decryptOrgOpenRouterKey,
 	encryptOrgOpenRouterKey,
@@ -15,9 +17,14 @@ describe("agent OpenRouter key service", () => {
 	const originalSecret = process.env.BETTER_AUTH_SECRET;
 	const originalEnvKey = process.env.OPENROUTER_API_KEY;
 
+	beforeEach(() => {
+		bootstrapCommunityEdition();
+	});
+
 	afterEach(() => {
 		process.env.BETTER_AUTH_SECRET = originalSecret;
 		process.env.OPENROUTER_API_KEY = originalEnvKey;
+		bootstrapCommunityEdition();
 	});
 
 	it("validates OpenRouter key shape", () => {
@@ -34,10 +41,27 @@ describe("agent OpenRouter key service", () => {
 		expect(plaintext).toBe("sk-or-roundtrip-key");
 	});
 
-	it("reports env override as configured", async () => {
+	it("ignores env override in Community mode", async () => {
+		process.env.OPENROUTER_API_KEY = "sk-or-env-override";
+		const status = await getAgentProviderStatus("org_test");
+		expect(status).toEqual({ configured: false, source: "none" });
+	});
+
+	it("reports env override as configured in Cloud mode", async () => {
+		bootstrapCloudEdition();
 		process.env.OPENROUTER_API_KEY = "sk-or-env-override";
 		const status = await getAgentProviderStatus("org_test");
 		expect(status).toEqual({ configured: true, source: "env" });
+	});
+
+	it("resolveProvider requires org key in Community mode", async () => {
+		process.env.OPENROUTER_API_KEY = "sk-or-env-override";
+		const { resolveProvider } = await import(
+			path.resolve(__dirname, "../../../../packages/agent/src/engine/resolve-provider.ts")
+		);
+		await expect(
+			resolveProvider({ organizationId: "org_test" }),
+		).resolves.toBeNull();
 	});
 });
 

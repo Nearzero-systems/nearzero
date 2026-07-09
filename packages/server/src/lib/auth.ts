@@ -16,7 +16,7 @@ import {
 	getTrustedProviders,
 	getUserByToken,
 } from "../services/admin";
-import { createAuditLog } from "../services/proprietary/audit-log";
+import { createAuditLog } from "../services/audit-log";
 import {
 	getWebServerSettings,
 	updateWebServerSettings,

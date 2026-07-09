@@ -49,6 +49,7 @@ import {
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
 import { checkPermission } from "@nearzero/server/services/permission";
+import { getEdition } from "@nearzero/edition-contract";
 import { generateOpenApiDocument } from "@nearzero/trpc-openapi";
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
@@ -808,6 +809,7 @@ export const settingsRouter = createTRPCRouter({
 			throw error;
 		}
 	}),
+	getEditionManifest: publicProcedure.query(async () => getEdition().getManifest()),
 	checkInfrastructureHealth: adminProcedure.query(async () => {
 
 		const [postgres, redis, traefik] = await Promise.all([

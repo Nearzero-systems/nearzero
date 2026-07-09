@@ -19,6 +19,7 @@
     "build": "bun esbuild.config.ts"
   },
   "dependencies": {
+    "@nearzero/edition-contract": "workspace:*",
     "@nearzero/server": "workspace:*",
     "drizzle-orm": "0.45.1",
     "nanoid": "3.3.11",

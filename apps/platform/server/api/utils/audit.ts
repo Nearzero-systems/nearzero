@@ -1,5 +1,5 @@
 import type { AuditAction, AuditResourceType } from "@nearzero/server/db/schema";
-import { createAuditLog } from "@nearzero/server/services/proprietary/audit-log";
+import { createAuditLog } from "@nearzero/server/services/audit-log";
 
 interface AuditCtx {
 	user: { id: string; email: string; role: string };

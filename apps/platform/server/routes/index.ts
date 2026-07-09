@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { runApiHandler } from "@/server/routes/http-api";
 import healthHandler from "@/server/routes/handlers/health";
-import stripeWebhook from "@/server/routes/handlers/stripe/webhook";
 import deployRefreshToken from "@/server/routes/handlers/deploy/refresh-token";
 import deployCompose from "@/server/routes/handlers/deploy/compose-refresh-token";
 import deployGithub from "@/server/routes/handlers/deploy/github";
@@ -56,11 +55,6 @@ export async function routeRequest(
 
 	if (pathname.startsWith("/api/auth")) {
 		await handleAuth(req, res);
-		return true;
-	}
-
-	if (pathname === "/api/stripe/webhook") {
-		await runApiHandler(req, res, {}, stripeWebhook, { parseBody: false });
 		return true;
 	}
 
