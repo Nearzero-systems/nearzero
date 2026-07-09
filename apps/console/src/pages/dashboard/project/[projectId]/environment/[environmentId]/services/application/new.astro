@@ -9,7 +9,7 @@ import { normalizeDashboardPath } from "@/lib/org-routes";
 
 const session = await getSession(Astro.request);
 if (!session?.user) {
-	return Astro.redirect(`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
+	return Astro.redirect(`/login?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`);
 }
 
 const routeParams = Object.fromEntries(

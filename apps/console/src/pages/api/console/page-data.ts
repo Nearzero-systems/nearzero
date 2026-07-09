@@ -76,7 +76,7 @@ export const POST: APIRoute = async ({ request, url }) => {
 		const fragmentMs = Math.round(performance.now() - fragmentStarted);
 		const finalPath = new URL(response.url).pathname;
 
-		if (response.redirected && (finalPath === "/" || finalPath === "/login")) {
+		if (response.redirected && finalPath === "/login") {
 			return json(
 				{
 					ok: false,

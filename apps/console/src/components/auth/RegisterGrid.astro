@@ -36,7 +36,7 @@ interface Props {
 }
 
 const {
-	loginHref = "/",
+	loginHref = "/login",
 	invitationToken = "",
 	initialEmail = "",
 	lockEmail = false,
@@ -421,7 +421,7 @@ const onboardingBtnClass =
 				root,
 				callbackUrl: "/dashboard/agent",
 				intent: "signup",
-				loginHref: root.dataset.loginHref || "/",
+				loginHref: root.dataset.loginHref || "/login",
 				invitationToken: inviteToken,
 				afterSignupVerifyUrl,
 				onEnterVerifyStage: () => {

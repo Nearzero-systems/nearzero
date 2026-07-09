@@ -1,5 +1,4 @@
 const SESSION_PATHS = new Set([
-	"/",
 	"/register",
 	"/login",
 	"/invitation",

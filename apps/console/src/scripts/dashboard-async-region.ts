@@ -169,7 +169,7 @@ async function fetchDashboardFrame(href: string): Promise<DashboardFrameResponse
 		});
 		const html = await response.text();
 		const finalPath = new URL(response.url).pathname;
-		if (response.redirected && (finalPath === "/" || finalPath === "/login")) {
+		if (response.redirected && finalPath === "/login") {
 			throw new Error("Sign in again to load this page.");
 		}
 		if (!response.ok) {

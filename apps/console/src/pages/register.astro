@@ -110,9 +110,7 @@ if (redirectTo) {
 
 const loginHref = invitationToken
 	? loginPathForInvitation(invitationToken, initialEmail)
-	: workspaceSetupMode || inviteMemberSetupMode
-		? "/"
-		: "/";
+	: "/login";
 const { providers: enabledSocialProviders, known: socialProvidersKnown } =
 	await fetchResolvedSocialAuthProviders();
 ---

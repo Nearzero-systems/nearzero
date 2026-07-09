@@ -1,3 +1,35 @@
 ---
-return Astro.redirect(Astro.url.search ? `/${Astro.url.search}` : "/");
+import LoginGrid from "@/components/auth/LoginGrid.astro";
+import Base from "@/layouts/Base.astro";
+import { getSession } from "@/lib/backendProxy";
+import { pageTitle } from "@/lib/branding";
+import {
+	parseInvitationCallback,
+	registerPathForInvitation,
+} from "@/lib/invitation-routes";
+import { fetchResolvedSocialAuthProviders } from "@/lib/social-auth-providers";
+
+const callbackParam = Astro.url.searchParams.get("callbackUrl");
+const callbackUrl = callbackParam || "/dashboard/agent";
+const initialEmail = Astro.url.searchParams.get("email") ?? "";
+const invitationToken = parseInvitationCallback(callbackUrl);
+const registerHref = invitationToken
+	? registerPathForInvitation(invitationToken, initialEmail)
+	: "/register";
+
+const session = await getSession(Astro.request);
+const { providers: enabledSocialProviders, known: socialProvidersKnown } =
+	await fetchResolvedSocialAuthProviders();
+if (session?.user) {
+	return Astro.redirect(callbackUrl);
+}
 ---
+<Base title={pageTitle("Sign in")} forceLightTheme>
+	<LoginGrid
+		callbackUrl={callbackUrl}
+		registerHref={registerHref}
+		initialEmail={initialEmail}
+		enabledSocialProviders={enabledSocialProviders}
+		socialProvidersKnown={socialProvidersKnown}
+	/>
+</Base>

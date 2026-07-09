@@ -120,7 +120,7 @@ async function guardDashboardAccess(
 		return new Response(null, {
 			status: 302,
 			headers: {
-				Location: `/?callbackUrl=${encodeURIComponent(dest)}`,
+				Location: `/login?callbackUrl=${encodeURIComponent(dest)}`,
 			},
 		});
 	}
@@ -174,7 +174,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 	const session = usesSession ? await getSession(context.request) : null;
 
-	if ((path === "/" || path === "/login") && session?.user) {
+	if (path === "/login" && session?.user) {
 		return context.redirect(
 			await resolvePostAuthRedirect(
 				context.request,

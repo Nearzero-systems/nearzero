@@ -16,7 +16,7 @@ const {
 	invitation,
 	loadError,
 	sessionEmail,
-	loginHref = "/",
+	loginHref = "/login",
 } = Astro.props;
 
 const missingToken = !token;
@@ -152,7 +152,7 @@ const secondaryBtnClass =
 			method: "POST",
 			credentials: "include",
 		}).catch(() => undefined);
-		window.location.href = "/";
+		window.location.href = "/login";
 	}
 
 	function bindInvitation() {

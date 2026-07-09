@@ -8,7 +8,7 @@ import { isDashboardFragmentRequest } from "@/lib/dashboard-async-routes";
 const session = await getSession(Astro.request);
 if (!session?.user) {
 	return Astro.redirect(
-		`/?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`,
+		`/login?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`,
 	);
 }
 const isFragment = isDashboardFragmentRequest(Astro.request);

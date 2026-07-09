@@ -81,7 +81,7 @@ export function bindAuthOtpFlow(options: AuthOtpFlowOptions) {
 		root,
 		callbackUrl,
 		intent,
-		loginHref = "/",
+		loginHref = "/login",
 		registerHref = "/register",
 		invitationToken = "",
 		getSignupName,

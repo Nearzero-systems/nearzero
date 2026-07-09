@@ -27,7 +27,7 @@ export function parseInvitationCallback(raw: string | null | undefined) {
 
 export function loginPathForInvitation(token: string, email?: string) {
 	const callbackUrl = invitationPath(token, email);
-	const url = new URL("/", "http://local");
+	const url = new URL("/login", "http://local");
 	url.searchParams.set("callbackUrl", callbackUrl);
 	if (email?.trim()) {
 		url.searchParams.set("email", email.trim());

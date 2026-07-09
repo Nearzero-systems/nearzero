@@ -1,0 +1,402 @@
+---
+import {
+	APP_NAME,
+	NEARZERO_DOCS_URL,
+	NEARZERO_SUPPORT_URL,
+} from "@/lib/branding";
+
+const GITHUB_URL = "https://github.com/Nearzero-systems/nearzero";
+const INSTALL_COMMAND = "curl -sSL https://nearzero.dev/install.sh | bash";
+const supportIsExternal = NEARZERO_SUPPORT_URL.startsWith("http");
+
+const deploySteps = [
+	["1", "Connect code", "Pick the repo you want to put online."],
+	["2", "Choose a server", "Use a machine you own or a remote server you control."],
+	["3", "Attach a domain", "Add the domain, subdomain, or path people will visit."],
+	["4", "Ask the Agent", "Let it inspect deploys, logs, routes, and service state before you change anything."],
+];
+
+const proofCards = [
+	{
+		kicker: "Reliable app launches",
+		title: "Know what went live and where it is running.",
+		body: "Your repo, build inputs, service, domain, and latest deploy are shown together, so the launch does not turn into guesswork.",
+		action: "See deployment flow",
+		visual: "deploy",
+		lines: ["Repo connected", "Build finished", "Service running", "URL live"],
+	},
+	{
+		kicker: "Domains without mystery",
+		title: "Keep domains and app routes understandable.",
+		body: "Domains, subdomains, paths, certificates, and routes stay beside the app they belong to.",
+		action: "Understand routing",
+		visual: "routes",
+		lines: ["app.com", "api.app.com", "/webhooks", "TLS ready"],
+	},
+	{
+		kicker: "Databases and backups",
+		title: "Add the services real apps need.",
+		body: "Create Postgres, MySQL, MongoDB, Redis, backups, and background services without leaving the app workspace.",
+		action: "Run stateful apps",
+		visual: "data",
+		lines: ["Postgres", "Redis", "Backup scheduled", "Restore ready"],
+	},
+	{
+		kicker: "Logs that explain the problem",
+		title: "Debug with the Agent and the facts already connected.",
+		body: "Open deploy history, service logs, server health, domain routes, and Agent notes from the same place.",
+		action: "Debug with context",
+		visual: "logs",
+		lines: ["Deploy failed", "Logs read", "DB reachable", "Agent note"],
+	},
+];
+
+const agentSteps = [
+	["Inspect", "Reads projects, services, deployments, runtime status, logs, domains, and server checks."],
+	["Collect", "Asks for missing inputs such as repo, branch, server, domain, ports, or environment variables."],
+	["Prepare", "Plans app imports, build settings, database services, domain assignments, deploys, and rollbacks."],
+	["Approve", "Pauses before production changes so you can review what will happen."],
+];
+
+const agentRows = [
+	["User asks", "Why is the API down?"],
+	["Agent checks", "Recent deploys, runtime logs, route state, and database reachability"],
+	["Agent answers", "The app is healthy, but /api still points to the previous service"],
+	["Next step", "Review the route update before it is applied"],
+];
+
+const hardThings = [
+	["Apps", "Node.js, Python, Go, PHP, Ruby, and other common app stacks."],
+	["Databases", "Postgres, MySQL, MongoDB, MariaDB, libSQL, and Redis."],
+	["Backups", "Automated database backups to external storage."],
+	["Stacks", "Run apps that need web services, workers, queues, and databases together."],
+	["Servers", "Start on one server and grow into multiple nodes when needed."],
+	["Alerts", "Send updates to Slack, Discord, Telegram, email, and more."],
+];
+
+const useCases = [
+	{
+		label: "Launch",
+		title: "Put a new app online",
+		body: "Connect a repository, choose a server, add environment variables, attach a domain, and let the Agent help collect missing setup details.",
+		lines: ["Repo connected", "Inputs collected", "Domain attached", "App live"],
+	},
+	{
+		label: "Fix",
+		title: "Understand why an app is down",
+		body: "Ask the Agent to inspect logs, recent deploys, server checks, routing, and database status before changing anything.",
+		lines: ["Logs read", "Route checked", "State compared", "Fix prepared"],
+	},
+	{
+		label: "Grow",
+		title: "Add the pieces your app needs",
+		body: "Create databases, backups, background services, and extra servers from one place, with review before important changes.",
+		lines: ["Database ready", "Backup scheduled", "Service added", "Change reviewed"],
+	},
+];
+
+const faqItems = [
+	{
+		question: "Who is Nearzero for?",
+		answer: "People and teams who want to run apps on their own servers without stitching together deployments, DNS, databases, backups, logs, and server scripts by hand.",
+	},
+	{
+		question: "Do I keep control of my server?",
+		answer: "Yes. Nearzero is designed for servers you own or control. It helps you operate apps, domains, databases, and server work from one workspace.",
+	},
+	{
+		question: "What does the Agent do?",
+		answer: "The Agent can inspect projects, services, deployments, runtime status, logs, repositories, domains, databases, and server checks. It can collect missing inputs, prepare changes, and pause for review before important actions.",
+	},
+	{
+		question: "How do I start?",
+		answer: "Install Nearzero, connect your code, add a server, and follow the docs to put your first app online.",
+	},
+];
+---
+<main class="nz-landing-grid" aria-labelledby="nearzero-landing-title">
+	<div class="nz-landing-tile"></div>
+	<header class="nz-landing-tile nz-landing-header">
+		<a class="nz-landing-brand" href="/" aria-label={`${APP_NAME} home`}>
+			<img src="/logo.svg" alt="" />
+			<span>{APP_NAME}</span>
+		</a>
+		<nav class="nz-landing-nav" aria-label="Primary">
+			<a href={NEARZERO_DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
+			<a
+				href={NEARZERO_SUPPORT_URL}
+				target={supportIsExternal ? "_blank" : undefined}
+				rel={supportIsExternal ? "noreferrer" : undefined}
+			>
+				Support
+			</a>
+			<a class="nz-nav-star" href={GITHUB_URL} target="_blank" rel="noreferrer">Star us on GitHub</a>
+		</nav>
+	</header>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-hero-section">
+		<div class="nz-hero-copy">
+			<p class="nz-hero-pill">For apps running on your own servers</p>
+			<h1 id="nearzero-landing-title">Launch apps on your own server with an Agent that understands what changed.</h1>
+			<p>
+				Nearzero brings deployments, domains, databases, backups, logs, and an infrastructure Agent into one calm workspace, so you can see what is live, what broke, and what needs approval.
+			</p>
+			<div class="nz-landing-command" aria-label="Install Nearzero">
+				<span>$</span>
+				<code>{INSTALL_COMMAND}</code>
+			</div>
+			<div class="nz-landing-actions">
+				<a class="nz-landing-button nz-landing-button--primary" href={GITHUB_URL} target="_blank" rel="noreferrer">
+					Star us on GitHub
+				</a>
+				<a class="nz-landing-button" href={NEARZERO_DOCS_URL} target="_blank" rel="noreferrer">
+					Read docs
+				</a>
+			</div>
+		</div>
+		<div class="nz-product-scene" aria-label="Nearzero product overview">
+			<div class="nz-scene-header">
+				<span>Agent workspace</span>
+				<strong>change ready for review</strong>
+			</div>
+			<div class="nz-scene-grid">
+				<div class="nz-scene-card nz-scene-card--active">
+					<span>Ask</span>
+					<strong>Why did the API fail?</strong>
+				</div>
+				<div class="nz-scene-card">
+					<span>Inspect</span>
+					<strong>Logs and deploys checked</strong>
+				</div>
+				<div class="nz-scene-card">
+					<span>Plan</span>
+					<strong>Route update prepared</strong>
+				</div>
+				<div class="nz-scene-card">
+					<span>Approve</span>
+					<strong>Waiting before changes</strong>
+				</div>
+			</div>
+			<div class="nz-scene-log">
+				<p><span>09:41</span> Agent read deploy history and runtime logs</p>
+				<p><span>09:42</span> Agent found the domain route still points to the previous service</p>
+				<p><span>09:43</span> Agent is waiting for approval before changing production</p>
+			</div>
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-flow-section" aria-labelledby="nearzero-flow-title">
+		<div class="nz-section-copy">
+			<p class="nz-landing-kicker">From code to live app</p>
+			<h2 id="nearzero-flow-title">A clear path from repository to running URL.</h2>
+			<p>Instead of jumping between Git, SSH, DNS, database dashboards, and log tails, you follow one app story from setup to launch.</p>
+		</div>
+		<div class="nz-flow-rail" aria-label="Nearzero deployment flow">
+			{deploySteps.map(([step, title, body]) => (
+				<article>
+					<span>{step}</span>
+					<h3>{title}</h3>
+					<p>{body}</p>
+				</article>
+			))}
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-proof-section" aria-labelledby="nearzero-proof-title">
+		<div class="nz-section-copy">
+			<p class="nz-landing-kicker">What gets easier</p>
+			<h2 id="nearzero-proof-title">The details are visible, not scattered.</h2>
+		</div>
+		<div class="nz-proof-grid">
+			{proofCards.map((item) => (
+				<article>
+					<div>
+						<p>{item.kicker}</p>
+						<h3>{item.title}</h3>
+						<span>{item.body}</span>
+						<a href={NEARZERO_DOCS_URL} target="_blank" rel="noreferrer">{item.action}</a>
+					</div>
+					<div class={`nz-proof-visual nz-proof-visual--${item.visual}`} aria-hidden="true">
+						{item.lines.map((line) => <span>{line}</span>)}
+					</div>
+				</article>
+			))}
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-map-section" aria-labelledby="nearzero-map-title">
+		<div class="nz-section-copy">
+			<p class="nz-landing-kicker">One place for the app</p>
+			<h2 id="nearzero-map-title">A running app has many moving parts. Nearzero keeps them connected for you and the Agent.</h2>
+		</div>
+		<div class="nz-app-map" aria-label="Nearzero connected app map">
+			<div class="nz-map-node nz-map-node--small">
+				<span>Code</span>
+			</div>
+			<div class="nz-map-line"></div>
+			<div class="nz-map-node nz-map-node--main">
+				<img src="/logo.svg" alt="" />
+				<strong>Nearzero Agent</strong>
+			</div>
+			<div class="nz-map-line"></div>
+			<div class="nz-map-node nz-map-node--small">
+				<span>Server</span>
+			</div>
+			<div class="nz-map-pills">
+				<span>Domain</span>
+				<span>Database</span>
+				<span>Logs</span>
+				<span>Backups</span>
+			</div>
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-agent-section" aria-labelledby="nearzero-agent-title">
+		<div class="nz-section-copy">
+			<p class="nz-landing-kicker">Nearzero Agent</p>
+			<h2 id="nearzero-agent-title">Ask the Agent what happened, then review the fix.</h2>
+			<p>The Agent uses the real Nearzero workspace: projects, services, deployments, logs, runtime status, repositories, domains, databases, and server checks.</p>
+		</div>
+		<div class="nz-agent-panel">
+			<div class="nz-agent-chat">
+				<p><span>You</span> The site opens, but the API route fails. What changed?</p>
+				<p><span>Agent</span> The API deploy is healthy, but /api still points to the previous service. Review the route update before I apply it.</p>
+				<div class="nz-agent-context" aria-label="Context the Nearzero Agent can inspect">
+					<span>Deployment logs</span>
+					<span>Runtime status</span>
+					<span>Domain routes</span>
+					<span>Database health</span>
+					<span>Server checks</span>
+				</div>
+			</div>
+			<div class="nz-agent-workflow">
+				<div class="nz-agent-steps">
+					{agentSteps.map(([title, body]) => (
+						<article>
+							<strong>{title}</strong>
+							<span>{body}</span>
+						</article>
+					))}
+				</div>
+				<div class="nz-agent-table" aria-label="Nearzero Agent example workflow">
+					{agentRows.map(([label, value]) => (
+						<div>
+							<span>{label}</span>
+							<strong>{value}</strong>
+						</div>
+					))}
+				</div>
+			</div>
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-hard-section" aria-labelledby="nearzero-hard-title">
+		<div class="nz-section-copy">
+			<p class="nz-landing-kicker">The hard parts are included</p>
+			<h2 id="nearzero-hard-title">Use the pieces your app already needs.</h2>
+			<p>Nearzero is built around normal app work: servers, services, domains, data, backups, logs, and team notifications.</p>
+		</div>
+		<div class="nz-hard-grid">
+			{hardThings.map(([title, body]) => (
+				<article>
+					<strong>{title}</strong>
+					<span>{body}</span>
+				</article>
+			))}
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-use-section" aria-labelledby="nearzero-use-title">
+		<div class="nz-use-hero">
+			<p class="nz-landing-kicker">Use cases</p>
+			<h2 id="nearzero-use-title">Use Nearzero when work is bigger than a one-time deploy.</h2>
+			<p>Launch, fix, and grow your apps without rebuilding the same server checklist every time.</p>
+		</div>
+		<div class="nz-use-grid">
+			{useCases.map((item, index) => (
+				<article class={index === 0 ? "is-active" : ""}>
+					<p>{item.label}</p>
+					<h3>{item.title}</h3>
+					<span>{item.body}</span>
+					<ul>
+						{item.lines.map((line) => <li>{line}</li>)}
+					</ul>
+				</article>
+			))}
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-faq-section" aria-labelledby="nearzero-faq-title">
+		<div class="nz-section-copy">
+			<p class="nz-landing-kicker">FAQ</p>
+			<h2 id="nearzero-faq-title">Questions people ask before they install.</h2>
+		</div>
+		<div class="nz-faq-list">
+			{faqItems.map((item) => (
+				<details>
+					<summary>{item.question}</summary>
+					<div class="nz-faq-answer">
+						<p>{item.answer}</p>
+					</div>
+				</details>
+			))}
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<section class="nz-landing-tile nz-final-cta" aria-labelledby="nearzero-final-title">
+		<div>
+			<p class="nz-landing-kicker">Ready to put the first app online?</p>
+			<h2 id="nearzero-final-title">Install Nearzero, connect your code, and let the Agent help you keep the server understandable.</h2>
+			<div class="nz-landing-actions">
+				<a class="nz-landing-button nz-landing-button--primary" href={GITHUB_URL} target="_blank" rel="noreferrer">
+					Star us on GitHub
+				</a>
+				<a class="nz-landing-button" href={NEARZERO_DOCS_URL} target="_blank" rel="noreferrer">
+					Read docs
+				</a>
+			</div>
+		</div>
+	</section>
+	<div class="nz-landing-tile"></div>
+
+	<div class="nz-landing-tile"></div>
+	<footer class="nz-landing-tile nz-landing-footer">
+		<div>
+			<a class="nz-landing-brand" href="/" aria-label={`${APP_NAME} home`}>
+				<img src="/logo.svg" alt="" />
+				<span>{APP_NAME}</span>
+			</a>
+			<p>For people who want to run apps on their own servers without losing the map.</p>
+		</div>
+		<nav aria-label="Footer">
+			<a href={NEARZERO_DOCS_URL} target="_blank" rel="noreferrer">Docs</a>
+			<a
+				href={NEARZERO_SUPPORT_URL}
+				target={supportIsExternal ? "_blank" : undefined}
+				rel={supportIsExternal ? "noreferrer" : undefined}
+			>
+				Support
+			</a>
+			<a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
+		</nav>
+	</footer>
+	<div class="nz-landing-tile"></div>
+</main>

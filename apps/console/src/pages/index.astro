@@ -1,35 +1,47 @@
 ---
-import Base from "../layouts/Base.astro";
-import LoginGrid from "../components/auth/LoginGrid.astro";
-import { pageTitle } from "../lib/branding";
-import { getSession } from "../lib/backendProxy";
-import {
-	parseInvitationCallback,
-	registerPathForInvitation,
-} from "../lib/invitation-routes";
-import { fetchResolvedSocialAuthProviders } from "../lib/social-auth-providers";
+import NearzeroLanding from "@/components/marketing/NearzeroLanding.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { NEARZERO_DOCS_URL } from "@/lib/branding";
 
-const callbackParam = Astro.url.searchParams.get("callbackUrl");
-const callbackUrl = callbackParam || "/dashboard/agent";
-const initialEmail = Astro.url.searchParams.get("email") ?? "";
-const invitationToken = parseInvitationCallback(callbackUrl);
-const registerHref = invitationToken
-	? registerPathForInvitation(invitationToken, initialEmail)
-	: "/register";
+const title = "Nearzero - Launch apps on your own server";
+const description =
+	"Nearzero helps you deploy apps, connect domains, run databases and backups, watch logs, and use an infrastructure Agent on your own server.";
+const canonicalUrl = "https://nearzero.dev/";
+const githubUrl = "https://github.com/Nearzero-systems/nearzero";
 
-const session = await getSession(Astro.request);
-const { providers: enabledSocialProviders, known: socialProvidersKnown } =
-	await fetchResolvedSocialAuthProviders();
-if (session?.user) {
-	return Astro.redirect(callbackUrl);
-}
+const jsonLd = [
+	{
+		"@context": "https://schema.org",
+		"@type": "Organization",
+		name: "Nearzero",
+		url: canonicalUrl,
+		logo: `${canonicalUrl}logo.svg`,
+		sameAs: [githubUrl],
+	},
+	{
+		"@context": "https://schema.org",
+		"@type": "SoftwareApplication",
+		name: "Nearzero",
+		applicationCategory: "DeveloperApplication",
+		operatingSystem: "Linux",
+		description,
+		url: canonicalUrl,
+		codeRepository: githubUrl,
+		softwareHelp: NEARZERO_DOCS_URL,
+		offers: {
+			"@type": "Offer",
+			price: "0",
+			priceCurrency: "USD",
+		},
+	},
+];
 ---
-<Base title={pageTitle("Sign in")} forceLightTheme>
-  <LoginGrid
-    callbackUrl={callbackUrl}
-    registerHref={registerHref}
-    initialEmail={initialEmail}
-    enabledSocialProviders={enabledSocialProviders}
-    socialProvidersKnown={socialProvidersKnown}
-  />
-</Base>
+<MarketingLayout
+	title={title}
+	description={description}
+	canonicalUrl={canonicalUrl}
+	ogImage="/logo.svg"
+	jsonLd={jsonLd}
+>
+	<NearzeroLanding />
+</MarketingLayout>
