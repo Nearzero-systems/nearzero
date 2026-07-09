@@ -23,6 +23,7 @@
 		"@better-auth/api-key": "1.5.4",
 		"@better-auth/sso": "1.5.4",
 		"@fontsource-variable/geist": "^5.2.9",
+		"@nearzero/edition-contract": "workspace:*",
 		"@nearzero/server": "workspace:*",
 		"@stripe/stripe-js": "4.8.0",
 		"@trpc/client": "^11.10.0",

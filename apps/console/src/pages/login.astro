@@ -7,7 +7,6 @@ import {
 	parseInvitationCallback,
 	registerPathForInvitation,
 } from "@/lib/invitation-routes";
-import { fetchResolvedSocialAuthProviders } from "@/lib/social-auth-providers";
 
 const callbackParam = Astro.url.searchParams.get("callbackUrl");
 const callbackUrl = callbackParam || "/dashboard/agent";
@@ -18,8 +17,6 @@ const registerHref = invitationToken
 	: "/register";
 
 const session = await getSession(Astro.request);
-const { providers: enabledSocialProviders, known: socialProvidersKnown } =
-	await fetchResolvedSocialAuthProviders();
 if (session?.user) {
 	return Astro.redirect(callbackUrl);
 }
@@ -29,7 +26,5 @@ if (session?.user) {
 		callbackUrl={callbackUrl}
 		registerHref={registerHref}
 		initialEmail={initialEmail}
-		enabledSocialProviders={enabledSocialProviders}
-		socialProvidersKnown={socialProvidersKnown}
 	/>
 </Base>

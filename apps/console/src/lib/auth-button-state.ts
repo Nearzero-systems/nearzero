@@ -5,7 +5,7 @@ const AUTH_ICON_SELECTOR = "[data-auth-btn-icon]";
 export function queryAuthActionButtons(root: ParentNode): HTMLButtonElement[] {
 	return Array.from(
 		root.querySelectorAll<HTMLButtonElement>(
-			"button[data-otp-email-submit], button[data-otp-verify-submit], button[data-otp-resend-btn], [data-otp-oauth-panel] button, [data-register-oauth] button",
+			"button[data-otp-email-submit], button[data-otp-verify-submit], button[data-otp-resend-btn], button[data-onboarding-continue], button[data-invite-submit], button[data-onboarding-skip], button[data-invite-skip]",
 		),
 	);
 }
@@ -38,14 +38,14 @@ export function isAuthPanelLocked(root: ParentNode) {
 	return root instanceof HTMLElement && root.dataset.authLocked === "1";
 }
 
-export function lockAuthPanel(root: ParentNode, activeButton: HTMLButtonElement) {
+export function lockAuthPanel(root: ParentNode, activeButton?: HTMLButtonElement) {
 	if (!(root instanceof HTMLElement)) return false;
 	if (isAuthPanelLocked(root)) return false;
 
 	root.dataset.authLocked = "1";
 	for (const button of queryAuthActionButtons(root)) {
 		button.disabled = true;
-		const isActive = button === activeButton;
+		const isActive = activeButton ? button === activeButton : false;
 		button.setAttribute("aria-busy", isActive ? "true" : "false");
 		if (isActive) {
 			rememberDefaultLabel(button);

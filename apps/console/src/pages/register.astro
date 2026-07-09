@@ -3,7 +3,6 @@ import Base from "../layouts/Base.astro";
 import RegisterGrid from "../components/auth/RegisterGrid.astro";
 import { pageTitle } from "../lib/branding";
 import { getSession } from "../lib/backendProxy";
-import { fetchResolvedSocialAuthProviders } from "../lib/social-auth-providers";
 import {
 	invitationPathFromToken,
 	isInviteMemberSetupMode,
@@ -111,8 +110,6 @@ if (redirectTo) {
 const loginHref = invitationToken
 	? loginPathForInvitation(invitationToken, initialEmail)
 	: "/login";
-const { providers: enabledSocialProviders, known: socialProvidersKnown } =
-	await fetchResolvedSocialAuthProviders();
 ---
 <Base forceLightTheme title={pageTitle(
 	workspaceSetupMode
@@ -133,7 +130,5 @@ const { providers: enabledSocialProviders, known: socialProvidersKnown } =
 	}
     workspaceSetupMode={workspaceSetupMode}
     inviteMemberSetupMode={inviteMemberSetupMode}
-    enabledSocialProviders={enabledSocialProviders}
-    socialProvidersKnown={socialProvidersKnown}
   />
 </Base>

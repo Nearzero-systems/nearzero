@@ -27,19 +27,32 @@ export function getManagedGitProviderCallbackBaseUrl(): string {
 	return cloudOnly("Managed git provider callbacks");
 }
 
-export function getManagedGithubConfig(): never {
+export function getManagedGithubConfig(): {
+	appId: string;
+	privateKey: string;
+	webhookSecret: string;
+} {
 	return cloudOnly("Nearzero-managed GitHub");
 }
 
-export function getManagedGitlabConfig(): never {
+export function getManagedGitlabConfig(): {
+	clientId: string;
+	clientSecret: string;
+} {
 	return cloudOnly("Nearzero-managed GitLab");
 }
 
-export function getManagedGiteaConfig(): never {
+export function getManagedGiteaConfig(): {
+	clientId: string;
+	clientSecret: string;
+} {
 	return cloudOnly("Nearzero-managed Gitea");
 }
 
-export function getManagedBitbucketConfig(): never {
+export function getManagedBitbucketConfig(): {
+	clientId: string;
+	clientSecret: string;
+} {
 	return cloudOnly("Nearzero-managed Bitbucket");
 }
 

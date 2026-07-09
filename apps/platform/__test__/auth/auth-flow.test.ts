@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { toConsoleCallbackUrl } from "../../../console/src/lib/auth-callback-url";
-import { resolveSocialAuthProviders } from "../../../console/src/lib/social-auth-providers";
 import { rewriteAuthRedirectLocation } from "../../../console/src/lib/auth-redirect";
 import {
 	getAuthOtpAccountError,
@@ -11,7 +10,6 @@ import {
 	resolveConsoleActionUrl,
 	resolveConsoleUrl,
 } from "@nearzero/server/lib/public-url";
-import { getConfiguredSocialAuthProviders } from "@nearzero/server/lib/social-auth-providers";
 import { describe, expect, it } from "vitest";
 
 describe("OTP authentication intent", () => {
@@ -72,40 +70,6 @@ describe("public console URLs", () => {
 				BETTER_AUTH_URL: "https://nearzero.test",
 			}),
 		).toBe("https://nearzero.test");
-	});
-});
-
-describe("resolved social auth providers", () => {
-	it("shows all providers when the platform list is unavailable", () => {
-		expect(resolveSocialAuthProviders([])).toEqual({
-			providers: ["github", "google"],
-			known: false,
-		});
-	});
-
-	it("hides unavailable providers when the platform list is explicit", () => {
-		expect(resolveSocialAuthProviders(["google"])).toEqual({
-			providers: ["google"],
-			known: true,
-		});
-	});
-});
-
-describe("configured social auth providers", () => {
-	it("lists only providers with client id and secret", () => {
-		expect(
-			getConfiguredSocialAuthProviders({
-				GITHUB_CLIENT_ID: "gh-id",
-				GITHUB_CLIENT_SECRET: "gh-secret",
-				GOOGLE_CLIENT_ID: "go-id",
-			}),
-		).toEqual(["github"]);
-		expect(
-			getConfiguredSocialAuthProviders({
-				GOOGLE_CLIENT_ID: "go-id",
-				GOOGLE_CLIENT_SECRET: "go-secret",
-			}),
-		).toEqual(["google"]);
 	});
 });
 
@@ -170,17 +134,13 @@ describe("auth redirect rewriting", () => {
 });
 
 describe("console auth proxy contract", () => {
-	it("sends auth intent and forwards invitation context", () => {
+	it("sends invitation context and wires email OTP auth", () => {
 		const otpFlow = readFileSync(
 			new URL("../../../console/src/scripts/auth-otp-flow.ts", import.meta.url),
 			"utf8",
 		);
 		const proxy = readFileSync(
 			new URL("../../../console/src/lib/backendProxy.ts", import.meta.url),
-			"utf8",
-		);
-		const socialFlow = readFileSync(
-			new URL("../../../console/src/scripts/auth-social-flow.ts", import.meta.url),
 			"utf8",
 		);
 		const loginGrid = readFileSync(
@@ -195,16 +155,21 @@ describe("console auth proxy contract", () => {
 			new URL("../../../console/src/lib/invitation-routes.ts", import.meta.url),
 			"utf8",
 		);
+		const otpDelivery = readFileSync(
+			new URL("../../../../packages/server/src/lib/send-auth-otp-email.ts", import.meta.url),
+			"utf8",
+		);
 
-		expect(otpFlow.match(/"x-nearzero-auth-intent": intent/g)?.length).toBe(2);
-		expect(proxy).toContain('request.headers.get("x-nearzero-auth-intent")');
+		expect(otpFlow).toContain("/api/auth/email-otp/send-verification-otp");
+		expect(otpFlow).toContain("/api/auth/sign-in/email-otp");
+		expect(otpFlow).toContain("x-nearzero-auth-intent");
+		expect(otpDelivery).not.toContain("resend");
+		expect(otpDelivery).toContain("console.log");
 		expect(proxy).toContain('request.headers.get("x-nearzero-token")');
+		expect(proxy).toContain("x-nearzero-auth-intent");
 		expect(proxy).toContain("rewriteSetCookieForConsole");
-		expect(proxy).toContain("buildConsoleSessionSetCookie");
-		expect(proxy).toContain("rewriteAuthRedirectLocation");
-		expect(socialFlow).toContain("toConsoleCallbackUrl");
-		expect(loginGrid).toContain("bindSocialAuthFlow");
-		expect(registerGrid).toContain("bindSocialAuthFlow");
+		expect(loginGrid).toContain("bindAuthOtpFlow");
+		expect(registerGrid).toContain("bindAuthOtpFlow");
 		expect(invitationRoutes).toContain("loginPathForInvitation");
 		expect(invitationRoutes).toContain("registerPathForInvitation");
 	});

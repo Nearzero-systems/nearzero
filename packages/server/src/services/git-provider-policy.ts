@@ -1,6 +1,6 @@
 import { getEdition } from "@nearzero/edition-contract";
 
-type GitProviderConnectionInput = {
+export type GitProviderConnectionInput = {
 	connectionMode?: string | null;
 	gitProvider?: { connectionMode?: string | null } | null;
 };

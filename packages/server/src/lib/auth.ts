@@ -1,14 +1,12 @@
 import type { IncomingMessage } from "node:http";
 import { apiKey } from "@better-auth/api-key";
 import { sso } from "@better-auth/sso";
-import * as bcrypt from "bcrypt";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { admin, organization, twoFactor } from "better-auth/plugins";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { and, desc, eq } from "drizzle-orm";
-import { shouldEnforceCloudBilling } from "../constants";
 import { db } from "../db";
 import * as schema from "../db/schema";
 import {
@@ -22,10 +20,6 @@ import {
 	updateWebServerSettings,
 } from "../services/web-server-settings";
 import { getHubSpotUTK, submitToHubSpot } from "../utils/tracking/hubspot";
-import {
-	sendEmail,
-	sendVerificationEmail,
-} from "../verification/send-verification-email";
 import { getPublicIpWithFallback } from "../wss/utils";
 import { ac, adminRole, memberRole, ownerRole } from "./access-control";
 import {
@@ -41,7 +35,6 @@ import { betterAuthSecret } from "./auth-secret";
 import { emailEquals } from "./email-identity";
 import {
 	resolveAuthPublicBaseUrl,
-	resolveConsoleActionUrl,
 	resolveSharedCookieDomain,
 } from "./public-url";
 import {
@@ -216,25 +209,6 @@ const productionCookieAttributes = {
 	httpOnly: true,
 	path: "/",
 };
-const configuredSocialProviders = {
-	...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
-		? {
-				github: {
-					clientId: process.env.GITHUB_CLIENT_ID,
-					clientSecret: process.env.GITHUB_CLIENT_SECRET,
-				},
-			}
-		: {}),
-	...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-		? {
-				google: {
-					clientId: process.env.GOOGLE_CLIENT_ID,
-					clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-				},
-			}
-		: {}),
-};
-const configuredSocialProviderIds = Object.keys(configuredSocialProviders);
 
 const { handler, api } = betterAuth({
 	database: drizzleAdapter(db, {
@@ -247,6 +221,10 @@ const { handler, api } = betterAuth({
 		"/organization/update",
 		"/organization/delete",
 		"/verify-email",
+		"/sign-in/email",
+		"/sign-up/email",
+		"/forget-password",
+		"/reset-password",
 	],
 	secret: betterAuthSecret,
 	...(authBaseUrl ? { baseURL: authBaseUrl } : {}),
@@ -281,14 +259,12 @@ const { handler, api } = betterAuth({
 		accountLinking: {
 			enabled: true,
 			async trustedProviders() {
-				const fromDb = await getTrustedProviders();
-				return [...configuredSocialProviderIds, ...fromDb];
+				return getTrustedProviders();
 			},
 			allowDifferentEmails: true,
 		},
 	},
 	appName: "Nearzero",
-	socialProviders: configuredSocialProviders,
 	logger: {
 		disabled: process.env.NODE_ENV === "production",
 	},
@@ -336,41 +312,6 @@ const { handler, api } = betterAuth({
 					]
 				: [];
 		}
-	},
-	emailVerification: {
-		sendOnSignUp: true,
-		autoSignInAfterVerification: true,
-		sendOnSignIn: true,
-		sendVerificationEmail: async ({ user, url }) => {
-			await sendVerificationEmail({
-				userName: user.name || "User",
-				email: user.email,
-				verificationUrl: resolveConsoleActionUrl(url),
-			});
-		},
-	},
-	emailAndPassword: {
-		enabled: true,
-		autoSignIn: true,
-		requireEmailVerification: shouldEnforceCloudBilling(),
-		password: {
-			async hash(password) {
-				return bcrypt.hashSync(password, 10);
-			},
-			async verify({ hash, password }) {
-				return bcrypt.compareSync(password, hash);
-			},
-		},
-		sendResetPassword: async ({ user, url }) => {
-			const resetUrl = resolveConsoleActionUrl(url);
-			await sendEmail({
-				email: user.email,
-				subject: "Reset your password",
-				text: `
-				<p>Click the link to reset your password: <a href="${resetUrl}">Reset Password</a></p>
-				`,
-			});
-		},
 	},
 	databaseHooks: {
 		user: {
@@ -440,7 +381,7 @@ const { handler, api } = betterAuth({
 								firstName: user.name || "",
 								lastName: userWithFields.lastName || "",
 							},
-							hutk,
+							hutk ?? undefined,
 						);
 						if (!hubspotSuccess) {
 							console.error("Failed to submit to HubSpot");
@@ -636,14 +577,7 @@ const { handler, api } = betterAuth({
 				if (policyError) {
 					throw new APIError("BAD_REQUEST", { message: policyError });
 				}
-				await sendAuthOtpEmail({ email, code: otp });
-				if (
-					process.env.NODE_ENV === "development" &&
-					(process.env.NEARZERO_AUTH_DEBUG_OTP === "true" ||
-						process.env.NEARZERO_AUTH_DEBUG_OTP === "1")
-				) {
-					console.log(`[auth] ${type} OTP for ${email}: ${otp}`);
-				}
+				await sendAuthOtpEmail({ email, code: otp, type });
 			},
 		}),
 	],

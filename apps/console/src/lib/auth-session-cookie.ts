@@ -1,5 +1,4 @@
 import { makeSignature } from "better-auth/crypto";
-import { IS_COMMUNITY } from "./branding";
 
 const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
@@ -15,8 +14,7 @@ function readAuthSecret() {
 }
 
 function useSecureSessionCookies() {
-	if (import.meta.env.DEV) return false;
-	return !IS_COMMUNITY;
+	return !import.meta.env.DEV;
 }
 
 export function sessionCookieName() {

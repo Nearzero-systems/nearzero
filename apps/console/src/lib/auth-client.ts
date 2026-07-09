@@ -6,7 +6,6 @@ import {
 	organizationClient,
 	twoFactorClient,
 } from "better-auth/client/plugins";
-import { emailOTPClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/client";
 
 export const authClient = createAuthClient({
@@ -16,7 +15,6 @@ export const authClient = createAuthClient({
 		apiKeyClient(),
 		ssoClient(),
 		adminClient(),
-		emailOTPClient(),
 		inferAdditionalFields({
 			user: {
 				lastName: {
