@@ -46,7 +46,7 @@
     }
   },
   "scripts": {
-    "build": "bun run switch:prod && rimraf dist && tsc --project tsconfig.server.json && tsc-alias -p tsconfig.server.json",
+    "build": "bun run switch:prod && rimraf dist && bun run esbuild",
     "build:types": "tsc --emitDeclarationOnly --experimenta-dts",
     "switch:dev": "node scripts/switchToSrc.js",
     "switch:prod": "node scripts/switchToDist.js",

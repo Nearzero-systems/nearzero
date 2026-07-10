@@ -1,6 +1,33 @@
 import dotenv, { type DotenvParseOutput } from "dotenv";
 import esbuild from "esbuild";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const editionEntryPoints = {
+	"@nearzero/edition-community": path.resolve(
+		__dirname,
+		"../../packages/edition-community/src/index.ts",
+	),
+	"@nearzero/edition-contract": path.resolve(
+		__dirname,
+		"../../packages/edition-contract/src/index.ts",
+	),
+};
+
+const bundleEditionPackages: esbuild.Plugin = {
+	name: "bundle-edition-packages",
+	setup(build) {
+		build.onResolve(
+			{ filter: /^@nearzero\/edition-(community|contract)$/ },
+			(args) => ({
+				path: editionEntryPoints[
+					args.path as keyof typeof editionEntryPoints
+				]!,
+			}),
+		);
+	},
+};
 
 const result = dotenv.config({ path: ".env.production" });
 
@@ -40,14 +67,7 @@ try {
 			outdir: "dist",
 			tsconfig: "tsconfig.server.json",
 			define,
-			alias: {
-				"@nearzero/edition-community": path.resolve(
-					"../../packages/edition-community/src/index.ts",
-				),
-				"@nearzero/edition-contract": path.resolve(
-					"../../packages/edition-contract/src/index.ts",
-				),
-			},
+			plugins: [bundleEditionPackages],
 			packages: "external",
 		})
 		.catch(() => {
