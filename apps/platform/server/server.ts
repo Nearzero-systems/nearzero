@@ -10,6 +10,7 @@ import {
 	initCancelDeployments,
 	initCronJobs,
 	initializeNetwork,
+	initializeSwarm,
 	initSchedules,
 	initStaleDeploymentWatchdog,
 	initVolumeBackupsCronJobs,
@@ -186,6 +187,7 @@ void (async () => {
 
 		if (shouldBootstrapLocalRuntime) {
 			createDefaultMiddlewares();
+			await initializeSwarm();
 			await initializeNetwork();
 		}
 
