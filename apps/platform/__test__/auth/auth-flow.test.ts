@@ -143,6 +143,14 @@ describe("console auth proxy contract", () => {
 			new URL("../../../console/src/lib/backendProxy.ts", import.meta.url),
 			"utf8",
 		);
+		const sessionCookie = readFileSync(
+			new URL("../../../console/src/lib/auth-session-cookie.ts", import.meta.url),
+			"utf8",
+		);
+		const authRoute = readFileSync(
+			new URL("../../server/routes/auth.ts", import.meta.url),
+			"utf8",
+		);
 		const loginGrid = readFileSync(
 			new URL("../../../console/src/components/auth/LoginGrid.astro", import.meta.url),
 			"utf8",
@@ -160,19 +168,28 @@ describe("console auth proxy contract", () => {
 			"utf8",
 		);
 
-		expect(credentialsFlow).toContain("authClient.signIn.email");
+		expect(credentialsFlow).toContain("createNearzeroCredentialSession");
+		expect(credentialsFlow).not.toContain("authClient.signIn.email");
 		expect(credentialsFlow).toContain("authClient.signUp.email");
 		expect(credentialsFlow).toContain("nearzero-adopt-credential");
-		expect(credentialsFlow).toContain("log in instead");
-		expect(credentialsFlow).toContain("invalid email or password");
+		expect(credentialsFlow).toContain('credentialSession.code === "account_exists"');
+		expect(credentialsFlow).toContain('credentialSession.code !== "no_account"');
 		expect(credentialsFlow).toContain("x-nearzero-token");
 		expect(authConfig).toContain("emailAndPassword");
 		expect(authConfig).not.toContain("emailOTP");
+		expect(authRoute).toContain("handleCredentialSession");
+		expect(authRoute).toContain("verifyStoredPassword");
+		expect(authRoute).toContain("bcrypt.compare");
+		expect(authRoute).toContain("code: \"no_account\"");
+		expect(authRoute).toContain("code: \"invalid_credentials\"");
 		expect(proxy).toContain('request.headers.get("x-nearzero-token")');
 		expect(proxy).toContain("/sign-in/email");
+		expect(proxy).toContain("/nearzero-adopt-credential");
 		expect(proxy).toContain("stripBrowserCredentials");
 		expect(proxy).toContain("new URL(getBackendUpstreamUrl()).origin");
 		expect(proxy).toContain("rewriteSetCookieForConsole");
+		expect(proxy).toContain("buildConsoleSessionSetCookie(token, request.url)");
+		expect(sessionCookie).toContain('protocol === "https:"');
 		expect(loginGrid).toContain("bindAuthCredentialsFlow");
 		expect(loginGrid).not.toContain("Terms of Service");
 		expect(registerGrid).toContain("bindAuthCredentialsFlow");

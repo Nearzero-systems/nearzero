@@ -51,41 +51,29 @@ async function waitForEstablishedSession(attempts = 4, delayMs = 150) {
 	return false;
 }
 
-function isExistingUserError(data: unknown) {
-	const message = authErrorMessage(data, "").toLowerCase();
-	return (
-		message.includes("already exists") ||
-		message.includes("log in instead") ||
-		message.includes("user already exists") ||
-		message.includes("use another email")
-	);
-}
-
-function isInvalidCredentialError(data: unknown) {
-	const message = authErrorMessage(data, "").toLowerCase();
-	return (
-		message.includes("invalid email or password") ||
-		message.includes("invalid email and password") ||
-		message.includes("invalid email and pass")
-	);
-}
-
-async function adoptMissingCredential(email: string, password: string) {
+async function createNearzeroCredentialSession(
+	intent: AuthCredentialsIntent,
+	email: string,
+	password: string,
+) {
 	const res = await fetch("/api/auth/nearzero-adopt-credential", {
 		method: "POST",
 		credentials: "include",
 		headers: {
 			"content-type": "application/json",
 		},
-		body: JSON.stringify({ email, password }),
+		body: JSON.stringify({ intent, email, password }),
 	});
-	if (res.ok) return { ok: true, message: "" };
-
 	const data = (await res.json().catch(() => null)) as unknown;
-	return {
-		ok: false,
-		message: authErrorMessage(data, "Could not create your account."),
-	};
+	if (!res.ok) {
+		return { ok: false, code: "request_failed", message: "Auth request failed." };
+	}
+	if (typeof data === "object" && data && "ok" in data) {
+		return data as
+			| { ok: true; token: string; user: unknown }
+			| { ok: false; code: string; message: string };
+	}
+	return { ok: false, code: "invalid_response", message: "Auth request failed." };
 }
 
 export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
@@ -145,22 +133,31 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 				: undefined;
 
 			if (intent === "signup") {
-				const result = await authClient.signUp.email({
+				let hasCredentialSession = false;
+				const credentialSession = await createNearzeroCredentialSession(
+					intent,
 					email,
 					password,
-					name: email.split("@")[0] || "User",
-					fetchOptions,
-				});
-				if (result.error) {
-					if (isExistingUserError(result.error)) {
-						const adopted = await adoptMissingCredential(email, password);
-						if (adopted.ok) {
-							// Continue into the normal session readiness check below.
-						} else {
-							showToast(adopted.message, "error");
-							return;
-						}
-					} else {
+				);
+				if (credentialSession.ok) {
+					// Existing account without a password has now been repaired.
+					hasCredentialSession = true;
+				} else if (credentialSession.code === "account_exists") {
+					showToast(credentialSession.message, "error");
+					return;
+				} else if (credentialSession.code !== "no_account") {
+					showToast(credentialSession.message, "error");
+					return;
+				}
+
+				if (!hasCredentialSession) {
+					const result = await authClient.signUp.email({
+						email,
+						password,
+						name: email.split("@")[0] || "User",
+						fetchOptions,
+					});
+					if (result.error) {
 						showToast(
 							authErrorMessage(result.error, "Could not create your account."),
 							"error",
@@ -169,31 +166,14 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 					}
 				}
 			} else {
-				const result = await authClient.signIn.email({
+				const credentialSession = await createNearzeroCredentialSession(
+					intent,
 					email,
 					password,
-					callbackURL: callbackUrl,
-					fetchOptions,
-				});
-				if (result.error) {
-					if (isInvalidCredentialError(result.error)) {
-						const adopted = await adoptMissingCredential(email, password);
-						if (adopted.ok) {
-							// Continue into the normal session readiness check below.
-						} else {
-							showToast(
-								authErrorMessage(result.error, "Invalid email or password."),
-								"error",
-							);
-							return;
-						}
-					} else {
-						showToast(
-							authErrorMessage(result.error, "Invalid email or password."),
-							"error",
-						);
-						return;
-					}
+				);
+				if (!credentialSession.ok) {
+					showToast(credentialSession.message, "error");
+					return;
 				}
 			}
 

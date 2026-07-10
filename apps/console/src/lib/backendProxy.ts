@@ -1,7 +1,6 @@
 import { buildConsoleSessionSetCookie } from "./auth-session-cookie";
 import { rewriteAuthRedirectLocation } from "./auth-redirect";
 import { BACKEND_URL } from "./branding";
-import { areConsoleBackendSplit } from "./split-deploy";
 
 const AUTH_SESSION_BOOTSTRAP_PREFIXES = [
 	"/sign-in/email",
@@ -62,21 +61,13 @@ async function maybeAppendConsoleSessionCookie(
 	if (!pathWithQuery.startsWith("/api/auth") || !upstream.ok) return;
 	if (!shouldBootstrapConsoleSession(pathWithQuery)) return;
 
-	let hostname = "";
-	try {
-		hostname = new URL(request.url).hostname;
-	} catch {
-		return;
-	}
-	if (!areConsoleBackendSplit(hostname)) return;
-
 	const body = (await upstream.clone().json().catch(() => null)) as {
 		token?: unknown;
 	} | null;
 	const token = typeof body?.token === "string" ? body.token : null;
 	if (!token) return;
 
-	const bootstrap = await buildConsoleSessionSetCookie(token);
+	const bootstrap = await buildConsoleSessionSetCookie(token, request.url);
 	if (bootstrap) headers.append("set-cookie", bootstrap);
 }
 

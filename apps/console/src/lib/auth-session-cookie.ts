@@ -13,30 +13,38 @@ function readAuthSecret() {
 	return "";
 }
 
-function useSecureSessionCookies() {
+function useSecureSessionCookies(requestUrl?: string) {
+	if (requestUrl) {
+		try {
+			return new URL(requestUrl).protocol === "https:";
+		} catch {
+			// Fall through to the environment default below.
+		}
+	}
 	return !import.meta.env.DEV;
 }
 
-export function sessionCookieName() {
-	const prefix = useSecureSessionCookies() ? "__Secure-" : "";
+export function sessionCookieName(requestUrl?: string) {
+	const prefix = useSecureSessionCookies(requestUrl) ? "__Secure-" : "";
 	return `${prefix}better-auth.session_token`;
 }
 
 /** Build a host-scoped Set-Cookie for the console origin from a raw session token. */
 export async function buildConsoleSessionSetCookie(
 	sessionToken: string,
+	requestUrl?: string,
 ): Promise<string | null> {
 	const secret = readAuthSecret();
 	if (!secret || !sessionToken) return null;
 
 	const signed = `${sessionToken}.${await makeSignature(sessionToken, secret)}`;
 	const parts = [
-		`${sessionCookieName()}=${signed}`,
+		`${sessionCookieName(requestUrl)}=${signed}`,
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",
 		`Max-Age=${SESSION_MAX_AGE_SECONDS}`,
 	];
-	if (useSecureSessionCookies()) parts.push("Secure");
+	if (useSecureSessionCookies(requestUrl)) parts.push("Secure");
 	return parts.join("; ");
 }
