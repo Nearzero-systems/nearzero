@@ -93,14 +93,94 @@ rand_hex() {
 	fi
 }
 
+detect_private_ip() {
+	if command -v hostname >/dev/null 2>&1; then
+		hostname -I 2>/dev/null | awk '{print $1}' || true
+	fi
+}
+
+detect_public_ip() {
+	if [[ -n "${NEARZERO_PUBLIC_IP:-}" ]]; then
+		printf '%s' "$NEARZERO_PUBLIC_IP"
+		return
+	fi
+
+	local ip=""
+	ip="$(curl -fsS --max-time 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)"
+	if [[ -n "$ip" ]]; then
+		printf '%s' "$ip"
+		return
+	fi
+
+	for endpoint in "https://api.ipify.org" "https://ifconfig.me/ip"; do
+		ip="$(curl -fsS --max-time 3 "$endpoint" 2>/dev/null | tr -d '[:space:]' || true)"
+		if [[ -n "$ip" ]]; then
+			printf '%s' "$ip"
+			return
+		fi
+	done
+}
+
 detect_host() {
 	if [[ -n "${NEARZERO_DOMAIN:-}" ]]; then
 		printf '%s' "$NEARZERO_DOMAIN"
 		return
 	fi
-	if command -v hostname >/dev/null 2>&1; then
-		hostname -I 2>/dev/null | awk '{print $1}' || true
+
+	local public_ip private_ip
+	public_ip="$(detect_public_ip)"
+	if [[ -n "$public_ip" ]]; then
+		printf '%s' "$public_ip"
+		return
 	fi
+
+	private_ip="$(detect_private_ip)"
+	if [[ -n "$private_ip" ]]; then
+		printf '%s' "$private_ip"
+		return
+	fi
+
+	printf '%s' "127.0.0.1"
+}
+
+append_origin_if_new() {
+	local list="$1"
+	local origin="$2"
+	if [[ -z "$origin" ]]; then
+		printf '%s' "$list"
+		return
+	fi
+	case ",$list," in
+	*,"$origin",*) printf '%s' "$list" ;;
+	*)
+		if [[ -n "$list" ]]; then
+			printf '%s,%s' "$list" "$origin"
+		else
+			printf '%s' "$origin"
+		fi
+		;;
+	esac
+}
+
+collect_trusted_origins() {
+	local primary_host="$1"
+	local private_ip="$2"
+	local origins=""
+
+	origins="$(append_origin_if_new "$origins" "$(url_from_host "$primary_host" "$NEARZERO_CONSOLE_PORT")")"
+	origins="$(append_origin_if_new "$origins" "$(url_from_host "$primary_host" "$NEARZERO_PLATFORM_PORT")")"
+
+	if [[ -n "$private_ip" && "$private_ip" != "$primary_host" ]]; then
+		origins="$(append_origin_if_new "$origins" "$(url_from_host "$private_ip" "$NEARZERO_CONSOLE_PORT")")"
+		origins="$(append_origin_if_new "$origins" "$(url_from_host "$private_ip" "$NEARZERO_PLATFORM_PORT")")"
+	fi
+
+	origins="$(append_origin_if_new "$origins" "http://127.0.0.1:${NEARZERO_CONSOLE_PORT}")"
+	origins="$(append_origin_if_new "$origins" "http://127.0.0.1:${NEARZERO_PLATFORM_PORT}")"
+	origins="$(append_origin_if_new "$origins" "http://localhost:${NEARZERO_CONSOLE_PORT}")"
+	origins="$(append_origin_if_new "$origins" "http://localhost:${NEARZERO_PLATFORM_PORT}")"
+
+	printf '%s' "$origins"
 }
 
 url_from_host() {
@@ -124,7 +204,7 @@ print_banner() {
 | |\  |  __/ (_| | |   / /  __/ | | (_) |
 |_| \_|\___|\__,_|_|  /___\___|_|  \___/ 
 
-   Self-hosted Platform as a Service · Community Edition
+Self-hosted Platform as a Service · Community Edition
 
 EOF
 }
@@ -290,10 +370,12 @@ YAML
 }
 
 write_env() {
-	local host console_url platform_url postgres_password auth_secret local_redis_url metrics_token
+	local host private_ip console_url platform_url postgres_password auth_secret local_redis_url metrics_token trusted_origins
 	host="$(detect_host)"
+	private_ip="$(detect_private_ip)"
 	console_url="${CONSOLE_URL:-$(url_from_host "$host" "$NEARZERO_CONSOLE_PORT")}"
 	platform_url="${PUBLIC_BACKEND_URL:-$(url_from_host "$host" "$NEARZERO_PLATFORM_PORT")}"
+	trusted_origins="${NEARZERO_TRUSTED_ORIGINS:-$(collect_trusted_origins "$host" "$private_ip")}"
 	auth_secret="${BETTER_AUTH_SECRET:-$(rand_hex 32)}"
 	postgres_password="${POSTGRES_PASSWORD:-$(rand_hex 24)}"
 	metrics_token="${NEARZERO_METRICS_TOKEN:-$(rand_hex 32)}"
@@ -336,6 +418,7 @@ CONSOLE_URL=${console_url}
 BACKEND_URL=http://platform:3000
 PUBLIC_BACKEND_URL=${platform_url}
 PUBLIC_GIT_PROVIDER_BASE_URL=${PUBLIC_GIT_PROVIDER_BASE_URL:-$console_url}
+NEARZERO_TRUSTED_ORIGINS=${trusted_origins}
 EOF
 }
 

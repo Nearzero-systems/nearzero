@@ -38,7 +38,7 @@ const {
 			</p>
 		</div>
 		<div slot="c10" class="mx-auto flex h-full w-full max-w-[30rem] flex-col justify-center gap-1.5">
-			<form data-auth-credentials-form class="flex flex-col gap-2">
+			<form id="nz-login-form" data-auth-credentials-form class="flex flex-col gap-2">
 				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
 					<span>Email</span>
 					<input
@@ -67,11 +67,19 @@ const {
 						class={authControlClass}
 					/>
 				</label>
-				<button type="submit" data-auth-credentials-submit data-default-label="Sign in" class={authBtnClass}>
-					<AuthButtonSpinner />
-					<span data-auth-btn-label>Sign in</span>
-				</button>
 			</form>
+		</div>
+		<div slot="c13" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-center pt-1">
+			<button
+				type="submit"
+				form="nz-login-form"
+				data-auth-credentials-submit
+				data-default-label="Sign in"
+				class={authBtnClass}
+			>
+				<AuthButtonSpinner />
+				<span data-auth-btn-label>Sign in</span>
+			</button>
 		</div>
 	</AuthGrid>
 </div>

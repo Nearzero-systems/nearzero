@@ -96,7 +96,7 @@ const onboardingBtnClass =
 		</div>
 		<div slot="c10" class="mx-auto flex h-full min-h-0 w-full max-w-[30rem] flex-col justify-center gap-1.5 overflow-visible px-1">
 			<div data-register-stage="signup" class={showSignupStage ? "" : "hidden"}>
-				<form data-auth-credentials-form class="flex flex-col gap-2">
+				<form id="nz-register-form" data-auth-credentials-form class="flex flex-col gap-2">
 					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
 						<span>Email</span>
 						<input
@@ -123,13 +123,9 @@ const onboardingBtnClass =
 							required
 							minlength="8"
 							placeholder="At least 8 characters"
-							class={authControlClass}
-						/>
-					</label>
-					<button type="submit" data-auth-credentials-submit data-default-label="Create an account" class={authBtnClass}>
-						<AuthButtonSpinner />
-						<span data-auth-btn-label>Create an account</span>
-					</button>
+						class={authControlClass}
+					/>
+				</label>
 				</form>
 			</div>
 
@@ -216,6 +212,25 @@ const onboardingBtnClass =
 			</div>
 		</div>
 		<div slot="c13" class="mx-auto flex h-full w-full max-w-[36rem] flex-col justify-center gap-2">
+			<div
+				data-register-signup-actions
+				class={
+					showSignupStage
+						? "flex w-full max-w-[30rem] flex-col items-center pt-1"
+						: "hidden w-full max-w-[30rem] flex-col items-center pt-1"
+				}
+			>
+				<button
+					type="submit"
+					form="nz-register-form"
+					data-auth-credentials-submit
+					data-default-label="Create an account"
+					class={authBtnClass}
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Create an account</span>
+				</button>
+			</div>
 			<div
 				data-onboarding-actions
 				class={

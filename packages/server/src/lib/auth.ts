@@ -33,6 +33,7 @@ import {
 	resolveAuthPublicBaseUrl,
 	resolveSharedCookieDomain,
 } from "./public-url";
+import { resolveEnvTrustedOrigins } from "./resolve-trusted-origins";
 import { verifyWebSocketTicket } from "./ws-ticket";
 
 async function ensurePersonalOrganizationForUser(
@@ -229,44 +230,32 @@ const { handler, api } = betterAuth({
 		disabled: process.env.NODE_ENV === "production",
 	},
 	async trustedOrigins() {
+		const envOrigins = resolveEnvTrustedOrigins();
 		try {
 			const dbOrigins = await getTrustedOrigins();
-			const gitPublicUrl = process.env.PUBLIC_GIT_PROVIDER_BASE_URL?.replace(
-				/\/$/,
-				"",
-			);
-			const devOrigins =
-				process.env.NODE_ENV === "development"
-					? [
-							"http://localhost:3000",
-							"http://127.0.0.1:3000",
-							"http://localhost:4321",
-							"http://127.0.0.1:4321",
-							"http://localhost:4322",
-							"http://127.0.0.1:4322",
-							...(gitPublicUrl ? [gitPublicUrl] : []),
-						]
-					: [];
-			const consoleUrl = process.env.CONSOLE_URL?.replace(/\/$/, "");
-			const authUrl = process.env.BETTER_AUTH_URL?.replace(/\/$/, "");
 			const settings = await getWebServerSettings();
+			const consolePort = Number(process.env.NEARZERO_CONSOLE_PORT || 4321);
+			const platformPort = Number(process.env.NEARZERO_PLATFORM_PORT || 3000);
 
-			return [
-				...(settings?.serverIp ? [`http://${settings?.serverIp}:3000`] : []),
-				...(settings?.host ? [`https://${settings?.host}`] : []),
-				...(consoleUrl ? [consoleUrl] : []),
-				...(authUrl ? [authUrl] : []),
-				...devOrigins,
+			const runtimeOrigins = [
+				...(settings?.serverIp
+					? [
+							`http://${settings.serverIp}:${platformPort}`,
+							`http://${settings.serverIp}:${consolePort}`,
+						]
+					: []),
+				...(settings?.host ? [`https://${settings.host}`] : []),
 				...dbOrigins,
 			];
+
+			return [...new Set([...envOrigins, ...runtimeOrigins])];
 		} catch (error) {
 			console.error("Failed to resolve trusted origins:", error);
+			if (envOrigins.length > 0) return envOrigins;
 			return process.env.NODE_ENV === "development"
 				? [
 						"http://localhost:4321",
 						"http://127.0.0.1:4321",
-						"http://localhost:4322",
-						"http://127.0.0.1:4322",
 						"http://localhost:3000",
 						"http://127.0.0.1:3000",
 					]
