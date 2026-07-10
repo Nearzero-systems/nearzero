@@ -268,7 +268,7 @@ import { pageTitle } from "@/lib/branding";
     <div class="w-full max-w-md rounded-xl border border-[#e5e7eb] bg-white p-6">
       <h1 class="font-display text-xl font-semibold text-[#111827]">${route.title}</h1>
       <p class="mt-2 text-xs text-[#6b7280]">Use the platform API for this flow.</p>
-      <a href="/" class="mt-6 inline-block text-xs text-[#6d28d9] hover:underline">Back to sign in</a>
+      <a href="/login" class="mt-6 inline-block text-xs text-[#6d28d9] hover:underline">Back to sign in</a>
     </div>
   </div>
 </Base>

@@ -26,7 +26,7 @@ const linkClass =
 		btn.dataset.bound = "1";
 		btn.addEventListener("click", () => {
 			if (window.history.length > 1) window.history.back();
-			else window.location.assign("/");
+			else window.location.assign("/login");
 		});
 	}
 	bindNotFound();

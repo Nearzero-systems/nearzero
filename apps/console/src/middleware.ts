@@ -150,6 +150,20 @@ async function guardDashboardAccess(
 export const onRequest: MiddlewareHandler = async (context, next) => {
 	const path = context.url.pathname;
 
+	if (path === "/") {
+		const rootSession = await getSession(context.request);
+		if (rootSession?.user) {
+			return context.redirect(
+				await resolvePostAuthRedirect(
+					context.request,
+					context.url,
+					"/dashboard/agent",
+				),
+			);
+		}
+		return context.redirect("/login");
+	}
+
 	if (
 		path === "/register" &&
 		context.url.searchParams.get("step")?.toLowerCase() === "source"
