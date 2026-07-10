@@ -115,6 +115,20 @@ url_from_host() {
 	fi
 }
 
+print_banner() {
+	cat <<'EOF'
+
+ _   _                      _____              
+| \ | | ___ _ __ ___  _ __ |__  /___ _ __ ___  
+|  \| |/ _ \ '_ ` _ \| '_ \  / // _ \ '__/ _ \ 
+| |\  |  __/ | | | | | | | |/ /|  __/ | | (_) |
+|_| \_|\___|_| |_| |_|_| |_/____\___|_|  \___/ 
+
+  Self-hosted Platform as a Service · Community Edition
+
+EOF
+}
+
 announce_install() {
 	log "Installing Nearzero into $INSTALL_DIR"
 }
@@ -421,6 +435,7 @@ start_stack() {
 }
 
 main() {
+	print_banner
 	ensure_sudo
 	announce_install
 	run_sudo mkdir -p "$INSTALL_DIR"
