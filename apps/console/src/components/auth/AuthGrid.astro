@@ -3,12 +3,17 @@ import "../../styles/auth-grid.css";
 import { AUTH_TILE_CLASS, AUTH_TILE_CONTENT_CLASS } from "@/lib/auth-grid-classes";
 
 interface Props {
-	variant?: "default" | "compact";
+	variant?: "default" | "compact" | "onboarding";
 }
 
 const { variant = "default" } = Astro.props;
 const isCompact = variant === "compact";
-const gridClass = isCompact ? "nz-auth-grid nz-auth-grid--compact" : "nz-auth-grid";
+const gridClass =
+	variant === "compact"
+		? "nz-auth-grid nz-auth-grid--compact"
+		: variant === "onboarding"
+			? "nz-auth-grid nz-auth-grid--onboarding"
+			: "nz-auth-grid";
 
 function tileClass(hasSlot: boolean) {
 	return hasSlot ? AUTH_TILE_CONTENT_CLASS : AUTH_TILE_CLASS;

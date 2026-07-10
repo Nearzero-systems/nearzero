@@ -25,6 +25,16 @@
 		1fr;
 }
 
+.nz-auth-grid--onboarding {
+	grid-template-rows:
+		10dvh
+		14dvh
+		8dvh
+		minmax(18rem, 45dvh)
+		minmax(4rem, 8dvh)
+		1fr;
+}
+
 @media (min-width: 640px) {
 	.nz-auth-grid {
 		grid-template-columns: 12% 76% 12%;
