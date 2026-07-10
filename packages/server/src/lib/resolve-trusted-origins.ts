@@ -31,13 +31,16 @@ function addHostPortVariants(
 	ports: number[],
 ) {
 	if (!host) return;
+	const normalizedHost = host.replace(/^\[|\]$/g, "");
 	for (const port of ports) {
-		origins.add(`http://${host}:${port}`);
-		origins.add(`https://${host}:${port}`);
+		origins.add(`http://${normalizedHost}:${port}`);
+		origins.add(`https://${normalizedHost}:${port}`);
 	}
 }
 
-export function resolveConsoleAndPlatformPorts(env: TrustedOriginEnv = process.env) {
+export function resolveConsoleAndPlatformPorts(
+	env: TrustedOriginEnv = process.env,
+) {
 	const consolePort = Number(env.NEARZERO_CONSOLE_PORT || 4321);
 	const platformPort = Number(env.NEARZERO_PLATFORM_PORT || 3000);
 	return {
@@ -46,15 +49,17 @@ export function resolveConsoleAndPlatformPorts(env: TrustedOriginEnv = process.e
 	};
 }
 
+function isIPv4Family(family: string | number) {
+	return family === "IPv4" || family === 4;
+}
+
 export function getNetworkInterfaceHosts() {
 	const hosts = new Set<string>(["127.0.0.1", "localhost"]);
 
 	for (const interfaces of Object.values(os.networkInterfaces())) {
 		if (!interfaces) continue;
 		for (const iface of interfaces) {
-			const family = iface.family;
-			const isIPv4 = family === "IPv4" || family === 4;
-			if (!isIPv4 || !iface.address) continue;
+			if (!isIPv4Family(iface.family) || !iface.address) continue;
 			hosts.add(iface.address);
 		}
 	}
@@ -107,19 +112,22 @@ export function resolveEnvTrustedOrigins(env: TrustedOriginEnv = process.env) {
 		addHostPortVariants(origins, host, ports);
 	}
 
-	if (
-		isCommunityMode() ||
-		env.NODE_ENV === "development" ||
-		env.NODE_ENV === "test"
-	) {
-		for (const host of ["localhost", "127.0.0.1"]) {
-			addHostPortVariants(origins, host, ports);
+	// Community self-host: trust any host on the published console/platform ports.
+	// Covers public IPs, private IPs, and custom domains without hardcoding hosts.
+	if (isCommunityMode()) {
+		for (const port of ports) {
+			origins.add(`http://*:${port}`);
+			origins.add(`https://*:${port}`);
 		}
 	}
 
 	return [...origins];
 }
 
+/**
+ * Community/self-host: trust any http(s) origin on the console or platform port.
+ * This covers public IPs, private IPs, and custom domains without hardcoding hosts.
+ */
 export function isAllowedSelfHostedOrigin(
 	origin: string,
 	consolePort = 4321,
@@ -130,6 +138,7 @@ export function isAllowedSelfHostedOrigin(
 	try {
 		const url = new URL(origin);
 		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+		if (!url.hostname) return false;
 
 		const port = url.port
 			? Number(url.port)
@@ -143,6 +152,38 @@ export function isAllowedSelfHostedOrigin(
 	}
 }
 
+function originFromRequest(request: Request | undefined) {
+	if (!request) return null;
+
+	const originHeader = request.headers.get("origin")?.trim();
+	if (originHeader) return normalizeOrigin(originHeader);
+
+	const referer = request.headers.get("referer")?.trim();
+	if (referer) {
+		try {
+			return normalizeOrigin(new URL(referer).origin);
+		} catch {
+			// ignore
+		}
+	}
+
+	const forwardedHost = request.headers.get("x-forwarded-host")?.trim();
+	const forwardedProto = request.headers.get("x-forwarded-proto")?.trim();
+	const host = forwardedHost || request.headers.get("host")?.trim();
+	if (host) {
+		const proto =
+			forwardedProto?.split(",")[0]?.trim() ||
+			(new URL(request.url).protocol === "https:" ? "https" : "http");
+		return normalizeOrigin(`${proto}://${host}`);
+	}
+
+	try {
+		return normalizeOrigin(new URL(request.url).origin);
+	} catch {
+		return null;
+	}
+}
+
 export function appendRequestOrigin(
 	origins: Iterable<string>,
 	request: Request | undefined,
@@ -150,12 +191,12 @@ export function appendRequestOrigin(
 	platformPort: number,
 ) {
 	const merged = new Set(origins);
-	const originHeader = request?.headers.get("origin")?.trim();
+	const requestOrigin = originFromRequest(request);
 	if (
-		originHeader &&
-		isAllowedSelfHostedOrigin(originHeader, consolePort, platformPort)
+		requestOrigin &&
+		isAllowedSelfHostedOrigin(requestOrigin, consolePort, platformPort)
 	) {
-		merged.add(normalizeOrigin(originHeader));
+		merged.add(requestOrigin);
 	}
 	return [...merged];
 }
