@@ -153,7 +153,7 @@ export function mountGitProvidersDashboard() {
 			openDialog("nz-git-github-dialog");
 			if (bootstrap.gitProviderBaseUrlIsLocal) {
 				showToast(
-					"GitHub needs a public HTTPS callback URL. Set PUBLIC_GIT_PROVIDER_BASE_URL before creating the app.",
+					"GitHub needs a public HTTPS callback URL. Configure a domain in Web Server settings first.",
 					"error",
 				);
 			}

@@ -10,8 +10,13 @@ interface Props {
 	isCommunity: boolean;
 }
 
-const { organizationId, userId, gitProviderBaseUrl, gitProviderBaseUrlIsLocal, isCommunity } =
-	Astro.props;
+const {
+	organizationId,
+	userId,
+	gitProviderBaseUrl,
+	gitProviderBaseUrlIsLocal,
+	isCommunity,
+} = Astro.props;
 
 const primaryBtnClass =
 	"nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2";
@@ -33,7 +38,13 @@ const primaryBtnClass =
 					]}
 				>
 					Callbacks and webhooks use <code>{gitProviderBaseUrl}</code>. GitHub requires a publicly
-					reachable HTTPS URL—localhost will not work.
+					reachable HTTPS domain. {
+						gitProviderBaseUrlIsLocal ? (
+							<a class="nz-git-modal__link" href="/dashboard/settings/server?setup=domain">
+								Configure a domain first.
+							</a>
+						) : null
+					}
 				</div>
 			) : null
 		}
@@ -80,6 +91,7 @@ const primaryBtnClass =
 		form="nz-git-github-form"
 		id="nz-git-github-submit"
 		class={primaryBtnClass}
+		disabled={gitProviderBaseUrlIsLocal}
 	>
 		<AuthButtonSpinner />
 		<span data-auth-btn-label>Continue on GitHub</span>

@@ -196,6 +196,61 @@ export function bindUpdateServerIpDialog() {
 	});
 }
 
+export function bindPublicDomainDialog(root: HTMLElement) {
+	const open = document.getElementById("nz-ws-domain-open");
+	const form = document.getElementById("nz-ws-domain-form");
+	const hostInput = document.getElementById("nz-ws-domain-host");
+	const emailInput = document.getElementById("nz-ws-domain-email");
+	const submit = document.getElementById("nz-ws-domain-submit");
+	if (
+		!(form instanceof HTMLFormElement) ||
+		!(hostInput instanceof HTMLInputElement) ||
+		!(emailInput instanceof HTMLInputElement) ||
+		!(submit instanceof HTMLButtonElement)
+	) {
+		return;
+	}
+
+	open?.addEventListener("click", () => {
+		hostInput.value = root.dataset.publicHost ?? "";
+		emailInput.value = root.dataset.letsencryptEmail ?? "";
+		openDialog("nz-ws-domain-dialog");
+	});
+	if (
+		new URL(window.location.href).searchParams.get("setup") === "domain" &&
+		open instanceof HTMLElement
+	) {
+		open.click();
+	}
+
+	form.addEventListener("submit", async (event) => {
+		event.preventDefault();
+		if (!form.reportValidity()) return;
+		submit.disabled = true;
+		try {
+			await trpcMutate("settings.assignDomainServer", {
+				host: hostInput.value.trim().toLowerCase(),
+				certificateType: "letsencrypt",
+				letsEncryptEmail: emailInput.value.trim(),
+				https: true,
+			});
+			closeDialog("nz-ws-domain-dialog");
+			showToast(
+				"Domain configured. DNS and HTTPS may take a few minutes to become ready.",
+				"success",
+			);
+			window.setTimeout(() => window.location.reload(), 1200);
+		} catch (error) {
+			showToast(
+				error instanceof Error ? error.message : "Could not configure the domain",
+				"error",
+			);
+		} finally {
+			submit.disabled = false;
+		}
+	});
+}
+
 let traefikEnvLocked = true;
 
 export async function openTraefikEnvDialog(serverId?: string) {

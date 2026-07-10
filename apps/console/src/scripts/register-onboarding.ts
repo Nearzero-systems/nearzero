@@ -290,6 +290,19 @@ async function finishOnboarding(
 		},
 	);
 	sessionStorage.removeItem("nz-register-onboarding-draft");
+	const shouldOfferDomainSetup =
+		root.dataset.inviteMemberSetup !== "1" &&
+		root.dataset.workspaceSetup !== "1" &&
+		!root.dataset.invitationToken;
+	if (shouldOfferDomainSetup) {
+		window.location.href = result?.organizationSlug
+			? orgDashboardPath(
+					result.organizationSlug,
+					"/dashboard/settings/server?setup=domain",
+				)
+			: "/dashboard/settings/server?setup=domain";
+		return;
+	}
 	window.location.href = result?.organizationSlug
 		? orgDashboardPath(result.organizationSlug, "/dashboard/agent")
 		: "/dashboard/agent";

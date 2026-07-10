@@ -3,6 +3,7 @@ import { bootstrapEdition } from "./edition-bootstrap.js";
 bootstrapEdition();
 import http from "node:http";
 import {
+	connectCurrentContainerToNetwork,
 	createDefaultMiddlewares,
 	createDefaultServerTraefikConfig,
 	createDefaultTraefikConfig,
@@ -189,6 +190,7 @@ void (async () => {
 			createDefaultMiddlewares();
 			await initializeSwarm();
 			await initializeNetwork();
+			await connectCurrentContainerToNetwork();
 		}
 
 		if (isProduction) {

@@ -5,8 +5,9 @@ import "@/components/dashboard/shell/sidebar-agent-dot.css";
 import "@/styles/nearzero-terminal-shell.css";
 
 const appHomeUrl =
+	process.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim() ||
 	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim() ||
-	"https://app.nearzero.dev";
+	Astro.url.origin;
 ---
 
 <dialog id="nz-ws-terminal-dialog" class="nz-terminal-shell">
@@ -89,6 +90,48 @@ const appHomeUrl =
 				</div>
 			</label>
 			<div class="flex justify-end"><Button type="submit" id="nz-ws-update-ip-submit" variant="default">Update</Button></div>
+		</form>
+	</div>
+</dialog>
+
+<dialog id="nz-ws-domain-dialog" class="relative w-[calc(100%-2rem)] max-w-lg rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
+	<div class="p-6">
+		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-domain-dialog" aria-label="Close">✕</button>
+		<h2 class="text-lg font-semibold">Configure public domain</h2>
+		<p class="mt-2 text-sm text-muted-foreground">
+			First point this hostname's DNS A record to your server IP. Nearzero will keep direct IP access available and request a Let's Encrypt certificate.
+		</p>
+		<form id="nz-ws-domain-form" class="mt-4 grid gap-3">
+			<label class="text-sm font-medium">
+				Hostname
+				<input
+					id="nz-ws-domain-host"
+					type="text"
+					required
+					autocomplete="url"
+					placeholder="nearzero.example.com"
+					pattern="(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}"
+					class="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+				/>
+			</label>
+			<label class="text-sm font-medium">
+				Let's Encrypt email
+				<input
+					id="nz-ws-domain-email"
+					type="email"
+					required
+					autocomplete="email"
+					placeholder="admin@example.com"
+					class="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+				/>
+			</label>
+			<div class="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
+				Ports 80 and 443 must be open publicly. DNS and certificate issuance can take a few minutes.
+			</div>
+			<div class="flex justify-end gap-2">
+				<Button type="button" variant="outline" data-close-dialog="nz-ws-domain-dialog">Cancel</Button>
+				<Button type="submit" id="nz-ws-domain-submit" variant="default">Configure HTTPS</Button>
+			</div>
 		</form>
 	</div>
 </dialog>

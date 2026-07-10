@@ -392,6 +392,13 @@ export const writeTraefikSetup = async (input: TraefikOptions) => {
 	}
 };
 
+export const ensureTraefikSetup = async () => {
+	const resourceType = await getDockerResourceType("nearzero-traefik");
+	if (resourceType !== "unknown") return;
+
+	await initializeStandaloneTraefik();
+};
+
 export const reconnectServicesToTraefik = async (serverId?: string) => {
 	const composeResult = await db.query.compose.findMany({
 		where: and(

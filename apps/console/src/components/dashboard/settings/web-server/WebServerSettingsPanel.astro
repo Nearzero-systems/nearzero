@@ -4,12 +4,19 @@ import WebServerActionMenus from "@/components/dashboard/settings/web-server/Web
 import WebServerSharedDialogs from "@/components/dashboard/settings/web-server/WebServerSharedDialogs.astro";
 
 interface Props {
-	webServerSettings: { serverIp?: string | null; enableDockerCleanup?: boolean } | null;
+	webServerSettings: {
+		serverIp?: string | null;
+		enableDockerCleanup?: boolean;
+		host?: string | null;
+		https?: boolean;
+		letsEncryptEmail?: string | null;
+	} | null;
 	versionLabel: string;
 	traefikDashboardEnabled: boolean;
 }
 
-const { webServerSettings, versionLabel, traefikDashboardEnabled } = Astro.props;
+const { webServerSettings, versionLabel, traefikDashboardEnabled } =
+	Astro.props;
 ---
 
 <div
@@ -18,6 +25,8 @@ const { webServerSettings, versionLabel, traefikDashboardEnabled } = Astro.props
 	data-traefik-dashboard={traefikDashboardEnabled ? "1" : "0"}
 	data-update-available="0"
 	data-latest-version=""
+	data-public-host={webServerSettings?.host ?? ""}
+	data-letsencrypt-email={webServerSettings?.letsEncryptEmail ?? ""}
 >
 	<div class="space-y-6">
 		<div class="grid gap-4 md:grid-cols-2">
@@ -46,6 +55,18 @@ const { webServerSettings, versionLabel, traefikDashboardEnabled } = Astro.props
 				}
 			</span>
 			<span class="text-sm text-muted-foreground">Version: {versionLabel || "—"}</span>
+			<div class="flex items-center gap-2 text-sm text-muted-foreground">
+				<span>
+					Public URL: {
+						webServerSettings?.host
+							? `${webServerSettings.https ? "https" : "http"}://${webServerSettings.host}`
+							: "Not configured"
+					}
+				</span>
+				<Button type="button" variant="outline" id="nz-ws-domain-open">
+					{webServerSettings?.host ? "Change domain" : "Configure domain"}
+				</Button>
+			</div>
 			<div class="flex items-center gap-3">
 				<input
 					type="checkbox"

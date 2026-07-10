@@ -9,6 +9,7 @@ import {
 	bindCopyServerIp,
 	bindDockerCleanupToggle,
 	bindLogsDialog,
+	bindPublicDomainDialog,
 	bindSharedDialogCloseButtons,
 	bindTerminalDialog,
 	bindTraefikDashboardConfirm,
@@ -256,6 +257,7 @@ export function bindWebServerDashboard() {
 	bindTraefikEnvDialog(root);
 	bindTraefikPortsDialog(root);
 	bindUpdateServerIpDialog();
+	bindPublicDomainDialog(root);
 	bindLogsDialog();
 	bindTerminalDialog();
 	bindSharedDialogCloseButtons();

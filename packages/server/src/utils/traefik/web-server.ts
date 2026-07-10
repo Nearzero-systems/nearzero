@@ -17,6 +17,9 @@ export const updateServerTraefik = (
 ) => {
 	const { https, certificateType } = settings || {};
 	const appName = "nearzero";
+	const consolePort =
+		Number.parseInt(process.env.NEARZERO_CONSOLE_INTERNAL_PORT || "4321", 10) ||
+		4321;
 	const config: FileConfig = loadOrCreateConfig(appName);
 
 	config.http = config.http || { routers: {}, services: {} };
@@ -43,7 +46,9 @@ export const updateServerTraefik = (
 			loadBalancer: {
 				servers: [
 					{
-						url: `http://nearzero:${process.env.PORT || 3000}`,
+						// Git provider callbacks and the dashboard are served by the
+						// console, which proxies API requests to the platform.
+						url: `http://nearzero:${consolePort}`,
 					},
 				],
 				passHostHeader: true,

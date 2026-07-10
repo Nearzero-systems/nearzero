@@ -11,7 +11,10 @@ import {
 	loadOrCreateConfig,
 	updateServerTraefik,
 } from "@nearzero/server";
-import type { webServerSettings } from "@nearzero/server/db/schema";
+import {
+	apiAssignDomain,
+	type webServerSettings,
+} from "@nearzero/server/db/schema";
 import { beforeEach, expect, test, vi } from "vitest";
 
 type WebServerSettings = typeof webServerSettings.$inferSelect;
@@ -96,6 +99,33 @@ test("Should apply redirect-to-https", () => {
 	expect(config.http?.routers?.["nearzero-router-app"]?.middlewares).toContain(
 		"redirect-to-https",
 	);
+	expect(
+		config.http?.services?.["nearzero-service-app"]?.loadBalancer?.servers?.[0]
+			?.url,
+	).toBe("http://nearzero:4321");
+});
+
+test("Should accept a public hostname and reject URLs or IP addresses", () => {
+	expect(
+		apiAssignDomain.parse({
+			host: "Nearzero.Example.com",
+			certificateType: "letsencrypt",
+			letsEncryptEmail: "admin@example.com",
+			https: true,
+		}).host,
+	).toBe("nearzero.example.com");
+	expect(() =>
+		apiAssignDomain.parse({
+			host: "https://nearzero.example.com",
+			certificateType: "letsencrypt",
+		}),
+	).toThrow();
+	expect(() =>
+		apiAssignDomain.parse({
+			host: "13.61.19.252",
+			certificateType: "letsencrypt",
+		}),
+	).toThrow();
 });
 
 test("Should change only host when no certificate", () => {

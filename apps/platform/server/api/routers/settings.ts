@@ -14,6 +14,7 @@ import {
 	cleanupVolumes,
 	DEFAULT_UPDATE_DATA,
 	execAsync,
+	ensureTraefikSetup,
 	findServerById,
 	getDockerDiskUsage,
 	getNearzeroImageTag,
@@ -96,7 +97,6 @@ export const settingsRouter = createTRPCRouter({
 		return true;
 	}),
 	cleanRedis: adminProcedure.mutation(async ({ ctx }) => {
-
 		const { stdout: containerId } = await execAsync(
 			`docker ps --filter "name=nearzero-redis" --filter "status=running" -q | head -n 1`,
 		);
@@ -293,6 +293,17 @@ export const settingsRouter = createTRPCRouter({
 	assignDomainServer: adminProcedure
 		.input(apiAssignDomain)
 		.mutation(async ({ input, ctx }) => {
+			if (
+				input.https &&
+				input.certificateType === "letsencrypt" &&
+				!input.letsEncryptEmail
+			) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						"An email address is required for a Let's Encrypt certificate",
+				});
+			}
 			const settings = await updateWebServerSettings({
 				host: input.host,
 				letsEncryptEmail: input.letsEncryptEmail,
@@ -311,6 +322,7 @@ export const settingsRouter = createTRPCRouter({
 			if (input.letsEncryptEmail) {
 				updateLetsEncryptEmail(input.letsEncryptEmail);
 			}
+			await ensureTraefikSetup();
 
 			await audit(ctx, {
 				action: "update",
@@ -356,7 +368,7 @@ export const settingsRouter = createTRPCRouter({
 						});
 					}
 					if (process.env.JOBS_URL) {
-					await schedule({
+						await schedule({
 							cronSchedule: CLEANUP_CRON_JOB,
 							serverId: input.serverId,
 							type: "server",
@@ -374,7 +386,7 @@ export const settingsRouter = createTRPCRouter({
 					}
 				} else {
 					if (process.env.JOBS_URL) {
-					await removeJob({
+						await removeJob({
 							cronSchedule: CLEANUP_CRON_JOB,
 							serverId: input.serverId,
 							type: "server",
@@ -465,11 +477,9 @@ export const settingsRouter = createTRPCRouter({
 			return true;
 		}),
 	getUpdateData: protectedProcedure.mutation(async () => {
-
 		return await getUpdateData(packageInfo.version);
 	}),
 	updateServer: adminProcedure.mutation(async ({ ctx }) => {
-
 		const data = await getUpdateData(packageInfo.version);
 		if (data.updateAvailable) {
 			void spawnAsync("docker", [
@@ -804,9 +814,10 @@ export const settingsRouter = createTRPCRouter({
 			throw error;
 		}
 	}),
-	getEditionManifest: publicProcedure.query(async () => getEdition().getManifest()),
+	getEditionManifest: publicProcedure.query(async () =>
+		getEdition().getManifest(),
+	),
 	checkInfrastructureHealth: adminProcedure.query(async () => {
-
 		const [postgres, redis, traefik] = await Promise.all([
 			checkPostgresHealth(),
 			checkRedisHealth(),
@@ -822,7 +833,6 @@ export const settingsRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-
 			try {
 				await setupGPUSupport(input.serverId);
 				await audit(ctx, {

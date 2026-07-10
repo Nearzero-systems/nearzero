@@ -20,30 +20,51 @@ let gitProviders: any[] = [];
 let organizationId = "";
 let userId = "";
 let authId = "";
+let configuredPublicHost = "";
 const baseUrl = Astro.url.origin;
-const configuredGitProviderBaseUrl =
-	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL ??
-	import.meta.env.PUBLIC_BACKEND_URL ??
-	baseUrl;
-const gitProviderBaseUrl = String(configuredGitProviderBaseUrl).replace(/\/+$/, "");
-const gitProviderBaseUrlIsLocal =
-	/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::|\/|$)/i.test(gitProviderBaseUrl);
+const runtimeGitProviderBaseUrl =
+	process.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim();
 
 if (bootstrap.ok) {
 	const api = createServerTrpcClient(Astro.request) as any;
 	try {
-		const [providers, activeOrg, currentUser] = await Promise.all([
-			api.gitProvider.getAll.query(),
-			api.organization.active.query().catch(() => null),
-			api.user.get.query(),
-		]);
+		const [providers, activeOrg, currentUser, webServerSettings] =
+			await Promise.all([
+				api.gitProvider.getAll.query(),
+				api.organization.active.query().catch(() => null),
+				api.user.get.query(),
+				api.settings.getWebServerSettings.query().catch(() => null),
+			]);
 		gitProviders = providers ?? [];
 		organizationId = activeOrg?.id ?? "";
 		userId = currentUser?.user?.id ?? currentUser?.id ?? "";
 		authId = currentUser?.id ?? currentUser?.user?.id ?? "";
+		if (webServerSettings?.https && webServerSettings?.host) {
+			configuredPublicHost = `https://${webServerSettings.host}`;
+		}
 	} catch {
 		gitProviders = [];
 	}
+}
+
+const configuredGitProviderBaseUrl =
+	configuredPublicHost ||
+	runtimeGitProviderBaseUrl ||
+	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL ||
+	import.meta.env.PUBLIC_BACKEND_URL ||
+	baseUrl;
+const gitProviderBaseUrl = String(configuredGitProviderBaseUrl).replace(
+	/\/+$/,
+	"",
+);
+let gitProviderBaseUrlIsLocal = true;
+try {
+	const url = new URL(gitProviderBaseUrl);
+	gitProviderBaseUrlIsLocal =
+		url.protocol !== "https:" ||
+		/^(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)$/i.test(url.hostname);
+} catch {
+	// Invalid configuration stays blocked by the GitHub setup warning.
 }
 
 const providerActionMap: Record<string, string> = {

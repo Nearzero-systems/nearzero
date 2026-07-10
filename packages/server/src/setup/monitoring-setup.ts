@@ -14,6 +14,9 @@ import { getRemoteDocker } from "../utils/servers/remote-docker";
 
 const MONITORING_CONTAINER_NAME = "nearzero-monitoring";
 
+export const isExternallyManagedWebMonitoring = () =>
+	Boolean(process.env.NEARZERO_METRICS_URL?.trim());
+
 const monitoringErrorMessage = (error: unknown) => {
 	if (error instanceof Error) return error.message.trim();
 	return String(error ?? "").trim();
@@ -246,6 +249,13 @@ export const ensureWebMonitoring = async () => {
 		});
 	}
 
+	// The production Compose stack owns the monitoring container and its
+	// `monitoring` DNS alias. Recreating it through the Docker socket detaches it
+	// from the Compose network and makes NEARZERO_METRICS_URL unreachable.
+	if (isExternallyManagedWebMonitoring()) {
+		return;
+	}
+
 	const running = await isWebMonitoringRunning();
 	const configMatches = running
 		? await monitoringContainerMatchesConfig(metricsConfig)
@@ -353,6 +363,13 @@ export const setupMonitoring = async (serverId: string) => {
 };
 
 export const setupWebMonitoring = async () => {
+	if (isExternallyManagedWebMonitoring()) {
+		console.log(
+			"Monitoring lifecycle is managed externally; keeping the configured container",
+		);
+		return;
+	}
+
 	const webServerSettings = await getWebServerSettings();
 	const { MONITORING_PATH } = paths();
 	const monitoringDbPath = `${MONITORING_PATH}/monitoring.db`;

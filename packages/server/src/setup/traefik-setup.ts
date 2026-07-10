@@ -113,7 +113,8 @@ export const initializeStandaloneTraefik = async ({
 		await newContainer.start();
 		console.log("Traefik Started ✅");
 	} catch (error) {
-		console.log("Traefik Not Found: Starting ", error);
+		console.error("Could not start Traefik", error);
+		throw error;
 	}
 };
 

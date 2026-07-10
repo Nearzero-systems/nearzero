@@ -159,7 +159,19 @@ export const apiUpdateWebServerSettings = createSchema.partial().extend({
 
 export const apiAssignDomain = z
 	.object({
-		host: z.string(),
+		host: z
+			.string()
+			.trim()
+			.toLowerCase()
+			.min(4)
+			.max(253)
+			.refine(
+				(value) =>
+					/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
+						value,
+					),
+				"Enter a valid public hostname, for example nearzero.example.com",
+			),
 		certificateType: z.enum(["letsencrypt", "none", "custom"]),
 		letsEncryptEmail: z
 			.union([z.string().email(), z.literal("")])
