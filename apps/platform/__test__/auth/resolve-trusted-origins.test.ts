@@ -25,6 +25,7 @@ describe("resolveEnvTrustedOrigins", () => {
 		const origins = resolveEnvTrustedOrigins({
 			CONSOLE_URL: "http://203.0.113.10:4321/",
 			BETTER_AUTH_URL: "http://203.0.113.10:4321",
+			BACKEND_URL: "http://platform:3000",
 			PUBLIC_BACKEND_URL: "http://203.0.113.10:3000",
 			NEARZERO_TRUSTED_ORIGINS:
 				"http://10.0.0.5:4321,http://127.0.0.1:4321",
@@ -33,6 +34,7 @@ describe("resolveEnvTrustedOrigins", () => {
 
 		expect(origins).toContain("http://203.0.113.10:4321");
 		expect(origins).toContain("http://203.0.113.10:3000");
+		expect(origins).toContain("http://platform:3000");
 		expect(origins).toContain("http://10.0.0.5:4321");
 		expect(origins).toContain("http://127.0.0.1:4321");
 	});

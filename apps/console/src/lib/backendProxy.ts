@@ -141,17 +141,17 @@ async function fetchBackendWithRetry(
 function forwardHeaders(
 	request: Request,
 	extra?: Record<string, string>,
-	options?: { stripBrowserAuthHeaders?: boolean },
+	options?: { stripBrowserCredentials?: boolean },
 ) {
 	const cookie = request.headers.get("cookie") ?? "";
 	const origin = request.headers.get("origin");
 	const referer = request.headers.get("referer");
 	const invitationToken = request.headers.get("x-nearzero-token");
-	const stripBrowserAuthHeaders = options?.stripBrowserAuthHeaders ?? false;
+	const stripBrowserCredentials = options?.stripBrowserCredentials ?? false;
 	return {
-		...(cookie && !stripBrowserAuthHeaders ? { cookie } : {}),
-		...(origin && !stripBrowserAuthHeaders ? { origin } : {}),
-		...(referer && !stripBrowserAuthHeaders ? { referer } : {}),
+		...(cookie && !stripBrowserCredentials ? { cookie } : {}),
+		...(origin && !stripBrowserCredentials ? { origin } : {}),
+		...(referer && !stripBrowserCredentials ? { referer } : {}),
 		...(invitationToken ? { "x-nearzero-token": invitationToken } : {}),
 		...(request.headers.get("content-type")
 			? { "content-type": request.headers.get("content-type")! }
@@ -168,7 +168,7 @@ export async function proxyBackendRequest(
 		method?: string;
 		body?: string | ArrayBuffer | null;
 		extra?: Record<string, string>;
-		stripBrowserAuthHeaders?: boolean;
+		stripBrowserCredentials?: boolean;
 	},
 ): Promise<Response> {
 	const target = joinBackendUrl(pathWithQuery);
@@ -192,7 +192,7 @@ export async function proxyBackendRequest(
 		upstream = await fetchBackendWithRetry(target, {
 			method,
 			headers: forwardHeaders(request, init?.extra, {
-				stripBrowserAuthHeaders: init?.stripBrowserAuthHeaders,
+				stripBrowserCredentials: init?.stripBrowserCredentials,
 			}),
 			body: body && bodySize > 0 ? body : undefined,
 			redirect: "manual",
@@ -283,8 +283,11 @@ export async function proxyBackendAuth(
 		? authPathWithQuery
 		: `/${authPathWithQuery}`;
 	const extra: Record<string, string> = {};
-	const stripBrowserAuthHeaders = shouldBootstrapConsoleSession(path);
-	if (!stripBrowserAuthHeaders && !request.headers.get("origin")) {
+	const stripBrowserCredentials = shouldBootstrapConsoleSession(path);
+	if (stripBrowserCredentials) {
+		extra.origin = new URL(getBackendUpstreamUrl()).origin;
+		extra.referer = `${extra.origin}/`;
+	} else if (!request.headers.get("origin")) {
 		try {
 			extra.origin = new URL(request.url).origin;
 		} catch {
@@ -293,7 +296,7 @@ export async function proxyBackendAuth(
 	}
 	return proxyBackendRequest(request, `/api/auth${path}`, {
 		extra,
-		stripBrowserAuthHeaders,
+		stripBrowserCredentials,
 	});
 }
 

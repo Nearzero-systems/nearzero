@@ -4,6 +4,7 @@ type TrustedOriginEnv = {
 	[key: string]: string | undefined;
 	CONSOLE_URL?: string;
 	BETTER_AUTH_URL?: string;
+	BACKEND_URL?: string;
 	PUBLIC_BACKEND_URL?: string;
 	PUBLIC_GIT_PROVIDER_BASE_URL?: string;
 	NEARZERO_TRUSTED_ORIGINS?: string;
@@ -84,6 +85,7 @@ export function resolveEnvTrustedOrigins(env: TrustedOriginEnv = process.env) {
 	for (const key of [
 		"CONSOLE_URL",
 		"BETTER_AUTH_URL",
+		"BACKEND_URL",
 		"PUBLIC_BACKEND_URL",
 		"PUBLIC_GIT_PROVIDER_BASE_URL",
 	] as const) {

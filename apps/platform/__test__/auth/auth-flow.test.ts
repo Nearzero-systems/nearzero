@@ -167,6 +167,8 @@ describe("console auth proxy contract", () => {
 		expect(authConfig).not.toContain("emailOTP");
 		expect(proxy).toContain('request.headers.get("x-nearzero-token")');
 		expect(proxy).toContain("/sign-in/email");
+		expect(proxy).toContain("stripBrowserCredentials");
+		expect(proxy).toContain("new URL(getBackendUpstreamUrl()).origin");
 		expect(proxy).toContain("rewriteSetCookieForConsole");
 		expect(loginGrid).toContain("bindAuthCredentialsFlow");
 		expect(loginGrid).not.toContain("Terms of Service");
