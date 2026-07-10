@@ -20,7 +20,10 @@ RUN for dir in node_modules/.bun/bcrypt@*/node_modules/bcrypt; do \
 ENV NODE_ENV=production
 RUN bun run --filter @nearzero/server build
 RUN bun run --filter @nearzero/platform build
-RUN bun run --filter @nearzero/console build:docker
+# The hosted-console production env points to api.nearzero.dev. The combined
+# self-hosted image must proxy server-side console API requests to its local
+# platform process instead.
+RUN BACKEND_URL=http://platform:3000 bun run --filter @nearzero/console build:docker
 
 FROM base AS nearzero
 WORKDIR /app
