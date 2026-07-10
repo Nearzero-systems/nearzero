@@ -398,11 +398,12 @@ write_env() {
 	auth_secret="${BETTER_AUTH_SECRET:-${existing_auth_secret:-$(rand_hex 32)}}"
 	postgres_password="${POSTGRES_PASSWORD:-${existing_postgres_password:-$(rand_hex 24)}}"
 	metrics_token="${NEARZERO_METRICS_TOKEN:-${existing_metrics_token:-$(rand_hex 32)}}"
-	DATABASE_URL="${DATABASE_URL:-$existing_database_url}"
-	REDIS_URL="${REDIS_URL:-$existing_redis_url}"
-
-	if [[ "$USE_LOCAL_SERVICES" == "1" && -z "$DATABASE_URL" ]]; then
+	if [[ "$USE_LOCAL_SERVICES" == "1" ]]; then
 		DATABASE_URL="postgresql://${POSTGRES_USER}:${postgres_password}@postgres:5432/${POSTGRES_DB}"
+		REDIS_URL="${REDIS_URL:-redis://redis:6379}"
+	else
+		DATABASE_URL="${DATABASE_URL:-$existing_database_url}"
+		REDIS_URL="${REDIS_URL:-$existing_redis_url}"
 	fi
 	if [[ "$USE_LOCAL_SERVICES" == "0" && ( -z "$DATABASE_URL" || -z "$REDIS_URL" ) ]]; then
 		die "External-service mode requires both DATABASE_URL and REDIS_URL"
