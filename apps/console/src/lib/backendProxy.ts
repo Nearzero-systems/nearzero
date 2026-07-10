@@ -138,15 +138,20 @@ async function fetchBackendWithRetry(
 		: new Error("Backend request failed");
 }
 
-function forwardHeaders(request: Request, extra?: Record<string, string>) {
+function forwardHeaders(
+	request: Request,
+	extra?: Record<string, string>,
+	options?: { stripBrowserAuthHeaders?: boolean },
+) {
 	const cookie = request.headers.get("cookie") ?? "";
 	const origin = request.headers.get("origin");
 	const referer = request.headers.get("referer");
 	const invitationToken = request.headers.get("x-nearzero-token");
+	const stripBrowserAuthHeaders = options?.stripBrowserAuthHeaders ?? false;
 	return {
-		...(cookie ? { cookie } : {}),
-		...(origin ? { origin } : {}),
-		...(referer ? { referer } : {}),
+		...(cookie && !stripBrowserAuthHeaders ? { cookie } : {}),
+		...(origin && !stripBrowserAuthHeaders ? { origin } : {}),
+		...(referer && !stripBrowserAuthHeaders ? { referer } : {}),
 		...(invitationToken ? { "x-nearzero-token": invitationToken } : {}),
 		...(request.headers.get("content-type")
 			? { "content-type": request.headers.get("content-type")! }
@@ -163,6 +168,7 @@ export async function proxyBackendRequest(
 		method?: string;
 		body?: string | ArrayBuffer | null;
 		extra?: Record<string, string>;
+		stripBrowserAuthHeaders?: boolean;
 	},
 ): Promise<Response> {
 	const target = joinBackendUrl(pathWithQuery);
@@ -185,7 +191,9 @@ export async function proxyBackendRequest(
 	try {
 		upstream = await fetchBackendWithRetry(target, {
 			method,
-			headers: forwardHeaders(request, init?.extra),
+			headers: forwardHeaders(request, init?.extra, {
+				stripBrowserAuthHeaders: init?.stripBrowserAuthHeaders,
+			}),
 			body: body && bodySize > 0 ? body : undefined,
 			redirect: "manual",
 		});
@@ -275,14 +283,18 @@ export async function proxyBackendAuth(
 		? authPathWithQuery
 		: `/${authPathWithQuery}`;
 	const extra: Record<string, string> = {};
-	if (!request.headers.get("origin")) {
+	const stripBrowserAuthHeaders = shouldBootstrapConsoleSession(path);
+	if (!stripBrowserAuthHeaders && !request.headers.get("origin")) {
 		try {
 			extra.origin = new URL(request.url).origin;
 		} catch {
 			// ignore invalid request URL
 		}
 	}
-	return proxyBackendRequest(request, `/api/auth${path}`, { extra });
+	return proxyBackendRequest(request, `/api/auth${path}`, {
+		extra,
+		stripBrowserAuthHeaders,
+	});
 }
 
 export type SessionUser = {
