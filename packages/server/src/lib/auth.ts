@@ -33,7 +33,12 @@ import {
 	resolveAuthPublicBaseUrl,
 	resolveSharedCookieDomain,
 } from "./public-url";
-import { resolveEnvTrustedOrigins } from "./resolve-trusted-origins";
+import {
+	appendRequestOrigin,
+	resolveConsoleAndPlatformPorts,
+	resolveEnvTrustedOrigins,
+	buildHostPortOrigins,
+} from "./resolve-trusted-origins";
 import { verifyWebSocketTicket } from "./ws-ticket";
 
 async function ensurePersonalOrganizationForUser(
@@ -161,9 +166,11 @@ const authEmailPolicyPlugin = {
 	},
 };
 
-const useLocalAuthCookies = process.env.NODE_ENV !== "production";
 const sharedCookieDomain = resolveSharedCookieDomain();
 const authBaseUrl = resolveAuthPublicBaseUrl();
+const useLocalAuthCookies =
+	process.env.NODE_ENV !== "production" ||
+	(authBaseUrl?.startsWith("http://") ?? false);
 const productionCookieAttributes = {
 	sameSite: "lax" as const,
 	secure: true,
@@ -229,37 +236,71 @@ const { handler, api } = betterAuth({
 	logger: {
 		disabled: process.env.NODE_ENV === "production",
 	},
-	async trustedOrigins() {
+	async trustedOrigins(request) {
+		const { consolePort, platformPort } = resolveConsoleAndPlatformPorts();
 		const envOrigins = resolveEnvTrustedOrigins();
+
+		let publicIpOrigins: string[] = [];
+		try {
+			const publicIp = await getPublicIpWithFallback();
+			if (publicIp) {
+				publicIpOrigins = buildHostPortOrigins(
+					[publicIp],
+					consolePort,
+					platformPort,
+				);
+			}
+		} catch (error) {
+			console.error("Failed to resolve public IP for trusted origins:", error);
+		}
+
 		try {
 			const dbOrigins = await getTrustedOrigins();
 			const settings = await getWebServerSettings();
-			const consolePort = Number(process.env.NEARZERO_CONSOLE_PORT || 4321);
-			const platformPort = Number(process.env.NEARZERO_PLATFORM_PORT || 3000);
 
 			const runtimeOrigins = [
+				...publicIpOrigins,
 				...(settings?.serverIp
-					? [
-							`http://${settings.serverIp}:${platformPort}`,
-							`http://${settings.serverIp}:${consolePort}`,
-						]
+					? buildHostPortOrigins(
+							[settings.serverIp],
+							consolePort,
+							platformPort,
+						)
 					: []),
 				...(settings?.host ? [`https://${settings.host}`] : []),
 				...dbOrigins,
 			];
 
-			return [...new Set([...envOrigins, ...runtimeOrigins])];
+			return appendRequestOrigin(
+				[...new Set([...envOrigins, ...runtimeOrigins])],
+				request,
+				consolePort,
+				platformPort,
+			);
 		} catch (error) {
 			console.error("Failed to resolve trusted origins:", error);
-			if (envOrigins.length > 0) return envOrigins;
-			return process.env.NODE_ENV === "development"
-				? [
-						"http://localhost:4321",
-						"http://127.0.0.1:4321",
-						"http://localhost:3000",
-						"http://127.0.0.1:3000",
-					]
-				: [];
+			const fallbackOrigins = [...new Set([...envOrigins, ...publicIpOrigins])];
+			if (fallbackOrigins.length > 0) {
+				return appendRequestOrigin(
+					fallbackOrigins,
+					request,
+					consolePort,
+					platformPort,
+				);
+			}
+			return appendRequestOrigin(
+				process.env.NODE_ENV === "development"
+					? [
+							"http://localhost:4321",
+							"http://127.0.0.1:4321",
+							"http://localhost:3000",
+							"http://127.0.0.1:3000",
+						]
+					: [],
+				request,
+				consolePort,
+				platformPort,
+			);
 		}
 	},
 	databaseHooks: {

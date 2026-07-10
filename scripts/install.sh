@@ -8,7 +8,7 @@ else
 	INSTALL_DIR="${INSTALL_DIR_INPUT:-/opt/nearzero}"
 fi
 
-NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.6}"
+NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.7}"
 NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}"
 NEARZERO_PLATFORM_PORT="${NEARZERO_PLATFORM_PORT:-3000}"
 NEARZERO_CONSOLE_PORT="${NEARZERO_CONSOLE_PORT:-4321}"
@@ -250,7 +250,7 @@ name: nearzero
 
 services:
   platform:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.6}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.7}
     env_file:
       - path: .env
         required: false
