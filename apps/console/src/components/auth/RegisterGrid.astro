@@ -78,7 +78,7 @@ const onboardingBtnClass =
 	data-workspace-setup={workspaceSetupMode ? "1" : "0"}
 	data-invite-member-setup={inviteMemberSetupMode ? "1" : "0"}
 >
-	<AuthGrid expandFormTile={showSignupStage}>
+	<AuthGrid variant={showSignupStage ? "compact" : "default"}>
 		<div slot="c4" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-end gap-1 pb-1 text-center">
 			<p class={`hidden text-xs uppercase tracking-wide ${authMutedText}`} data-register-progress></p>
 			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl" data-register-title>
