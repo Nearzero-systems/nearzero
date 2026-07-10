@@ -78,7 +78,7 @@ const onboardingBtnClass =
 	data-workspace-setup={workspaceSetupMode ? "1" : "0"}
 	data-invite-member-setup={inviteMemberSetupMode ? "1" : "0"}
 >
-	<AuthGrid>
+	<AuthGrid expandFormTile={showSignupStage}>
 		<div slot="c4" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-end gap-1 pb-1 text-center">
 			<p class={`hidden text-xs uppercase tracking-wide ${authMutedText}`} data-register-progress></p>
 			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl" data-register-title>
@@ -94,9 +94,9 @@ const onboardingBtnClass =
 				<a href={loginHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Log in</a>
 			</p>
 		</div>
-		<div slot="c10" class="mx-auto flex h-full min-h-0 w-full max-w-[30rem] flex-col justify-center gap-1.5 overflow-visible px-1">
-			<div data-register-stage="signup" class={showSignupStage ? "" : "hidden"}>
-				<form id="nz-register-form" data-auth-credentials-form class="flex flex-col gap-2">
+		<div slot="c10" class="mx-auto flex h-full min-h-0 w-full max-w-[30rem] flex-col items-center justify-center gap-3 overflow-visible px-1">
+			<div data-register-stage="signup" class={showSignupStage ? "flex w-full flex-col items-center gap-3" : "hidden"}>
+				<form id="nz-register-form" data-auth-credentials-form class="flex w-full flex-col gap-2">
 					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
 						<span>Email</span>
 						<input
@@ -123,10 +123,20 @@ const onboardingBtnClass =
 							required
 							minlength="8"
 							placeholder="At least 8 characters"
-						class={authControlClass}
-					/>
-				</label>
+							class={authControlClass}
+						/>
+					</label>
 				</form>
+				<button
+					type="submit"
+					form="nz-register-form"
+					data-auth-credentials-submit
+					data-default-label="Create an account"
+					class={`${authBtnClass} w-full`}
+				>
+					<AuthButtonSpinner />
+					<span data-auth-btn-label>Create an account</span>
+				</button>
 			</div>
 
 			<div data-register-stage="profile" class={parsedStep === "profile" ? "min-h-0 w-full" : "hidden min-h-0 w-full"}>
@@ -212,25 +222,6 @@ const onboardingBtnClass =
 			</div>
 		</div>
 		<div slot="c13" class="mx-auto flex h-full w-full max-w-[36rem] flex-col justify-center gap-2">
-			<div
-				data-register-signup-actions
-				class={
-					showSignupStage
-						? "flex w-full max-w-[30rem] flex-col items-center pt-1"
-						: "hidden w-full max-w-[30rem] flex-col items-center pt-1"
-				}
-			>
-				<button
-					type="submit"
-					form="nz-register-form"
-					data-auth-credentials-submit
-					data-default-label="Create an account"
-					class={authBtnClass}
-				>
-					<AuthButtonSpinner />
-					<span data-auth-btn-label>Create an account</span>
-				</button>
-			</div>
 			<div
 				data-onboarding-actions
 				class={

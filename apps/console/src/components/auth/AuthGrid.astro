@@ -1,16 +1,23 @@
 ---
 import {
 	AUTH_GRID_CLASS_NAME,
+	AUTH_GRID_EXPAND_FORM_CLASS_NAME,
 	AUTH_TILE_BASE_CLASS,
 	loginTileClassName,
 } from "@/lib/auth-grid-classes";
 
+interface Props {
+	expandFormTile?: boolean;
+}
+
+const { expandFormTile = false } = Astro.props;
+
 function tile(index: number, hasSlot: boolean) {
-	return `${AUTH_TILE_BASE_CLASS} ${loginTileClassName(index, hasSlot)}`.trim();
+	return `${AUTH_TILE_BASE_CLASS} ${loginTileClassName(index, hasSlot, expandFormTile)}`.trim();
 }
 ---
 
-<div class={AUTH_GRID_CLASS_NAME}>
+<div class={expandFormTile ? AUTH_GRID_EXPAND_FORM_CLASS_NAME : AUTH_GRID_CLASS_NAME}>
 	<div class={tile(0, false)}></div>
 	<div class={tile(1, false)}></div>
 	<div class={tile(2, false)}></div>
