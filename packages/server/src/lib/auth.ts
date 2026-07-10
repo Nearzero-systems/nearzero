@@ -200,6 +200,7 @@ const { handler, api } = betterAuth({
 		? {
 				advanced: {
 					useSecureCookies: false,
+					disableOriginCheck: true,
 					defaultCookieAttributes: {
 						sameSite: "lax",
 						secure: false,
@@ -211,6 +212,7 @@ const { handler, api } = betterAuth({
 		: {
 				advanced: {
 					useSecureCookies: true,
+					disableOriginCheck: true,
 					...(sharedCookieDomain
 						? {
 								crossSubDomainCookies: {

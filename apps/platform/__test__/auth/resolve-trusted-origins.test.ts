@@ -1,10 +1,9 @@
-import { bootstrapCommunityEdition } from "@nearzero/edition-community";
 import {
 	appendRequestOrigin,
 	isAllowedSelfHostedOrigin,
 	resolveEnvTrustedOrigins,
 } from "@nearzero/server/lib/resolve-trusted-origins";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -17,13 +16,8 @@ function restoreEnv() {
 	Object.assign(process.env, ORIGINAL_ENV);
 }
 
-beforeEach(() => {
-	bootstrapCommunityEdition();
-});
-
 afterEach(() => {
 	restoreEnv();
-	bootstrapCommunityEdition();
 });
 
 describe("resolveEnvTrustedOrigins", () => {
@@ -69,7 +63,7 @@ describe("resolveEnvTrustedOrigins", () => {
 		expect(origins).toContain("http://127.0.0.1:3000");
 	});
 
-	it("adds community port wildcards for any self-host IP or domain", () => {
+	it("adds port wildcards for any self-host IP or domain", () => {
 		const origins = resolveEnvTrustedOrigins({
 			CONSOLE_URL: "http://example.test:4321",
 			NEARZERO_CONSOLE_PORT: "4321",
@@ -85,7 +79,7 @@ describe("resolveEnvTrustedOrigins", () => {
 });
 
 describe("isAllowedSelfHostedOrigin", () => {
-	it("accepts any host on console and platform ports in community mode", () => {
+	it("accepts any host on console and platform ports", () => {
 		expect(isAllowedSelfHostedOrigin("http://203.0.113.10:4321")).toBe(true);
 		expect(isAllowedSelfHostedOrigin("http://10.0.0.5:3000")).toBe(true);
 		expect(isAllowedSelfHostedOrigin("https://nearzero.example.com:4321")).toBe(

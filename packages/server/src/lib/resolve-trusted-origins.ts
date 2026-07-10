@@ -1,5 +1,4 @@
 import os from "node:os";
-import { isCommunityMode } from "../services/runtime-mode";
 
 type TrustedOriginEnv = {
 	[key: string]: string | undefined;
@@ -112,20 +111,18 @@ export function resolveEnvTrustedOrigins(env: TrustedOriginEnv = process.env) {
 		addHostPortVariants(origins, host, ports);
 	}
 
-	// Community self-host: trust any host on the published console/platform ports.
+	// Trust any host on the published console/platform ports.
 	// Covers public IPs, private IPs, and custom domains without hardcoding hosts.
-	if (isCommunityMode()) {
-		for (const port of ports) {
-			origins.add(`http://*:${port}`);
-			origins.add(`https://*:${port}`);
-		}
+	for (const port of ports) {
+		origins.add(`http://*:${port}`);
+		origins.add(`https://*:${port}`);
 	}
 
 	return [...origins];
 }
 
 /**
- * Community/self-host: trust any http(s) origin on the console or platform port.
+ * Trust any http(s) origin on the console or platform port.
  * This covers public IPs, private IPs, and custom domains without hardcoding hosts.
  */
 export function isAllowedSelfHostedOrigin(
@@ -133,8 +130,6 @@ export function isAllowedSelfHostedOrigin(
 	consolePort = 4321,
 	platformPort = 3000,
 ) {
-	if (!isCommunityMode()) return false;
-
 	try {
 		const url = new URL(origin);
 		if (url.protocol !== "http:" && url.protocol !== "https:") return false;
