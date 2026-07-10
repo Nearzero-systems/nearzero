@@ -162,6 +162,9 @@ describe("console auth proxy contract", () => {
 
 		expect(credentialsFlow).toContain("authClient.signIn.email");
 		expect(credentialsFlow).toContain("authClient.signUp.email");
+		expect(credentialsFlow).toContain("nearzero-adopt-credential");
+		expect(credentialsFlow).toContain("log in instead");
+		expect(credentialsFlow).toContain("invalid email or password");
 		expect(credentialsFlow).toContain("x-nearzero-token");
 		expect(authConfig).toContain("emailAndPassword");
 		expect(authConfig).not.toContain("emailOTP");

@@ -55,8 +55,18 @@ function isExistingUserError(data: unknown) {
 	const message = authErrorMessage(data, "").toLowerCase();
 	return (
 		message.includes("already exists") ||
+		message.includes("log in instead") ||
 		message.includes("user already exists") ||
 		message.includes("use another email")
+	);
+}
+
+function isInvalidCredentialError(data: unknown) {
+	const message = authErrorMessage(data, "").toLowerCase();
+	return (
+		message.includes("invalid email or password") ||
+		message.includes("invalid email and password") ||
+		message.includes("invalid email and pass")
 	);
 }
 
@@ -166,11 +176,24 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 					fetchOptions,
 				});
 				if (result.error) {
-					showToast(
-						authErrorMessage(result.error, "Invalid email or password."),
-						"error",
-					);
-					return;
+					if (isInvalidCredentialError(result.error)) {
+						const adopted = await adoptMissingCredential(email, password);
+						if (adopted.ok) {
+							// Continue into the normal session readiness check below.
+						} else {
+							showToast(
+								authErrorMessage(result.error, "Invalid email or password."),
+								"error",
+							);
+							return;
+						}
+					} else {
+						showToast(
+							authErrorMessage(result.error, "Invalid email or password."),
+							"error",
+						);
+						return;
+					}
 				}
 			}
 
