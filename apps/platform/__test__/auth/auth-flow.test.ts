@@ -182,6 +182,8 @@ describe("console auth proxy contract", () => {
 		expect(authRoute).toContain("bcrypt.compare");
 		expect(authRoute).toContain("code: \"no_account\"");
 		expect(authRoute).toContain("code: \"invalid_credentials\"");
+		expect(authRoute).toContain('code: "password_recovery_required"');
+		expect(authRoute).not.toContain("adoptMissingCredential");
 		expect(proxy).toContain('request.headers.get("x-nearzero-token")');
 		expect(proxy).toContain("/sign-in/email");
 		expect(proxy).toContain("/nearzero-adopt-credential");

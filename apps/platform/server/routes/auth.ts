@@ -162,39 +162,11 @@ async function handleCredentialSession(req: IncomingMessage, res: ServerResponse
 		});
 	}
 
-	const now = new Date();
-	const hashedPassword = await hashPassword(password);
-	const existingCredential = credentialAccounts[0];
-	if (existingCredential) {
-		await db
-			.update(account)
-			.set({
-				password: hashedPassword,
-				updatedAt: now,
-			})
-			.where(eq(account.id, existingCredential.id));
-	} else {
-		await db.insert(account).values({
-			userId: existingUser.id,
-			accountId: existingUser.id,
-			providerId: "credential",
-			password: hashedPassword,
-			createdAt: now,
-			updatedAt: now,
-		});
-	}
-
-	const token = await createSessionForUser(req, existingUser.id);
-
 	return authState(res, {
-		ok: true,
-		token,
-		user: {
-			id: existingUser.id,
-			email: existingUser.email,
-			name: existingUser.firstName || existingUser.email.split("@")[0],
-			image: existingUser.image,
-		},
+		ok: false,
+		code: "password_recovery_required",
+		message:
+			"This account has no password credential. Ask an administrator to reset the account password.",
 	});
 }
 
