@@ -21,7 +21,6 @@ POSTGRES_USER="${POSTGRES_USER:-nearzero}"
 POSTGRES_DB="${POSTGRES_DB:-nearzero}"
 REDIS_URL="${REDIS_URL:-}"
 DATABASE_URL="${DATABASE_URL:-}"
-AUTO_YES="${AUTO_YES:-}"
 SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-}"
 DRY_RUN="${DRY_RUN:-}"
 USE_LOCAL_SERVICES=1
@@ -116,14 +115,8 @@ url_from_host() {
 	fi
 }
 
-confirm_install() {
-	if [[ "$AUTO_YES" == "1" || "$AUTO_YES" == "true" || "$DRY_RUN" == "1" ]]; then
-		return
-	fi
-	printf 'Install Nearzero into %s and start Docker services? [y/N] ' "$INSTALL_DIR"
-	read -r answer
-	[[ "$answer" == "y" || "$answer" == "Y" || "$answer" == "yes" || "$answer" == "YES" ]] ||
-		die "Install cancelled"
+announce_install() {
+	log "Installing Nearzero into $INSTALL_DIR"
 }
 
 ensure_sudo() {
@@ -429,7 +422,7 @@ start_stack() {
 
 main() {
 	ensure_sudo
-	confirm_install
+	announce_install
 	run_sudo mkdir -p "$INSTALL_DIR"
 	write_compose_base
 	if [[ "$USE_LOCAL_SERVICES" == "1" ]]; then
