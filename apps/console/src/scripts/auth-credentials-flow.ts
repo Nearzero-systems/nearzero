@@ -51,6 +51,33 @@ async function waitForEstablishedSession(attempts = 4, delayMs = 150) {
 	return false;
 }
 
+function isExistingUserError(data: unknown) {
+	const message = authErrorMessage(data, "").toLowerCase();
+	return (
+		message.includes("already exists") ||
+		message.includes("user already exists") ||
+		message.includes("use another email")
+	);
+}
+
+async function adoptMissingCredential(email: string, password: string) {
+	const res = await fetch("/api/auth/nearzero-adopt-credential", {
+		method: "POST",
+		credentials: "include",
+		headers: {
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({ email, password }),
+	});
+	if (res.ok) return { ok: true, message: "" };
+
+	const data = (await res.json().catch(() => null)) as unknown;
+	return {
+		ok: false,
+		message: authErrorMessage(data, "Could not create your account."),
+	};
+}
+
 export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 	const {
 		root,
@@ -115,11 +142,21 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 					fetchOptions,
 				});
 				if (result.error) {
-					showToast(
-						authErrorMessage(result.error, "Could not create your account."),
-						"error",
-					);
-					return;
+					if (isExistingUserError(result.error)) {
+						const adopted = await adoptMissingCredential(email, password);
+						if (adopted.ok) {
+							// Continue into the normal session readiness check below.
+						} else {
+							showToast(adopted.message, "error");
+							return;
+						}
+					} else {
+						showToast(
+							authErrorMessage(result.error, "Could not create your account."),
+							"error",
+						);
+						return;
+					}
 				}
 			} else {
 				const result = await authClient.signIn.email({

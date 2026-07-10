@@ -6,6 +6,7 @@ import { areConsoleBackendSplit } from "./split-deploy";
 const AUTH_SESSION_BOOTSTRAP_PREFIXES = [
 	"/sign-in/email",
 	"/sign-up/email",
+	"/nearzero-adopt-credential",
 ] as const;
 
 /** Split a joined Set-Cookie header without breaking Expires commas. */
