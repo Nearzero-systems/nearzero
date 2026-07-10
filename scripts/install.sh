@@ -93,6 +93,19 @@ rand_hex() {
 	fi
 }
 
+existing_env_value() {
+	local key="$1"
+	local env_file="$INSTALL_DIR/.env"
+	[[ -r "$env_file" ]] || return 0
+	awk -F= -v key="$key" '
+		$1 == key {
+			sub(/^[^=]*=/, "")
+			print
+			exit
+		}
+	' "$env_file"
+}
+
 detect_private_ip() {
 	if command -v hostname >/dev/null 2>&1; then
 		hostname -I 2>/dev/null | awk '{print $1}' || true
@@ -371,14 +384,22 @@ YAML
 
 write_env() {
 	local host private_ip console_url platform_url postgres_password auth_secret local_redis_url metrics_token trusted_origins
+	local existing_auth_secret existing_postgres_password existing_metrics_token existing_database_url existing_redis_url
 	host="$(detect_host)"
 	private_ip="$(detect_private_ip)"
 	console_url="${CONSOLE_URL:-$(url_from_host "$host" "$NEARZERO_CONSOLE_PORT")}"
 	platform_url="${PUBLIC_BACKEND_URL:-$(url_from_host "$host" "$NEARZERO_PLATFORM_PORT")}"
 	trusted_origins="${NEARZERO_TRUSTED_ORIGINS:-$(collect_trusted_origins "$host" "$private_ip")}"
-	auth_secret="${BETTER_AUTH_SECRET:-$(rand_hex 32)}"
-	postgres_password="${POSTGRES_PASSWORD:-$(rand_hex 24)}"
-	metrics_token="${NEARZERO_METRICS_TOKEN:-$(rand_hex 32)}"
+	existing_auth_secret="$(existing_env_value BETTER_AUTH_SECRET)"
+	existing_postgres_password="$(existing_env_value POSTGRES_PASSWORD)"
+	existing_metrics_token="$(existing_env_value NEARZERO_METRICS_TOKEN)"
+	existing_database_url="$(existing_env_value DATABASE_URL)"
+	existing_redis_url="$(existing_env_value REDIS_URL)"
+	auth_secret="${BETTER_AUTH_SECRET:-${existing_auth_secret:-$(rand_hex 32)}}"
+	postgres_password="${POSTGRES_PASSWORD:-${existing_postgres_password:-$(rand_hex 24)}}"
+	metrics_token="${NEARZERO_METRICS_TOKEN:-${existing_metrics_token:-$(rand_hex 32)}}"
+	DATABASE_URL="${DATABASE_URL:-$existing_database_url}"
+	REDIS_URL="${REDIS_URL:-$existing_redis_url}"
 
 	if [[ "$USE_LOCAL_SERVICES" == "1" && -z "$DATABASE_URL" ]]; then
 		DATABASE_URL="postgresql://${POSTGRES_USER}:${postgres_password}@postgres:5432/${POSTGRES_DB}"
