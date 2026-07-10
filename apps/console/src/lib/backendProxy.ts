@@ -4,8 +4,8 @@ import { BACKEND_URL } from "./branding";
 import { areConsoleBackendSplit } from "./split-deploy";
 
 const AUTH_SESSION_BOOTSTRAP_PREFIXES = [
-	"/sign-in/email-otp",
-	"/email-otp/verify-email",
+	"/sign-in/email",
+	"/sign-up/email",
 ] as const;
 
 /** Split a joined Set-Cookie header without breaking Expires commas. */
@@ -143,13 +143,11 @@ function forwardHeaders(request: Request, extra?: Record<string, string>) {
 	const origin = request.headers.get("origin");
 	const referer = request.headers.get("referer");
 	const invitationToken = request.headers.get("x-nearzero-token");
-	const authIntent = request.headers.get("x-nearzero-auth-intent");
 	return {
 		...(cookie ? { cookie } : {}),
 		...(origin ? { origin } : {}),
 		...(referer ? { referer } : {}),
 		...(invitationToken ? { "x-nearzero-token": invitationToken } : {}),
-		...(authIntent ? { "x-nearzero-auth-intent": authIntent } : {}),
 		...(request.headers.get("content-type")
 			? { "content-type": request.headers.get("content-type")! }
 			: {}),

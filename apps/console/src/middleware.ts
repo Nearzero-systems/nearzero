@@ -166,6 +166,13 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 	if (
 		path === "/register" &&
+		context.url.searchParams.get("step")?.toLowerCase() === "verify"
+	) {
+		return context.redirect("/register");
+	}
+
+	if (
+		path === "/register" &&
 		context.url.searchParams.get("step")?.toLowerCase() === "source"
 	) {
 		return context.redirect("/register?step=profile");

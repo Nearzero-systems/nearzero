@@ -5,7 +5,6 @@ import {
 	authBtnClass,
 	authControlClass,
 	authMutedText,
-	authResendBtnClass,
 } from "@/lib/auth-form-classes";
 import {
 	HEARD_ABOUT_OPTIONS,
@@ -41,7 +40,6 @@ const {
 
 const parsedStep = parseRegisterStep(initialStep);
 const isOnboardingStep = isOnboardingRegisterStep(parsedStep);
-const isVerifyStep = parsedStep === "verify";
 const showSignupStage = !isOnboardingStep;
 const initialTitle = workspaceSetupMode
 	? "Create your workspace"
@@ -49,7 +47,7 @@ const initialTitle = workspaceSetupMode
 		? parsedStep === "profile"
 			? "Welcome to the team"
 			: stepTitle(parsedStep)
-		: isOnboardingStep || isVerifyStep
+		: isOnboardingStep
 			? stepTitle(parsedStep)
 			: "Welcome to Nearzero";
 const initialSubtitle = workspaceSetupMode
@@ -88,65 +86,51 @@ const onboardingBtnClass =
 			</h1>
 		</div>
 		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
-			<p class={`text-sm ${authMutedText} ${isVerifyStep ? "" : "hidden"}`} data-otp-subtitle-verify>
-				We sent a one-time code to <span class="font-medium text-[#111827]" data-otp-verify-email></span>.
-			</p>
 			<p class={`text-sm ${authMutedText} ${initialSubtitle ? "" : "hidden"}`} data-register-subtitle>
 				{initialSubtitle}
 			</p>
-			<p class={`text-sm ${authMutedText} ${showSignupStage && !isVerifyStep ? "" : "hidden"}`} data-register-login-link>
+			<p class={`text-sm ${authMutedText} ${showSignupStage ? "" : "hidden"}`} data-register-login-link>
 				Already have an account?{" "}
 				<a href={loginHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Log in</a>
 			</p>
 		</div>
 		<div slot="c10" class="mx-auto flex h-full min-h-0 w-full max-w-[30rem] flex-col justify-center gap-1.5 overflow-visible px-1">
 			<div data-register-stage="signup" class={showSignupStage ? "" : "hidden"}>
-				<div data-otp-stage="email">
-					<form data-otp-email-form class="flex flex-col gap-2">
-						<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
-							<span>Email</span>
-							<input
-								type="email"
-								name="email"
-								data-otp-email-input
-								autocomplete="email"
-								inputmode="email"
-								spellcheck="false"
-								required
-								placeholder="me@company.com"
-								value={initialEmail}
-								readonly={lockEmail}
-								class={`${authControlClass}${lockEmail ? " cursor-not-allowed opacity-80" : ""}`}
-							/>
-						</label>
-						<button type="submit" data-otp-email-submit data-default-label="Create an account" class={authBtnClass}>
-							<AuthButtonSpinner />
-							<span data-otp-btn-label>Create an account</span>
-						</button>
-					</form>
-				</div>
-				<div data-otp-stage="verify" class="hidden">
-					<form data-otp-verify-form class="flex flex-col gap-2">
-						<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
-							<span>Verification code</span>
-							<input
-								type="text"
-								name="code"
-								data-otp-code-input
-								inputmode="numeric"
-								autocomplete="one-time-code"
-								maxlength="6"
-								required
-								placeholder="000000"
-								class={authControlClass}
-							/>
-						</label>
-						<button type="submit" data-otp-verify-submit data-verify="1" data-default-label="Verify and continue" class={authBtnClass}>
-							<AuthButtonSpinner />
-							<span data-otp-btn-label>Verify and continue</span>
-						</button>
-					</form>
-				</div>
+				<form data-auth-credentials-form class="flex flex-col gap-2">
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Email</span>
+						<input
+							type="email"
+							name="email"
+							data-auth-email-input
+							autocomplete="email"
+							inputmode="email"
+							spellcheck="false"
+							required
+							placeholder="me@company.com"
+							value={initialEmail}
+							readonly={lockEmail}
+							class={`${authControlClass}${lockEmail ? " cursor-not-allowed opacity-80" : ""}`}
+						/>
+					</label>
+					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+						<span>Password</span>
+						<input
+							type="password"
+							name="password"
+							data-auth-password-input
+							autocomplete="new-password"
+							required
+							minlength="8"
+							placeholder="At least 8 characters"
+							class={authControlClass}
+						/>
+					</label>
+					<button type="submit" data-auth-credentials-submit data-default-label="Create an account" class={authBtnClass}>
+						<AuthButtonSpinner />
+						<span data-auth-btn-label>Create an account</span>
+					</button>
+				</form>
 			</div>
 
 			<div data-register-stage="profile" class={parsedStep === "profile" ? "min-h-0 w-full" : "hidden min-h-0 w-full"}>
@@ -294,47 +278,16 @@ const onboardingBtnClass =
 					<span data-auth-btn-label>Skip for now</span>
 				</button>
 			</div>
-			<div
-				data-otp-verify-footer
-				class={`${isVerifyStep ? "" : "hidden "}flex w-full flex-col items-center gap-2 pt-2 text-center`}
-			>
-				<button type="button" data-otp-resend-btn data-default-label="Resend code" class={authResendBtnClass}>
-					<AuthButtonSpinner />
-					<span data-auth-btn-label>Resend code</span>
-				</button>
-				<button
-					type="button"
-					data-otp-use-different-email
-					class={`block w-full text-xs underline-offset-2 hover:underline ${authMutedText}`}
-				>
-					Use different email
-				</button>
-			</div>
-		</div>
-		<div slot="c16" class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-3 text-center text-[11px] text-[#a3a3a3] sm:text-xs">
-			<div
-				data-register-legal
-				data-otp-legal-footer
-				class={showSignupStage && !isVerifyStep ? "flex flex-col items-center gap-3" : "hidden flex-col items-center gap-3"}
-			>
-				<p class="max-w-[20rem] text-balance sm:max-w-[24rem]">
-					By signing up, you agree to our{" "}
-					<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Terms of Service</span>
-					{" "}and{" "}
-					<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Privacy Policy</span>.
-				</p>
-			</div>
 		</div>
 	</AuthGrid>
 </div>
 
 <script>
 	import { invitationPath, resolveInvitationTokenFromPage } from "@/lib/invitation-routes";
-	import { bindAuthOtpFlow } from "@/scripts/auth-otp-flow";
+	import { bindAuthCredentialsFlow } from "@/scripts/auth-credentials-flow";
 	import { parseRegisterStep, registerStepPath, isOnboardingRegisterStep } from "@/lib/register-onboarding";
 	import {
 		bindRegisterOnboarding,
-		patchRegisterUrlStep,
 	} from "@/scripts/register-onboarding";
 
 	function bindRegister() {
@@ -365,42 +318,22 @@ const onboardingBtnClass =
 
 		if (root.dataset.registerBound !== "1") {
 			root.dataset.registerBound = "1";
-			const pendingEmail = sessionStorage.getItem("nz-register-pending-email") ?? "";
 			const inviteEmail = root.dataset.initialEmail?.trim() || "";
 
-			const afterSignupVerifyUrl = inviteToken
+			const afterSignupUrl = inviteToken
 				? invitationPath(inviteToken, inviteEmail)
 				: registerStepPath("profile", "/register", {
 						token: inviteToken || undefined,
 						email: inviteEmail || undefined,
 					});
 
-			bindAuthOtpFlow({
+			bindAuthCredentialsFlow({
 				root,
 				callbackUrl: "/dashboard/agent",
 				intent: "signup",
-				loginHref: root.dataset.loginHref || "/login",
 				invitationToken: inviteToken,
-				afterSignupVerifyUrl,
-				onEnterVerifyStage: () => {
-					patchRegisterUrlStep("verify");
-					const titleEl = root.querySelector<HTMLElement>("[data-register-title]");
-					if (titleEl) titleEl.textContent = "Verify your email";
-				},
-				initialStage: step === "verify" && pendingEmail ? "verify" : "email",
-				initialPendingEmail: step === "verify" ? pendingEmail : "",
+				afterSignupUrl,
 			});
-		}
-
-		if (step === "verify") {
-			const titleEl = root.querySelector<HTMLElement>("[data-register-title]");
-			const loginLink = root.querySelector<HTMLElement>("[data-register-login-link]");
-			const subtitleEl = root.querySelector<HTMLElement>("[data-register-subtitle]");
-			const otpVerifySubtitle = root.querySelector<HTMLElement>("[data-otp-subtitle-verify]");
-			if (titleEl) titleEl.textContent = "Verify your email";
-			loginLink?.classList.add("hidden");
-			subtitleEl?.classList.add("hidden");
-			otpVerifySubtitle?.classList.remove("hidden");
 		}
 	}
 

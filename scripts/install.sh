@@ -124,7 +124,7 @@ print_banner() {
 | |\  |  __/ (_| | |   / /  __/ | | (_) |
 |_| \_|\___|\__,_|_|  /___\___|_|  \___/ 
 
-  Nearzero · Self-hosted Platform as a Service · Community Edition
+   Self-hosted Platform as a Service · Community Edition
 
 EOF
 }
@@ -336,20 +336,6 @@ CONSOLE_URL=${console_url}
 BACKEND_URL=http://platform:3000
 PUBLIC_BACKEND_URL=${platform_url}
 PUBLIC_GIT_PROVIDER_BASE_URL=${PUBLIC_GIT_PROVIDER_BASE_URL:-$console_url}
-
-RESEND_API_KEY=${RESEND_API_KEY:-}
-NEARZERO_AUTH_FROM_EMAIL="${NEARZERO_AUTH_FROM_EMAIL:-Nearzero <noreply@nearzero.dev>}"
-
-OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
-OPENROUTER_HTTP_REFERER=${OPENROUTER_HTTP_REFERER:-$console_url}
-OPENROUTER_X_TITLE=${OPENROUTER_X_TITLE:-Nearzero}
-OPENROUTER_CHAT_MODEL=${OPENROUTER_CHAT_MODEL:-moonshotai/kimi-k2.6}
-OPENROUTER_TITLE_MODEL=${OPENROUTER_TITLE_MODEL:-openai/gpt-4o-mini}
-OPENROUTER_FOLLOWUPS_MODEL=${OPENROUTER_FOLLOWUPS_MODEL:-openai/gpt-4o-mini}
-NEARZERO_AGENT_ENABLED=${NEARZERO_AGENT_ENABLED:-true}
-NEARZERO_AGENT_ATTACHMENTS_PATH=/etc/nearzero/agent-attachments
-TAVILY_API_KEY=${TAVILY_API_KEY:-}
 EOF
 }
 

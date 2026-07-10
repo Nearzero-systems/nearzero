@@ -5,7 +5,6 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { admin, organization, twoFactor } from "better-auth/plugins";
-import { emailOTP } from "better-auth/plugins/email-otp";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import * as schema from "../db/schema";
@@ -26,9 +25,7 @@ import {
 	normalizeAuthEmail,
 } from "./auth-email-policy";
 import {
-	AUTH_OTP_INTENT_HEADER,
 	getAuthOtpAccountError,
-	resolveAuthOtpIntent,
 } from "./auth-otp-intent";
 import { betterAuthSecret } from "./auth-secret";
 import { emailEquals } from "./email-identity";
@@ -36,35 +33,7 @@ import {
 	resolveAuthPublicBaseUrl,
 	resolveSharedCookieDomain,
 } from "./public-url";
-import {
-	assertAuthOtpDeliveryReady,
-	getOtpExpiresInSeconds,
-	sendAuthOtpEmail,
-} from "./send-auth-otp-email";
 import { verifyWebSocketTicket } from "./ws-ticket";
-
-function parsePositiveInt(raw: string | undefined, fallback: number) {
-	const n = Number(raw);
-	return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
-}
-
-const OTP_EXPIRES_IN_SECONDS = getOtpExpiresInSeconds();
-const OTP_RESEND_COOLDOWN_SECONDS = Math.ceil(
-	parsePositiveInt(process.env.NEARZERO_AUTH_OTP_RESEND_MS, 45_000) / 1000,
-);
-const OTP_MAX_ATTEMPTS = parsePositiveInt(
-	process.env.NEARZERO_AUTH_OTP_MAX_ATTEMPTS,
-	8,
-);
-// Max OTP "send" requests allowed within the cooldown window (per IP/path).
-// `max: 1` is too strict: any quick retry, "use a different email" flow, or
-// several people behind a shared IP/NAT trips a "Too many requests" error on
-// the very first legitimate login. The client still enforces its own 45s
-// resend cooldown, so this is just an abuse backstop — keep it forgiving.
-const OTP_SEND_RATE_MAX = parsePositiveInt(
-	process.env.NEARZERO_AUTH_OTP_SEND_MAX,
-	5,
-);
 
 async function ensurePersonalOrganizationForUser(
 	userId: string,
@@ -106,10 +75,7 @@ async function ensurePersonalOrganizationForUser(
 	return personalOrganization;
 }
 
-const OTP_EMAIL_PATHS = new Set([
-	"/email-otp/send-verification-otp",
-	"/sign-in/email-otp",
-]);
+const AUTH_EMAIL_PATHS = new Set(["/sign-in/email", "/sign-up/email"]);
 
 async function findAndNormalizeAuthUser(rawEmail: string) {
 	const normalizedEmail = normalizeAuthEmail(rawEmail);
@@ -170,7 +136,7 @@ const authEmailPolicyPlugin = {
 		before: [
 			{
 				matcher(ctx: { path?: string }) {
-					return OTP_EMAIL_PATHS.has(ctx.path ?? "");
+					return AUTH_EMAIL_PATHS.has(ctx.path ?? "");
 				},
 				handler: createAuthMiddleware(async (ctx) => {
 					const email =
@@ -179,9 +145,7 @@ const authEmailPolicyPlugin = {
 					if (policyError) {
 						throw new APIError("BAD_REQUEST", { message: policyError });
 					}
-					const intent = resolveAuthOtpIntent(
-						ctx.request?.headers?.get(AUTH_OTP_INTENT_HEADER),
-					);
+					const intent = ctx.path === "/sign-up/email" ? "signup" : "login";
 					const existingUser = await findAndNormalizeAuthUser(email);
 					const accountError = getAuthOtpAccountError(
 						intent,
@@ -189,9 +153,6 @@ const authEmailPolicyPlugin = {
 					);
 					if (accountError) {
 						throw new APIError("BAD_REQUEST", { message: accountError });
-					}
-					if (ctx.path === "/email-otp/send-verification-otp") {
-						assertAuthOtpDeliveryReady();
 					}
 				}),
 			},
@@ -220,9 +181,11 @@ const { handler, api } = betterAuth({
 		"/organization/update",
 		"/organization/delete",
 		"/verify-email",
-		"/sign-in/email",
-		"/sign-up/email",
 	],
+	emailAndPassword: {
+		enabled: true,
+		requireEmailVerification: false,
+	},
 	secret: betterAuthSecret,
 	...(authBaseUrl ? { baseURL: authBaseUrl } : {}),
 	...(useLocalAuthCookies
@@ -538,23 +501,6 @@ const { handler, api } = betterAuth({
 					}),
 				]
 			: []),
-		emailOTP({
-			otpLength: 6,
-			expiresIn: OTP_EXPIRES_IN_SECONDS,
-			allowedAttempts: OTP_MAX_ATTEMPTS,
-			disableSignUp: false,
-			rateLimit: {
-				window: OTP_RESEND_COOLDOWN_SECONDS,
-				max: OTP_SEND_RATE_MAX,
-			},
-			async sendVerificationOTP({ email, otp, type }) {
-				const policyError = getAuthEmailPolicyError(email);
-				if (policyError) {
-					throw new APIError("BAD_REQUEST", { message: policyError });
-				}
-				await sendAuthOtpEmail({ email, code: otp, type });
-			},
-		}),
 	],
 });
 

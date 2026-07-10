@@ -134,9 +134,9 @@ describe("auth redirect rewriting", () => {
 });
 
 describe("console auth proxy contract", () => {
-	it("sends invitation context and wires email OTP auth", () => {
-		const otpFlow = readFileSync(
-			new URL("../../../console/src/scripts/auth-otp-flow.ts", import.meta.url),
+	it("sends invitation context and wires email/password auth", () => {
+		const credentialsFlow = readFileSync(
+			new URL("../../../console/src/scripts/auth-credentials-flow.ts", import.meta.url),
 			"utf8",
 		);
 		const proxy = readFileSync(
@@ -155,21 +155,23 @@ describe("console auth proxy contract", () => {
 			new URL("../../../console/src/lib/invitation-routes.ts", import.meta.url),
 			"utf8",
 		);
-		const otpDelivery = readFileSync(
-			new URL("../../../../packages/server/src/lib/send-auth-otp-email.ts", import.meta.url),
+		const authConfig = readFileSync(
+			new URL("../../../../packages/server/src/lib/auth.ts", import.meta.url),
 			"utf8",
 		);
 
-		expect(otpFlow).toContain("/api/auth/email-otp/send-verification-otp");
-		expect(otpFlow).toContain("/api/auth/sign-in/email-otp");
-		expect(otpFlow).toContain("x-nearzero-auth-intent");
-		expect(otpDelivery).not.toContain("resend");
-		expect(otpDelivery).toContain("console.log");
+		expect(credentialsFlow).toContain("authClient.signIn.email");
+		expect(credentialsFlow).toContain("authClient.signUp.email");
+		expect(credentialsFlow).toContain("x-nearzero-token");
+		expect(authConfig).toContain("emailAndPassword");
+		expect(authConfig).not.toContain("emailOTP");
 		expect(proxy).toContain('request.headers.get("x-nearzero-token")');
-		expect(proxy).toContain("x-nearzero-auth-intent");
+		expect(proxy).toContain("/sign-in/email");
 		expect(proxy).toContain("rewriteSetCookieForConsole");
-		expect(loginGrid).toContain("bindAuthOtpFlow");
-		expect(registerGrid).toContain("bindAuthOtpFlow");
+		expect(loginGrid).toContain("bindAuthCredentialsFlow");
+		expect(loginGrid).not.toContain("Terms of Service");
+		expect(registerGrid).toContain("bindAuthCredentialsFlow");
+		expect(registerGrid).not.toContain("Terms of Service");
 		expect(invitationRoutes).toContain("loginPathForInvitation");
 		expect(invitationRoutes).toContain("registerPathForInvitation");
 	});

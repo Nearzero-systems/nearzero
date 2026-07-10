@@ -1,6 +1,6 @@
 Nearzero is a self-hostable Platform as a Service (PaaS) for deploying and managing applications and databases.
 
-This repository is the **Community (open-source) edition**: self-hosted, email OTP auth, BYO git providers, and org-scoped agent BYOK. Hosted Cloud/Enterprise features (billing, SSO, audit logs, managed git, etc.) live in a separate private package and are not included here.
+This repository is the **Community (open-source) edition**: self-hosted, email and password auth, BYO git providers, and org-scoped agent BYOK. Hosted Cloud/Enterprise features (billing, SSO, audit logs, managed git, etc.) live in a separate private package and are not included here.
 
 ## Features
 
@@ -47,7 +47,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ### Auth (Community)
 
-Sign-in uses email OTP. In local/self-hosted mode, codes are written to the platform server logs (`docker logs` or the terminal running `platform:dev`). There is no password login and no third-party auth email provider required for sign-in.
+Sign-in uses email and password. No third-party email provider is required for authentication.
 
 Documentation: [docs.nearzero.dev](https://docs.nearzero.dev)
 

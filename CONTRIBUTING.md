@@ -117,7 +117,7 @@ The open-source tree must not import `@nearzero/cloud` or ship proprietary route
 
 ### Auth (local dev)
 
-Community sign-in is email OTP only. After requesting a code, check the platform server output for the OTP (no Resend or password flow in OSS).
+Community sign-in is email and password only. No Resend or other third-party auth email provider is required.
 
 ## Docker
 

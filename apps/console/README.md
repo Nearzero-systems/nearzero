@@ -17,7 +17,7 @@ bun run console:dev    # :4321 UI
 
 Open http://localhost:4321 — auth and tRPC go through the Astro BFF to the platform server.
 
-Sign-in uses **email OTP** (codes are printed to the platform server logs in Community/self-hosted mode).
+Sign-in uses **email and password** (no third-party auth email provider required).
 
 ## Environment
 

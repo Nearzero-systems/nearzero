@@ -5,7 +5,6 @@ import {
 	authBtnClass,
 	authControlClass,
 	authMutedText,
-	authResendBtnClass,
 } from "@/lib/auth-form-classes";
 
 interface Props {
@@ -33,100 +32,62 @@ const {
 			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">Welcome to Nearzero</h1>
 		</div>
 		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
-			<p class={`text-sm ${authMutedText} hidden`} data-otp-subtitle-verify>
-				We sent a one-time code to <span class="font-medium text-[#111827]" data-otp-verify-email></span>.
-			</p>
-			<p class={`text-sm ${authMutedText}`} data-otp-subtitle-email>
+			<p class={`text-sm ${authMutedText}`}>
 				Don't have an account?{" "}
 				<a href={registerHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Sign up</a>
 			</p>
 		</div>
 		<div slot="c10" class="mx-auto flex h-full w-full max-w-[30rem] flex-col justify-center gap-1.5">
-			<div data-otp-stage="email">
-				<form data-otp-email-form class="flex flex-col gap-2">
-					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
-						<span>Email</span>
-						<input
-							type="email"
-							name="email"
-							data-otp-email-input
-							autocomplete="email"
-							inputmode="email"
-							spellcheck="false"
-							required
-							placeholder="me@company.com"
-							value={initialEmail}
-							class={authControlClass}
-						/>
-					</label>
-					<button type="submit" data-otp-email-submit data-default-label="Continue" class={authBtnClass}>
-						<AuthButtonSpinner />
-						<span data-otp-btn-label>Continue</span>
-					</button>
-				</form>
-			</div>
-			<div data-otp-stage="verify" class="hidden">
-				<form data-otp-verify-form class="flex flex-col gap-2">
-					<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
-						<span>Verification code</span>
-						<input
-							type="text"
-							name="code"
-							data-otp-code-input
-							inputmode="numeric"
-							autocomplete="one-time-code"
-							maxlength="6"
-							required
-							placeholder="000000"
-							class={authControlClass}
-						/>
-					</label>
-					<button type="submit" data-otp-verify-submit data-verify="1" data-default-label="Verify and continue" class={authBtnClass}>
-						<AuthButtonSpinner />
-						<span data-otp-btn-label>Verify and continue</span>
-					</button>
-				</form>
-			</div>
-		</div>
-		<div slot="c13" class="mx-auto flex h-full w-full max-w-[36rem] flex-col justify-center gap-2">
-			<div data-otp-verify-footer class="hidden flex w-full flex-col items-center gap-2 pt-2 text-center">
-				<button type="button" data-otp-resend-btn data-default-label="Resend code" class={authResendBtnClass}>
+			<form data-auth-credentials-form class="flex flex-col gap-2">
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>Email</span>
+					<input
+						type="email"
+						name="email"
+						data-auth-email-input
+						autocomplete="email"
+						inputmode="email"
+						spellcheck="false"
+						required
+						placeholder="me@company.com"
+						value={initialEmail}
+						class={authControlClass}
+					/>
+				</label>
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>Password</span>
+					<input
+						type="password"
+						name="password"
+						data-auth-password-input
+						autocomplete="current-password"
+						required
+						minlength="8"
+						placeholder="Your password"
+						class={authControlClass}
+					/>
+				</label>
+				<button type="submit" data-auth-credentials-submit data-default-label="Sign in" class={authBtnClass}>
 					<AuthButtonSpinner />
-					<span data-auth-btn-label>Resend code</span>
+					<span data-auth-btn-label>Sign in</span>
 				</button>
-				<button
-					type="button"
-					data-otp-use-different-email
-					class={`block w-full text-xs underline-offset-2 hover:underline ${authMutedText}`}
-				>
-					Use different email
-				</button>
-			</div>
-		</div>
-		<div slot="c16" data-otp-legal-footer class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-3 px-3 text-center text-[11px] leading-relaxed text-[#a3a3a3] sm:text-xs">
-			<p class="max-w-[20rem] text-balance sm:max-w-[24rem]">
-				By continuing, you agree to our{" "}
-				<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Terms of Service</span>
-				{" "}and{" "}
-				<span class="cursor-pointer whitespace-nowrap underline underline-offset-2 transition-colors hover:text-[#111827]">Privacy Policy</span>.
-			</p>
+			</form>
 		</div>
 	</AuthGrid>
 </div>
 
 <script>
-	import { bindAuthOtpFlow } from "@/scripts/auth-otp-flow";
+	import { bindAuthCredentialsFlow } from "@/scripts/auth-credentials-flow";
 
 	function bindLogin() {
 		const root = document.getElementById("nz-login-root");
 		if (!root) return;
 		const callbackUrl = root.dataset.callbackUrl || "/dashboard/agent";
 
-		bindAuthOtpFlow({
+		bindAuthCredentialsFlow({
 			root,
 			callbackUrl,
 			intent: "login",
-			registerHref: root.dataset.registerHref || "/register",
 		});
 	}
 

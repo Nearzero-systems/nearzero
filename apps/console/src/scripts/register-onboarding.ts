@@ -194,12 +194,6 @@ function setVisibleStage(root: HTMLElement, step: RegisterStep) {
 			inviteMemberSetupMode && step === "workspace" ? "Finish" : "Continue",
 		);
 	}
-	const verifyFooter = root.querySelector<HTMLElement>("[data-otp-verify-footer]");
-	if (verifyFooter) {
-		const showVerifyFooter = step === "verify";
-		verifyFooter.classList.toggle("hidden", !showVerifyFooter);
-		verifyFooter.classList.toggle("flex", showVerifyFooter);
-	}
 	root.querySelector<HTMLElement>("[data-register-progress]")?.classList.add("hidden");
 }
 

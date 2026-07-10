@@ -5,7 +5,7 @@ const AUTH_ICON_SELECTOR = "[data-auth-btn-icon]";
 export function queryAuthActionButtons(root: ParentNode): HTMLButtonElement[] {
 	return Array.from(
 		root.querySelectorAll<HTMLButtonElement>(
-			"button[data-otp-email-submit], button[data-otp-verify-submit], button[data-otp-resend-btn], button[data-onboarding-continue], button[data-invite-submit], button[data-onboarding-skip], button[data-invite-skip]",
+			"button[data-auth-credentials-submit], button[data-onboarding-continue], button[data-invite-submit], button[data-onboarding-skip], button[data-invite-skip]",
 		),
 	);
 }
