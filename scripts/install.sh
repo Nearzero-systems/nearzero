@@ -118,13 +118,13 @@ url_from_host() {
 print_banner() {
 	cat <<'EOF'
 
- _   _                      _____              
-| \ | | ___ _ __ ___  _ __ |__  /___ _ __ ___  
-|  \| |/ _ \ '_ ` _ \| '_ \  / // _ \ '__/ _ \ 
-| |\  |  __/ | | | | | | | |/ /|  __/ | | (_) |
-|_| \_|\___|_| |_| |_|_| |_/____\___|_|  \___/ 
+ _   _                                   
+| \ | | ___  __ _ _ __ _______ _ __ ___  
+|  \| |/ _ \/ _` | '__|_  / _ \ '__/ _ \ 
+| |\  |  __/ (_| | |   / /  __/ | | (_) |
+|_| \_|\___|\__,_|_|  /___\___|_|  \___/ 
 
-  Self-hosted Platform as a Service · Community Edition
+  Nearzero · Self-hosted Platform as a Service · Community Edition
 
 EOF
 }
