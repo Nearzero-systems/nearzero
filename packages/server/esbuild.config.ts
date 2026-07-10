@@ -18,6 +18,10 @@ build({
 	plugins: [
 		alias({
 			"@nearzero/server": path.resolve(__dirname, "src"),
+			"@nearzero/edition-contract": path.resolve(
+				__dirname,
+				"../edition-contract/src/index.ts",
+			),
 		}),
 	],
 	packages: "external",

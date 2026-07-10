@@ -1,5 +1,6 @@
 import dotenv, { type DotenvParseOutput } from "dotenv";
 import esbuild from "esbuild";
+import path from "node:path";
 
 const result = dotenv.config({ path: ".env.production" });
 
@@ -39,6 +40,14 @@ try {
 			outdir: "dist",
 			tsconfig: "tsconfig.server.json",
 			define,
+			alias: {
+				"@nearzero/edition-community": path.resolve(
+					"../../packages/edition-community/src/index.ts",
+				),
+				"@nearzero/edition-contract": path.resolve(
+					"../../packages/edition-contract/src/index.ts",
+				),
+			},
 			packages: "external",
 		})
 		.catch(() => {
