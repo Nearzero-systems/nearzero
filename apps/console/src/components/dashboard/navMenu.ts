@@ -207,13 +207,6 @@ export const NAV_GROUPS: NavGroup[] = [
 				icon: "users",
 				isEnabled: (ctx) => !!ctx.permissions?.member?.read,
 			},
-			{
-				key: "settings-audit-logs",
-				label: "Audit Logs",
-				href: "/dashboard/settings/audit-logs",
-				icon: "audit",
-				isEnabled: (ctx) => !!ctx.permissions?.auditLog?.read,
-			},
 		],
 	},
 	{

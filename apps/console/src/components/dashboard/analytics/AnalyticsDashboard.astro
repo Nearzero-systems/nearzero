@@ -1,6 +1,5 @@
 ---
 import { format } from "date-fns";
-import { IS_COMMUNITY } from "@/lib/branding";
 import { ST } from "@/lib/settings-hub-ui";
 import { createServerTrpcClient } from "@/lib/server-api";
 import { badgeClassForHttpStatus } from "@/components/dashboard/analytics/logBadges";
@@ -198,16 +197,9 @@ const pageLogsBootstrap = encodeURIComponent(JSON.stringify(pageLogs));
 						<circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />
 					</svg>
 					<span>
-						When you activate, reload Traefik to apply the changes{
-							IS_COMMUNITY ? (
-								<>
-									{" "}— you can reload Traefik in{" "}
-									<a href="/dashboard/about-nearzero" class="font-medium underline-offset-2 hover:underline">About Nearzero</a>.
-								</>
-							) : (
-								"."
-							)
-						}
+						When you activate, reload Traefik to apply the changes{" "}
+						— you can reload Traefik in{" "}
+						<a href="/dashboard/about-nearzero" class="font-medium underline-offset-2 hover:underline">About Nearzero</a>.
 					</span>
 				</div>
 			) : null

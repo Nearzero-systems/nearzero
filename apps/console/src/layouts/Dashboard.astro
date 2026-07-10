@@ -101,11 +101,10 @@ try {
 	/* AppRouter is typed loosely — widen calls for astro check compatibility. */
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const tc = api as any;
-	const [member, perm, orgs, wl, invs] = await Promise.all([
+	const [member, perm, orgs, invs] = await Promise.all([
 		tc.user.get.query(),
 		tc.user.getPermissions.query(),
 		tc.organization.all.query(),
-		tc.whitelabeling.get.query(),
 		tc.user.getInvitations.query(),
 	]);
 	authMember = member != null ? (member as DashboardMember) : authMember;
@@ -114,7 +113,6 @@ try {
 		Array.isArray(orgs) ?
 			(orgs as OrgRowLocal[]).map((r) => ({ ...r }))
 		:	[];
-	whitelabeling = (wl ?? null) as NavContext["whitelabeling"];
 	invitations = Array.isArray(invs) ? invs : [];
 
 	const active = await tc.organization.active.query().catch(() => null);
@@ -194,7 +192,7 @@ if (routeContext.projectId) {
 	}
 }
 
-const brandLabel = whitelabeling?.appName?.trim() || "Nearzero";
+const brandLabel = "Nearzero";
 const dashboardRole = authMember?.role ?? null;
 const invitationRows = invitations ?? [];
 const orgSlug =

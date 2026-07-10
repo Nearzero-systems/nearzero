@@ -36,22 +36,3 @@ export const BACKEND_URL =
 	import.meta.env.BACKEND_URL ??
 	import.meta.env.PUBLIC_BACKEND_URL ??
 	"http://127.0.0.1:3000";
-
-/**
- * Runtime mode flag. `COMMUNITY` defaults to community (self-hosted) mode;
- * setting `COMMUNITY=false` switches to the hosted variant.
- *
- * Astro/Vite loads `.env` values into `import.meta.env` (not `process.env`) for the
- * console SSR process, so we read from there first and fall back to `process.env`.
- */
-function readCommunityFlag(): string | undefined {
-	if (import.meta.env.COMMUNITY != null && import.meta.env.COMMUNITY !== "") {
-		return String(import.meta.env.COMMUNITY);
-	}
-	if (typeof process !== "undefined" && process.env.COMMUNITY != null) {
-		return process.env.COMMUNITY;
-	}
-	return undefined;
-}
-
-export const IS_COMMUNITY = readCommunityFlag() !== "false";

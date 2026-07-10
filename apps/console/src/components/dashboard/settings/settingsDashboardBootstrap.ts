@@ -15,10 +15,9 @@ export async function bootstrapSettingsDashboardPage(
 	const api = createServerTrpcClient(request) as any;
 	let ctx: NavContext;
 	try {
-		const [member, perm, wl] = await Promise.all([
+		const [member, perm] = await Promise.all([
 			api.user.get.query(),
 			api.user.getPermissions.query(),
-			api.whitelabeling.get.query().catch(() => null),
 		]);
 		ctx = {
 			auth:
@@ -26,13 +25,7 @@ export async function bootstrapSettingsDashboardPage(
 					? { role: (member as { role?: string | null }).role ?? null }
 					: null,
 			permissions: (perm ?? null) as NavContext["permissions"],
-			whitelabeling:
-				wl && typeof wl === "object"
-					? {
-							docsUrl: (wl as { docsUrl?: string | null }).docsUrl ?? null,
-							supportUrl: (wl as { supportUrl?: string | null }).supportUrl ?? null,
-						}
-					:	null,
+			whitelabeling: null,
 		};
 	} catch {
 		return { ok: false, reason: "load-failed" };

@@ -18,7 +18,7 @@ export async function resolveProvider(input: {
 	const config = getAgentConfig();
 	const edition = tryGetEdition();
 	const allowsEnvProviderKey =
-		edition?.allowsEnvAgentProviderKey() ?? process.env.COMMUNITY === "false";
+		edition?.allowsEnvAgentProviderKey() ?? false;
 
 	const envKey = config.openRouterApiKey.trim();
 	if (allowsEnvProviderKey && envKey) {

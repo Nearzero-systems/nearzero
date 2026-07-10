@@ -4,9 +4,8 @@ import SettingsEmptyState from "@/components/dashboard/settings/SettingsEmptySta
 import GitProviderModals from "@/components/dashboard/settings/GitProviderModals.astro";
 import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
 import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
-import { IS_COMMUNITY } from "@/lib/branding";
-import { getGitlabAuthUrl } from "@/lib/gitlab-utils";
 import { gitProviderUiOptions } from "@/lib/git-provider-ui";
+import { getGitlabAuthUrl } from "@/lib/gitlab-utils";
 import { ST } from "@/lib/settings-hub-ui";
 import { createServerTrpcClient } from "@/lib/server-api";
 
@@ -76,7 +75,7 @@ const providerActionMap: Record<string, string> = {
 				data-auth-id={authId}
 				data-git-provider-base-url={gitProviderBaseUrl}
 				data-git-provider-base-url-local={gitProviderBaseUrlIsLocal ? "1" : "0"}
-				data-is-community={IS_COMMUNITY ? "1" : "0"}
+				data-is-community="1"
 			>
 				<div class={ST.panel}>
 					<section class="nz-git-providers__section" aria-label="Available providers">
@@ -89,7 +88,7 @@ const providerActionMap: Record<string, string> = {
 										class="nz-git-provider-chip"
 										data-git-provider={option.key}
 										data-git-action={providerActionMap[option.key]}
-										aria-label={IS_COMMUNITY ? `Connect ${option.label}` : `Connect ${option.label} with Nearzero`}
+										aria-label={`Connect ${option.label}`}
 										style={`--nz-git-accent: ${option.accent}`}
 									>
 										<span class="nz-git-provider-chip__icon" aria-hidden="true">
@@ -98,7 +97,7 @@ const providerActionMap: Record<string, string> = {
 											</svg>
 										</span>
 										<span class="nz-git-provider-chip__label">
-											{IS_COMMUNITY ? option.label : `${option.label} with Nearzero`}
+											{option.label}
 										</span>
 									</button>
 								))
@@ -109,11 +108,7 @@ const providerActionMap: Record<string, string> = {
 					{
 						gitProviders.length === 0 ? (
 							<SettingsEmptyState
-								message={
-									IS_COMMUNITY
-										? "Create your first Git provider to connect repositories for deployments."
-										: "Connect your first Git provider with Nearzero to deploy repositories."
-								}
+								message="Create your first Git provider to connect repositories for deployments."
 							/>
 						) : (
 							<div class={ST.tableWrap}>
@@ -217,7 +212,7 @@ const providerActionMap: Record<string, string> = {
 																	) : null
 																}
 																{
-																	IS_COMMUNITY && !haveGithubRequirements && isGithub && !isManaged ? (
+																	!haveGithubRequirements && isGithub && !isManaged ? (
 																		<>
 																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
 																			<a
@@ -233,7 +228,7 @@ const providerActionMap: Record<string, string> = {
 																	) : null
 																}
 																{
-																	IS_COMMUNITY && !haveGitlabRequirements && isGitlab && !isManaged ? (
+																	!haveGitlabRequirements && isGitlab && !isManaged ? (
 																		<>
 																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
 																			<a
@@ -288,7 +283,6 @@ const providerActionMap: Record<string, string> = {
 																	gitProvider.isOwner ? (
 																		<>
 																			{
-																				IS_COMMUNITY &&
 																				!isManaged &&
 																				((isGithub && haveGithubRequirements) ||
 																					isGitlab ||
@@ -330,17 +324,13 @@ const providerActionMap: Record<string, string> = {
 					}
 				</div>
 
-				{
-					IS_COMMUNITY ? (
-						<GitProviderModals
-							organizationId={organizationId}
-							userId={userId}
-							gitProviderBaseUrl={gitProviderBaseUrl}
-							gitProviderBaseUrlIsLocal={gitProviderBaseUrlIsLocal}
-							isCommunity={IS_COMMUNITY}
-						/>
-					) : null
-				}
+				<GitProviderModals
+					organizationId={organizationId}
+					userId={userId}
+					gitProviderBaseUrl={gitProviderBaseUrl}
+					gitProviderBaseUrlIsLocal={gitProviderBaseUrlIsLocal}
+					isCommunity={true}
+				/>
 			</div>
 		)
 	}

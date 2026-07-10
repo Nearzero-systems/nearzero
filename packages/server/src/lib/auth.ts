@@ -19,7 +19,6 @@ import {
 	getWebServerSettings,
 	updateWebServerSettings,
 } from "../services/web-server-settings";
-import { getHubSpotUTK, submitToHubSpot } from "../utils/tracking/hubspot";
 import { getPublicIpWithFallback } from "../wss/utils";
 import { ac, adminRole, memberRole, ownerRole } from "./access-control";
 import {
@@ -223,8 +222,6 @@ const { handler, api } = betterAuth({
 		"/verify-email",
 		"/sign-in/email",
 		"/sign-up/email",
-		"/forget-password",
-		"/reset-password",
 	],
 	secret: betterAuthSecret,
 	...(authBaseUrl ? { baseURL: authBaseUrl } : {}),
@@ -366,28 +363,6 @@ const { handler, api } = betterAuth({
 						await updateWebServerSettings({
 							serverIp: await getPublicIpWithFallback(),
 						});
-					}
-
-					try {
-						const hutk = getHubSpotUTK(
-							context?.request?.headers?.get("cookie") || undefined,
-						);
-						const userWithFields = user as typeof user & {
-							lastName?: string;
-						};
-						const hubspotSuccess = await submitToHubSpot(
-							{
-								email: user.email,
-								firstName: user.name || "",
-								lastName: userWithFields.lastName || "",
-							},
-							hutk ?? undefined,
-						);
-						if (!hubspotSuccess) {
-							console.error("Failed to submit to HubSpot");
-						}
-					} catch (error) {
-						console.error("Error submitting to HubSpot", error);
 					}
 
 					if (isSSORequest) {

@@ -97,8 +97,27 @@ Legacy script names still work: `bun run nearzero:setup`, `bun run nearzero:dev`
 ## Build
 
 ```bash
-bun run nearzero:build
+bun run platform:build
+bun run console:build
 ```
+
+### Community edition checks
+
+Before opening a PR against the public Community repo, run:
+
+```bash
+bun run verify:edition-split
+bun run typecheck
+bun run platform:build
+bun run console:build
+bun run test
+```
+
+The open-source tree must not import `@nearzero/cloud` or ship proprietary routers (Stripe, SSO admin, audit logs, etc.). See `scripts/verify-edition-split.ts`.
+
+### Auth (local dev)
+
+Community sign-in is email OTP only. After requesting a code, check the platform server output for the OTP (no Resend or password flow in OSS).
 
 ## Docker
 
@@ -119,14 +138,6 @@ To push the docker image
 
 ```bash
 bun run docker:push
-```
-
-## Password Reset
-
-In the case you lost your password, you can reset it using the following command
-
-```bash
-bun run reset-password
 ```
 
 If you want to test the webhooks on development mode using localtunnel, make sure to install [`localtunnel`](https://localtunnel.app/)

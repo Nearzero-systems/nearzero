@@ -1,4 +1,4 @@
-/** Framework preset + pricing stubs for the projects flow (console-local). */
+/** Framework preset stubs for the projects flow (console-local). */
 
 export type DeployType =
 	| "static"
@@ -8,69 +8,13 @@ export type DeployType =
 	| "service"
 	| "worker"
 	| "container";
-export type PricingPlanBillingKey = "free" | "pro" | "team";
 
 export type FrameworkPresetOption = { id: string; label: string };
-export type PricingPlanDefinition = {
-	billingKey: PricingPlanBillingKey;
-	name: string;
-	title: string;
-	priceLabel: string;
-	billingDetail: string;
-	priceHeadline: string;
-	priceSubline: string;
-	summary: string;
-	description: string;
-	features: string[];
-	marketingCtaLabel?: string;
-};
 
 export type DeploySpec = Record<string, unknown>;
 
 export const nearzeroSpecVersion = "v1" as const;
 export const nearzeroDefaultRegion = "global" as const;
-
-export const pricingPlans: PricingPlanDefinition[] = [
-	{
-		billingKey: "free",
-		name: "Free",
-		title: "Starter",
-		priceLabel: "$0",
-		billingDetail: "Free forever",
-		priceHeadline: "$0 / month",
-		priceSubline: "For personal projects",
-		summary: "Get started on Nearzero with core deployment features.",
-		description: "Get started on Nearzero",
-		features: ["Projects", "Deployments"],
-		marketingCtaLabel: "Get started",
-	},
-	{
-		billingKey: "pro",
-		name: "Pro",
-		title: "Growth",
-		priceLabel: "$20",
-		billingDetail: "Billed monthly",
-		priceHeadline: "$20 / month",
-		priceSubline: "For growing teams",
-		summary: "Scale deployments with more capacity and support.",
-		description: "For growing teams",
-		features: ["More projects", "Priority support"],
-		marketingCtaLabel: "Upgrade to Pro",
-	},
-	{
-		billingKey: "team",
-		name: "Team",
-		title: "Business",
-		priceLabel: "$49",
-		billingDetail: "Billed monthly",
-		priceHeadline: "$49 / month",
-		priceSubline: "For organizations",
-		summary: "Enterprise-ready controls for larger workspaces.",
-		description: "For organizations",
-		features: ["SSO", "Audit logs", "Dedicated support"],
-		marketingCtaLabel: "Contact sales",
-	},
-];
 
 const FRAMEWORK_PRESETS: FrameworkPresetOption[] = [
 	{ id: "astro", label: "Astro" },
@@ -105,10 +49,6 @@ const FRAMEWORK_PRESETS: FrameworkPresetOption[] = [
 	{ id: "dotnet", label: ".NET" },
 	{ id: "other", label: "Other" },
 ];
-
-export function getPricingPlanByBillingKey(key: string) {
-	return pricingPlans.find((p) => p.billingKey === key) ?? pricingPlans[0];
-}
 
 export function listFrameworkPresetOptions(): FrameworkPresetOption[] {
 	return FRAMEWORK_PRESETS;

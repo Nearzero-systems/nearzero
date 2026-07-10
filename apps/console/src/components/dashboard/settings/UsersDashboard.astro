@@ -15,37 +15,30 @@ const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
 const loadFailed = bootstrap.ok === false && bootstrap.reason === "load-failed";
 const forbidden = bootstrap.ok === false && bootstrap.reason === "forbidden";
 
-const FREE_ROLES = ["owner", "admin", "member"];
-
 let members: any[] = [];
 let invitations: any[] = [];
 let permissions: { member?: { create?: boolean; delete?: boolean } } | null = null;
 let currentUserId = "";
-let hasValidLicense = false;
 
 if (bootstrap.ok) {
 	const api = createServerTrpcClient(Astro.request) as any;
 	try {
-		const [allMembers, perms, currentUser, license, allInvitations] = await Promise.all([
+		const [allMembers, perms, currentUser, allInvitations] = await Promise.all([
 			api.user.all.query(),
 			api.user.getPermissions.query(),
 			api.user.get.query(),
-			api.licenseKey.haveValidLicenseKey.query().catch(() => false),
 			api.organization.allInvitations.query().catch(() => []),
 		]);
 		members = allMembers ?? [];
 		invitations = allInvitations ?? [];
 		permissions = perms;
 		currentUserId = currentUser?.user?.id ?? currentUser?.id ?? "";
-		hasValidLicense = license;
 	} catch {
 		members = [];
 	}
 }
 
 const currentUserRole = members.find((m) => m.user?.id === currentUserId)?.role;
-const membersWithCustomRoles = members.filter((m) => !FREE_ROLES.includes(m.role));
-const hasCustomRolesWithoutLicense = !hasValidLicense && membersWithCustomRoles.length > 0;
 const canInvite =
 	Boolean(permissions?.member?.create) ||
 	currentUserRole === "owner" ||
@@ -131,10 +124,8 @@ const pendingInvitationRows: PendingInvitationRow[] = invitations
 const totalRows = memberRows.length + pendingInvitationRows.length;
 
 const usersBootstrap = {
-	hasValidLicense,
 	members: memberRows,
 	pendingInvitations: pendingInvitationRows,
-	customRolesWithoutLicenseCount: membersWithCustomRoles.length,
 	canInvite,
 };
 ---
@@ -167,13 +158,6 @@ const usersBootstrap = {
 							</div>
 						) : (
 							<>
-								{
-									hasCustomRolesWithoutLicense ? (
-										<div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-											You have {membersWithCustomRoles.length === 1 ? "1 user" : `${membersWithCustomRoles.length} users`} assigned to custom roles. Custom roles will not work without a valid Enterprise license. Please activate your license or change these users to a free role (Admin or Member).
-										</div>
-									) : null
-								}
 								<div class={ST.filterBar}>
 									<input
 										id="nz-users-filter"

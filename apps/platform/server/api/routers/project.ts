@@ -27,8 +27,6 @@ import {
 	findPostgresById,
 	findProjectById,
 	findRedisById,
-	findUserById,
-	shouldEnforceCloudBilling,
 } from "@nearzero/server";
 import {
 	buildServiceFilter,
@@ -77,15 +75,6 @@ export const projectRouter = createTRPCRouter({
 		.mutation(async ({ ctx, input }) => {
 			try {
 				await checkProjectAccess(ctx, "create");
-
-				const admin = await findUserById(ctx.user.ownerId);
-
-				if (admin.serversQuantity === 0 && shouldEnforceCloudBilling()) {
-					throw new TRPCError({
-						code: "NOT_FOUND",
-						message: "No servers available, Please subscribe to a plan",
-					});
-				}
 
 				const project = await createProject(
 					input,

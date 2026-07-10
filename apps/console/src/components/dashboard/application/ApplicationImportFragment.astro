@@ -1,6 +1,5 @@
 ---
 import ApplicationImportPage from "@/components/dashboard/application/ApplicationImportPage.astro";
-import { IS_COMMUNITY } from "@/lib/branding";
 import { slugify } from "@/lib/slug";
 import { loadEnvironmentDnsContext } from "@/lib/environment-dns-context";
 import { createServerTrpcClient } from "@/lib/server-api";
@@ -66,7 +65,6 @@ const environmentName = environment?.name ?? "Environment";
 const projectSlug = slugify(projectName);
 const isProduction = environmentName.trim().toLowerCase() === "production";
 const canDeploy = permissions?.deployment?.create ?? false;
-const isCommunity = IS_COMMUNITY;
 
 const mapGithub = (rows: any[]) =>
 	rows.map((p) => ({
@@ -105,7 +103,7 @@ const mapGitea = (rows: any[]) =>
 			environmentName={environmentName}
 			projectSlug={projectSlug}
 			canDeploy={canDeploy}
-			isCommunity={isCommunity}
+			isCommunity={true}
 			servers={servers ?? []}
 			githubAccounts={mapGithub(githubProviders ?? [])}
 			gitlabAccounts={mapGitlab(gitlabProviders ?? [])}

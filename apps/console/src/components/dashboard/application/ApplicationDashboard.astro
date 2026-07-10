@@ -9,7 +9,6 @@ import {
 	serviceDeleteDisabledReason,
 } from "@/lib/service-status-ui";
 import { createServerTrpcClient } from "@/lib/server-api";
-import { IS_COMMUNITY } from "@/lib/branding";
 import SettingPanelHint from "@/components/dashboard/application/SettingPanelHint.astro";
 import DockerTerminalShell from "@/components/dashboard/terminal/DockerTerminalShell.astro";
 import { extractDeploymentCommitId } from "@/lib/deployment-logs";
@@ -96,8 +95,7 @@ const customStartCommand = appRow?.customStartCommand ?? "";
 const showUnauthorized =
 	appRow && !hasGitProviderAccess && sourceType !== "docker" && sourceType !== "drop";
 const showBuildSection = appRow && sourceType !== "docker";
-const isCommunity = IS_COMMUNITY;
-const showBuildLocationControl = showBuildSection && isCommunity;
+const showBuildLocationControl = showBuildSection;
 const hasApp = Boolean(applicationId && appRow);
 
 const buildTypes = [

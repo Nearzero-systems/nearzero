@@ -8,7 +8,6 @@ import { closeDialog, openDialog, showToast } from "@/scripts/ui";
 type Bootstrap = {
 	gitProviderBaseUrl: string;
 	gitProviderBaseUrlIsLocal: boolean;
-	isCommunity: boolean;
 	organizationId: string;
 	userId: string;
 	authId: string;
@@ -30,7 +29,6 @@ function parseBootstrap(): Bootstrap {
 			window.location.origin,
 		gitProviderBaseUrlIsLocal:
 			root?.dataset.gitProviderBaseUrlLocal === "1",
-		isCommunity: root?.dataset.isCommunity !== "0",
 		organizationId: root?.dataset.organizationId ?? "",
 		userId: root?.dataset.userId ?? "",
 		authId: root?.dataset.authId ?? "",
@@ -149,33 +147,11 @@ export function mountGitProvidersDashboard() {
 		}
 	});
 
-	const startManagedConnection = async (providerType: string) => {
-		try {
-			const result = await trpcMutate<{ url: string }>("gitProvider.startManagedConnection", {
-				providerType,
-				returnTo: bootstrap.returnTo || undefined,
-			});
-			if (bootstrap.returnTo) rememberReturnTo(bootstrap.returnTo);
-			window.location.href = result.url;
-		} catch (err) {
-			showToast(
-				err instanceof Error
-					? err.message
-					: "Nearzero-managed git provider is not configured.",
-				"error",
-			);
-		}
-	};
-
 	const openConnectDialog = (providerType: string) => {
-		if (!bootstrap.isCommunity) {
-			void startManagedConnection(providerType);
-			return;
-		}
 		if (providerType === "github") {
 			updateGithubManifest();
 			openDialog("nz-git-github-dialog");
-			if (bootstrap.isCommunity && bootstrap.gitProviderBaseUrlIsLocal) {
+			if (bootstrap.gitProviderBaseUrlIsLocal) {
 				showToast(
 					"GitHub needs a public HTTPS callback URL. Set PUBLIC_GIT_PROVIDER_BASE_URL before creating the app.",
 					"error",

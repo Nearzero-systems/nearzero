@@ -103,7 +103,7 @@ export default async function handler(
 				accessToken: result.access_token,
 				refreshToken: result.refresh_token,
 				expiresAt,
-				scopes: config.scope,
+				scopes: config.scope ?? undefined,
 			},
 			managedState.organizationId,
 			managedState.userId,

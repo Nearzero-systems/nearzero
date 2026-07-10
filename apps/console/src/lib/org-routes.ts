@@ -4,8 +4,6 @@ const RESERVED_SEGMENTS = new Set([
 	"login",
 	"invitation",
 	"dashboard",
-	"reset-password",
-	"send-reset-password",
 	"accept-invitation",
 	"_astro",
 ]);

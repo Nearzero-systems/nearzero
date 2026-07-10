@@ -6,6 +6,12 @@ import {
 
 const MANAGED_STATE_PREFIX = "nz_m_";
 
+export type ManagedGitProviderState = {
+	organizationId: string;
+	userId: string;
+	returnTo?: string | null;
+};
+
 function cloudOnly(feature: string): never {
 	throw new TRPCError({
 		code: "FORBIDDEN",
@@ -28,9 +34,11 @@ export function getManagedGitProviderCallbackBaseUrl(): string {
 }
 
 export function getManagedGithubConfig(): {
-	appId: string;
+	appId: number;
 	privateKey: string;
 	webhookSecret: string;
+	appSlug: string;
+	clientId: string;
 } {
 	return cloudOnly("Nearzero-managed GitHub");
 }
@@ -38,6 +46,8 @@ export function getManagedGithubConfig(): {
 export function getManagedGitlabConfig(): {
 	clientId: string;
 	clientSecret: string;
+	gitlabUrl: string;
+	gitlabInternalUrl?: string | null;
 } {
 	return cloudOnly("Nearzero-managed GitLab");
 }
@@ -45,6 +55,9 @@ export function getManagedGitlabConfig(): {
 export function getManagedGiteaConfig(): {
 	clientId: string;
 	clientSecret: string;
+	giteaUrl: string;
+	giteaInternalUrl?: string | null;
+	scope?: string | null;
 } {
 	return cloudOnly("Nearzero-managed Gitea");
 }
@@ -59,7 +72,7 @@ export function getManagedBitbucketConfig(): {
 export async function consumeManagedGitProviderState(
 	_token: string,
 	_expectedProviderType: string,
-): Promise<never> {
+): Promise<ManagedGitProviderState> {
 	return cloudOnly("Nearzero-managed git provider connections");
 }
 
@@ -68,6 +81,6 @@ export async function startManagedGitProviderConnection(_input: {
 	organizationId: string;
 	userId: string;
 	returnTo?: string | null;
-}): Promise<never> {
+}): Promise<{ url: string }> {
 	return cloudOnly("Nearzero-managed git provider connections");
 }

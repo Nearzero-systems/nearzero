@@ -1,6 +1,5 @@
 ---
 import EnvironmentServiceLauncher from "@/components/dashboard/environment/EnvironmentServiceLauncher.astro";
-import { IS_COMMUNITY } from "@/lib/branding";
 import {
 	formatServiceSource,
 	formatServiceStatusLabel,
@@ -38,7 +37,6 @@ let servers: Array<{
 	setupStatus?: string | null;
 	serverStatus?: string | null;
 }> = [];
-const isCommunity = IS_COMMUNITY;
 try {
 	environment = await api.environment.one.query({ environmentId });
 } catch {
@@ -224,7 +222,7 @@ const serviceRows: ServiceRow[] = environment ? [
 								projectName={projectName}
 								servers={servers ?? []}
 								services={serviceOptions}
-								isCommunity={isCommunity}
+								isCommunity={true}
 								dnsZoneId={dnsZoneId}
 								domainPrefix={domainPrefix}
 								environmentName={environment.name}

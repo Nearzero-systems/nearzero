@@ -20,7 +20,6 @@ import {
 	ensureWebMonitoring,
 	getReadyRuntimeServers,
 	getServerServiceInventory,
-	shouldEnforceCloudBilling,
 	removeCompose,
 	removeComposeDirectory,
 	removeDeploymentsByServerId,
@@ -54,7 +53,6 @@ import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { updateServersBasedOnQuantity } from "@nearzero/server/services/server-billing-sync";
 import {
 	createTRPCRouter,
 	protectedProcedure,
@@ -471,17 +469,6 @@ export const serverRouter = createTRPCRouter({
 		.input(apiCreateServer)
 		.mutation(async ({ ctx, input }) => {
 			try {
-				const user = await findUserById(ctx.user.ownerId);
-				const servers = await findServersByUserId(user.id);
-				if (
-					shouldEnforceCloudBilling() &&
-					servers.length >= user.serversQuantity
-				) {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: "You cannot create more servers",
-					});
-				}
 				const project = await createServer(
 					input,
 					ctx.session.activeOrganizationId,
@@ -906,12 +893,6 @@ export const serverRouter = createTRPCRouter({
 				});
 				await removeDeploymentsByServerId(currentServer);
 				await deleteServer(input.serverId);
-
-				if (process.env.JOBS_URL) {
-					const admin = await findUserById(ctx.user.ownerId);
-
-					await updateServersBasedOnQuantity(admin.id, admin.serversQuantity);
-				}
 
 				return currentServer;
 			} catch (error) {

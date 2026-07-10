@@ -30,9 +30,6 @@ export const ALL: APIRoute = async (context) => {
 	if (pathname.startsWith("/api/providers/")) {
 		return proxyBackendRequest(context.request, `${pathname}${url.search}`);
 	}
-	if (pathname.startsWith("/api/stripe/")) {
-		return proxyBackendRequest(context.request, `${pathname}${url.search}`);
-	}
 
 	return new Response(JSON.stringify({ error: "Not found" }), {
 		status: 404,

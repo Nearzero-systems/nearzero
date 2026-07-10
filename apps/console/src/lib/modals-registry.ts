@@ -63,7 +63,7 @@ export const NZ_MODAL_REGISTRY: ModalRegistryEntry[] = [
 	{ id: "nz-connect-service-dialog", area: "Infrastructure / Domains", purpose: "Connect service", variant: "form" },
 	{ id: "nz-bind-env-dialog", area: "Infrastructure / Domains", purpose: "Environment DNS binding", variant: "form" },
 
-	/* Settings — Git, SSO, cluster, servers, notifications, profile, audit, web server */
+	/* Settings — Git, cluster, servers, notifications, profile, web server */
 	{ id: "nz-git-github-dialog", area: "Settings / Git", purpose: "Connect GitHub", variant: "form" },
 	{ id: "nz-git-gitlab-dialog", area: "Settings / Git", purpose: "Connect GitLab", variant: "form" },
 	{ id: "nz-git-bitbucket-dialog", area: "Settings / Git", purpose: "Connect Bitbucket", variant: "form" },
@@ -73,11 +73,6 @@ export const NZ_MODAL_REGISTRY: ModalRegistryEntry[] = [
 	{ id: "nz-git-edit-bitbucket-dialog", area: "Settings / Git", purpose: "Edit Bitbucket", variant: "form" },
 	{ id: "nz-git-edit-gitea-dialog", area: "Settings / Git", purpose: "Edit Gitea", variant: "form" },
 	{ id: "nz-git-delete-dialog", area: "Settings / Git", purpose: "Disconnect provider", variant: "confirm" },
-	{ id: "nz-sso-details-dialog", area: "Settings / SSO", purpose: "SSO details", variant: "viewer" },
-	{ id: "nz-sso-origins-dialog", area: "Settings / SSO", purpose: "Allowed origins", variant: "form" },
-	{ id: "nz-sso-oidc-dialog", area: "Settings / SSO", purpose: "OIDC provider", variant: "form" },
-	{ id: "nz-sso-saml-dialog", area: "Settings / SSO", purpose: "SAML provider", variant: "form" },
-	{ id: "nz-sso-delete-dialog", area: "Settings / SSO", purpose: "Delete SSO provider", variant: "confirm" },
 	{ id: "nz-cluster-add-dialog", area: "Settings / Cluster", purpose: "Add cluster node", variant: "form" },
 	{ id: "nz-cluster-config-dialog", area: "Settings / Cluster", purpose: "Cluster config", variant: "viewer" },
 	{ id: "nz-cluster-delete-dialog", area: "Settings / Cluster", purpose: "Remove node", variant: "confirm" },

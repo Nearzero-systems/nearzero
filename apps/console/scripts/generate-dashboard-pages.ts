@@ -21,8 +21,6 @@ type DashboardPropBinding =
 	| { kind: "literal"; name: string; value: string };
 
 const staticRoutes: RouteDef[] = [
-	{ path: "reset-password", title: "Reset password", serverDashboard: "__public__" },
-	{ path: "send-reset-password", title: "Send reset password", serverDashboard: "__public__" },
 	{ path: "invitation", title: "Invitation", serverDashboard: "__public__" },
 	{ path: "swagger", title: "API docs", serverDashboard: "__public__" },
 	{ path: "dashboard/home", title: "Home", serverDashboard: "home/HomeDashboard" },
@@ -50,7 +48,6 @@ const staticRoutes: RouteDef[] = [
 		serverDashboard: "schedules/SchedulesDashboard",
 	},
 	{ path: "dashboard/analytics", title: "Analytics", serverDashboard: "analytics/AnalyticsDashboard" },
-	{ path: "dashboard/settings/audit-logs", title: "Audit logs", serverDashboard: "settings/AuditLogsDashboard" },
 	{ path: "dashboard/settings/certificates", title: "Certificates", serverDashboard: "settings/CertificatesDashboard" },
 	{ path: "dashboard/settings/git-providers", title: "Git providers", serverDashboard: "settings/GitProvidersDashboard" },
 	{
@@ -159,19 +156,9 @@ function renderServerDashboardPage(
 		? `\n  <${componentName} request={Astro.request} />\n`
 		: `\n  <${componentName} />\n`;
 	const isAboutNearzeroRoute = route.path === "dashboard/about-nearzero";
-	const brandingImport = isAboutNearzeroRoute
-		? `import { IS_COMMUNITY, pageTitle } from "@/lib/branding";`
-		: `import { pageTitle } from "@/lib/branding";`;
-	const orgRouteImport = isAboutNearzeroRoute
-		? `import { normalizeDashboardPath, scopeDashboardHref } from "@/lib/org-routes";\n`
-		: "";
-	const hostedRedirect = isAboutNearzeroRoute
-		? `const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
-if (!IS_COMMUNITY) {
-  return Astro.redirect(scopeDashboardHref("/dashboard/settings/users", orgSlug));
-}
-`
-		: "";
+	const brandingImport = `import { pageTitle } from "@/lib/branding";`;
+	const orgRouteImport = "";
+	const hostedRedirect = "";
 
 	return `---
 import Dashboard from "@/layouts/Dashboard.astro";
@@ -231,29 +218,7 @@ const routeParams = Object.fromEntries(
 }
 
 const AUTH_PUBLIC: Record<string, { component: string; frontmatter: string; render: string }> = {
-	"reset-password": {
-		component: "ResetPasswordGrid",
-		frontmatter: `import { getSession } from "@/lib/backendProxy";
-
-const token = Astro.url.searchParams.get("token") ?? "";
-const error = Astro.url.searchParams.get("error") ?? "";
-const session = await getSession(Astro.request);
-if (session?.user) {
-\treturn Astro.redirect("/dashboard/agent");
-}`,
-		render: `<ResetPasswordGrid token={token} error={error} />`,
-	},
-	"send-reset-password": {
-		component: "SendResetPasswordGrid",
-		frontmatter: `import { getSession } from "@/lib/backendProxy";
-
-const session = await getSession(Astro.request);
-if (session?.user) {
-\treturn Astro.redirect("/dashboard/agent");
-}`,
-		render: `<SendResetPasswordGrid />`,
-	},
-	invitation: {
+	"invitation": {
 		component: "InvitationGrid",
 		frontmatter: `import type { InvitationPreview } from "@/lib/invitation-types";
 import { createServerTrpcClient } from "@/lib/server-api";

@@ -16,8 +16,6 @@ export const PUBLIC_ROUTES = [
 	"/",
 	"/register",
 	"/login",
-	"/reset-password",
-	"/send-reset-password",
 	"/invitation",
 	"/api/",
 ];

@@ -9,7 +9,6 @@ import {
 	ensureWebMonitoring,
 	initCancelDeployments,
 	initCronJobs,
-	initEnterpriseBackupCronJobs,
 	initializeNetwork,
 	initSchedules,
 	initStaleDeploymentWatchdog,
@@ -198,7 +197,6 @@ void (async () => {
 			await sendNearzeroRestartNotifications();
 		}
 		await initStaleDeploymentWatchdog();
-		await initEnterpriseBackupCronJobs();
 
 		console.log("Starting Deployment Worker");
 		try {

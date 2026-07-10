@@ -153,7 +153,7 @@ expectOrder(
 
 expectIncludes(
 	"apps/console/src/components/dashboard/settings/GitProvidersDashboard.astro",
-	"IS_COMMUNITY ? (",
+	"data-is-community=\"1\"",
 	"Astro Community-only Git provider modals",
 );
 expectIncludes(

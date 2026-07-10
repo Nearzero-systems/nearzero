@@ -322,7 +322,6 @@ REDIS_URL=${local_redis_url}
 PORT=3000
 HOST=0.0.0.0
 NODE_ENV=production
-COMMUNITY=true
 
 BETTER_AUTH_URL=${BETTER_AUTH_URL:-$console_url}
 BETTER_AUTH_SECRET=${auth_secret}

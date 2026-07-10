@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { shouldEnforceCloudBilling } from "@nearzero/server/constants";
 import { db } from "@nearzero/server/db";
 import {
 	gitProvider as gitProviderTable,
@@ -1311,17 +1310,6 @@ export async function createServerForAgent(
 			message: "Organization not found",
 		});
 	}
-	const billingUser = await findUserById(organization.ownerId);
-	const servers = await findServersByUserId(billingUser.id);
-	if (
-		shouldEnforceCloudBilling() &&
-		servers.length >= billingUser.serversQuantity
-	) {
-		throw new TRPCError({
-			code: "BAD_REQUEST",
-			message: "You cannot create more servers",
-		});
-	}
 	const created = await createServer(
 		{
 			...parsed,
@@ -2478,13 +2466,6 @@ export async function createDevProjectForAgent(
 		throw new TRPCError({
 			code: "NOT_FOUND",
 			message: "Organization not found",
-		});
-	}
-	const billingUser = await findUserById(organization.ownerId);
-	if (billingUser.serversQuantity === 0 && shouldEnforceCloudBilling()) {
-		throw new TRPCError({
-			code: "NOT_FOUND",
-			message: "No servers available, Please subscribe to a plan",
 		});
 	}
 

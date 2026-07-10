@@ -1,31 +1,26 @@
 ---
 import MonitoringDashboard from "@/components/dashboard/monitoring/MonitoringDashboard.astro";
-import { IS_COMMUNITY } from "@/lib/branding";
 import { createServerTrpcClient } from "@/lib/server-api";
-
-const isCommunity = IS_COMMUNITY;
 
 let serverIp = "";
 const nearzeroVersion = "0.0.1";
 let releaseTag = "";
 
-if (isCommunity) {
-	const api = createServerTrpcClient(Astro.request) as {
-		settings: {
-			getWebServerSettings: { query: () => Promise<{ serverIp?: string | null }> };
-			getReleaseTag: { query: () => Promise<string> };
-		};
+const api = createServerTrpcClient(Astro.request) as {
+	settings: {
+		getWebServerSettings: { query: () => Promise<{ serverIp?: string | null }> };
+		getReleaseTag: { query: () => Promise<string> };
 	};
-	try {
-		const [webServerSettings, tag] = await Promise.all([
-			api.settings.getWebServerSettings.query(),
-			api.settings.getReleaseTag.query(),
-		]);
-		serverIp = webServerSettings?.serverIp?.trim() ?? "";
-		releaseTag = tag ?? "";
-	} catch {
-		/* partial ok */
-	}
+};
+try {
+	const [webServerSettings, tag] = await Promise.all([
+		api.settings.getWebServerSettings.query(),
+		api.settings.getReleaseTag.query(),
+	]);
+	serverIp = webServerSettings?.serverIp?.trim() ?? "";
+	releaseTag = tag ?? "";
+} catch {
+	/* partial ok */
 }
 
 const versionLabel =

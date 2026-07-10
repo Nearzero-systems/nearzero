@@ -1,8 +1,4 @@
 import type { NavContext } from "@/components/dashboard/navMenu";
-import {
-	EDITION_FEATURES,
-	isEditionFeatureEnabled,
-} from "@/lib/edition-policy";
 
 function admin(ctx: NavContext) {
 	return !!ctx.permissions?.organization?.update;
@@ -17,15 +13,6 @@ export const settingsDashboardGates = {
 	},
 	users(ctx: NavContext) {
 		return !!ctx.permissions?.member?.read;
-	},
-	sso(ctx: NavContext) {
-		return admin(ctx) && isEditionFeatureEnabled(EDITION_FEATURES.sso);
-	},
-	auditLogs(ctx: NavContext) {
-		return (
-			!!ctx.permissions?.auditLog?.read &&
-			isEditionFeatureEnabled(EDITION_FEATURES.auditLogs)
-		);
 	},
 	sshKeys(ctx: NavContext) {
 		return !!ctx.permissions?.sshKeys?.read;

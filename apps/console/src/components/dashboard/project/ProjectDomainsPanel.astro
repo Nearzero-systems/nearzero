@@ -1,6 +1,4 @@
 ---
-import { IS_COMMUNITY } from "@/lib/branding";
-
 interface DnsZoneOption {
 	dnsZoneId: string;
 	name: string;
@@ -100,17 +98,13 @@ const {
 					{" "}
 					— manage hostnames, DNS zones, and certificates centrally
 				</li>
-				{
-					IS_COMMUNITY ? (
-						<li>
-							<a href="/dashboard/about-nearzero" class="underline underline-offset-2 hover:text-[var(--nz-text)]">
-								About Nearzero
-							</a>
-							{" "}
-							— platform routing and managed DNS guidance
-						</li>
-					) : null
-				}
+				<li>
+					<a href="/dashboard/about-nearzero" class="underline underline-offset-2 hover:text-[var(--nz-text)]">
+						About Nearzero
+					</a>
+					{" "}
+					— platform routing and managed DNS guidance
+				</li>
 				<li>
 					Optional: set <code>NEARZERO_PLATFORM_DOMAIN</code> for wildcard platform URLs
 				</li>

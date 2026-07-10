@@ -3,7 +3,6 @@ import ProjectWorkspaceShell from "@/components/dashboard/project/ProjectWorkspa
 import ProjectOverviewPanel from "@/components/dashboard/project/ProjectOverviewPanel.astro";
 import ProjectServicesPanel from "@/components/dashboard/project/ProjectServicesPanel.astro";
 import { loadEnvironmentDnsContext } from "@/lib/environment-dns-context";
-import { IS_COMMUNITY } from "@/lib/branding";
 import { normalizeProjectWorkspaceSection } from "@/lib/project-workspace-nav";
 import { createServerTrpcClient } from "@/lib/server-api";
 import type {
@@ -33,7 +32,6 @@ let servers: Array<{
 	setupStatus?: string | null;
 	serverStatus?: string | null;
 }> = [];
-const isCommunity = IS_COMMUNITY;
 
 try {
 	environment = await api.environment.one.query({ environmentId });
@@ -297,7 +295,7 @@ const serviceOptions = environment
 						activeServices={activeServices}
 						servers={servers ?? []}
 						serviceOptions={serviceOptions}
-						isCommunity={isCommunity}
+						isCommunity={true}
 						dnsZoneId={environment.dnsZoneId ?? null}
 						domainPrefix={domainPrefix}
 						isProduction={isProduction}

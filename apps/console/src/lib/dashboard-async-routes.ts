@@ -15,7 +15,6 @@ export type DashboardAsyncRouteId =
 	| "dashboard:tasks"
 	| "dashboard:traefik"
 	| "dashboard:settings-agent"
-	| "dashboard:settings-audit-logs"
 	| "dashboard:settings-git-providers"
 	| "dashboard:settings-notifications"
 	| "dashboard:settings-profile"
@@ -52,7 +51,6 @@ const SIMPLE_ROUTES: Record<
 	"dashboard:tasks": "/dashboard/tasks",
 	"dashboard:traefik": "/dashboard/traefik",
 	"dashboard:settings-agent": "/dashboard/settings/agent",
-	"dashboard:settings-audit-logs": "/dashboard/settings/audit-logs",
 	"dashboard:settings-git-providers": "/dashboard/settings/git-providers",
 	"dashboard:settings-notifications": "/dashboard/settings/notifications",
 	"dashboard:settings-profile": "/dashboard/settings/profile",

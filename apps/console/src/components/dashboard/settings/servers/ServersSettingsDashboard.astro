@@ -7,7 +7,6 @@ import ServersSshKeysPanel from "@/components/dashboard/settings/servers/Servers
 import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
 import NzModal from "@/components/ui/NzModal.astro";
 import { ST } from "@/lib/settings-hub-ui";
-import { IS_COMMUNITY } from "@/lib/branding";
 import {
 	formatRuntimeServerReadiness,
 	isReadyRuntimeServer,
@@ -48,7 +47,7 @@ type SshKey = {
 
 let servers: ServerRow[] = [];
 let sshKeys: SshKey[] = [];
-let canCreateMoreServers = true;
+const canCreateMoreServers = true;
 let permissions: {
 	server?: { create?: boolean; delete?: boolean };
 	sshKeys?: { create?: boolean; delete?: boolean; read?: boolean };
@@ -63,10 +62,9 @@ const tabParam = url.searchParams.get("tab") ?? "servers";
 if (bootstrap.ok) {
 	const api = createServerTrpcClient(Astro.request) as any;
 	try {
-		[servers, sshKeys, canCreateMoreServers, permissions] = await Promise.all([
+		[servers, sshKeys, permissions] = await Promise.all([
 			api.server.all.query(),
 			api.sshKey.all.query(),
-			api.stripe.canCreateMoreServers.query(),
 			api.user.getPermissions.query(),
 		]);
 	} catch {
@@ -85,7 +83,6 @@ const tabs = [
 ];
 
 const activeTab = tabs.find((tab) => tab.id === tabParam)?.id ?? "servers";
-const isCommunity = IS_COMMUNITY;
 
 const statusOptions = [
 	"all",
@@ -146,7 +143,7 @@ function setupBadgeClass(server: ServerRow) {
 			transition:animate="none"
 			data-can-create-more={canCreateMoreServers ? "1" : "0"}
 			data-show-welcome={showWelcome ? "1" : "0"}
-			data-community={isCommunity ? "1" : "0"}
+			data-community="1"
 		>
 			<div class="nz-deployments-surface text-xs">
 				<div class="nz-deployments-toolbar">
@@ -271,9 +268,7 @@ function setupBadgeClass(server: ServerRow) {
 								</p>
 								<p class={ST.emptyText}>
 									{servers.length === 0
-										? isCommunity
-											? "Create a server to deploy applications remotely."
-											: "Nearzero requires a ready server before services, domains, tasks, and deployments can run."
+										? "Create a server to deploy applications remotely."
 										: "Try adjusting your search or status filter."}
 								</p>
 							</div>

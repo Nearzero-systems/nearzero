@@ -1,4 +1,3 @@
-import { bootstrapCloudEdition } from "@nearzero/cloud";
 import { bootstrapCommunityEdition } from "@nearzero/edition-community";
 import {
 	ApplicationExecutionPlacementError,
@@ -32,37 +31,6 @@ const application = (
 });
 
 describe("resolveApplicationExecutionPlacement", () => {
-	it("forces Cloud builds and deploys onto the selected application server", () => {
-		bootstrapCloudEdition();
-
-		expect(
-			assertApplicationExecutionPlacement(
-				application({
-					buildExecutionTarget: "nearzero_host",
-					serverId: "server-1",
-				}),
-			),
-		).toEqual({
-			mode: "cloud",
-			buildServerId: "server-1",
-			deployServerId: "server-1",
-			buildLocation: "remote",
-			requiresRegistryTransfer: false,
-		});
-	});
-
-	it("rejects Cloud deployments without an application server", () => {
-		bootstrapCloudEdition();
-
-		expect(() =>
-			assertApplicationExecutionPlacement(application()),
-		).toThrowError(
-			expect.objectContaining<ApplicationExecutionPlacementError>({
-				code: "server_required",
-			}),
-		);
-	});
-
 	it("runs Community applications locally when no server is selected", () => {
 		expect(
 			assertApplicationExecutionPlacement(application()),

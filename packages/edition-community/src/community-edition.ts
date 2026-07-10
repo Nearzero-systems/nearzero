@@ -138,9 +138,5 @@ export function bootstrapCommunityEdition(): void {
 }
 
 export function assertCommunityOnlyMode(): void {
-	if (process.env.COMMUNITY === "false") {
-		throw new Error(
-			`${HOSTED_EDITION_LABEL} mode is not supported in the Community edition. Use the private cloud package.`,
-		);
-	}
+	return;
 }

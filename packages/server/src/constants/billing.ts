@@ -1,4 +1,4 @@
-import { getEdition, tryGetEdition } from "@nearzero/edition-contract";
+import { tryGetEdition } from "@nearzero/edition-contract";
 
 /** Platform-wide default apex for Mode B auto URLs (e.g. from NEARZERO_PLATFORM_DOMAIN). */
 export function getPlatformDefaultDomain(): string | null {
@@ -9,22 +9,14 @@ export function getPlatformDefaultDomain(): string | null {
 }
 
 export function isStripeConfigured() {
-	return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+	return false;
 }
 
-/** Stripe/plan limits only apply to hosted Cloud mode in production unless bypassed. */
+/** Cloud billing is not enforced in the Community edition. */
 export function shouldEnforceCloudBilling() {
 	const edition = tryGetEdition();
 	if (edition) {
 		return edition.shouldEnforceCloudBilling();
 	}
-	if (process.env.COMMUNITY !== "false") return false;
-	if (!isStripeConfigured()) return false;
-	if (
-		process.env.NEARZERO_DEV_BYPASS_BILLING === "true" ||
-		process.env.NEARZERO_DEV_BYPASS_BILLING === "1"
-	) {
-		return false;
-	}
-	return process.env.NODE_ENV === "production";
+	return false;
 }

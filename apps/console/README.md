@@ -17,6 +17,8 @@ bun run console:dev    # :4321 UI
 
 Open http://localhost:4321 — auth and tRPC go through the Astro BFF to the platform server.
 
+Sign-in uses **email OTP** (codes are printed to the platform server logs in Community/self-hosted mode).
+
 ## Environment
 
 Copy `.env.example` from `apps/platform` to `apps/platform/.env`.
@@ -25,14 +27,22 @@ Set `BACKEND_URL=http://127.0.0.1:3000` in `apps/console/.env` (default).
 
 Optional client env (see `src/lib/client-env.ts`):
 
-- `PUBLIC_METRICS_URL` / `PUBLIC_METRICS_TOKEN` — monitoring charts
-- `PUBLIC_STRIPE_PUBLISHABLE_KEY` — billing checkout
+- `PUBLIC_METRICS_URL` / `PUBLIC_METRICS_TOKEN` — monitoring charts on About Nearzero
+
+For Git provider OAuth, set `PUBLIC_GIT_PROVIDER_BASE_URL` to your console’s public HTTPS URL (see `apps/console/.env.example`).
 
 ## Build
 
 ```bash
 bun run platform:build
 bun run console:build
+```
+
+Verify the Community edition boundary before publishing:
+
+```bash
+bun run verify:edition-split
+bun run typecheck
 ```
 
 ## Regenerate dashboard pages

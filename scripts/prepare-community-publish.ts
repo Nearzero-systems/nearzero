@@ -11,8 +11,17 @@ async function main() {
 	console.log("nearzero: verifying Community edition boundaries...");
 	await $`bun run verify:edition-split`.cwd(root);
 
-	console.log("nearzero: running platform tests...");
-	await $`bun run test`.cwd(root);
+	console.log("nearzero: typecheck...");
+	await $`bun run typecheck`.cwd(root);
+
+	console.log("nearzero: building platform + console...");
+	await $`bun run platform:build`.cwd(root);
+	await $`bun run console:build`.cwd(root);
+
+	console.log("nearzero: running unit tests (excluding deploy integration)...");
+	await $`bun run --filter @nearzero/platform test -- --exclude **/deploy/application.real.test.ts`.cwd(
+		root,
+	);
 
 	console.log("nearzero: committing Community edition changes...");
 	await $`git add -A`.cwd(root);

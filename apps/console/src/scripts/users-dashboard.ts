@@ -26,7 +26,6 @@ type MemberRow = {
 };
 
 type Bootstrap = {
-	hasValidLicense: boolean;
 	members: MemberRow[];
 	pendingInvitations: Array<{
 		invitationId: string;
@@ -38,7 +37,6 @@ type Bootstrap = {
 		canCancel: boolean;
 		hasAnyAction: boolean;
 	}>;
-	customRolesWithoutLicenseCount: number;
 	canInvite: boolean;
 };
 
@@ -250,18 +248,6 @@ export function mountUsersDashboard() {
 			<option value="admin">Admin</option>
 			<option value="member">Member</option>
 		`;
-		try {
-			const customRoles =
-				await trpcQuery<Array<{ role: string }>>("customRole.all");
-			for (const r of customRoles ?? []) {
-				const opt = document.createElement("option");
-				opt.value = r.role;
-				opt.textContent = r.role;
-				roleSelect.appendChild(opt);
-			}
-		} catch {
-			// free roles only
-		}
 		roleSelect.value = currentRole;
 		roleDlg.showModal();
 	};
@@ -273,7 +259,6 @@ export function mountUsersDashboard() {
 		projects: any[],
 		gitProviders: any[],
 		servers: any[],
-		haveValidLicense: boolean,
 		isCustomRole: boolean,
 	) => {
 		if (!(permBody instanceof HTMLElement)) return;
@@ -415,27 +400,23 @@ export function mountUsersDashboard() {
 		}
 		html += "</div>";
 
-		if (haveValidLicense) {
-			html += `<div class="md:col-span-2"><div class="mb-4"><span class="text-base font-medium">Git Providers</span></div>`;
-			for (const gp of gitProviders) {
-				html += `<label class="flex flex-row items-center space-x-3 rounded-lg border p-3 mb-2">
-					<input type="checkbox" class="h-4 w-4 rounded border" data-perm-git="${gp.gitProviderId}" ${state.accessedGitProviders.includes(gp.gitProviderId) ? "checked" : ""} />
-					<span class="text-sm">${gp.name}</span>
-					<span class="text-xs text-muted-foreground capitalize">(${gp.providerType})</span>
-				</label>`;
-			}
-			html += `</div><div class="md:col-span-2"><div class="mb-4"><span class="text-base font-medium">Servers</span></div>`;
-			for (const s of servers) {
-				html += `<label class="flex flex-row items-center space-x-3 rounded-lg border p-3 mb-2">
-					<input type="checkbox" class="h-4 w-4 rounded border" data-perm-server="${s.serverId}" ${state.accessedServers.includes(s.serverId) ? "checked" : ""} />
-					<span class="text-sm">${s.name}</span>
-					<span class="text-xs text-muted-foreground">(${s.ipAddress})</span>
-				</label>`;
-			}
-			html += "</div>";
-		} else {
-			html += `<div class="md:col-span-2 rounded-lg border p-4 text-sm text-muted-foreground">Git Provider and Server assignment require an Enterprise license.</div>`;
+		html += `<div class="md:col-span-2"><div class="mb-4"><span class="text-base font-medium">Git Providers</span></div>`;
+		for (const gp of gitProviders) {
+			html += `<label class="flex flex-row items-center space-x-3 rounded-lg border p-3 mb-2">
+				<input type="checkbox" class="h-4 w-4 rounded border" data-perm-git="${gp.gitProviderId}" ${state.accessedGitProviders.includes(gp.gitProviderId) ? "checked" : ""} />
+				<span class="text-sm">${gp.name}</span>
+				<span class="text-xs text-muted-foreground capitalize">(${gp.providerType})</span>
+			</label>`;
 		}
+		html += `</div><div class="md:col-span-2"><div class="mb-4"><span class="text-base font-medium">Servers</span></div>`;
+		for (const s of servers) {
+			html += `<label class="flex flex-row items-center space-x-3 rounded-lg border p-3 mb-2">
+				<input type="checkbox" class="h-4 w-4 rounded border" data-perm-server="${s.serverId}" ${state.accessedServers.includes(s.serverId) ? "checked" : ""} />
+				<span class="text-sm">${s.name}</span>
+				<span class="text-xs text-muted-foreground">(${s.ipAddress})</span>
+			</label>`;
+		}
+		html += "</div>";
 		html += "</div>";
 		permBody.innerHTML = html;
 
@@ -581,11 +562,10 @@ export function mountUsersDashboard() {
 		permBody.innerHTML = `<div class="flex items-center justify-center py-8 text-sm text-muted-foreground">Loading...</div>`;
 		permDlg.showModal();
 		try {
-			const [data, projects, haveValidLicense, gitProviders, servers] =
+			const [data, projects, gitProviders, servers] =
 				await Promise.all([
 					trpcQuery("user.one", { userId }),
 					trpcQuery("project.allForPermissions"),
-					trpcQuery<boolean>("licenseKey.haveValidLicenseKey"),
 					trpcQuery("gitProvider.allForPermissions").catch(() => []),
 					trpcQuery("server.allForPermissions").catch(() => []),
 				]);
@@ -595,7 +575,6 @@ export function mountUsersDashboard() {
 				projects as any[],
 				gitProviders as any[],
 				servers as any[],
-				!!haveValidLicense,
 				isCustomRole,
 			);
 		} catch {

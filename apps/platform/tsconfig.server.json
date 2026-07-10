@@ -23,7 +23,6 @@
 		"migration.ts",
 		"setup.ts",
 		"wait-for-postgres.ts",
-		"reset-password.ts",
 		"reset-2fa.ts",
 		"scripts/**/*"
 	]

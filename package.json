@@ -6,7 +6,6 @@
     "apps/platform",
     "apps/schedules",
     "packages/agent",
-    "packages/cloud",
     "packages/edition-community",
     "packages/edition-contract",
     "packages/trpc-openapi",

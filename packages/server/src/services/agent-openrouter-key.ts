@@ -91,7 +91,7 @@ export type AgentProviderSource = "env" | "org" | "none";
 export async function getAgentProviderStatus(organizationId: string) {
 	const edition = tryGetEdition();
 	const allowsEnvProviderKey =
-		edition?.allowsEnvAgentProviderKey() ?? process.env.COMMUNITY === "false";
+		edition?.allowsEnvAgentProviderKey() ?? false;
 
 	if (allowsEnvProviderKey && process.env.OPENROUTER_API_KEY?.trim()) {
 		return { configured: true, source: "env" as const };

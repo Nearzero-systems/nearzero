@@ -45,13 +45,6 @@ export function buildSettingsSections(ctx: NavContext): SettingsSection[] {
 					icon: "users",
 					isEnabled: settingsDashboardGates.users,
 				},
-				{
-					key: "settings-audit-logs",
-					label: "Audit log",
-					href: dash("/dashboard/settings/audit-logs"),
-					icon: "audit",
-					isEnabled: settingsDashboardGates.auditLogs,
-				},
 			],
 		},
 		{
@@ -136,7 +129,6 @@ const PATH_TO_SETTINGS_KEY: Array<{ prefix: string; key: string }> = [
 	{ prefix: "/dashboard/monitoring", key: "settings-about-nearzero" },
 	{ prefix: "/dashboard/traefik", key: "settings-traefik" },
 	{ prefix: "/dashboard/settings/notifications", key: "settings-notifications" },
-	{ prefix: "/dashboard/settings/audit-logs", key: "settings-audit-logs" },
 	{ prefix: "/dashboard/settings/agent", key: "settings-agent" },
 ];
 
@@ -183,7 +175,6 @@ export function getSettingsPageTitle(key: string): string {
 		"settings-notifications": "Notifications",
 		"settings-teams": "Teams",
 		"settings-users": "Teams",
-		"settings-audit-logs": "Audit log",
 		"settings-agent": "Agent policies",
 	};
 	return titles[key] ?? "Settings";

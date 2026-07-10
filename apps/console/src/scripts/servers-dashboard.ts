@@ -318,11 +318,7 @@ async function openEditServer(serverId: string) {
 }
 
 async function refreshCanCreate() {
-	try {
-		canCreateMore = !!(await trpcQuery<boolean>("stripe.canCreateMoreServers"));
-	} catch {
-		canCreateMore = true;
-	}
+	canCreateMore = true;
 }
 
 function closeServerMenu(serverId: string) {

@@ -9,8 +9,6 @@ const RESERVED_SLUGS = new Set([
 	"login",
 	"invitation",
 	"dashboard",
-	"reset-password",
-	"send-reset-password",
 	"accept-invitation",
 	"nearzero",
 ]);

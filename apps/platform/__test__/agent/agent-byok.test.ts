@@ -1,5 +1,4 @@
 import path from "node:path";
-import { bootstrapCloudEdition } from "@nearzero/cloud";
 import { bootstrapCommunityEdition } from "@nearzero/edition-community";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -45,13 +44,6 @@ describe("agent OpenRouter key service", () => {
 		process.env.OPENROUTER_API_KEY = "sk-or-env-override";
 		const status = await getAgentProviderStatus("org_test");
 		expect(status).toEqual({ configured: false, source: "none" });
-	});
-
-	it("reports env override as configured in Cloud mode", async () => {
-		bootstrapCloudEdition();
-		process.env.OPENROUTER_API_KEY = "sk-or-env-override";
-		const status = await getAgentProviderStatus("org_test");
-		expect(status).toEqual({ configured: true, source: "env" });
 	});
 
 	it("resolveProvider requires org key in Community mode", async () => {
