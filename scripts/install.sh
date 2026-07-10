@@ -502,7 +502,7 @@ start_stack() {
 	fi
 	log "Pulling Nearzero images..."
 	"${SUDO[@]}" docker compose "${compose_args[@]}" --env-file "$INSTALL_DIR/.env" pull
-	"${SUDO[@]}" docker compose "${compose_args[@]}" --env-file "$INSTALL_DIR/.env" up -d
+	"${SUDO[@]}" docker compose "${compose_args[@]}" --env-file "$INSTALL_DIR/.env" up -d --force-recreate
 }
 
 main() {
