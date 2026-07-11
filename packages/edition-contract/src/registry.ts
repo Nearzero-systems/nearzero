@@ -1,12 +1,20 @@
 import type { EditionCapabilities } from "./types";
 
-let activeEdition: EditionCapabilities | null = null;
+const EDITION_REGISTRY_KEY = "__nearzeroEditionCapabilities_v1__" as const;
+type EditionGlobal = typeof globalThis & {
+	[EDITION_REGISTRY_KEY]?: EditionCapabilities;
+};
+
+function editionGlobal() {
+	return globalThis as EditionGlobal;
+}
 
 export function setEdition(edition: EditionCapabilities): void {
-	activeEdition = edition;
+	editionGlobal()[EDITION_REGISTRY_KEY] = edition;
 }
 
 export function getEdition(): EditionCapabilities {
+	const activeEdition = editionGlobal()[EDITION_REGISTRY_KEY];
 	if (!activeEdition) {
 		throw new Error(
 			"Edition capabilities are not initialized. Call bootstrapEdition() during platform startup.",
@@ -16,5 +24,5 @@ export function getEdition(): EditionCapabilities {
 }
 
 export function tryGetEdition(): EditionCapabilities | null {
-	return activeEdition;
+	return editionGlobal()[EDITION_REGISTRY_KEY] ?? null;
 }
