@@ -7,7 +7,9 @@ import {
 	createDefaultMiddlewares,
 	createDefaultServerTraefikConfig,
 	createDefaultTraefikConfig,
+	ensureTraefikSetup,
 	ensureWebMonitoring,
+	getWebServerSettings,
 	initCancelDeployments,
 	initCronJobs,
 	initializeNetwork,
@@ -17,6 +19,8 @@ import {
 	initVolumeBackupsCronJobs,
 	sendNearzeroRestartNotifications,
 	setupDirectories,
+	updateLetsEncryptEmail,
+	updateServerTraefik,
 } from "@nearzero/server";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import packageInfo from "../package.json";
@@ -191,6 +195,25 @@ void (async () => {
 			await initializeSwarm();
 			await initializeNetwork();
 			await connectCurrentContainerToNetwork();
+			try {
+				const webServerSettings = await getWebServerSettings();
+				if (webServerSettings?.host) {
+					updateServerTraefik(webServerSettings, webServerSettings.host);
+					if (webServerSettings.letsEncryptEmail) {
+						updateLetsEncryptEmail(webServerSettings.letsEncryptEmail);
+					}
+					await ensureTraefikSetup();
+					console.log("Public HTTPS proxy ready");
+				}
+			} catch (traefikError) {
+				const message =
+					traefikError instanceof Error
+						? traefikError.message
+						: String(traefikError ?? "");
+				console.warn(
+					`Public HTTPS proxy auto-repair failed; the platform remains available on port 4321.${message ? ` ${message}` : ""}`,
+				);
+			}
 		}
 
 		if (isProduction) {
