@@ -32,6 +32,25 @@ export interface TraefikOptions {
 	}[];
 }
 
+const resolveLocalNearzeroVolume = async (
+	docker: Awaited<ReturnType<typeof getRemoteDocker>>,
+	serverId?: string,
+) => {
+	if (serverId) return null;
+	const containerId = process.env.HOSTNAME?.trim();
+	if (!containerId) return null;
+
+	try {
+		const currentContainer = await docker.getContainer(containerId).inspect();
+		const mount = currentContainer.Mounts?.find(
+			(item) => item.Name && item.Destination === "/etc/nearzero",
+		);
+		return mount?.Name || mount?.Source || null;
+	} catch {
+		return null;
+	}
+};
+
 export const initializeStandaloneTraefik = async ({
 	env,
 	serverId,
@@ -40,6 +59,8 @@ export const initializeStandaloneTraefik = async ({
 	const { MAIN_TRAEFIK_PATH, DYNAMIC_TRAEFIK_PATH } = paths(!!serverId);
 	const imageName = `traefik:v${TRAEFIK_VERSION}`;
 	const containerName = "nearzero-traefik";
+	const docker = await getRemoteDocker(serverId);
+	const nearzeroVolume = await resolveLocalNearzeroVolume(docker, serverId);
 
 	const exposedPorts: Record<string, {}> = {
 		[`${TRAEFIK_PORT}/tcp`]: {},
@@ -73,6 +94,9 @@ export const initializeStandaloneTraefik = async ({
 	const settings: ContainerCreateOptions = {
 		name: containerName,
 		Image: imageName,
+		...(nearzeroVolume && {
+			Cmd: ["--configFile=/etc/nearzero/traefik/traefik.yml"],
+		}),
 		NetworkingConfig: {
 			EndpointsConfig: {
 				"nearzero-network": {},
@@ -84,16 +108,28 @@ export const initializeStandaloneTraefik = async ({
 				Name: "always",
 			},
 			Binds: [
-				`${MAIN_TRAEFIK_PATH}/traefik.yml:/etc/traefik/traefik.yml`,
-				`${DYNAMIC_TRAEFIK_PATH}:/etc/nearzero/traefik/dynamic`,
+				...(nearzeroVolume
+					? []
+					: [
+							`${MAIN_TRAEFIK_PATH}/traefik.yml:/etc/traefik/traefik.yml`,
+							`${DYNAMIC_TRAEFIK_PATH}:/etc/nearzero/traefik/dynamic`,
+						]),
 				"/var/run/docker.sock:/var/run/docker.sock",
 			],
+			...(nearzeroVolume && {
+				Mounts: [
+					{
+						Type: "volume",
+						Source: nearzeroVolume,
+						Target: "/etc/nearzero",
+					},
+				],
+			}),
 			PortBindings: portBindings,
 		},
 		Env: env,
 	};
 
-	const docker = await getRemoteDocker(serverId);
 	try {
 		await docker.pull(imageName);
 		await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -111,6 +147,14 @@ export const initializeStandaloneTraefik = async ({
 		await docker.createContainer(settings);
 		const newContainer = docker.getContainer(containerName);
 		await newContainer.start();
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+		const details = await newContainer.inspect();
+		if (!details.State.Running) {
+			throw new Error(
+				details.State.Error ||
+					`Traefik exited with code ${details.State.ExitCode}`,
+			);
+		}
 		console.log("Traefik Started ✅");
 	} catch (error) {
 		console.error("Could not start Traefik", error);
@@ -126,6 +170,8 @@ export const initializeTraefikService = async ({
 	const { MAIN_TRAEFIK_PATH, DYNAMIC_TRAEFIK_PATH } = paths(!!serverId);
 	const imageName = `traefik:v${TRAEFIK_VERSION}`;
 	const appName = "nearzero-traefik";
+	const docker = await getRemoteDocker(serverId);
+	const nearzeroVolume = await resolveLocalNearzeroVolume(docker, serverId);
 
 	const settings: CreateServiceOptions = {
 		Name: appName,
@@ -133,17 +179,30 @@ export const initializeTraefikService = async ({
 			ContainerSpec: {
 				Image: imageName,
 				Env: env,
+				...(nearzeroVolume && {
+					Args: ["--configFile=/etc/nearzero/traefik/traefik.yml"],
+				}),
 				Mounts: [
-					{
-						Type: "bind",
-						Source: `${MAIN_TRAEFIK_PATH}/traefik.yml`,
-						Target: "/etc/traefik/traefik.yml",
-					},
-					{
-						Type: "bind",
-						Source: DYNAMIC_TRAEFIK_PATH,
-						Target: "/etc/nearzero/traefik/dynamic",
-					},
+					...(nearzeroVolume
+						? [
+								{
+									Type: "volume" as const,
+									Source: nearzeroVolume,
+									Target: "/etc/nearzero",
+								},
+							]
+						: [
+								{
+									Type: "bind" as const,
+									Source: `${MAIN_TRAEFIK_PATH}/traefik.yml`,
+									Target: "/etc/traefik/traefik.yml",
+								},
+								{
+									Type: "bind" as const,
+									Source: DYNAMIC_TRAEFIK_PATH,
+									Target: "/etc/nearzero/traefik/dynamic",
+								},
+							]),
 					{
 						Type: "bind",
 						Source: "/var/run/docker.sock",
@@ -191,7 +250,6 @@ export const initializeTraefikService = async ({
 			],
 		},
 	};
-	const docker = await getRemoteDocker(serverId);
 	try {
 		const service = docker.getService(appName);
 		const inspect = await service.inspect();

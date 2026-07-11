@@ -394,8 +394,14 @@ export const writeTraefikSetup = async (input: TraefikOptions) => {
 
 export const ensureTraefikSetup = async () => {
 	const resourceType = await getDockerResourceType("nearzero-traefik");
-	if (resourceType !== "unknown") return;
+	if (resourceType === "service") {
+		await initializeTraefikService({});
+		return;
+	}
 
+	// Recreate an existing standalone container as well. A stopped container is
+	// still reported as "standalone", and merely checking that it exists can
+	// leave ports 80/443 without a listener.
 	await initializeStandaloneTraefik();
 };
 
