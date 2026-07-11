@@ -9,5 +9,5 @@ if (!session?.user) {
 }
 
 const orgSlug = normalizeDashboardPath(Astro.url.pathname).orgSlug;
-return Astro.redirect(getDefaultSettingsHref(orgSlug));
+return Astro.redirect(`${getDefaultSettingsHref(orgSlug)}${Astro.url.search}`);
 ---

@@ -1,6 +1,10 @@
 ---
 import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
 import NzModal from "@/components/ui/NzModal.astro";
+import {
+	normalizeDashboardPath,
+	scopeDashboardHref,
+} from "@/lib/org-routes";
 
 interface Props {
 	organizationId: string;
@@ -20,6 +24,10 @@ const {
 
 const primaryBtnClass =
 	"nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2";
+const domainSetupHref = scopeDashboardHref(
+	"/dashboard/about-nearzero?setup=domain",
+	normalizeDashboardPath(Astro.url.pathname).orgSlug,
+);
 ---
 
 <NzModal
@@ -40,7 +48,7 @@ const primaryBtnClass =
 					Callbacks and webhooks use <code>{gitProviderBaseUrl}</code>. GitHub requires a publicly
 					reachable HTTPS domain. {
 						gitProviderBaseUrlIsLocal ? (
-							<a class="nz-git-modal__link" href="/dashboard/settings/server?setup=domain">
+							<a class="nz-git-modal__link" href={domainSetupHref}>
 								Configure a domain first.
 							</a>
 						) : null

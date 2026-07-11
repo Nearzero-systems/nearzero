@@ -1,14 +1,26 @@
 ---
 import MonitoringDashboard from "@/components/dashboard/monitoring/MonitoringDashboard.astro";
+import PublicDomainDialog from "@/components/dashboard/settings/web-server/PublicDomainDialog.astro";
+import Button from "@/components/ui/Button.astro";
 import { createServerTrpcClient } from "@/lib/server-api";
 
 let serverIp = "";
+let publicHost = "";
+let httpsEnabled = false;
+let letsEncryptEmail = "";
 const nearzeroVersion = "0.0.1";
 let releaseTag = "";
 
 const api = createServerTrpcClient(Astro.request) as {
 	settings: {
-		getWebServerSettings: { query: () => Promise<{ serverIp?: string | null }> };
+		getWebServerSettings: {
+			query: () => Promise<{
+				serverIp?: string | null;
+				host?: string | null;
+				https?: boolean;
+				letsEncryptEmail?: string | null;
+			}>;
+		};
 		getReleaseTag: { query: () => Promise<string> };
 	};
 };
@@ -18,6 +30,9 @@ try {
 		api.settings.getReleaseTag.query(),
 	]);
 	serverIp = webServerSettings?.serverIp?.trim() ?? "";
+	publicHost = webServerSettings?.host?.trim() ?? "";
+	httpsEnabled = Boolean(webServerSettings?.https);
+	letsEncryptEmail = webServerSettings?.letsEncryptEmail?.trim() ?? "";
 	releaseTag = tag ?? "";
 } catch {
 	/* partial ok */
@@ -29,7 +44,12 @@ const versionLabel =
 		: nearzeroVersion;
 ---
 
-<div class="nz-about-nearzero w-full min-w-0">
+<div
+	id="nz-about-nearzero-root"
+	class="nz-about-nearzero w-full min-w-0"
+	data-public-host={publicHost}
+	data-letsencrypt-email={letsEncryptEmail}
+>
 	<section class="nz-about-nearzero__meta" aria-label="Platform information">
 		<dl class="nz-about-nearzero__grid">
 			<div class="nz-about-nearzero__item">
@@ -67,6 +87,21 @@ const versionLabel =
 					}
 				</dd>
 			</div>
+			<div class="nz-about-nearzero__item">
+				<dt>Public URL</dt>
+				<dd class="nz-about-nearzero__value nz-about-nearzero__value--public">
+					<span>
+						{
+							publicHost
+								? `${httpsEnabled ? "https" : "http"}://${publicHost}`
+								: "Not configured"
+						}
+					</span>
+					<Button type="button" variant="outline" id="nz-ws-domain-open">
+						{publicHost ? "Change domain" : "Configure domain"}
+					</Button>
+				</dd>
+			</div>
 		</dl>
 	</section>
 
@@ -78,9 +113,18 @@ const versionLabel =
 	</section>
 </div>
 
+<PublicDomainDialog />
+
 <script>
-	import { bindCopyServerIp } from "@/scripts/web-server-shared";
+	import {
+		bindCopyServerIp,
+		bindPublicDomainDialog,
+	} from "@/scripts/web-server-shared";
 	if (document.getElementById("nz-ws-copy-ip")) {
 		bindCopyServerIp();
+	}
+	const root = document.getElementById("nz-about-nearzero-root");
+	if (root) {
+		bindPublicDomainDialog(root);
 	}
 </script>

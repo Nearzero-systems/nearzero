@@ -298,9 +298,9 @@ async function finishOnboarding(
 		window.location.href = result?.organizationSlug
 			? orgDashboardPath(
 					result.organizationSlug,
-					"/dashboard/settings/server?setup=domain",
+					"/dashboard/about-nearzero?setup=domain",
 				)
-			: "/dashboard/settings/server?setup=domain";
+			: "/dashboard/about-nearzero?setup=domain";
 		return;
 	}
 	window.location.href = result?.organizationSlug
