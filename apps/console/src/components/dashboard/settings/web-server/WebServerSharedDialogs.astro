@@ -5,6 +5,11 @@ import Button from "@/components/ui/Button.astro";
 import "@/components/dashboard/shell/sidebar-agent-dot.css";
 import "@/styles/nearzero-terminal-shell.css";
 
+interface Props {
+	serverIp?: string | null;
+}
+
+const { serverIp } = Astro.props;
 const appHomeUrl =
 	process.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim() ||
 	import.meta.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim() ||
@@ -95,7 +100,7 @@ const appHomeUrl =
 	</div>
 </dialog>
 
-<PublicDomainDialog />
+<PublicDomainDialog serverIp={serverIp} />
 
 <dialog id="nz-ws-traefik-env-dialog" class="relative w-[calc(100%-2rem)] max-w-4xl rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
 	<div class="p-6 max-h-[90vh] overflow-y-auto">

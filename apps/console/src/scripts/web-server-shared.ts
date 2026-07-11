@@ -1,4 +1,8 @@
 import { trpcMutate, trpcQuery } from "@/lib/client-api";
+import {
+	rememberDefaultLabel,
+	setButtonLoadingVisuals,
+} from "@/lib/auth-button-state";
 import { disconnectDockerLogs, mountDockerLogs } from "@/scripts/docker-logs-ws";
 import { executeWithHealthCheck } from "@/scripts/health-check";
 import { bindDropdown, closeDialog, openDialog, showToast } from "@/scripts/ui";
@@ -227,6 +231,9 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 		event.preventDefault();
 		if (!form.reportValidity()) return;
 		submit.disabled = true;
+		submit.setAttribute("aria-busy", "true");
+		rememberDefaultLabel(submit);
+		setButtonLoadingVisuals(submit, true);
 		try {
 			await trpcMutate("settings.assignDomainServer", {
 				host: hostInput.value.trim().toLowerCase(),
@@ -247,6 +254,8 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 			);
 		} finally {
 			submit.disabled = false;
+			submit.removeAttribute("aria-busy");
+			setButtonLoadingVisuals(submit, false);
 		}
 	});
 }

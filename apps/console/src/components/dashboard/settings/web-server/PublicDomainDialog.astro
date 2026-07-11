@@ -1,45 +1,73 @@
 ---
-import Button from "@/components/ui/Button.astro";
+import AuthButtonSpinner from "@/components/auth/AuthButtonSpinner.astro";
+import NzModal from "@/components/ui/NzModal.astro";
+
+interface Props {
+	serverIp?: string | null;
+}
+
+const serverIp = Astro.props.serverIp?.trim() ?? "";
 ---
 
-<dialog id="nz-ws-domain-dialog" class="relative w-[calc(100%-2rem)] max-w-lg rounded-lg border bg-background shadow-lg backdrop:bg-black/50">
-	<div class="p-6">
-		<button type="button" class="absolute right-4 top-4" data-close-dialog="nz-ws-domain-dialog" aria-label="Close">✕</button>
-		<h2 class="text-lg font-semibold">Configure public domain</h2>
-		<p class="mt-2 text-sm text-muted-foreground">
-			First point this hostname's DNS A record to your server IP. Nearzero will keep direct IP access available and request a Let's Encrypt certificate.
+<NzModal
+	id="nz-ws-domain-dialog"
+	title="Configure public domain"
+	description="Connect a hostname to this Nearzero host and enable HTTPS with Let's Encrypt."
+	size="lg"
+	form
+	formId="nz-ws-domain-form"
+	showClose={false}
+>
+	<div class="nz-modal__callout">
+		<p>
+			DNS target: <strong class="font-mono">{serverIp || "Server IP unavailable"}</strong>
 		</p>
-		<form id="nz-ws-domain-form" class="mt-4 grid gap-3">
-			<label class="text-sm font-medium">
-				Hostname
-				<input
-					id="nz-ws-domain-host"
-					type="text"
-					required
-					autocomplete="url"
-					placeholder="nearzero.example.com"
-					pattern="(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}"
-					class="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-				/>
-			</label>
-			<label class="text-sm font-medium">
-				Let's Encrypt email
-				<input
-					id="nz-ws-domain-email"
-					type="email"
-					required
-					autocomplete="email"
-					placeholder="admin@example.com"
-					class="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-				/>
-			</label>
-			<div class="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
-				Ports 80 and 443 must be open publicly. DNS and certificate issuance can take a few minutes.
-			</div>
-			<div class="flex justify-end gap-2">
-				<Button type="button" variant="outline" data-close-dialog="nz-ws-domain-dialog">Cancel</Button>
-				<Button type="submit" id="nz-ws-domain-submit" variant="default">Configure HTTPS</Button>
-			</div>
-		</form>
+		<p class="mt-1">
+			Create an A record pointing your hostname to this IP before continuing.
+		</p>
 	</div>
-</dialog>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Hostname</span>
+		<input
+			id="nz-ws-domain-host"
+			type="text"
+			required
+			autocomplete="url"
+			placeholder="nearzero.example.com"
+			pattern="(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}"
+			class="nz-modal__input"
+		/>
+	</label>
+	<label class="nz-modal__field">
+		<span class="nz-modal__label">Let's Encrypt email</span>
+		<input
+			id="nz-ws-domain-email"
+			type="email"
+			required
+			autocomplete="email"
+			placeholder="admin@example.com"
+			class="nz-modal__input"
+		/>
+	</label>
+	<div class="nz-modal__callout border-yellow-500/20 bg-yellow-500/10">
+		Nearzero is initially available on port 4321. For the public domain, Traefik listens on ports 80 and 443 and securely proxies requests to Nearzero on port 4321. Open TCP 80 and 443 publicly; do not add <code>:4321</code> to the hostname.
+	</div>
+	<button
+		slot="footer"
+		type="button"
+		class="nz-modal__btn nz-modal__btn--ghost"
+		data-nz-modal-close
+	>
+		Cancel
+	</button>
+	<button
+		slot="footer"
+		type="submit"
+		id="nz-ws-domain-submit"
+		data-default-label="Configure HTTPS"
+		class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
+	>
+		<AuthButtonSpinner />
+		<span data-auth-btn-label>Configure HTTPS</span>
+	</button>
+</NzModal>
