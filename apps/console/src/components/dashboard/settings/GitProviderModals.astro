@@ -72,7 +72,10 @@ const domainSetupHref = scopeDashboardHref(
 			<input
 				id="nz-git-github-org-name"
 				type="text"
+				form="nz-git-github-form"
 				placeholder="acme-corp"
+				pattern="[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*"
+				maxlength="39"
 				class="nz-modal__input"
 				autocomplete="off"
 			/>

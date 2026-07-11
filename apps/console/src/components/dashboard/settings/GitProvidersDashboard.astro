@@ -365,14 +365,6 @@ const providerActionMap: Record<string, string> = {
 	import { mountGitProvidersDashboard } from "@/scripts/git-providers-dashboard";
 	import { refreshNzModalListeners } from "@/scripts/modal-animations";
 
-	const orgSwitch = document.getElementById("nz-git-github-org-switch");
-	const orgField = document.querySelector(".nz-github-org-field");
-	orgSwitch?.addEventListener("change", () => {
-		if (orgField instanceof HTMLElement) {
-			orgField.classList.toggle("hidden", !(orgSwitch instanceof HTMLInputElement && orgSwitch.checked));
-		}
-	});
-
 	function boot() {
 		mountGitProvidersDashboard();
 		refreshNzModalListeners();

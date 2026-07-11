@@ -3,6 +3,10 @@ import { setButtonLoadingVisuals } from "@/lib/auth-button-state";
 import { trpcMutate, trpcQuery } from "@/lib/client-api";
 import { getGiteaOAuthUrl } from "@/lib/gitea-utils";
 import { getGitlabAuthUrl } from "@/lib/gitlab-utils";
+import {
+	githubAppManifestAction,
+	normalizeGithubOrganizationSlug,
+} from "@/lib/github-app-manifest";
 import { closeDialog, openDialog, showToast } from "@/scripts/ui";
 
 type Bootstrap = {
@@ -77,13 +81,21 @@ export function mountGitProvidersDashboard() {
 
 	const bootstrap = parseBootstrap();
 	rememberReturnTo(bootstrap.returnTo);
+	const githubOrganizationSwitch = document.getElementById(
+		"nz-git-github-org-switch",
+	) as HTMLInputElement | null;
+	const githubOrganizationInput = document.getElementById(
+		"nz-git-github-org-name",
+	) as HTMLInputElement | null;
+	const githubOrganizationField = document.querySelector(
+		".nz-github-org-field",
+	) as HTMLElement | null;
 	let pendingDeleteId = "";
 	let pendingDeleteShared = false;
 	let editingProvider: { type: string; id: string } | null = null;
 
 	const updateGithubManifest = () => {
 		const manifestInput = document.getElementById("nz-git-github-manifest") as HTMLInputElement | null;
-		const orgSwitch = document.getElementById("nz-git-github-org-switch") as HTMLInputElement | null;
 		if (!manifestInput) return;
 		const url = bootstrap.gitProviderBaseUrl;
 		const returnToQuery = bootstrap.returnTo
@@ -109,13 +121,27 @@ export function mountGitProvidersDashboard() {
 			null,
 			4,
 		);
-		const orgName = (document.getElementById("nz-git-github-org-name") as HTMLInputElement | null)?.value ?? "";
 		const form = document.getElementById("nz-git-github-form") as HTMLFormElement | null;
 		if (form) {
-			form.action = orgSwitch?.checked && orgName
-				? `https://github.com/organizations/${orgName}/settings/apps/new?state=gh_init:${bootstrap.organizationId}:${bootstrap.userId}`
-				: `https://github.com/settings/apps/new?state=gh_init:${bootstrap.organizationId}:${bootstrap.userId}`;
+			const action = githubAppManifestAction({
+				organizationId: bootstrap.organizationId,
+				userId: bootstrap.userId,
+				useGithubOrganization: githubOrganizationSwitch?.checked ?? false,
+				githubOrganizationSlug: githubOrganizationInput?.value ?? "",
+			});
+			if (action) form.action = action;
+			else form.removeAttribute("action");
 		}
+	};
+
+	const syncGithubOrganizationMode = () => {
+		const useOrganization = githubOrganizationSwitch?.checked ?? false;
+		githubOrganizationField?.classList.toggle("hidden", !useOrganization);
+		if (githubOrganizationInput) {
+			githubOrganizationInput.required = useOrganization;
+			if (!useOrganization) githubOrganizationInput.setCustomValidity("");
+		}
+		updateGithubManifest();
 	};
 
 	root.addEventListener("click", (e) => {
@@ -253,16 +279,38 @@ export function mountGitProvidersDashboard() {
 		}
 	};
 
-	document.getElementById("nz-git-github-form")?.addEventListener("submit", () => {
+	document.getElementById("nz-git-github-form")?.addEventListener("submit", (event) => {
+		if (
+			githubOrganizationSwitch?.checked &&
+			!normalizeGithubOrganizationSlug(githubOrganizationInput?.value ?? "")
+		) {
+			event.preventDefault();
+			githubOrganizationField?.classList.remove("hidden");
+			githubOrganizationInput?.setCustomValidity(
+				"Enter the GitHub organization slug, for example acme-corp.",
+			);
+			githubOrganizationInput?.reportValidity();
+			githubOrganizationInput?.focus();
+			showToast("Enter a valid GitHub organization slug.", "error");
+			return;
+		}
+		updateGithubManifest();
 		setGitSubmitBusy(
 			document.getElementById("nz-git-github-submit") as HTMLButtonElement | null,
 			true,
 		);
 	});
 
-	document.getElementById("nz-git-github-org-switch")?.addEventListener("change", updateGithubManifest);
-	document.getElementById("nz-git-github-org-name")?.addEventListener("input", updateGithubManifest);
+	githubOrganizationSwitch?.addEventListener(
+		"change",
+		syncGithubOrganizationMode,
+	);
+	githubOrganizationInput?.addEventListener("input", () => {
+		githubOrganizationInput.setCustomValidity("");
+		updateGithubManifest();
+	});
 	document.querySelector("[data-git-action='open-add-github']")?.addEventListener("click", updateGithubManifest);
+	syncGithubOrganizationMode();
 
 	const connectProvider = new URLSearchParams(window.location.search).get("connect");
 	if (connectProvider) {
