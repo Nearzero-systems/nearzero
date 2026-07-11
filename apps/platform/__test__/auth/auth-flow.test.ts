@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { toConsoleCallbackUrl } from "../../../console/src/lib/auth-callback-url";
 import { rewriteAuthRedirectLocation } from "../../../console/src/lib/auth-redirect";
+import { sessionCookieName } from "../../../console/src/lib/auth-session-cookie";
 import {
 	getAuthOtpAccountError,
 	resolveAuthOtpIntent,
@@ -70,6 +71,26 @@ describe("public console URLs", () => {
 				BETTER_AUTH_URL: "https://nearzero.test",
 			}),
 		).toBe("https://nearzero.test");
+	});
+});
+
+describe("console session cookie compatibility", () => {
+	it("keeps the backend cookie name when an IP-first install gains HTTPS", () => {
+		expect(
+			sessionCookieName(
+				"https://nearzero.example.com/api/auth/nearzero-adopt-credential",
+				"http://13.61.19.252:4321",
+			),
+		).toBe("better-auth.session_token");
+	});
+
+	it("uses the secure prefix when the configured auth base URL is HTTPS", () => {
+		expect(
+			sessionCookieName(
+				"https://app.nearzero.test/api/auth/sign-in/email",
+				"https://app.nearzero.test",
+			),
+		).toBe("__Secure-better-auth.session_token");
 	});
 });
 

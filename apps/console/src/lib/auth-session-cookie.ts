@@ -13,19 +13,46 @@ function readAuthSecret() {
 	return "";
 }
 
-function useSecureSessionCookies(requestUrl?: string) {
-	if (requestUrl) {
+function configuredAuthBaseUrl() {
+	const runtimeUrl =
+		typeof process !== "undefined"
+			? process.env.CONSOLE_URL?.trim() || process.env.BETTER_AUTH_URL?.trim()
+			: "";
+	return (
+		runtimeUrl ||
+		import.meta.env.CONSOLE_URL?.trim() ||
+		import.meta.env.BETTER_AUTH_URL?.trim() ||
+		""
+	);
+}
+
+function isHttpsUrl(value?: string) {
+	if (value) {
 		try {
-			return new URL(requestUrl).protocol === "https:";
+			return new URL(value).protocol === "https:";
 		} catch {
-			// Fall through to the environment default below.
+			// Fall through.
 		}
 	}
+	return false;
+}
+
+function useSecureCookiePrefix(
+	requestUrl?: string,
+	authBaseUrl = configuredAuthBaseUrl(),
+) {
+	if (authBaseUrl) return isHttpsUrl(authBaseUrl);
+	if (requestUrl) return isHttpsUrl(requestUrl);
 	return !import.meta.env.DEV;
 }
 
-export function sessionCookieName(requestUrl?: string) {
-	const prefix = useSecureSessionCookies(requestUrl) ? "__Secure-" : "";
+function requireSecureCookieAttribute(requestUrl?: string) {
+	if (requestUrl) return isHttpsUrl(requestUrl);
+	return useSecureCookiePrefix(requestUrl);
+}
+
+export function sessionCookieName(requestUrl?: string, authBaseUrl?: string) {
+	const prefix = useSecureCookiePrefix(requestUrl, authBaseUrl) ? "__Secure-" : "";
 	return `${prefix}better-auth.session_token`;
 }
 
@@ -45,6 +72,6 @@ export async function buildConsoleSessionSetCookie(
 		"SameSite=Lax",
 		`Max-Age=${SESSION_MAX_AGE_SECONDS}`,
 	];
-	if (useSecureSessionCookies(requestUrl)) parts.push("Secure");
+	if (requireSecureCookieAttribute(requestUrl)) parts.push("Secure");
 	return parts.join("; ");
 }
