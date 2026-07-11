@@ -8,6 +8,7 @@ let serverIp = "";
 let publicHost = "";
 let httpsEnabled = false;
 let letsEncryptEmail = "";
+let canConfigureDomain = false;
 const nearzeroVersion = "0.0.1";
 let releaseTag = "";
 
@@ -23,16 +24,22 @@ const api = createServerTrpcClient(Astro.request) as {
 		};
 		getReleaseTag: { query: () => Promise<string> };
 	};
+	user: {
+		get: { query: () => Promise<{ role?: string | null } | null> };
+	};
 };
 try {
-	const [webServerSettings, tag] = await Promise.all([
+	const [webServerSettings, tag, currentMember] = await Promise.all([
 		api.settings.getWebServerSettings.query(),
 		api.settings.getReleaseTag.query(),
+		api.user.get.query(),
 	]);
 	serverIp = webServerSettings?.serverIp?.trim() ?? "";
 	publicHost = webServerSettings?.host?.trim() ?? "";
 	httpsEnabled = Boolean(webServerSettings?.https);
 	letsEncryptEmail = webServerSettings?.letsEncryptEmail?.trim() ?? "";
+	canConfigureDomain =
+		currentMember?.role === "owner" || currentMember?.role === "admin";
 	releaseTag = tag ?? "";
 } catch {
 	/* partial ok */
@@ -97,9 +104,13 @@ const versionLabel =
 								: "Not configured"
 						}
 					</span>
-					<Button type="button" variant="outline" id="nz-ws-domain-open">
-						{publicHost ? "Change domain" : "Configure domain"}
-					</Button>
+					{
+						canConfigureDomain ? (
+							<Button type="button" variant="outline" id="nz-ws-domain-open">
+								{publicHost ? "Change domain" : "Configure domain"}
+							</Button>
+						) : null
+					}
 				</dd>
 			</div>
 		</dl>
@@ -113,7 +124,7 @@ const versionLabel =
 	</section>
 </div>
 
-<PublicDomainDialog serverIp={serverIp} />
+{canConfigureDomain ? <PublicDomainDialog serverIp={serverIp} /> : null}
 
 <script>
 	import {

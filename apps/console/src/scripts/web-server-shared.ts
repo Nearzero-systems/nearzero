@@ -206,19 +206,48 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 	const hostInput = document.getElementById("nz-ws-domain-host");
 	const emailInput = document.getElementById("nz-ws-domain-email");
 	const submit = document.getElementById("nz-ws-domain-submit");
+	const cancel = document.getElementById("nz-ws-domain-cancel");
+	const setupFields = document.getElementById("nz-ws-domain-setup-fields");
+	const success = document.getElementById("nz-ws-domain-success");
+	const successUrl = document.getElementById("nz-ws-domain-success-url");
+	const acknowledge = document.getElementById("nz-ws-domain-ack");
+	const done = document.getElementById("nz-ws-domain-done");
 	if (
 		!(form instanceof HTMLFormElement) ||
 		!(hostInput instanceof HTMLInputElement) ||
 		!(emailInput instanceof HTMLInputElement) ||
-		!(submit instanceof HTMLButtonElement)
+		!(submit instanceof HTMLButtonElement) ||
+		!(cancel instanceof HTMLButtonElement) ||
+		!(setupFields instanceof HTMLElement) ||
+		!(success instanceof HTMLElement) ||
+		!(successUrl instanceof HTMLElement) ||
+		!(acknowledge instanceof HTMLInputElement) ||
+		!(done instanceof HTMLButtonElement)
 	) {
 		return;
 	}
 
+	const resetDialog = () => {
+		setupFields.classList.remove("hidden");
+		success.classList.add("hidden");
+		cancel.classList.remove("hidden");
+		submit.classList.remove("hidden");
+		done.classList.add("hidden");
+		done.disabled = true;
+		acknowledge.checked = false;
+	};
+
 	open?.addEventListener("click", () => {
+		resetDialog();
 		hostInput.value = root.dataset.publicHost ?? "";
 		emailInput.value = root.dataset.letsencryptEmail ?? "";
 		openDialog("nz-ws-domain-dialog");
+	});
+	acknowledge.addEventListener("change", () => {
+		done.disabled = !acknowledge.checked;
+	});
+	done.addEventListener("click", () => {
+		window.setTimeout(() => window.location.reload(), 200);
 	});
 	if (
 		new URL(window.location.href).searchParams.get("setup") === "domain" &&
@@ -241,12 +270,13 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 				letsEncryptEmail: emailInput.value.trim(),
 				https: true,
 			});
-			closeDialog("nz-ws-domain-dialog");
-			showToast(
-				"Domain configured. DNS and HTTPS may take a few minutes to become ready.",
-				"success",
-			);
-			window.setTimeout(() => window.location.reload(), 1200);
+			successUrl.textContent = `https://${hostInput.value.trim().toLowerCase()}`;
+			setupFields.classList.add("hidden");
+			success.classList.remove("hidden");
+			cancel.classList.add("hidden");
+			submit.classList.add("hidden");
+			done.classList.remove("hidden");
+			acknowledge.focus();
 		} catch (error) {
 			showToast(
 				error instanceof Error ? error.message : "Could not configure the domain",

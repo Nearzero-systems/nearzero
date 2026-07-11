@@ -21,6 +21,7 @@ let organizationId = "";
 let userId = "";
 let authId = "";
 let configuredPublicHost = "";
+let canConfigureDomain = false;
 const baseUrl = Astro.url.origin;
 const runtimeGitProviderBaseUrl =
 	process.env.PUBLIC_GIT_PROVIDER_BASE_URL?.trim();
@@ -39,6 +40,8 @@ if (bootstrap.ok) {
 		organizationId = activeOrg?.id ?? "";
 		userId = currentUser?.user?.id ?? currentUser?.id ?? "";
 		authId = currentUser?.id ?? currentUser?.user?.id ?? "";
+		canConfigureDomain =
+			currentUser?.role === "owner" || currentUser?.role === "admin";
 		if (webServerSettings?.https && webServerSettings?.host) {
 			configuredPublicHost = `https://${webServerSettings.host}`;
 		}
@@ -350,6 +353,7 @@ const providerActionMap: Record<string, string> = {
 					userId={userId}
 					gitProviderBaseUrl={gitProviderBaseUrl}
 					gitProviderBaseUrlIsLocal={gitProviderBaseUrlIsLocal}
+					canConfigureDomain={canConfigureDomain}
 					isCommunity={true}
 				/>
 			</div>

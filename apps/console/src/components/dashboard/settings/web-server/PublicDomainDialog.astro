@@ -17,44 +17,75 @@ const serverIp = Astro.props.serverIp?.trim() ?? "";
 	form
 	formId="nz-ws-domain-form"
 	showClose={false}
+	dismissOnBackdrop={false}
 >
-	<div class="nz-modal__callout">
-		<p>
-			DNS target: <strong class="font-mono">{serverIp || "Server IP unavailable"}</strong>
-		</p>
-		<p class="mt-1">
-			Create an A record pointing your hostname to this IP before continuing.
-		</p>
+	<div id="nz-ws-domain-setup-fields" class="grid gap-2">
+		<div class="nz-modal__callout">
+			<p>
+				DNS target: <strong class="font-mono">{serverIp || "Server IP unavailable"}</strong>
+			</p>
+			<p class="mt-1">
+				Create an A record pointing your hostname to this IP before continuing.
+			</p>
+		</div>
+		<label class="nz-modal__field">
+			<span class="nz-modal__label">Hostname</span>
+			<input
+				id="nz-ws-domain-host"
+				type="text"
+				required
+				autocomplete="url"
+				placeholder="nearzero.example.com"
+				pattern="(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}"
+				class="nz-modal__input"
+			/>
+		</label>
+		<label class="nz-modal__field">
+			<span class="nz-modal__label">Let's Encrypt email</span>
+			<input
+				id="nz-ws-domain-email"
+				type="email"
+				required
+				autocomplete="email"
+				placeholder="admin@example.com"
+				class="nz-modal__input"
+			/>
+		</label>
+		<div class="nz-modal__callout border-yellow-500/20 bg-yellow-500/10">
+			Nearzero is initially available on port 4321. For the public domain, Traefik listens on ports 80 and 443 and securely proxies requests to Nearzero on port 4321. Open TCP 80 and 443 publicly; do not add <code>:4321</code> to the hostname.
+		</div>
 	</div>
-	<label class="nz-modal__field">
-		<span class="nz-modal__label">Hostname</span>
-		<input
-			id="nz-ws-domain-host"
-			type="text"
-			required
-			autocomplete="url"
-			placeholder="nearzero.example.com"
-			pattern="(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}"
-			class="nz-modal__input"
-		/>
-	</label>
-	<label class="nz-modal__field">
-		<span class="nz-modal__label">Let's Encrypt email</span>
-		<input
-			id="nz-ws-domain-email"
-			type="email"
-			required
-			autocomplete="email"
-			placeholder="admin@example.com"
-			class="nz-modal__input"
-		/>
-	</label>
-	<div class="nz-modal__callout border-yellow-500/20 bg-yellow-500/10">
-		Nearzero is initially available on port 4321. For the public domain, Traefik listens on ports 80 and 443 and securely proxies requests to Nearzero on port 4321. Open TCP 80 and 443 publicly; do not add <code>:4321</code> to the hostname.
+	<div id="nz-ws-domain-success" class="hidden">
+		<div class="nz-modal__callout border-green-500/20 bg-green-500/10 text-foreground">
+			<strong>HTTPS configuration saved.</strong> Keep these details for your DNS and firewall setup.
+		</div>
+		<dl class="mt-3 grid gap-2 text-xs">
+			<div>
+				<dt class="font-medium text-muted-foreground">DNS A record target</dt>
+				<dd id="nz-ws-domain-success-ip" class="font-mono">{serverIp || "Server IP unavailable"}</dd>
+			</div>
+			<div>
+				<dt class="font-medium text-muted-foreground">Public address</dt>
+				<dd id="nz-ws-domain-success-url" class="font-mono"></dd>
+			</div>
+			<div>
+				<dt class="font-medium text-muted-foreground">Ports</dt>
+				<dd>Open TCP 80 and 443 publicly. Traefik forwards the domain internally to Nearzero on port 4321.</dd>
+			</div>
+			<div>
+				<dt class="font-medium text-muted-foreground">Expected time</dt>
+				<dd>DNS commonly updates in 5–30 minutes, but some providers can take up to 48 hours. After DNS resolves, Let's Encrypt usually issues the certificate within 1–5 minutes.</dd>
+			</div>
+		</dl>
+		<label class="mt-3 flex items-start gap-2 text-xs">
+			<input id="nz-ws-domain-ack" type="checkbox" class="mt-0.5" />
+			<span>I have pointed the DNS A record to this IP and opened TCP ports 80 and 443.</span>
+		</label>
 	</div>
 	<button
 		slot="footer"
 		type="button"
+		id="nz-ws-domain-cancel"
 		class="nz-modal__btn nz-modal__btn--ghost"
 		data-nz-modal-close
 	>
@@ -69,5 +100,15 @@ const serverIp = Astro.props.serverIp?.trim() ?? "";
 	>
 		<AuthButtonSpinner />
 		<span data-auth-btn-label>Configure HTTPS</span>
+	</button>
+	<button
+		slot="footer"
+		type="button"
+		id="nz-ws-domain-done"
+		class="nz-modal__btn nz-modal__btn--primary hidden"
+		data-nz-modal-close
+		disabled
+	>
+		I understand
 	</button>
 </NzModal>

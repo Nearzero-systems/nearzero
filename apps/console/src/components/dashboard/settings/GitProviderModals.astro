@@ -11,6 +11,7 @@ interface Props {
 	userId: string;
 	gitProviderBaseUrl: string;
 	gitProviderBaseUrlIsLocal: boolean;
+	canConfigureDomain: boolean;
 	isCommunity: boolean;
 }
 
@@ -19,6 +20,7 @@ const {
 	userId,
 	gitProviderBaseUrl,
 	gitProviderBaseUrlIsLocal,
+	canConfigureDomain,
 	isCommunity,
 } = Astro.props;
 
@@ -47,10 +49,12 @@ const domainSetupHref = scopeDashboardHref(
 				>
 					Callbacks and webhooks use <code>{gitProviderBaseUrl}</code>. GitHub requires a publicly
 					reachable HTTPS domain. {
-						gitProviderBaseUrlIsLocal ? (
+						gitProviderBaseUrlIsLocal && canConfigureDomain ? (
 							<a class="nz-git-modal__link" href={domainSetupHref}>
 								Configure a domain first.
 							</a>
+						) : gitProviderBaseUrlIsLocal ? (
+							<span>Ask an organization owner or admin to configure the public domain.</span>
 						) : null
 					}
 				</div>
