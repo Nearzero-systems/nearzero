@@ -567,7 +567,7 @@ const deleteServiceDescription =
 										<label class={fieldClass}>Docker Image<input id="nz-app-docker-image" class={inputClass} value={appRow.dockerImage ?? ""} required /></label>
 										<label class={fieldClass}>Registry URL<input id="nz-app-docker-registry" class={inputClass} value={appRow.registryUrl ?? ""} /></label>
 										<label class={fieldClass}>Username<input id="nz-app-docker-username" class={inputClass} value={appRow.username ?? ""} /></label>
-										<label class={fieldClass}>Password<input id="nz-app-docker-password" type="password" class={inputClass} value={appRow.password ?? ""} /></label>
+										<label class={fieldClass}>Password<input id="nz-app-docker-password" type="password" class={inputClass} value="" autocomplete="new-password" placeholder={appRow.hasDockerPassword ? "Stored — leave blank to keep" : ""} /></label>
 										<div class="nz-app-form-actions"><Button type="submit" id="nz-app-docker-save" class={btnPrimaryClass}>Save</Button></div>
 									</form>
 								</div>

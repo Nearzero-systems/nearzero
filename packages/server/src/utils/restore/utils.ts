@@ -1,13 +1,15 @@
 import {
 	getComposeContainerCommand,
 	getServiceContainerCommand,
+	quoteShellArgument,
 } from "../backups/utils";
 
 export const getPostgresRestoreCommand = (
 	database: string,
 	databaseUser: string,
 ) => {
-	return `docker exec -i $CONTAINER_ID sh -c "pg_restore -U '${databaseUser}' -d ${database} -O --clean --if-exists"`;
+	const inner = `pg_restore -U ${quoteShellArgument(databaseUser)} -d ${quoteShellArgument(database)} -O --clean --if-exists`;
+	return `docker exec -i "$CONTAINER_ID" sh -c ${quoteShellArgument(inner)}`;
 };
 
 export const getMariadbRestoreCommand = (
@@ -15,14 +17,16 @@ export const getMariadbRestoreCommand = (
 	databaseUser: string,
 	databasePassword: string,
 ) => {
-	return `docker exec -i $CONTAINER_ID sh -c "mariadb -u '${databaseUser}' -p'${databasePassword}' ${database}"`;
+	const inner = `mariadb -u ${quoteShellArgument(databaseUser)} -p${quoteShellArgument(databasePassword)} ${quoteShellArgument(database)}`;
+	return `docker exec -i "$CONTAINER_ID" sh -c ${quoteShellArgument(inner)}`;
 };
 
 export const getMysqlRestoreCommand = (
 	database: string,
 	databasePassword: string,
 ) => {
-	return `docker exec -i $CONTAINER_ID sh -c "mysql -u root -p'${databasePassword}' ${database}"`;
+	const inner = `mysql -u root -p${quoteShellArgument(databasePassword)} ${quoteShellArgument(database)}`;
+	return `docker exec -i "$CONTAINER_ID" sh -c ${quoteShellArgument(inner)}`;
 };
 
 export const getMongoRestoreCommand = (
@@ -30,7 +34,8 @@ export const getMongoRestoreCommand = (
 	databaseUser: string,
 	databasePassword: string,
 ) => {
-	return `docker exec -i $CONTAINER_ID sh -c "mongorestore --username '${databaseUser}' --password '${databasePassword}' --authenticationDatabase admin --db ${database} --archive --drop"`;
+	const inner = `mongorestore --username ${quoteShellArgument(databaseUser)} --password ${quoteShellArgument(databasePassword)} --authenticationDatabase admin --db ${quoteShellArgument(database)} --archive --drop`;
+	return `docker exec -i "$CONTAINER_ID" sh -c ${quoteShellArgument(inner)}`;
 };
 
 export const getComposeSearchCommand = (
@@ -83,14 +88,17 @@ const getMongoSpecificCommand = (
 	const tempDir = "/tmp/nearzero-restore";
 	const fileName = backupFile.split("/").pop() || "backup.sql.gz";
 	const decompressedName = fileName.replace(".gz", "");
+	const quotedTempDir = quoteShellArgument(tempDir);
+	const quotedFileName = quoteShellArgument(fileName);
+	const quotedDecompressedName = quoteShellArgument(decompressedName);
 	return `
-rm -rf ${tempDir} && \
-mkdir -p ${tempDir} && \
-${rcloneCommand} ${tempDir} && \
-cd ${tempDir} && \
-gunzip -f "${fileName}" && \
-${restoreCommand} < "${decompressedName}" && \
-rm -rf ${tempDir}
+rm -rf -- ${quotedTempDir} && \
+mkdir -p -- ${quotedTempDir} && \
+${rcloneCommand} ${quotedTempDir} && \
+cd ${quotedTempDir} && \
+gunzip -f -- ${quotedFileName} && \
+${restoreCommand} < ${quotedDecompressedName} && \
+rm -rf -- ${quotedTempDir}
 	`;
 };
 

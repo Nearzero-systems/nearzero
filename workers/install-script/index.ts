@@ -2,7 +2,8 @@ interface Env {
 	INSTALL_BUCKET: R2Bucket;
 }
 
-const allowedInstallPath = /^\/(?:install\.sh|releases\/[^/]+\/install\.sh)$/;
+const allowedInstallPath =
+	/^\/(?:install\.sh(?:\.sha256)?|releases\/[^/]+\/install\.sh(?:\.sha256)?)$/;
 
 function objectKeyFromPath(pathname: string) {
 	return pathname.replace(/^\/+/, "");
@@ -16,7 +17,9 @@ export default {
 			return new Response("Not found\n", { status: 404 });
 		}
 
-		const object = await env.INSTALL_BUCKET.get(objectKeyFromPath(url.pathname));
+		const object = await env.INSTALL_BUCKET.get(
+			objectKeyFromPath(url.pathname),
+		);
 		if (!object) {
 			return new Response("Installer not found\n", { status: 404 });
 		}
@@ -24,7 +27,13 @@ export default {
 		const headers = new Headers();
 		object.writeHttpMetadata(headers);
 		headers.set("etag", object.httpEtag);
-		headers.set("content-type", headers.get("content-type") ?? "text/x-shellscript; charset=utf-8");
+		const fallbackContentType = url.pathname.endsWith(".sha256")
+			? "text/plain; charset=utf-8"
+			: "text/x-shellscript; charset=utf-8";
+		headers.set(
+			"content-type",
+			headers.get("content-type") ?? fallbackContentType,
+		);
 		headers.set("x-content-type-options", "nosniff");
 
 		return new Response(object.body, {

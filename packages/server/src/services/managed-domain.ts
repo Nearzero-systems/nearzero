@@ -1,11 +1,30 @@
 import { getPlatformDefaultDomain } from "@nearzero/server/constants";
-import { isProductionEnvironment } from "@nearzero/server/services/environment";
 import type { environments } from "@nearzero/server/db/schema";
+import { isProductionEnvironment } from "@nearzero/server/services/environment";
+import {
+	normalizeDnsHostname,
+	normalizeDnsZoneName,
+} from "@nearzero/server/utils/dns/zone-file";
 
 type EnvironmentDns = Pick<
 	typeof environments.$inferSelect,
 	"name" | "isDefault" | "domainPrefix"
 > & { dnsZoneName?: string | null };
+
+export function isNearzeroAssignedDomain(
+	domain: {
+		host: string;
+		dnsMode: string;
+		isSystemAssigned?: boolean;
+	},
+) {
+	return (
+		domain.isSystemAssigned === true ||
+		domain.dnsMode === "platform" ||
+		(domain.dnsMode === "external" &&
+			domain.host.trim().toLowerCase().endsWith(".sslip.io"))
+	);
+}
 
 export function slugifyServiceName(value: string) {
 	return value
@@ -20,7 +39,7 @@ export function buildManagedServiceHost(input: {
 	zoneName: string;
 	environment: EnvironmentDns;
 }) {
-	const zone = input.zoneName.trim().toLowerCase().replace(/\.$/, "");
+	const zone = normalizeDnsZoneName(input.zoneName);
 	const slug = slugifyServiceName(input.serviceName) || "service";
 	const prefix = slugifyServiceName(input.environment.domainPrefix ?? "");
 	if (prefix) {
@@ -38,11 +57,13 @@ export function buildManagedPreviewHost(input: {
 	zoneName: string;
 	targetIp: string;
 }) {
-	const zone = input.zoneName.trim().toLowerCase().replace(/\.$/, "");
-	const hash = slugifyServiceName(input.appName);
+	const zone = normalizeDnsZoneName(input.zoneName);
+	const hash = slugifyServiceName(input.appName) || "preview";
 	if (zone.includes("sslip.io")) {
 		const slugIp = input.targetIp.replaceAll(".", "-");
-		return `*.${zone}`.replace("*", `${hash}${slugIp ? `-${slugIp}` : ""}`);
+		const suffix = slugIp ? `-${slugIp}` : "";
+		const label = `${hash.slice(0, Math.max(1, 63 - suffix.length))}${suffix}`;
+		return `${label}.${zone}`;
 	}
 	return `${hash}.preview.${zone}`;
 }
@@ -55,39 +76,70 @@ export function buildPreviewServiceSlug(input: {
 	const pr = String(input.pullRequestNumber).replace(/[^0-9]/g, "") || "0";
 	const service = slugifyServiceName(input.serviceName) || "service";
 	const app = slugifyServiceName(input.applicationId).slice(0, 8) || "app";
-	return `pr-${pr}-${service}-${app}`;
+	const prefix = `pr-${pr}-`;
+	const suffix = `-${app}`;
+	const available = Math.max(1, 63 - prefix.length - suffix.length);
+	return `${prefix}${service.slice(0, available)}${suffix}`;
 }
 
 export function buildPlatformDefaultPreviewHost(input: {
 	previewSlug: string;
 	projectName: string;
+	organizationId: string;
 }) {
-	const zone = getPlatformDefaultDomain();
-	if (!zone) {
+	const configuredZone = getPlatformDefaultDomain();
+	if (!configuredZone) {
 		throw new Error("Platform default domain is not configured");
 	}
-	const project = slugifyServiceName(input.projectName);
-	return `${input.previewSlug}.preview.${project}.${zone}`;
+	const zone = normalizeDnsZoneName(configuredZone);
+	const project = platformProjectScope(input.projectName, input.organizationId);
+	const preview = normalizeDnsHostname(input.previewSlug);
+	return `${preview}.preview.${project || "project"}.${zone}`;
+}
+
+function platformProjectScope(projectName: string, organizationId: string) {
+	const project = slugifyServiceName(projectName) || "project";
+	const organization =
+		slugifyServiceName(organizationId).slice(0, 12) || "organization";
+	const suffix = `-${organization}`;
+	return `${project.slice(0, Math.max(1, 63 - suffix.length))}${suffix}`;
 }
 
 export function isManagedWildcardZone(zoneName: string) {
-	return zoneName.trim().startsWith("*.");
+	try {
+		return normalizeDnsHostname(zoneName, {
+			allowWildcard: true,
+			requireFqdn: true,
+		}).startsWith("*.");
+	} catch {
+		return false;
+	}
+}
+
+export function canUsePlatformDomainForServer(serverId?: string | null) {
+	if (!serverId) return true;
+	return (
+		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE?.trim().toLowerCase() ===
+		"true"
+	);
 }
 
 export function buildPlatformDefaultServiceHost(input: {
 	serviceName: string;
 	projectName: string;
+	organizationId: string;
 	environment: Pick<
 		typeof environments.$inferSelect,
 		"name" | "isDefault" | "domainPrefix"
 	>;
 }) {
-	const zone = getPlatformDefaultDomain();
-	if (!zone) {
+	const configuredZone = getPlatformDefaultDomain();
+	if (!configuredZone) {
 		throw new Error("Platform default domain is not configured");
 	}
+	const zone = normalizeDnsZoneName(configuredZone);
 	const service = slugifyServiceName(input.serviceName) || "service";
-	const project = slugifyServiceName(input.projectName) || "project";
+	const project = platformProjectScope(input.projectName, input.organizationId);
 	const prefix = slugifyServiceName(input.environment.domainPrefix ?? "");
 	if (prefix) {
 		return `${service}.${prefix}.${project}.${zone}`;

@@ -2,6 +2,7 @@ import { db } from "@nearzero/server/db";
 import {
 	type apiCreateProject,
 	applications,
+	environments,
 	libsql,
 	mariadb,
 	mongo,
@@ -88,13 +89,56 @@ export const findProjectById = async (projectId: string) => {
 };
 
 export const deleteProject = async (projectId: string) => {
-	const project = await db
-		.delete(projects)
-		.where(eq(projects.projectId, projectId))
-		.returning()
-		.then((value) => value[0]);
+	return db.transaction(async (tx) => {
+		const [lockedProject] = await tx
+			.select({ projectId: projects.projectId })
+			.from(projects)
+			.where(eq(projects.projectId, projectId))
+			.for("update");
+		if (!lockedProject) return undefined;
 
-	return project;
+		// Lock the project row before checking children. PostgreSQL foreign-key
+		// inserts take a conflicting key-share lock, so no service can race into the
+		// project between this check and the parent delete.
+		const projectEnvironments = await tx.query.environments.findMany({
+			where: eq(environments.projectId, projectId),
+			columns: { environmentId: true },
+			with: {
+				applications: { columns: { applicationId: true } },
+				compose: { columns: { composeId: true } },
+				libsql: { columns: { libsqlId: true } },
+				mariadb: { columns: { mariadbId: true } },
+				mongo: { columns: { mongoId: true } },
+				mysql: { columns: { mysqlId: true } },
+				postgres: { columns: { postgresId: true } },
+				redis: { columns: { redisId: true } },
+			},
+		});
+		const hasServices = projectEnvironments.some(
+			(environment) =>
+				environment.applications.length > 0 ||
+				environment.compose.length > 0 ||
+				environment.libsql.length > 0 ||
+				environment.mariadb.length > 0 ||
+				environment.mongo.length > 0 ||
+				environment.mysql.length > 0 ||
+				environment.postgres.length > 0 ||
+				environment.redis.length > 0,
+		);
+		if (hasServices) {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message:
+					"Project still contains services. Delete every service first so routes, managed DNS, and remote resources can be cleaned up safely.",
+			});
+		}
+
+		return tx
+			.delete(projects)
+			.where(eq(projects.projectId, projectId))
+			.returning()
+			.then((value) => value[0]);
+	});
 };
 
 export const updateProjectById = async (

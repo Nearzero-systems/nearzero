@@ -2,7 +2,6 @@ import {
 	createApplication,
 	createBackup,
 	createCompose,
-	createDomain,
 	createLibsql,
 	createMariadb,
 	createMongo,
@@ -13,9 +12,9 @@ import {
 	createPreviewDeployment,
 	createProject,
 	createRedirect,
-	DEFAULT_PROJECT_ENVIRONMENT_NAME,
 	createRedis,
 	createSecurity,
+	DEFAULT_PROJECT_ENVIRONMENT_NAME,
 	deleteProject,
 	findApplicationById,
 	findComposeById,
@@ -28,13 +27,8 @@ import {
 	findProjectById,
 	findRedisById,
 } from "@nearzero/server";
-import {
-	buildServiceFilter,
-	queryAccessibleProject,
-	queryAccessibleProjects,
-} from "@nearzero/server/services/project-queries";
-import { updateProjectCore } from "@nearzero/server/services/agent-workspace";
 import { db } from "@nearzero/server/db";
+import { updateProjectCore } from "@nearzero/server/services/agent-workspace";
 import {
 	addNewEnvironment,
 	addNewProject,
@@ -42,6 +36,11 @@ import {
 	checkProjectAccess,
 	findMemberByUserId,
 } from "@nearzero/server/services/permission";
+import {
+	buildServiceFilter,
+	queryAccessibleProject,
+	queryAccessibleProjects,
+} from "@nearzero/server/services/project-queries";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
@@ -108,8 +107,7 @@ export const projectRouter = createTRPCRouter({
 				});
 				return project;
 			} catch (error) {
-				const detail =
-					error instanceof Error ? error.message : String(error);
+				const detail = error instanceof Error ? error.message : String(error);
 				const needsMigration =
 					detail.includes("dnsZoneId") ||
 					detail.includes("domainPrefix") ||
@@ -681,14 +679,10 @@ export const projectRouter = createTRPCRouter({
 									environmentId: targetProject?.environmentId || "",
 								});
 
-								for (const domain of domains) {
-									const { domainId, ...rest } = domain;
-									await createDomain({
-										...rest,
-										applicationId: newApplication.applicationId,
-										domainType: "application",
-									});
-								}
+								// Hostnames are globally exclusive claims. A duplicated service
+								// receives a new default hostname on deployment instead of
+								// copying a route that still belongs to the source service.
+								void domains;
 
 								for (const port of ports) {
 									const { portId, ...rest } = port;
@@ -767,14 +761,7 @@ export const projectRouter = createTRPCRouter({
 									});
 								}
 
-								for (const domain of domains) {
-									const { domainId, ...rest } = domain;
-									await createDomain({
-										...rest,
-										composeId: newCompose.composeId,
-										domainType: "compose",
-									});
-								}
+								void domains;
 
 								break;
 							}

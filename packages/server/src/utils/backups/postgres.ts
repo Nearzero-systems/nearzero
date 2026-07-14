@@ -7,12 +7,15 @@ import { findEnvironmentById } from "@nearzero/server/services/environment";
 import type { Postgres } from "@nearzero/server/services/postgres";
 import { findProjectById } from "@nearzero/server/services/project";
 import { sendDatabaseBackupNotifications } from "../notifications/database-backup";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import {
 	getBackupCommand,
+	getBackupFailureMessage,
+	getBackupSensitiveValues,
 	getBackupTimestamp,
 	getS3Credentials,
 	normalizeS3Path,
+	quoteShellArgument,
 } from "./utils";
 
 export const runPostgresBackup = async (
@@ -36,20 +39,18 @@ export const runPostgresBackup = async (
 		const rcloneFlags = getS3Credentials(destination);
 		const rcloneDestination = `:s3:${destination.bucket}/${bucketDestination}`;
 
-		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} "${rcloneDestination}"`;
+		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} ${quoteShellArgument(rcloneDestination)}`;
 
 		const backupCommand = getBackupCommand(
 			backup,
 			rcloneCommand,
 			deployment.logPath,
 		);
-		if (postgres.serverId) {
-			await execAsyncRemote(postgres.serverId, backupCommand);
-		} else {
-			await execAsync(backupCommand, {
-				shell: "/bin/bash",
-			});
-		}
+		await executeSensitiveShellScript({
+			serverId: postgres.serverId,
+			script: backupCommand,
+			sensitiveValues: getBackupSensitiveValues(backup),
+		});
 
 		await sendDatabaseBackupNotifications({
 			applicationName: name,
@@ -67,8 +68,7 @@ export const runPostgresBackup = async (
 			projectName: project.name,
 			databaseType: "postgres",
 			type: "error",
-			// @ts-ignore
-			errorMessage: error?.message || "Error message not provided",
+			errorMessage: getBackupFailureMessage(error),
 			organizationId: project.organizationId,
 			databaseName: backup.database,
 		});

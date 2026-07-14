@@ -56,10 +56,27 @@ const PROVIDERS: { type: ProviderType; label: string }[] = [
 	{ type: "custom", label: "Custom" },
 ];
 
+const CREDENTIAL_INPUT_IDS: Record<ProviderType, string[]> = {
+	slack: ["nz-notif-slack-webhook"],
+	telegram: ["nz-notif-telegram-token"],
+	discord: ["nz-notif-discord-webhook"],
+	email: ["nz-notif-email-password"],
+	resend: ["nz-notif-resend-api-key"],
+	gotify: ["nz-notif-gotify-token"],
+	ntfy: ["nz-notif-ntfy-topic", "nz-notif-ntfy-token"],
+	mattermost: ["nz-notif-mattermost-webhook"],
+	pushover: ["nz-notif-pushover-user", "nz-notif-pushover-token"],
+	custom: ["nz-notif-custom-endpoint"],
+	lark: ["nz-notif-lark-webhook"],
+	teams: ["nz-notif-teams-webhook"],
+};
+
 const inputClass = "nz-modal__input";
 
 function val(id: string) {
-	return (document.getElementById(id) as HTMLInputElement | null)?.value.trim() ?? "";
+	return (
+		(document.getElementById(id) as HTMLInputElement | null)?.value.trim() ?? ""
+	);
 }
 
 function numVal(id: string, fallback?: number) {
@@ -70,7 +87,9 @@ function numVal(id: string, fallback?: number) {
 }
 
 function checked(id: string) {
-	return (document.getElementById(id) as HTMLInputElement | null)?.checked ?? false;
+	return (
+		(document.getElementById(id) as HTMLInputElement | null)?.checked ?? false
+	);
 }
 
 function setVal(id: string, value: string | number | boolean | undefined) {
@@ -78,6 +97,23 @@ function setVal(id: string, value: string | number | boolean | undefined) {
 	if (!(el instanceof HTMLInputElement)) return;
 	if (el.type === "checkbox") el.checked = Boolean(value);
 	else el.value = value == null ? "" : String(value);
+}
+
+function setCredentialPlaceholders(
+	type?: ProviderType,
+	hasConfiguredCredentials = false,
+) {
+	for (const [providerType, ids] of Object.entries(CREDENTIAL_INPUT_IDS)) {
+		for (const id of ids) {
+			const input = document.getElementById(id);
+			if (!(input instanceof HTMLInputElement)) continue;
+			input.dataset.defaultPlaceholder ??= input.placeholder;
+			input.placeholder =
+				type === providerType && hasConfiguredCredentials
+					? "Configured — leave blank to keep"
+					: (input.dataset.defaultPlaceholder ?? "");
+		}
+	}
 }
 
 function collectEvents(): EventFlags {
@@ -102,8 +138,12 @@ function collectToAddresses(): string[] {
 function collectHeaders(): Record<string, string> | undefined {
 	const headers: Record<string, string> = {};
 	document.querySelectorAll("[data-notif-header-row]").forEach((row) => {
-		const key = row.querySelector("[data-notif-header-key]") as HTMLInputElement | null;
-		const value = row.querySelector("[data-notif-header-value]") as HTMLInputElement | null;
+		const key = row.querySelector(
+			"[data-notif-header-key]",
+		) as HTMLInputElement | null;
+		const value = row.querySelector(
+			"[data-notif-header-value]",
+		) as HTMLInputElement | null;
 		const k = key?.value.trim() ?? "";
 		if (k) headers[k] = value?.value ?? "";
 	});
@@ -136,12 +176,16 @@ function updateProviderPanels(type: ProviderType) {
 		panel.classList.toggle("hidden", !match);
 	});
 	document.querySelectorAll("[data-notif-shared-panel]").forEach((panel) => {
-		const types = panel.getAttribute("data-notif-shared-panel")?.split(" ") ?? [];
+		const types =
+			panel.getAttribute("data-notif-shared-panel")?.split(" ") ?? [];
 		panel.classList.toggle("hidden", !types.includes(type));
 	});
 	const pushoverExtra = document.getElementById("nz-notif-pushover-emergency");
 	if (pushoverExtra) {
-		pushoverExtra.classList.toggle("hidden", type !== "pushover" || numVal("nz-notif-pushover-priority", 0) !== 2);
+		pushoverExtra.classList.toggle(
+			"hidden",
+			type !== "pushover" || numVal("nz-notif-pushover-priority", 0) !== 2,
+		);
 	}
 }
 
@@ -174,7 +218,8 @@ function renderHeaders(entries: Array<{ key: string; value: string }>) {
 	const container = document.getElementById("nz-notif-headers");
 	if (!container) return;
 	container.innerHTML = "";
-	for (const entry of entries.length ? entries : []) addHeaderRow(entry.key, entry.value);
+	for (const entry of entries.length ? entries : [])
+		addHeaderRow(entry.key, entry.value);
 }
 
 function addHeaderRow(key = "", value = "") {
@@ -194,25 +239,36 @@ function addHeaderRow(key = "", value = "") {
 		</label>
 		<button type="button" class="nz-modal__btn nz-modal__btn--ghost shrink-0" data-notif-remove-header aria-label="Remove header">✕</button>
 	`;
-	row.querySelector("[data-notif-remove-header]")?.addEventListener("click", () => row.remove());
+	row
+		.querySelector("[data-notif-remove-header]")
+		?.addEventListener("click", () => row.remove());
 	container.appendChild(row);
 }
 
-function validateForm(type: ProviderType): string | null {
+function validateForm(
+	type: ProviderType,
+	hasConfiguredCredentials = false,
+): string | null {
 	const name = val("nz-notif-name");
 	if (!name) return "Name is required";
+	const credentialMissing = (id: string) =>
+		!val(id) && !hasConfiguredCredentials;
 
-	if (type === "slack" && !val("nz-notif-slack-webhook")) return "Webhook URL is required";
+	if (type === "slack" && credentialMissing("nz-notif-slack-webhook"))
+		return "Webhook URL is required";
 	if (type === "telegram") {
-		if (!val("nz-notif-telegram-token")) return "Bot Token is required";
+		if (credentialMissing("nz-notif-telegram-token"))
+			return "Bot Token is required";
 		if (!val("nz-notif-telegram-chat")) return "Chat ID is required";
 	}
-	if (type === "discord" && !val("nz-notif-discord-webhook")) return "Webhook URL is required";
+	if (type === "discord" && credentialMissing("nz-notif-discord-webhook"))
+		return "Webhook URL is required";
 	if (type === "email") {
 		if (!val("nz-notif-email-smtp-server")) return "SMTP Server is required";
 		if (!numVal("nz-notif-email-smtp-port")) return "SMTP Port is required";
 		if (!val("nz-notif-email-username")) return "Username is required";
-		if (!val("nz-notif-email-password")) return "Password is required";
+		if (credentialMissing("nz-notif-email-password"))
+			return "Password is required";
 		if (!val("nz-notif-email-from")) return "From Address is required";
 		const to = collectToAddresses();
 		if (!to.length) return "At least one email is required";
@@ -221,33 +277,51 @@ function validateForm(type: ProviderType): string | null {
 		}
 	}
 	if (type === "resend") {
-		if (!val("nz-notif-resend-api-key")) return "API Key is required";
+		if (credentialMissing("nz-notif-resend-api-key"))
+			return "API Key is required";
 		if (!val("nz-notif-resend-from")) return "From Address is required";
 		const to = collectToAddresses();
 		if (!to.length) return "At least one email is required";
 	}
 	if (type === "gotify") {
 		if (!val("nz-notif-gotify-url")) return "Server URL is required";
-		if (!val("nz-notif-gotify-token")) return "App Token is required";
+		if (credentialMissing("nz-notif-gotify-token"))
+			return "App Token is required";
 	}
 	if (type === "ntfy") {
 		if (!val("nz-notif-ntfy-url")) return "Server URL is required";
-		if (!val("nz-notif-ntfy-topic")) return "Topic is required";
+		if (credentialMissing("nz-notif-ntfy-topic")) return "Topic is required";
 	}
-	if (type === "mattermost" && !val("nz-notif-mattermost-webhook")) return "Webhook URL is required";
-	if (type === "lark" && !val("nz-notif-lark-webhook")) return "Webhook URL is required";
-	if (type === "teams" && !val("nz-notif-teams-webhook")) return "Webhook URL is required";
-	if (type === "custom" && !val("nz-notif-custom-endpoint")) return "Endpoint URL is required";
+	if (type === "mattermost" && credentialMissing("nz-notif-mattermost-webhook"))
+		return "Webhook URL is required";
+	if (type === "lark" && credentialMissing("nz-notif-lark-webhook"))
+		return "Webhook URL is required";
+	if (type === "teams" && credentialMissing("nz-notif-teams-webhook"))
+		return "Webhook URL is required";
+	if (type === "custom" && credentialMissing("nz-notif-custom-endpoint"))
+		return "Endpoint URL is required";
 	if (type === "pushover") {
-		if (!val("nz-notif-pushover-user")) return "User Key is required";
-		if (!val("nz-notif-pushover-token")) return "API Token is required";
+		if (credentialMissing("nz-notif-pushover-user"))
+			return "User Key is required";
+		if (credentialMissing("nz-notif-pushover-token"))
+			return "API Token is required";
 		const priority = numVal("nz-notif-pushover-priority", 0);
 		if (priority === 2) {
-			if (numVal("nz-notif-pushover-retry") == null) return "Retry is required for emergency priority (2)";
-			if (numVal("nz-notif-pushover-expire") == null) return "Expire is required for emergency priority (2)";
+			if (numVal("nz-notif-pushover-retry") == null)
+				return "Retry is required for emergency priority (2)";
+			if (numVal("nz-notif-pushover-expire") == null)
+				return "Expire is required for emergency priority (2)";
 		}
 	}
 	return null;
+}
+
+function credentialField(
+	key: string,
+	value: string,
+	editingNotificationId: string,
+) {
+	return value || !editingNotificationId ? { [key]: value } : {};
 }
 
 function buildPayload(
@@ -266,14 +340,22 @@ function buildPayload(
 		case "slack":
 			return {
 				...base,
-				webhookUrl: val("nz-notif-slack-webhook"),
+				...credentialField(
+					"webhookUrl",
+					val("nz-notif-slack-webhook"),
+					notificationId,
+				),
 				channel: val("nz-notif-slack-channel"),
 				slackId: providerIds.slackId ?? "",
 			};
 		case "telegram":
 			return {
 				...base,
-				botToken: val("nz-notif-telegram-token"),
+				...credentialField(
+					"botToken",
+					val("nz-notif-telegram-token"),
+					notificationId,
+				),
 				chatId: val("nz-notif-telegram-chat"),
 				messageThreadId: val("nz-notif-telegram-thread"),
 				telegramId: providerIds.telegramId ?? "",
@@ -281,7 +363,11 @@ function buildPayload(
 		case "discord":
 			return {
 				...base,
-				webhookUrl: val("nz-notif-discord-webhook"),
+				...credentialField(
+					"webhookUrl",
+					val("nz-notif-discord-webhook"),
+					notificationId,
+				),
 				decoration: checked("nz-notif-discord-decoration"),
 				discordId: providerIds.discordId ?? "",
 			};
@@ -291,7 +377,11 @@ function buildPayload(
 				smtpServer: val("nz-notif-email-smtp-server"),
 				smtpPort: numVal("nz-notif-email-smtp-port") ?? 587,
 				username: val("nz-notif-email-username"),
-				password: val("nz-notif-email-password"),
+				...credentialField(
+					"password",
+					val("nz-notif-email-password"),
+					notificationId,
+				),
 				fromAddress: val("nz-notif-email-from"),
 				toAddresses: collectToAddresses(),
 				emailId: providerIds.emailId ?? "",
@@ -299,7 +389,11 @@ function buildPayload(
 		case "resend":
 			return {
 				...base,
-				apiKey: val("nz-notif-resend-api-key"),
+				...credentialField(
+					"apiKey",
+					val("nz-notif-resend-api-key"),
+					notificationId,
+				),
 				fromAddress: val("nz-notif-resend-from"),
 				toAddresses: collectToAddresses(),
 				resendId: providerIds.resendId ?? "",
@@ -308,7 +402,11 @@ function buildPayload(
 			return {
 				...base,
 				serverUrl: val("nz-notif-gotify-url"),
-				appToken: val("nz-notif-gotify-token"),
+				...credentialField(
+					"appToken",
+					val("nz-notif-gotify-token"),
+					notificationId,
+				),
 				priority: numVal("nz-notif-gotify-priority", 5) ?? 5,
 				decoration: checked("nz-notif-gotify-decoration"),
 				gotifyId: providerIds.gotifyId ?? "",
@@ -317,15 +415,23 @@ function buildPayload(
 			return {
 				...base,
 				serverUrl: val("nz-notif-ntfy-url"),
-				topic: val("nz-notif-ntfy-topic"),
-				accessToken: val("nz-notif-ntfy-token"),
+				...credentialField("topic", val("nz-notif-ntfy-topic"), notificationId),
+				...credentialField(
+					"accessToken",
+					val("nz-notif-ntfy-token"),
+					notificationId,
+				),
 				priority: numVal("nz-notif-ntfy-priority", 3) ?? 3,
 				ntfyId: providerIds.ntfyId ?? "",
 			};
 		case "mattermost":
 			return {
 				...base,
-				webhookUrl: val("nz-notif-mattermost-webhook"),
+				...credentialField(
+					"webhookUrl",
+					val("nz-notif-mattermost-webhook"),
+					notificationId,
+				),
 				channel: val("nz-notif-mattermost-channel") || undefined,
 				username: val("nz-notif-mattermost-username") || undefined,
 				mattermostId: providerIds.mattermostId ?? "",
@@ -333,28 +439,48 @@ function buildPayload(
 		case "lark":
 			return {
 				...base,
-				webhookUrl: val("nz-notif-lark-webhook"),
+				...credentialField(
+					"webhookUrl",
+					val("nz-notif-lark-webhook"),
+					notificationId,
+				),
 				larkId: providerIds.larkId ?? "",
 			};
 		case "teams":
 			return {
 				...base,
-				webhookUrl: val("nz-notif-teams-webhook"),
+				...credentialField(
+					"webhookUrl",
+					val("nz-notif-teams-webhook"),
+					notificationId,
+				),
 				teamsId: providerIds.teamsId ?? "",
 			};
 		case "custom":
 			return {
 				...base,
-				endpoint: val("nz-notif-custom-endpoint"),
-				headers: collectHeaders(),
+				...credentialField(
+					"endpoint",
+					val("nz-notif-custom-endpoint"),
+					notificationId,
+				),
+				...(collectHeaders() ? { headers: collectHeaders() } : {}),
 				customId: providerIds.customId ?? "",
 			};
 		case "pushover": {
 			const priority = numVal("nz-notif-pushover-priority", 0) ?? 0;
 			return {
 				...base,
-				userKey: val("nz-notif-pushover-user"),
-				apiToken: val("nz-notif-pushover-token"),
+				...credentialField(
+					"userKey",
+					val("nz-notif-pushover-user"),
+					notificationId,
+				),
+				...credentialField(
+					"apiToken",
+					val("nz-notif-pushover-token"),
+					notificationId,
+				),
 				priority,
 				retry: priority === 2 ? numVal("nz-notif-pushover-retry") : undefined,
 				expire: priority === 2 ? numVal("nz-notif-pushover-expire") : undefined,
@@ -367,7 +493,10 @@ function buildPayload(
 function buildTestPayload(type: ProviderType) {
 	switch (type) {
 		case "slack":
-			return { webhookUrl: val("nz-notif-slack-webhook"), channel: val("nz-notif-slack-channel") };
+			return {
+				webhookUrl: val("nz-notif-slack-webhook"),
+				channel: val("nz-notif-slack-channel"),
+			};
 		case "telegram":
 			return {
 				botToken: val("nz-notif-telegram-token"),
@@ -375,7 +504,10 @@ function buildTestPayload(type: ProviderType) {
 				messageThreadId: val("nz-notif-telegram-thread"),
 			};
 		case "discord":
-			return { webhookUrl: val("nz-notif-discord-webhook"), decoration: checked("nz-notif-discord-decoration") };
+			return {
+				webhookUrl: val("nz-notif-discord-webhook"),
+				decoration: checked("nz-notif-discord-decoration"),
+			};
 		case "email":
 			return {
 				smtpServer: val("nz-notif-email-smtp-server"),
@@ -416,7 +548,10 @@ function buildTestPayload(type: ProviderType) {
 		case "teams":
 			return { webhookUrl: val("nz-notif-teams-webhook") };
 		case "custom":
-			return { endpoint: val("nz-notif-custom-endpoint"), headers: collectHeaders() };
+			return {
+				endpoint: val("nz-notif-custom-endpoint"),
+				headers: collectHeaders(),
+			};
 		case "pushover": {
 			const priority = numVal("nz-notif-pushover-priority", 0) ?? 0;
 			return {
@@ -542,6 +677,7 @@ function resetForm() {
 	setVal("nz-notif-docker-cleanup", false);
 	setVal("nz-notif-server-threshold", false);
 	setSelectedType("slack");
+	setCredentialPlaceholders();
 	const err = document.getElementById("nz-notif-form-error");
 	err?.classList.add("hidden");
 }
@@ -565,10 +701,16 @@ function populateFromNotification(notification: any) {
 	} else if (type === "telegram") {
 		setVal("nz-notif-telegram-token", notification.telegram?.botToken ?? "");
 		setVal("nz-notif-telegram-chat", notification.telegram?.chatId ?? "");
-		setVal("nz-notif-telegram-thread", notification.telegram?.messageThreadId ?? "");
+		setVal(
+			"nz-notif-telegram-thread",
+			notification.telegram?.messageThreadId ?? "",
+		);
 	} else if (type === "discord") {
 		setVal("nz-notif-discord-webhook", notification.discord?.webhookUrl ?? "");
-		setVal("nz-notif-discord-decoration", notification.discord?.decoration ?? true);
+		setVal(
+			"nz-notif-discord-decoration",
+			notification.discord?.decoration ?? true,
+		);
 	} else if (type === "email") {
 		setVal("nz-notif-email-smtp-server", notification.email?.smtpServer ?? "");
 		setVal("nz-notif-email-smtp-port", notification.email?.smtpPort ?? "");
@@ -584,16 +726,28 @@ function populateFromNotification(notification: any) {
 		setVal("nz-notif-gotify-url", notification.gotify?.serverUrl ?? "");
 		setVal("nz-notif-gotify-token", notification.gotify?.appToken ?? "");
 		setVal("nz-notif-gotify-priority", notification.gotify?.priority ?? 5);
-		setVal("nz-notif-gotify-decoration", notification.gotify?.decoration ?? true);
+		setVal(
+			"nz-notif-gotify-decoration",
+			notification.gotify?.decoration ?? true,
+		);
 	} else if (type === "ntfy") {
 		setVal("nz-notif-ntfy-url", notification.ntfy?.serverUrl ?? "");
 		setVal("nz-notif-ntfy-topic", notification.ntfy?.topic ?? "");
 		setVal("nz-notif-ntfy-token", notification.ntfy?.accessToken ?? "");
 		setVal("nz-notif-ntfy-priority", notification.ntfy?.priority ?? 3);
 	} else if (type === "mattermost") {
-		setVal("nz-notif-mattermost-webhook", notification.mattermost?.webhookUrl ?? "");
-		setVal("nz-notif-mattermost-channel", notification.mattermost?.channel ?? "");
-		setVal("nz-notif-mattermost-username", notification.mattermost?.username ?? "");
+		setVal(
+			"nz-notif-mattermost-webhook",
+			notification.mattermost?.webhookUrl ?? "",
+		);
+		setVal(
+			"nz-notif-mattermost-channel",
+			notification.mattermost?.channel ?? "",
+		);
+		setVal(
+			"nz-notif-mattermost-username",
+			notification.mattermost?.username ?? "",
+		);
 	} else if (type === "lark") {
 		setVal("nz-notif-lark-webhook", notification.lark?.webhookUrl ?? "");
 	} else if (type === "teams") {
@@ -601,9 +755,9 @@ function populateFromNotification(notification: any) {
 	} else if (type === "custom") {
 		setVal("nz-notif-custom-endpoint", notification.custom?.endpoint ?? "");
 		const headers = notification.custom?.headers
-			? Object.entries(notification.custom.headers as Record<string, string>).map(
-					([key, value]) => ({ key, value }),
-				)
+			? Object.entries(
+					notification.custom.headers as Record<string, string>,
+				).map(([key, value]) => ({ key, value }))
 			: [];
 		renderHeaders(headers);
 	} else if (type === "pushover") {
@@ -624,6 +778,7 @@ export function mountNotificationsDashboard() {
 	let editingNotificationId = "";
 	let providerIds: ProviderIds = {};
 	let pendingDeleteId = "";
+	let hasConfiguredCredentials = false;
 
 	const setFormMode = (notificationId?: string) => {
 		const dialog = document.getElementById("nz-notifications-form-dialog");
@@ -631,7 +786,8 @@ export function mountNotificationsDashboard() {
 		const desc = dialog?.querySelector(".nz-modal__description");
 		const submit = document.getElementById("nz-notif-form-submit");
 		const isEdit = !!notificationId;
-		if (title) title.textContent = isEdit ? "Update notification" : "Add notification";
+		if (title)
+			title.textContent = isEdit ? "Update notification" : "Add notification";
 		if (desc) {
 			desc.textContent = isEdit
 				? "Update your notification providers for multiple channels."
@@ -643,11 +799,14 @@ export function mountNotificationsDashboard() {
 	const openForm = async (notificationId?: string) => {
 		editingNotificationId = notificationId ?? "";
 		providerIds = {};
+		hasConfiguredCredentials = false;
 		resetForm();
 		setFormMode(notificationId);
 		if (notificationId) {
 			try {
-				const notification = await trpcQuery<any>("notification.one", { notificationId });
+				const notification = await trpcQuery<any>("notification.one", {
+					notificationId,
+				});
 				providerIds = {
 					slackId: notification.slackId,
 					telegramId: notification.telegramId,
@@ -662,7 +821,14 @@ export function mountNotificationsDashboard() {
 					larkId: notification.larkId,
 					teamsId: notification.teamsId,
 				};
+				hasConfiguredCredentials = Boolean(
+					notification[notification.notificationType]?.hasCredentials,
+				);
 				populateFromNotification(notification);
+				setCredentialPlaceholders(
+					notification.notificationType as ProviderType,
+					hasConfiguredCredentials,
+				);
 			} catch {
 				showToast("Failed to load notification", "error");
 				return;
@@ -672,7 +838,10 @@ export function mountNotificationsDashboard() {
 	};
 
 	root.addEventListener("click", (e) => {
-		const t = e.target instanceof Element ? e.target.closest("[data-notif-action]") : null;
+		const t =
+			e.target instanceof Element
+				? e.target.closest("[data-notif-action]")
+				: null;
 		if (!(t instanceof HTMLElement)) return;
 		const action = t.dataset.notifAction;
 		if (action === "add") void openForm();
@@ -680,8 +849,10 @@ export function mountNotificationsDashboard() {
 		else if (action === "delete") {
 			pendingDeleteId = t.dataset.notificationId ?? "";
 			openDialog("nz-notifications-delete-dialog");
-		} else if (action === "close-form") closeDialog("nz-notifications-form-dialog");
-		else if (action === "close-delete") closeDialog("nz-notifications-delete-dialog");
+		} else if (action === "close-form")
+			closeDialog("nz-notifications-form-dialog");
+		else if (action === "close-delete")
+			closeDialog("nz-notifications-delete-dialog");
 		else if (action === "add-to-address") addToAddressRow("");
 		else if (action === "add-header") addHeaderRow("", "");
 	});
@@ -693,85 +864,113 @@ export function mountNotificationsDashboard() {
 		if (t.id === "nz-notif-pushover-priority") updateProviderPanels("pushover");
 	});
 
-	document.getElementById("nz-notif-form")?.addEventListener("submit", async (e) => {
-		e.preventDefault();
-		const type = getSelectedType();
-		const errEl = document.getElementById("nz-notif-form-error");
-		const validationError = validateForm(type);
-		if (validationError) {
-			if (errEl) {
-				errEl.textContent = validationError;
-				errEl.classList.remove("hidden");
-			}
-			return;
-		}
-		errEl?.classList.add("hidden");
-		const submit = document.getElementById("nz-notif-form-submit") as HTMLButtonElement | null;
-		if (submit) submit.disabled = true;
-		try {
-			const payload = buildPayload(type, editingNotificationId, providerIds);
-			const proc = editingNotificationId ? MUTATIONS[type].update : MUTATIONS[type].create;
-			await trpcMutate(proc, payload);
-			showToast(editingNotificationId ? "Notification Updated" : "Notification Created", "success");
-			closeDialog("nz-notifications-form-dialog");
-			window.location.reload();
-		} catch (err) {
-			showToast(
-				editingNotificationId ? "Error updating a notification" : "Error creating a notification",
-				"error",
+	document
+		.getElementById("nz-notif-form")
+		?.addEventListener("submit", async (e) => {
+			e.preventDefault();
+			const type = getSelectedType();
+			const errEl = document.getElementById("nz-notif-form-error");
+			const validationError = validateForm(
+				type,
+				Boolean(editingNotificationId) && hasConfiguredCredentials,
 			);
-			if (errEl && err instanceof Error && err.message) {
-				errEl.textContent = err.message;
-				errEl.classList.remove("hidden");
+			if (validationError) {
+				if (errEl) {
+					errEl.textContent = validationError;
+					errEl.classList.remove("hidden");
+				}
+				return;
 			}
-		} finally {
-			if (submit) submit.disabled = false;
-		}
-	});
+			errEl?.classList.add("hidden");
+			const submit = document.getElementById(
+				"nz-notif-form-submit",
+			) as HTMLButtonElement | null;
+			if (submit) submit.disabled = true;
+			try {
+				const payload = buildPayload(type, editingNotificationId, providerIds);
+				const proc = editingNotificationId
+					? MUTATIONS[type].update
+					: MUTATIONS[type].create;
+				await trpcMutate(proc, payload);
+				showToast(
+					editingNotificationId
+						? "Notification Updated"
+						: "Notification Created",
+					"success",
+				);
+				closeDialog("nz-notifications-form-dialog");
+				window.location.reload();
+			} catch (err) {
+				showToast(
+					editingNotificationId
+						? "Error updating a notification"
+						: "Error creating a notification",
+					"error",
+				);
+				if (errEl && err instanceof Error && err.message) {
+					errEl.textContent = err.message;
+					errEl.classList.remove("hidden");
+				}
+			} finally {
+				if (submit) submit.disabled = false;
+			}
+		});
 
-	document.getElementById("nz-notif-test")?.addEventListener("click", async () => {
-		const type = getSelectedType();
-		const validationError = validateForm(type);
-		if (validationError) {
-			showToast(validationError, "error");
-			return;
-		}
-		const testBtn = document.getElementById("nz-notif-test") as HTMLButtonElement | null;
-		if (testBtn) testBtn.disabled = true;
-		try {
-			await trpcMutate(MUTATIONS[type].test, buildTestPayload(type));
-			showToast("Connection Success", "success");
-		} catch (err) {
-			showToast(
-				`Error testing the provider: ${err instanceof Error ? err.message : "Unknown error"}`,
-				"error",
-			);
-		} finally {
-			if (testBtn) testBtn.disabled = false;
-		}
-	});
+	document
+		.getElementById("nz-notif-test")
+		?.addEventListener("click", async () => {
+			const type = getSelectedType();
+			const validationError = validateForm(type);
+			if (validationError) {
+				showToast(validationError, "error");
+				return;
+			}
+			const testBtn = document.getElementById(
+				"nz-notif-test",
+			) as HTMLButtonElement | null;
+			if (testBtn) testBtn.disabled = true;
+			try {
+				await trpcMutate(MUTATIONS[type].test, buildTestPayload(type));
+				showToast("Connection Success", "success");
+			} catch (err) {
+				showToast(
+					`Error testing the provider: ${err instanceof Error ? err.message : "Unknown error"}`,
+					"error",
+				);
+			} finally {
+				if (testBtn) testBtn.disabled = false;
+			}
+		});
 
-	document.getElementById("nz-notifications-delete-confirm")?.addEventListener("click", async () => {
-		if (!pendingDeleteId) return;
-		const btn = document.getElementById("nz-notifications-delete-confirm") as HTMLButtonElement | null;
-		if (btn) btn.disabled = true;
-		try {
-			await trpcMutate("notification.remove", { notificationId: pendingDeleteId });
-			showToast("Notification deleted successfully", "success");
-			closeDialog("nz-notifications-delete-dialog");
-			window.location.reload();
-		} catch {
-			showToast("Error deleting notification", "error");
-		} finally {
-			if (btn) btn.disabled = false;
-			pendingDeleteId = "";
-		}
-	});
+	document
+		.getElementById("nz-notifications-delete-confirm")
+		?.addEventListener("click", async () => {
+			if (!pendingDeleteId) return;
+			const btn = document.getElementById(
+				"nz-notifications-delete-confirm",
+			) as HTMLButtonElement | null;
+			if (btn) btn.disabled = true;
+			try {
+				await trpcMutate("notification.remove", {
+					notificationId: pendingDeleteId,
+				});
+				showToast("Notification deleted successfully", "success");
+				closeDialog("nz-notifications-delete-dialog");
+				window.location.reload();
+			} catch {
+				showToast("Error deleting notification", "error");
+			} finally {
+				if (btn) btn.disabled = false;
+				pendingDeleteId = "";
+			}
+		});
 
 	// Initialize provider radio labels styling
 	for (const p of PROVIDERS) {
 		const label = document.querySelector(`[data-notif-type-label="${p.type}"]`);
-		const radio = document.querySelector(`input[name="nz-notif-type"][value="${p.type}"]`);
+		const radio = document.querySelector(
+			`input[name="nz-notif-type"][value="${p.type}"]`,
+		);
 		radio?.addEventListener("change", () => updateProviderRadios(p.type));
 		label?.addEventListener("click", () => {
 			if (radio instanceof HTMLInputElement) {

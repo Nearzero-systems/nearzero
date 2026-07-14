@@ -10,8 +10,15 @@ import {
 } from "@nearzero/server/services/deployment";
 import { findDestinationById } from "@nearzero/server/services/destination";
 import { sendNearzeroBackupNotifications } from "../notifications/nearzero-backup";
-import { execAsync } from "../process/execAsync";
-import { getBackupTimestamp, getS3Credentials, normalizeS3Path } from "./utils";
+import { execAsync, executeSensitiveShellScript } from "../process/execAsync";
+import {
+	getBackupFailureMessage,
+	getBackupTimestamp,
+	getDestinationSensitiveValues,
+	getS3Credentials,
+	normalizeS3Path,
+	quoteShellArgument,
+} from "./utils";
 
 function formatBytes(bytes?: number) {
 	if (bytes === undefined) return "Unknown size";
@@ -94,9 +101,12 @@ export const runWebServerBackup = async (backup: BackupSchedule) => {
 				// If stat fails, keep undefined
 			}
 
-			const uploadCommand = `rclone copyto ${rcloneFlags.join(" ")} "${zipPath}" "${s3Path}"`;
+			const uploadCommand = `rclone copyto ${rcloneFlags.join(" ")} ${quoteShellArgument(zipPath)} ${quoteShellArgument(s3Path)}`;
 			writeStream.write("Running command to upload backup to S3\n");
-			await execAsync(uploadCommand);
+			await executeSensitiveShellScript({
+				script: uploadCommand,
+				sensitiveValues: getDestinationSensitiveValues(destination),
+			});
 			writeStream.write("Uploaded backup to S3 ✅\n");
 			writeStream.end();
 			await sendNearzeroBackupNotifications({
@@ -113,16 +123,13 @@ export const runWebServerBackup = async (backup: BackupSchedule) => {
 			}
 		}
 	} catch (error) {
-		console.error("Backup error:", error);
+		const message = getBackupFailureMessage(error);
 		writeStream.write("Backup error❌\n");
-		writeStream.write(
-			error instanceof Error ? error.message : "Unknown error\n",
-		);
+		writeStream.write(`${message}\n`);
 		writeStream.end();
 		await sendNearzeroBackupNotifications({
 			type: "error",
-			// @ts-ignore
-			errorMessage: error?.message || "Error message not provided",
+			errorMessage: message,
 			backupSize: formatBytes(computedBackupSize),
 		});
 		await updateDeploymentStatus(deployment.deploymentId, "error");

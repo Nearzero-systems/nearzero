@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+import { domainToASCII } from "node:url";
 import { relations } from "drizzle-orm";
 import {
 	boolean,
@@ -131,10 +133,51 @@ export const serverRelations = relations(server, ({ one, many }) => ({
 	schedules: many(schedules),
 }));
 
+export const isValidServerAddress = (value: string): boolean => {
+	if (
+		value !== value.trim() ||
+		value.length === 0 ||
+		/[\s/\\?#@\[\]`\u0000-\u001f\u007f]/u.test(value)
+	) {
+		return false;
+	}
+	if (isIP(value) !== 0) return true;
+
+	const ascii = domainToASCII(value).toLowerCase();
+	if (!ascii || ascii.length > 253) return false;
+	return ascii.split(".").every(
+		(label) =>
+			label.length > 0 &&
+			label.length <= 63 &&
+			/^[a-z0-9-]+$/.test(label) &&
+			!label.startsWith("-") &&
+			!label.endsWith("-"),
+	);
+};
+
+const serverAddressSchema = z
+	.string()
+	.min(1, "Server address is required")
+	.refine(isValidServerAddress, {
+		message: "Enter an IP address or hostname without a protocol, path, or port",
+	});
+
+const sshUsernameSchema = z
+	.string()
+	.min(1, "SSH username is required")
+	.max(32, "SSH username must be 32 characters or fewer")
+	.regex(
+		/^[a-z_][a-z0-9_-]*\$?$/i,
+		"SSH username contains unsupported characters",
+	);
+
 const createSchema = createInsertSchema(server, {
 	serverId: z.string().min(1),
 	name: z.string().min(1),
 	description: z.string().optional(),
+	ipAddress: serverAddressSchema,
+	port: z.number().int().min(1).max(65535),
+	username: sshUsernameSchema,
 });
 
 export const apiCreateServer = createSchema
@@ -186,7 +229,7 @@ export const apiUpdateServerMonitoring = createSchema
 			.object({
 				server: z.object({
 					refreshRate: z.number().min(2),
-					port: z.number().min(1),
+					port: z.number().int().min(1).max(65535),
 					token: z.string(),
 					urlCallback: z.string().url(),
 					retentionDays: z.number().min(1),

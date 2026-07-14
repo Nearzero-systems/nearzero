@@ -15,6 +15,7 @@ import {
 	startServiceRemote,
 	stopService,
 	stopServiceRemote,
+	toPublicServerRelation,
 	updateLibsqlById,
 } from "@nearzero/server";
 import {
@@ -122,7 +123,7 @@ export const libsqlRouter = createTRPCRouter({
 					message: "You are not authorized to access this Libsql",
 				});
 			}
-			return libsql;
+			return toPublicServerRelation(libsql);
 		}),
 
 	start: protectedProcedure
@@ -158,7 +159,7 @@ export const libsqlRouter = createTRPCRouter({
 				resourceId: libsql.libsqlId,
 				resourceName: libsql.appName,
 			});
-			return libsql;
+			return toPublicServerRelation(libsql);
 		}),
 	stop: protectedProcedure
 		.input(apiFindOneLibsql)
@@ -192,7 +193,7 @@ export const libsqlRouter = createTRPCRouter({
 				resourceId: libsql.libsqlId,
 				resourceName: libsql.appName,
 			});
-			return libsql;
+			return toPublicServerRelation(libsql);
 		}),
 	saveExternalPorts: protectedProcedure
 		.input(apiSaveExternalPortsLibsql)
@@ -262,7 +263,7 @@ export const libsqlRouter = createTRPCRouter({
 				resourceId: libsql.libsqlId,
 				resourceName: libsql.appName,
 			});
-			return libsql;
+			return toPublicServerRelation(libsql);
 		}),
 	deploy: protectedProcedure
 		.input(apiDeployLibsql)
@@ -349,7 +350,7 @@ export const libsqlRouter = createTRPCRouter({
 				resourceId: libsql.libsqlId,
 				resourceName: libsql.appName,
 			});
-			return libsql;
+			return toPublicServerRelation(libsql);
 		}),
 	remove: protectedProcedure
 		.input(apiFindOneLibsql)
@@ -385,7 +386,7 @@ export const libsqlRouter = createTRPCRouter({
 				} catch (_) {}
 			}
 
-			return libsql;
+			return toPublicServerRelation(libsql);
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesLibsql)

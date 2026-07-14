@@ -1,6 +1,6 @@
 import { findComposeById } from "@nearzero/server/services/compose";
 import { stringify } from "yaml";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import { executePreparedShellCommand } from "../process/execAsync";
 import { addAppNameToAllServiceNames } from "./collision/root-network";
 import { generateRandomHash } from "./compose";
 import { addSuffixToAllVolumes } from "./compose/volume";
@@ -31,12 +31,8 @@ export const randomizeIsolatedDeploymentComposeFile = async (
 ) => {
 	const compose = await findComposeById(composeId);
 
-	const command = await cloneCompose(compose);
-	if (compose.serverId) {
-		await execAsyncRemote(compose.serverId, command);
-	} else {
-		await execAsync(command);
-	}
+	const prepared = await cloneCompose(compose);
+	await executePreparedShellCommand(prepared, compose.serverId);
 
 	let composeData: ComposeSpecification | null;
 

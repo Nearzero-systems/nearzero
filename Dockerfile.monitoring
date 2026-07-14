@@ -1,44 +1,42 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 # Nearzero Monitoring Service Docker Image
 # Copyright 2025 Nearzero (Nearzero.dev)
 # Build stage
-FROM golang:1.21-alpine3.19 AS builder
+FROM golang:1.26-alpine3.24@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
 # Instalar dependencias necesarias
 RUN apk add --no-cache gcc musl-dev sqlite-dev
 
-# Establecer el directorio de trabajo
-WORKDIR /app
-
-# Copiar todo el código fuente primero
-COPY . .
-
-# Movernos al directorio de la aplicación golang
 WORKDIR /app/apps/monitoring
 
-# Descargar dependencias
-RUN go mod download
+# Cache dependencies independently from the monitoring source and keep the
+# rest of the monorepo out of this image's build stages.
+COPY apps/monitoring/go.mod apps/monitoring/go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+
+COPY apps/monitoring/ ./
 
 # Compilar la aplicación
-RUN CGO_ENABLED=1 GOOS=linux go build -o main main.go
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux go build -o main main.go
 
 # Etapa final
-FROM alpine:3.19
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 
 # Instalar SQLite y otras dependencias necesarias
 RUN apk add --no-cache sqlite-libs docker-cli
 
 WORKDIR /app
 
-# Copiar el binario compilado y el archivo monitor.go
+# Copy only the compiled runtime binary.
 COPY --from=builder /app/apps/monitoring/main ./main
-COPY --from=builder /app/apps/monitoring/main.go ./monitor.go
-
-# COPY --from=builder /app/apps/golang/.env ./.env
 
 # Exponer el puerto
 ENV PORT=4500
 EXPOSE 4500
+
+LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 # Ejecutar la aplicación
 CMD ["./main"]

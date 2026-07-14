@@ -44,11 +44,9 @@ export const sendEmailNotification = async (
 			textEncoding: "base64",
 			attachments,
 		});
-	} catch (err) {
-		console.log(err);
-		throw new Error(
-			`Failed to send email notification ${err instanceof Error ? err.message : "Unknown error"}`,
-		);
+	} catch {
+		console.error("Failed to send email notification");
+		throw new Error("Failed to send email notification");
 	}
 };
 
@@ -70,11 +68,9 @@ export const sendResendNotification = async (
 		if (result.error) {
 			throw new Error(result.error.message);
 		}
-	} catch (err) {
-		console.log(err);
-		throw new Error(
-			`Failed to send Resend notification ${err instanceof Error ? err.message : "Unknown error"}`,
-		);
+	} catch {
+		console.error("Failed to send Resend notification");
+		throw new Error("Failed to send Resend notification");
 	}
 };
 
@@ -93,11 +89,9 @@ export const sendDiscordNotification = async (
 				`Failed to send discord notification ${response.statusText}`,
 			);
 		}
-	} catch (err) {
-		console.log("error", err);
-		throw new Error(
-			`Failed to send discord notification ${err instanceof Error ? err.message : "Unknown error"}`,
-		);
+	} catch {
+		console.error("Failed to send Discord notification");
+		throw new Error("Failed to send Discord notification");
 	}
 };
 
@@ -125,8 +119,8 @@ export const sendTelegramNotification = async (
 				},
 			}),
 		});
-	} catch (err) {
-		console.log(err);
+	} catch {
+		console.error("Failed to send Telegram notification");
 	}
 };
 
@@ -145,11 +139,9 @@ export const sendSlackNotification = async (
 				`Failed to send slack notification ${response.statusText}`,
 			);
 		}
-	} catch (err) {
-		console.log("error", err);
-		throw new Error(
-			`Failed to send slack notification ${err instanceof Error ? err.message : "Unknown error"}`,
-		);
+	} catch {
+		console.error("Failed to send Slack notification");
+		throw new Error("Failed to send Slack notification");
 	}
 };
 
@@ -263,9 +255,9 @@ export const sendCustomNotification = async (
 		}
 
 		return response;
-	} catch (error) {
-		console.error("Error sending custom notification:", error);
-		throw error;
+	} catch {
+		console.error("Failed to send custom notification");
+		throw new Error("Failed to send custom notification");
 	}
 };
 
@@ -279,8 +271,8 @@ export const sendLarkNotification = async (
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(message),
 		});
-	} catch (err) {
-		console.log(err);
+	} catch {
+		console.error("Failed to send Lark notification");
 	}
 };
 
@@ -354,11 +346,9 @@ export const sendTeamsNotification = async (
 				`Failed to send Teams notification: ${response.statusText}`,
 			);
 		}
-	} catch (err) {
-		console.log(err);
-		throw new Error(
-			`Failed to send Teams notification ${err instanceof Error ? err.message : "Unknown error"}`,
-		);
+	} catch {
+		console.error("Failed to send Teams notification");
+		throw new Error("Failed to send Teams notification");
 	}
 };
 

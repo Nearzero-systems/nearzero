@@ -1,12 +1,17 @@
 import {
 	createDestination,
-	execAsync,
-	execAsyncRemote,
 	findDestinationById,
 	removeDestinationById,
 	updateDestinationById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
+import { sanitizePublicErrorMessage } from "@nearzero/server/services/operational-log";
+import {
+	getDestinationSensitiveValues,
+	getS3Credentials,
+	quoteShellArgument,
+} from "@nearzero/server/utils/backups/utils";
+import { executeSensitiveShellScript } from "@nearzero/server/utils/process/execAsync";
 import { TRPCError } from "@trpc/server";
 import { desc, eq } from "drizzle-orm";
 import { createTRPCRouter, withPermission } from "@/server/api/trpc";
@@ -18,6 +23,15 @@ import {
 	apiUpdateDestination,
 	destinations,
 } from "@/server/db/schema";
+
+function toPublicDestination<
+	T extends { accessKey: string; secretAccessKey: string },
+>({ accessKey, secretAccessKey, ...destination }: T) {
+	return {
+		...destination,
+		hasCredentials: Boolean(accessKey && secretAccessKey),
+	};
+}
 
 export const destinationRouter = createTRPCRouter({
 	create: withPermission("destination", "create")
@@ -57,38 +71,33 @@ export const destinationRouter = createTRPCRouter({
 			} = input;
 			try {
 				const rcloneFlags = [
-					`--s3-access-key-id="${accessKey}"`,
-					`--s3-secret-access-key="${secretAccessKey}"`,
-					`--s3-region="${region}"`,
-					`--s3-endpoint="${endpoint}"`,
-					"--s3-no-check-bucket",
-					"--s3-force-path-style",
+					...getS3Credentials({
+						accessKey,
+						secretAccessKey,
+						region,
+						endpoint,
+						provider,
+						additionalFlags,
+					}),
 					"--retries 1",
 					"--low-level-retries 1",
 					"--timeout 10s",
 					"--contimeout 5s",
 				];
-				if (provider) {
-					rcloneFlags.unshift(`--s3-provider="${provider}"`);
-				}
-				if (additionalFlags?.length) {
-					rcloneFlags.push(...additionalFlags);
-				}
 				const rcloneDestination = `:s3:${bucket}`;
-				const rcloneCommand = `rclone ls ${rcloneFlags.join(" ")} "${rcloneDestination}"`;
-
-				if (process.env.JOBS_URL) {
-					await execAsyncRemote(input.serverId || "", rcloneCommand);
-				} else {
-					await execAsync(rcloneCommand);
-				}
+				const rcloneCommand = `rclone ls ${rcloneFlags.join(" ")} ${quoteShellArgument(rcloneDestination)}`;
+				await executeSensitiveShellScript({
+					serverId: process.env.JOBS_URL ? input.serverId : null,
+					script: rcloneCommand,
+					sensitiveValues: getDestinationSensitiveValues(input),
+				});
 			} catch (error) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error?.message
-							: "Error connecting to bucket",
+					message: sanitizePublicErrorMessage(
+						error instanceof Error ? error.message : error,
+						"Error connecting to bucket",
+					),
 					cause: error,
 				});
 			}
@@ -103,13 +112,14 @@ export const destinationRouter = createTRPCRouter({
 					message: "You are not allowed to access this destination",
 				});
 			}
-			return destination;
+			return toPublicDestination(destination);
 		}),
 	all: withPermission("destination", "read").query(async ({ ctx }) => {
-		return await db.query.destinations.findMany({
+		const rows = await db.query.destinations.findMany({
 			where: eq(destinations.organizationId, ctx.session.activeOrganizationId),
 			orderBy: [desc(destinations.createdAt)],
 		});
+		return rows.map(toPublicDestination);
 	}),
 	remove: withPermission("destination", "delete")
 		.input(apiRemoveDestination)
@@ -133,7 +143,7 @@ export const destinationRouter = createTRPCRouter({
 					resourceId: input.destinationId,
 					resourceName: destination.name,
 				});
-				return result;
+				return result ? toPublicDestination(result) : result;
 			} catch (error) {
 				throw error;
 			}
@@ -159,14 +169,14 @@ export const destinationRouter = createTRPCRouter({
 					resourceId: input.destinationId,
 					resourceName: input.name,
 				});
-				return result;
+				return result ? toPublicDestination(result) : result;
 			} catch (error) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error?.message
-							: "Error connecting to bucket",
+					message: sanitizePublicErrorMessage(
+						error instanceof Error ? error.message : error,
+						"Error updating the destination",
+					),
 					cause: error,
 				});
 			}

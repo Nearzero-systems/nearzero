@@ -3,6 +3,7 @@ import {
 	findSSHKeyById,
 	generateSSHKey,
 	removeSSHKeyById,
+	toPublicSshKey,
 	updateSSHKeyById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -63,10 +64,11 @@ export const sshRouter = createTRPCRouter({
 					resourceId: sshKey.sshKeyId,
 					resourceName: sshKey.name,
 				});
-				return await removeSSHKeyById(
+				const removedSshKey = await removeSSHKeyById(
 					input.sshKeyId,
 					ctx.session.activeOrganizationId,
 				);
+				return removedSshKey ? toPublicSshKey(removedSshKey) : removedSshKey;
 			} catch (error) {
 				throw error;
 			}
@@ -82,13 +84,15 @@ export const sshRouter = createTRPCRouter({
 					message: "You are not allowed to access this SSH key",
 				});
 			}
-			return sshKey;
+			return toPublicSshKey(sshKey);
 		}),
 	all: withPermission("sshKeys", "read").query(async ({ ctx }) => {
-		return await db.query.sshKeys.findMany({
+		const sshKeyRows = await db.query.sshKeys.findMany({
+			columns: { privateKey: false },
 			where: eq(sshKeys.organizationId, ctx.session.activeOrganizationId),
 			orderBy: desc(sshKeys.createdAt),
 		});
+		return sshKeyRows.map(toPublicSshKey);
 	}),
 	allForApps: protectedProcedure.query(async ({ ctx }) => {
 		return await db.query.sshKeys.findMany({
@@ -123,7 +127,7 @@ export const sshRouter = createTRPCRouter({
 					resourceId: sshKey.sshKeyId,
 					resourceName: sshKey.name,
 				});
-				return result;
+				return result ? toPublicSshKey(result) : result;
 			} catch (error) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",

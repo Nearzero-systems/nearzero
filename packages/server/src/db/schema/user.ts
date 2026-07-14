@@ -1,4 +1,3 @@
-import { paths } from "@nearzero/server/constants";
 import { relations, sql } from "drizzle-orm";
 import {
 	boolean,
@@ -167,37 +166,35 @@ export const apiTraefikConfig = z.object({
 	traefikConfig: z.string().min(1),
 });
 
+const apiTraefikFilePath = z
+	.string()
+	.trim()
+	.min(1)
+	.max(4096)
+	.regex(
+		/^[A-Za-z0-9._/-]+$/,
+		"Traefik config path contains unsupported characters",
+	)
+	.refine(
+		(value) => /\.ya?ml$/i.test(value),
+		"Traefik config path must end in .yml or .yaml",
+	)
+	.refine(
+		(value) =>
+			!value.split("/").some((segment) => segment === "." || segment === ".."),
+		"Traefik config path cannot contain dot segments",
+	);
+
 export const apiModifyTraefikConfig = z.object({
-	path: z.string().min(1),
-	traefikConfig: z.string().min(1),
+	path: apiTraefikFilePath,
+	traefikConfig: z
+		.string()
+		.min(1)
+		.max(2 * 1024 * 1024),
 	serverId: z.string().optional(),
 });
 export const apiReadTraefikConfig = z.object({
-	path: z
-		.string()
-		.min(1)
-		.refine(
-			(path) => {
-				// Prevent directory traversal attacks
-				if (path.includes("../") || path.includes("..\\")) {
-					return false;
-				}
-
-				const { MAIN_TRAEFIK_PATH } = paths();
-				if (path.startsWith("/") && !path.startsWith(MAIN_TRAEFIK_PATH)) {
-					return false;
-				}
-				// Prevent null bytes and other dangerous characters
-				if (path.includes("\0") || path.includes("\x00")) {
-					return false;
-				}
-				return true;
-			},
-			{
-				message:
-					"Invalid path: path traversal or unauthorized directory access detected",
-			},
-		),
+	path: apiTraefikFilePath,
 	serverId: z.string().optional(),
 });
 

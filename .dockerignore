@@ -1,5 +1,38 @@
 node_modules
+**/node_modules
 .git
 .gitignore
 *.md
 dist
+**/dist
+
+# Never send local credentials, examples, or machine state to the Docker
+# builder. Build-time values must be explicit in the Dockerfile or passed with
+# BuildKit secret mounts; no real .env file belongs in an image context.
+.env
+.env.*
+**/.env
+**/.env.*
+**/.npmrc
+**/.netrc
+**/.pypirc
+**/.ssh
+**/.aws
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/id_rsa*
+**/id_ed25519*
+
+# Local caches, databases, logs, and provider state are not build inputs.
+**/.DS_Store
+**/.turbo
+**/.astro
+**/.cache
+**/.next
+**/.vercel
+**/.wrangler
+**/coverage
+**/*.db
+**/*.log

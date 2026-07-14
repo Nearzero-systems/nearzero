@@ -7,12 +7,15 @@ import {
 import { findEnvironmentById } from "@nearzero/server/services/environment";
 import { findProjectById } from "@nearzero/server/services/project";
 import { sendDatabaseBackupNotifications } from "../notifications/database-backup";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import {
 	getBackupCommand,
+	getBackupFailureMessage,
+	getBackupSensitiveValues,
 	getBackupTimestamp,
 	getS3Credentials,
 	normalizeS3Path,
+	quoteShellArgument,
 } from "./utils";
 
 export const runComposeBackup = async (
@@ -36,20 +39,18 @@ export const runComposeBackup = async (
 	try {
 		const rcloneFlags = getS3Credentials(destination);
 		const rcloneDestination = `:s3:${destination.bucket}/${bucketDestination}`;
-		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} "${rcloneDestination}"`;
+		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} ${quoteShellArgument(rcloneDestination)}`;
 
 		const backupCommand = getBackupCommand(
 			backup,
 			rcloneCommand,
 			deployment.logPath,
 		);
-		if (compose.serverId) {
-			await execAsyncRemote(compose.serverId, backupCommand);
-		} else {
-			await execAsync(backupCommand, {
-				shell: "/bin/bash",
-			});
-		}
+		await executeSensitiveShellScript({
+			serverId: compose.serverId,
+			script: backupCommand,
+			sensitiveValues: getBackupSensitiveValues(backup),
+		});
 
 		await sendDatabaseBackupNotifications({
 			applicationName: name,
@@ -62,14 +63,12 @@ export const runComposeBackup = async (
 
 		await updateDeploymentStatus(deployment.deploymentId, "done");
 	} catch (error) {
-		console.log(error);
 		await sendDatabaseBackupNotifications({
 			applicationName: name,
 			projectName: project.name,
 			databaseType: getDatabaseType(databaseType),
 			type: "error",
-			// @ts-ignore
-			errorMessage: error?.message || "Error message not provided",
+			errorMessage: getBackupFailureMessage(error),
 			organizationId: project.organizationId,
 			databaseName: backup.database,
 		});

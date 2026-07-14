@@ -1,5 +1,6 @@
 import { Client } from "ssh2";
 import { findServerById } from "../services/server";
+import { createSshHostVerification } from "../utils/servers/ssh-host-verification";
 
 // Thanks for the idea to https://github.com/healthyhost/audit-vps-script/tree/main
 const validateUfw = () => `
@@ -89,8 +90,16 @@ export const serverAudit = async (serverId: string) => {
 	}
 
 	return new Promise<any>((resolve, reject) => {
+		const hostVerification = createSshHostVerification(server);
 		client
 			.once("ready", () => {
+				try {
+					hostVerification.commit();
+				} catch (error) {
+					client.end();
+					reject(error);
+					return;
+				}
 				const bashCommand = `
           command_exists() {
             command -v "$@" > /dev/null 2>&1
@@ -146,6 +155,8 @@ export const serverAudit = async (serverId: string) => {
 				port: server.port,
 				username: server.username,
 				privateKey: server.sshKey?.privateKey,
+				hostVerifier: hostVerification.hostVerifier,
+				readyTimeout: 30_000,
 			});
 	});
 };

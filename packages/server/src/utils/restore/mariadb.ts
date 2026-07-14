@@ -2,8 +2,13 @@ import type { apiRestoreBackup } from "@nearzero/server/db/schema";
 import type { Destination } from "@nearzero/server/services/destination";
 import type { Mariadb } from "@nearzero/server/services/mariadb";
 import type { z } from "zod";
-import { getS3Credentials } from "../backups/utils";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import {
+	getDestinationSensitiveValues,
+	getRestoreFailureMessage,
+	getS3Credentials,
+	quoteShellArgument,
+} from "../backups/utils";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import { getRestoreCommand } from "./utils";
 
 export const restoreMariadbBackup = async (
@@ -19,7 +24,7 @@ export const restoreMariadbBackup = async (
 		const bucketPath = `:s3:${destination.bucket}`;
 		const backupPath = `${bucketPath}/${backupInput.backupFile}`;
 
-		const rcloneCommand = `rclone cat ${rcloneFlags.join(" ")} "${backupPath}" | gunzip`;
+		const rcloneCommand = `rclone cat ${rcloneFlags.join(" ")} ${quoteShellArgument(backupPath)} | gunzip`;
 
 		const command = getRestoreCommand({
 			appName,
@@ -35,26 +40,20 @@ export const restoreMariadbBackup = async (
 
 		emit("Starting restore...");
 
-		emit(`Executing command: ${command}`);
-
-		if (serverId) {
-			await execAsyncRemote(serverId, command);
-		} else {
-			await execAsync(command);
-		}
+		emit("Executing restore command...");
+		await executeSensitiveShellScript({
+			serverId,
+			script: command,
+			sensitiveValues: getDestinationSensitiveValues(
+				destination,
+				databasePassword,
+			),
+		});
 
 		emit("Restore completed successfully!");
 	} catch (error) {
-		console.error(error);
-		emit(
-			`Error: ${
-				error instanceof Error
-					? error.message
-					: "Error restoring mariadb backup"
-			}`,
-		);
-		throw new Error(
-			error instanceof Error ? error.message : "Error restoring mariadb backup",
-		);
+		const message = getRestoreFailureMessage(error);
+		emit(`Error: ${message}`);
+		throw new Error(message);
 	}
 };

@@ -88,7 +88,10 @@ export const buildRedis = async (redis: RedisNested) => {
 						}
 					: {
 							Command: ["/bin/sh"],
-							Args: ["-c", `redis-server --requirepass ${databasePassword}`],
+							// Keep the credential out of the service command/Args and the
+							// host process list. The service environment remains a Docker
+							// manager trust boundary, consistent with the other databases.
+							Args: ["-c", 'exec redis-server --requirepass "$REDIS_PASSWORD"'],
 						}),
 				...(Ulimits && { Ulimits }),
 				Labels,

@@ -3,8 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import type { Destination } from "@nearzero/server/services/destination";
-import { getS3Credentials } from "../backups/utils";
-import { execAsync } from "../process/execAsync";
+import {
+	getDestinationSensitiveValues,
+	getRestoreFailureMessage,
+	getS3Credentials,
+	quoteShellArgument,
+} from "../backups/utils";
+import { execAsync, executeSensitiveShellScript } from "../process/execAsync";
 
 export const restoreWebServerBackup = async (
 	destination: Destination,
@@ -31,9 +36,10 @@ export const restoreWebServerBackup = async (
 
 			// Download backup from S3
 			emit("Downloading backup from S3...");
-			await execAsync(
-				`rclone copyto ${rcloneFlags.join(" ")} "${backupPath}" "${tempDir}/${backupFile}"`,
-			);
+			await executeSensitiveShellScript({
+				script: `rclone copyto ${rcloneFlags.join(" ")} ${quoteShellArgument(backupPath)} ${quoteShellArgument(`${tempDir}/${backupFile}`)}`,
+				sensitiveValues: getDestinationSensitiveValues(destination),
+			});
 
 			// List files before extraction
 			emit("Listing files before extraction...");
@@ -137,14 +143,8 @@ export const restoreWebServerBackup = async (
 			await execAsync(`rm -rf ${tempDir}`);
 		}
 	} catch (error) {
-		console.error(error);
-		emit(
-			`Error: ${
-				error instanceof Error
-					? error.message
-					: "Error restoring web server backup"
-			}`,
-		);
-		throw error;
+		const message = getRestoreFailureMessage(error);
+		emit(`Error: ${message}`);
+		throw new Error(message);
 	}
 };

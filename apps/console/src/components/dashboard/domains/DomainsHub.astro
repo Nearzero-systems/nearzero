@@ -1,10 +1,10 @@
 ---
+import OrgCertificatesPanel from "@/components/dashboard/domains/OrgCertificatesPanel.astro";
 import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
 import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
-import OrgCertificatesPanel from "@/components/dashboard/domains/OrgCertificatesPanel.astro";
 import NzModal from "@/components/ui/NzModal.astro";
-import { ST } from "@/lib/settings-hub-ui";
 import { createServerTrpcClient } from "@/lib/server-api";
+import { ST } from "@/lib/settings-hub-ui";
 
 const bootstrap = await bootstrapSettingsDashboardPage(Astro.request, {
 	gate: settingsDashboardGates.domainsHub,
@@ -59,12 +59,27 @@ type ReadinessInfo = {
 };
 
 let permissions: {
-	domain?: { read?: boolean; create?: boolean; update?: boolean; delete?: boolean };
-	certificate?: { read?: boolean; create?: boolean; update?: boolean; delete?: boolean };
+	domain?: {
+		read?: boolean;
+		create?: boolean;
+		update?: boolean;
+		delete?: boolean;
+	};
+	certificate?: {
+		read?: boolean;
+		create?: boolean;
+		update?: boolean;
+		delete?: boolean;
+	};
 } | null = null;
 
 let zones: ZoneRow[] = [];
-let health: Array<{ name: string; status: string; recordCount: number; lastError?: string | null }> = [];
+let health: Array<{
+	name: string;
+	status: string;
+	recordCount: number;
+	lastError?: string | null;
+}> = [];
 let dnsReadiness: ReadinessInfo | null = null;
 let hostnames: HostnameRow[] = [];
 let bindings: BindingRow[] = [];
@@ -158,15 +173,20 @@ const filteredHostnames = hostnames.filter(hostnameMatchesFilters);
 const filteredZones = zones.filter(zoneMatchesFilters);
 
 const statusBadge: Record<string, string> = {
-	published: "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
-	active: "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
+	published:
+		"bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
+	active:
+		"bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
 	draft: "bg-secondary text-secondary-foreground",
-	pending: "bg-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-500 text-yellow-600",
+	pending:
+		"bg-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-500 text-yellow-600",
 	error: "bg-red-600/20 dark:bg-red-500/15 text-destructive",
 	failed: "bg-red-600/20 dark:bg-red-500/15 text-destructive",
 	unassigned: "bg-secondary text-secondary-foreground",
-	ready: "bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
-	pending_dns: "bg-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-500 text-yellow-600",
+	ready:
+		"bg-emerald-600/20 dark:bg-emerald-500/15 dark:text-emerald-500 text-emerald-600",
+	pending_dns:
+		"bg-yellow-600/20 dark:bg-yellow-500/15 dark:text-yellow-500 text-yellow-600",
 };
 
 const badgeClass =
@@ -186,12 +206,16 @@ const zoneStatusOptions = [
 	"all",
 	...Array.from(new Set(zones.map((z) => z.status).filter(Boolean))),
 ];
-const statusOptions = activeTab === "zones" ? zoneStatusOptions : hostnameStatusOptions;
+const statusOptions =
+	activeTab === "zones" ? zoneStatusOptions : hostnameStatusOptions;
 
 const platformEnabled = dnsReadiness?.platformDefaultEnabled ?? false;
 const platformApexDomain = dnsReadiness?.platformApex ?? null;
 
-function domainHealthMessage(row: { status: string; lastError?: string | null }): string {
+function domainHealthMessage(row: {
+	status: string;
+	lastError?: string | null;
+}): string {
 	if (row.status !== "error") return row.status;
 	const raw = row.lastError ?? "";
 	if (/coredns|no such image|no such container|docker/i.test(raw)) {
@@ -203,7 +227,10 @@ function domainHealthMessage(row: { status: string; lastError?: string | null })
 	return "Managed DNS needs attention.";
 }
 
-function collectParentDomains(hostnameRows: HostnameRow[], zoneRows: ZoneRow[]): string[] {
+function collectParentDomains(
+	hostnameRows: HostnameRow[],
+	zoneRows: ZoneRow[],
+): string[] {
 	const roots = new Set<string>();
 	for (const zone of zoneRows) {
 		roots.add(zone.name.replace(/\.$/, "").toLowerCase());
@@ -245,12 +272,16 @@ const showReadinessBanner =
 					<div class="nz-domains-readiness mb-3 rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] px-4 py-3 text-[11px] text-[var(--nz-text-muted)]">
 						<p>
 							<strong class="text-[var(--nz-text)]">Domain routing</strong>{" "}
-							{zones.length > 0 || platformEnabled ? "has DNS configuration for this organization." : "is ready to be configured."}
+							{zones.length > 0
+								? "has managed DNS configuration for this organization."
+								: platformEnabled
+									? "has a platform hostname template, but still requires external wildcard DNS and a shared edge."
+									: "is ready to be configured."}
 						</p>
 						{
 							platformEnabled && platformApexDomain ? (
 								<p class="mt-1">
-									Platform domain: <code>{platformApexDomain}</code>.
+									Platform domain: <code>{platformApexDomain}</code>. For apps routed directly to different remote servers, bind a Nearzero-managed zone to each environment instead.
 								</p>
 							) : null
 						}
@@ -689,11 +720,6 @@ const showReadinessBanner =
 					<span class="nz-modal__label">DNS mode</span>
 					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="external" checked /> External DNS (Cloudflare, registrar)</label>
 					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="nearzero_managed" /> Nearzero DNS (org zone)</label>
-					{
-						platformEnabled ? (
-							<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="platform" /> Platform domain</label>
-						) : null
-					}
 				</fieldset>
 				<div id="nz-add-hostname-zone-row" class="nz-modal__field hidden">
 					<label class="nz-modal__field">
@@ -702,6 +728,16 @@ const showReadinessBanner =
 							<option value="">Select zone</option>
 							{zones.map((z) => <option value={z.dnsZoneId}>{z.name}</option>)}
 						</select>
+					</label>
+				</div>
+				<div id="nz-add-hostname-server-row" class="nz-modal__field">
+					<label class="nz-modal__field">
+						<span class="nz-modal__label">DNS target server</span>
+						<select id="nz-add-hostname-server" class="nz-modal__input">
+							<option value="nearzero">Nearzero (local control plane)</option>
+							{servers.map((server) => <option value={server.serverId}>{server.name} ({server.ipAddress})</option>)}
+						</select>
+						<span class="text-[10px] text-muted-foreground">The hostname must already resolve to this server before it can be registered.</span>
 					</label>
 				</div>
 				<label class="flex items-center gap-2 text-xs">

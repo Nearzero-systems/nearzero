@@ -94,16 +94,13 @@ export function mountGitProvidersDashboard() {
 	let pendingDeleteShared = false;
 	let editingProvider: { type: string; id: string } | null = null;
 
-	const updateGithubManifest = () => {
+	const updateGithubManifest = (oauthState?: string) => {
 		const manifestInput = document.getElementById("nz-git-github-manifest") as HTMLInputElement | null;
 		if (!manifestInput) return;
 		const url = bootstrap.gitProviderBaseUrl;
-		const returnToQuery = bootstrap.returnTo
-			? `&returnTo=${encodeURIComponent(bootstrap.returnTo)}`
-			: "";
 		manifestInput.value = JSON.stringify(
 			{
-				redirect_url: `${url}/api/providers/github/setup?organizationId=${bootstrap.organizationId}&userId=${bootstrap.userId}${returnToQuery}`,
+				redirect_url: `${url}/api/providers/github/setup`,
 				name: `Nearzero-${format(new Date(), "yyyy-MM-dd")}-${randomString()}`,
 				url,
 				hook_attributes: { url: `${url}/api/deploy/github` },
@@ -123,9 +120,12 @@ export function mountGitProvidersDashboard() {
 		);
 		const form = document.getElementById("nz-git-github-form") as HTMLFormElement | null;
 		if (form) {
+			if (!oauthState) {
+				form.removeAttribute("action");
+				return;
+			}
 			const action = githubAppManifestAction({
-				organizationId: bootstrap.organizationId,
-				userId: bootstrap.userId,
+				state: oauthState,
 				useGithubOrganization: githubOrganizationSwitch?.checked ?? false,
 				githubOrganizationSlug: githubOrganizationInput?.value ?? "",
 			});
@@ -144,7 +144,7 @@ export function mountGitProvidersDashboard() {
 		updateGithubManifest();
 	};
 
-	root.addEventListener("click", (e) => {
+	root.addEventListener("click", async (e) => {
 		const t = e.target instanceof Element ? e.target.closest("[data-git-action]") : null;
 		if (!(t instanceof HTMLElement)) return;
 		const action = t.dataset.gitAction;
@@ -154,6 +154,51 @@ export function mountGitProvidersDashboard() {
 		} else if (action === "open-add-bitbucket") openConnectDialog("bitbucket");
 		else if (action === "open-add-gitea") {
 			openConnectDialog("gitea");
+		} else if (action === "authorize-byo") {
+			const providerType = t.dataset.providerType as
+				| "github"
+				| "gitlab"
+				| "gitea";
+			const targetGitProviderId = t.dataset.gitProviderId ?? "";
+			if (!providerType || !targetGitProviderId) return;
+			t.setAttribute("aria-busy", "true");
+			try {
+				const oauth = await trpcMutate<{ state: string }>(
+					"gitProvider.createByoOAuthState",
+					{
+						providerType,
+						targetGitProviderId,
+						returnTo: bootstrap.returnTo || undefined,
+					},
+				);
+				let authorizationUrl = "";
+				if (providerType === "github") {
+					const url = new URL(t.dataset.providerUrl ?? "");
+					url.searchParams.set("state", oauth.state);
+					authorizationUrl = url.toString();
+				} else if (providerType === "gitlab") {
+					authorizationUrl = getGitlabAuthUrl(
+						t.dataset.providerClientId ?? "",
+						oauth.state,
+						t.dataset.providerUrl ?? "https://gitlab.com",
+						bootstrap.gitProviderBaseUrl,
+					);
+				} else {
+					authorizationUrl = getGiteaOAuthUrl(
+						oauth.state,
+						t.dataset.providerClientId ?? "",
+						t.dataset.providerUrl ?? "",
+						bootstrap.gitProviderBaseUrl,
+					);
+				}
+				if (!authorizationUrl || authorizationUrl === "#") {
+					throw new Error("Incomplete provider OAuth configuration");
+				}
+				window.location.assign(authorizationUrl);
+			} catch {
+				t.removeAttribute("aria-busy");
+				showToast("Unable to start provider authorization", "error");
+			}
 		} else if (action === "edit") {
 			editingProvider = { type: t.dataset.providerType ?? "", id: t.dataset.providerRef ?? "" };
 			if (editingProvider.type === "github") void openEditGithub(editingProvider.id);
@@ -255,8 +300,20 @@ export function mountGitProvidersDashboard() {
 			(document.getElementById("nz-git-edit-bitbucket-username") as HTMLInputElement).value = data.bitbucketUsername ?? "";
 			(document.getElementById("nz-git-edit-bitbucket-email") as HTMLInputElement).value = data.bitbucketEmail ?? "";
 			(document.getElementById("nz-git-edit-bitbucket-workspace") as HTMLInputElement).value = data.bitbucketWorkspaceName ?? "";
-			(document.getElementById("nz-git-edit-bitbucket-token") as HTMLInputElement).value = data.apiToken ?? "";
-			(document.getElementById("nz-git-edit-bitbucket-app-password") as HTMLInputElement).value = data.appPassword ?? "";
+			const apiTokenInput = document.getElementById(
+				"nz-git-edit-bitbucket-token",
+			) as HTMLInputElement;
+			apiTokenInput.value = "";
+			apiTokenInput.placeholder = data.hasApiToken
+				? "Configured - leave blank to keep"
+				: "Enter API token";
+			const appPasswordInput = document.getElementById(
+				"nz-git-edit-bitbucket-app-password",
+			) as HTMLInputElement;
+			appPasswordInput.value = "";
+			appPasswordInput.placeholder = data.hasAppPassword
+				? "Configured - leave blank to keep"
+				: "Enter app password";
 			openDialog("nz-git-edit-bitbucket-dialog");
 		} catch {
 			showToast("Failed to load Bitbucket provider", "error");
@@ -272,19 +329,25 @@ export function mountGitProvidersDashboard() {
 			(document.getElementById("nz-git-edit-gitea-url") as HTMLInputElement).value = data.giteaUrl ?? "";
 			(document.getElementById("nz-git-edit-gitea-internal") as HTMLInputElement).value = data.giteaInternalUrl ?? "";
 			(document.getElementById("nz-git-edit-gitea-client-id") as HTMLInputElement).value = data.clientId ?? "";
-			(document.getElementById("nz-git-edit-gitea-client-secret") as HTMLInputElement).value = data.clientSecret ?? "";
+			const clientSecretInput = document.getElementById(
+				"nz-git-edit-gitea-client-secret",
+			) as HTMLInputElement;
+			clientSecretInput.value = "";
+			clientSecretInput.placeholder = data.hasClientSecret
+				? "Configured - leave blank to keep"
+				: "Enter client secret";
 			openDialog("nz-git-edit-gitea-dialog");
 		} catch {
 			showToast("Failed to load Gitea provider", "error");
 		}
 	};
 
-	document.getElementById("nz-git-github-form")?.addEventListener("submit", (event) => {
+	document.getElementById("nz-git-github-form")?.addEventListener("submit", async (event) => {
+		event.preventDefault();
 		if (
 			githubOrganizationSwitch?.checked &&
 			!normalizeGithubOrganizationSlug(githubOrganizationInput?.value ?? "")
 		) {
-			event.preventDefault();
 			githubOrganizationField?.classList.remove("hidden");
 			githubOrganizationInput?.setCustomValidity(
 				"Enter the GitHub organization slug, for example acme-corp.",
@@ -294,11 +357,24 @@ export function mountGitProvidersDashboard() {
 			showToast("Enter a valid GitHub organization slug.", "error");
 			return;
 		}
-		updateGithubManifest();
-		setGitSubmitBusy(
-			document.getElementById("nz-git-github-submit") as HTMLButtonElement | null,
-			true,
-		);
+		const submit = document.getElementById(
+			"nz-git-github-submit",
+		) as HTMLButtonElement | null;
+		setGitSubmitBusy(submit, true);
+		try {
+			const oauth = await trpcMutate<{ state: string }>(
+				"gitProvider.createByoOAuthState",
+				{
+					providerType: "github",
+					returnTo: bootstrap.returnTo || undefined,
+				},
+			);
+			updateGithubManifest(oauth.state);
+			HTMLFormElement.prototype.submit.call(event.currentTarget);
+		} catch {
+			setGitSubmitBusy(submit, false);
+			showToast("Unable to start GitHub setup", "error");
+		}
 	});
 
 	githubOrganizationSwitch?.addEventListener(
@@ -309,7 +385,9 @@ export function mountGitProvidersDashboard() {
 		githubOrganizationInput.setCustomValidity("");
 		updateGithubManifest();
 	});
-	document.querySelector("[data-git-action='open-add-github']")?.addEventListener("click", updateGithubManifest);
+	document
+		.querySelector("[data-git-action='open-add-github']")
+		?.addEventListener("click", () => updateGithubManifest());
 	syncGithubOrganizationMode();
 
 	const connectProvider = new URLSearchParams(window.location.search).get("connect");
@@ -334,18 +412,22 @@ export function mountGitProvidersDashboard() {
 			});
 			showToast("GitLab created successfully", "success");
 			closeDialog("nz-git-gitlab-dialog");
-			const gitlabId = (result as any)?.gitlabId;
-			if (bootstrap.returnTo && gitlabId) {
-				rememberReturnTo(bootstrap.returnTo);
-				window.location.href = getGitlabAuthUrl(
-					(document.getElementById("nz-git-gitlab-app-id") as HTMLInputElement).value,
-					gitlabId,
-					(document.getElementById("nz-git-gitlab-url") as HTMLInputElement).value || "https://gitlab.com",
-					bootstrap.gitProviderBaseUrl,
-				);
-			} else {
-				finishProviderSetup();
-			}
+			const targetGitProviderId = result.gitProvider?.gitProviderId;
+			if (!targetGitProviderId) throw new Error("Missing GitLab provider ID");
+			const oauth = await trpcMutate<{ state: string }>(
+				"gitProvider.createByoOAuthState",
+				{
+					providerType: "gitlab",
+					targetGitProviderId,
+					returnTo: bootstrap.returnTo || undefined,
+				},
+			);
+			window.location.href = getGitlabAuthUrl(
+				(document.getElementById("nz-git-gitlab-app-id") as HTMLInputElement).value,
+				oauth.state,
+				(document.getElementById("nz-git-gitlab-url") as HTMLInputElement).value || "https://gitlab.com",
+				bootstrap.gitProviderBaseUrl,
+			);
 		} catch {
 			showToast("Error configuring GitLab", "error");
 			setGitSubmitBusy(submit, false);
@@ -388,15 +470,22 @@ export function mountGitProvidersDashboard() {
 				redirectUri: (document.getElementById("nz-git-gitea-redirect") as HTMLInputElement).value,
 				organizationName: (document.getElementById("nz-git-gitea-org") as HTMLInputElement).value,
 			});
-			const authUrl = getGiteaOAuthUrl(result.giteaId, result.clientId, result.giteaUrl, bootstrap.gitProviderBaseUrl);
+			const targetGitProviderId = result.gitProvider?.gitProviderId;
+			if (!targetGitProviderId) throw new Error("Missing Gitea provider ID");
+			const oauth = await trpcMutate<{ state: string }>(
+				"gitProvider.createByoOAuthState",
+				{
+					providerType: "gitea",
+					targetGitProviderId,
+					returnTo: bootstrap.returnTo || undefined,
+				},
+			);
+			const authUrl = getGiteaOAuthUrl(oauth.state, result.clientId, result.giteaUrl, bootstrap.gitProviderBaseUrl);
 			if (authUrl !== "#") {
-				rememberReturnTo(bootstrap.returnTo);
-				if (bootstrap.returnTo) window.location.href = authUrl;
-				else window.open(authUrl, "_blank");
+				window.location.href = authUrl;
 			}
 			showToast("Gitea provider created successfully", "success");
 			closeDialog("nz-git-gitea-dialog");
-			if (!bootstrap.returnTo) window.location.reload();
 		} catch (err) {
 			showToast(err instanceof Error ? err.message : "Error configuring Gitea", "error");
 			setGitSubmitBusy(submit, false);
@@ -537,20 +626,28 @@ export function mountGitProvidersDashboard() {
 			const result = await trpcMutate<string>("gitea.testConnection", { giteaId });
 			showToast(`Gitea Connection Verified: ${result}`, "success");
 		} catch (err: any) {
-			const clientId = (document.getElementById("nz-git-edit-gitea-client-id") as HTMLInputElement).value;
-			const giteaUrl = (document.getElementById("nz-git-edit-gitea-url") as HTMLInputElement).value;
-			const authUrl = err?.authorizationUrl || getGiteaOAuthUrl(giteaId, clientId, giteaUrl, bootstrap.gitProviderBaseUrl);
-			showToast(err?.message || "Please complete OAuth authorization", "error");
-			if (authUrl && authUrl !== "#") window.open(authUrl, "_blank");
+			showToast(err?.message || "Gitea connection test failed", "error");
 		}
 	});
 
-	document.getElementById("nz-git-edit-gitea-connect")?.addEventListener("click", () => {
-		const giteaId = (document.getElementById("nz-git-edit-gitea-id") as HTMLInputElement).value;
+	document.getElementById("nz-git-edit-gitea-connect")?.addEventListener("click", async () => {
+		const targetGitProviderId = (document.getElementById("nz-git-edit-gitea-git-provider-id") as HTMLInputElement).value;
 		const clientId = (document.getElementById("nz-git-edit-gitea-client-id") as HTMLInputElement).value;
 		const giteaUrl = (document.getElementById("nz-git-edit-gitea-url") as HTMLInputElement).value;
-		const authUrl = getGiteaOAuthUrl(giteaId, clientId, giteaUrl, bootstrap.gitProviderBaseUrl);
-		if (authUrl !== "#") window.open(authUrl, "_blank");
+		try {
+			const oauth = await trpcMutate<{ state: string }>(
+				"gitProvider.createByoOAuthState",
+				{
+					providerType: "gitea",
+					targetGitProviderId,
+					returnTo: bootstrap.returnTo || undefined,
+				},
+			);
+			const authUrl = getGiteaOAuthUrl(oauth.state, clientId, giteaUrl, bootstrap.gitProviderBaseUrl);
+			if (authUrl !== "#") window.location.assign(authUrl);
+		} catch {
+			showToast("Unable to start Gitea authorization", "error");
+		}
 	});
 
 	document.getElementById("nz-git-delete-confirm")?.addEventListener("click", async () => {

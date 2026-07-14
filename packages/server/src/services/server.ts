@@ -1,7 +1,7 @@
 import { db } from "@nearzero/server/db";
 import {
-	applications,
 	type apiCreateServer,
+	applications,
 	compose,
 	libsql,
 	mariadb,
@@ -14,11 +14,81 @@ import {
 	server,
 } from "@nearzero/server/db/schema";
 import { hasValidLicense } from "@nearzero/server/services/license-key";
+import { toPublicSshKey } from "@nearzero/server/services/ssh-key";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
 export type Server = typeof server.$inferSelect;
+
+type PublicSshKey<T> = T extends { privateKey?: unknown }
+	? Omit<T, "privateKey">
+	: T;
+type PublicMetricsConfig<T> = T extends { server: infer S }
+	? Omit<T, "server"> & {
+			server: S extends { token?: unknown } ? Omit<S, "token"> : S;
+		}
+	: T;
+
+export type PublicServer<T extends object> = Omit<
+	T,
+	"sshKey" | "metricsConfig"
+> &
+	("sshKey" extends keyof T ? { sshKey: PublicSshKey<T["sshKey"]> } : unknown) &
+	("metricsConfig" extends keyof T
+		? { metricsConfig: PublicMetricsConfig<T["metricsConfig"]> }
+		: unknown);
+
+export const toPublicServer = <T extends object>(
+	currentServer: T,
+): PublicServer<T> => {
+	const publicServer = { ...currentServer } as Record<string, unknown>;
+	const sshKey = publicServer.sshKey;
+	if (sshKey && typeof sshKey === "object") {
+		publicServer.sshKey = toPublicSshKey(sshKey as { privateKey?: unknown });
+	}
+
+	const metricsConfig = publicServer.metricsConfig;
+	if (metricsConfig && typeof metricsConfig === "object") {
+		const metricsServer = (metricsConfig as { server?: unknown }).server;
+		if (metricsServer && typeof metricsServer === "object") {
+			const publicMetricsServer = {
+				...(metricsServer as Record<string, unknown>),
+			};
+			delete publicMetricsServer.token;
+			publicServer.metricsConfig = {
+				...(metricsConfig as Record<string, unknown>),
+				server: publicMetricsServer,
+			};
+		}
+	}
+
+	return publicServer as PublicServer<T>;
+};
+
+type PublicRelatedServer<T> = T extends object ? PublicServer<T> : T;
+
+export type PublicServerRelation<T extends object> = Omit<T, "server"> &
+	("server" extends keyof T
+		? { server: PublicRelatedServer<T["server"]> }
+		: unknown);
+
+/**
+ * Redact a nested Drizzle `server` relation at an API boundary while leaving
+ * the internal service result (and its monitoring/SSH credentials) untouched.
+ */
+export const toPublicServerRelation = <T extends object>(
+	resource: T,
+): PublicServerRelation<T> => {
+	const relatedServer = (resource as { server?: unknown }).server;
+	if (!relatedServer || typeof relatedServer !== "object") {
+		return resource as PublicServerRelation<T>;
+	}
+	return {
+		...resource,
+		server: toPublicServer(relatedServer),
+	} as PublicServerRelation<T>;
+};
 
 export const createServer = async (
 	input: z.infer<typeof apiCreateServer>,

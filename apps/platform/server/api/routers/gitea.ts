@@ -1,11 +1,11 @@
 import {
+	assertByoGitProvidersAllowed,
 	createGitea,
 	findGiteaById,
 	getAccessibleGitProviderIds,
 	getGiteaBranches,
 	getGiteaRepositories,
 	haveGiteaRequirements,
-	assertByoGitProvidersAllowed,
 	isGitProviderConnectionAllowed,
 	testGiteaConnection,
 	updateGitea,
@@ -13,6 +13,7 @@ import {
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
 import { TRPCError } from "@trpc/server";
+import { inArray } from "drizzle-orm";
 import {
 	createTRPCRouter,
 	protectedProcedure,
@@ -20,11 +21,19 @@ import {
 } from "@/server/api/trpc";
 import { audit } from "@/server/api/utils/audit";
 import {
+	assertGitProviderReadable,
+	assertGitProviderWritable,
+	toPublicGiteaDetails,
+	toPublicGitProvider,
+} from "@/server/api/utils/git-provider-security";
+import { assertGitProviderUrlConfigurationAllowed } from "@/server/api/utils/git-provider-url-security";
+import {
 	apiCreateGitea,
 	apiFindGiteaBranches,
 	apiFindOneGitea,
 	apiGiteaTestConnection,
 	apiUpdateGitea,
+	gitea,
 } from "@/server/db/schema";
 
 export const giteaRouter = createTRPCRouter({
@@ -32,12 +41,24 @@ export const giteaRouter = createTRPCRouter({
 		.input(apiCreateGitea)
 		.mutation(async ({ input, ctx }) => {
 			assertByoGitProvidersAllowed("Gitea");
+			const urls = assertGitProviderUrlConfigurationAllowed({
+				providerType: "gitea",
+				userRole: ctx.user.role,
+				providerUrl: input.giteaUrl,
+				internalUrl: input.giteaInternalUrl,
+			});
 			try {
 				const result = await createGitea(
-					input,
+					{
+						...input,
+						giteaUrl: urls.providerUrl,
+						giteaInternalUrl: urls.internalUrl,
+					},
 					ctx.session.activeOrganizationId,
 					ctx.session.userId,
 				);
+				const provider = await findGiteaById(result.giteaId);
+				await assertGitProviderReadable(ctx.session, provider.gitProvider);
 
 				await audit(ctx, {
 					action: "create",
@@ -46,24 +67,35 @@ export const giteaRouter = createTRPCRouter({
 					resourceName: input.name,
 				});
 
-				return result;
-			} catch (error) {
+				return {
+					...toPublicGiteaDetails(provider),
+					gitProvider: toPublicGitProvider(provider.gitProvider),
+				};
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message: "Error creating this Gitea provider",
-					cause: error,
 				});
 			}
 		}),
 
-	one: protectedProcedure.input(apiFindOneGitea).query(async ({ input }) => {
-		return await findGiteaById(input.giteaId);
-	}),
+	one: protectedProcedure
+		.input(apiFindOneGitea)
+		.query(async ({ input, ctx }) => {
+			const provider = await findGiteaById(input.giteaId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
+			return {
+				...toPublicGiteaDetails(provider),
+				gitProvider: toPublicGitProvider(provider.gitProvider),
+			};
+		}),
 
 	giteaProviders: protectedProcedure.query(async ({ ctx }) => {
 		const accessibleIds = await getAccessibleGitProviderIds(ctx.session);
+		if (accessibleIds.size === 0) return [];
 
 		let result = await db.query.gitea.findMany({
+			where: inArray(gitea.gitProviderId, [...accessibleIds]),
 			with: {
 				gitProvider: true,
 			},
@@ -82,9 +114,7 @@ export const giteaRouter = createTRPCRouter({
 			.map((provider) => {
 				return {
 					giteaId: provider.giteaId,
-					gitProvider: {
-						...provider.gitProvider,
-					},
+					gitProvider: toPublicGitProvider(provider.gitProvider),
 				};
 			});
 
@@ -93,7 +123,7 @@ export const giteaRouter = createTRPCRouter({
 
 	getGiteaRepositories: protectedProcedure
 		.input(apiFindOneGitea)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
 			const { giteaId } = input;
 
 			if (!giteaId) {
@@ -102,22 +132,23 @@ export const giteaRouter = createTRPCRouter({
 					message: "Gitea provider ID is required.",
 				});
 			}
+			const provider = await findGiteaById(giteaId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
 
 			try {
 				const repositories = await getGiteaRepositories(giteaId);
 				return repositories;
-			} catch (error) {
-				console.error("Error fetching Gitea repositories:", error);
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message: error instanceof Error ? error.message : String(error),
+					message: "Error fetching Gitea repositories",
 				});
 			}
 		}),
 
 	getGiteaBranches: protectedProcedure
 		.input(apiFindGiteaBranches)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
 			const { giteaId, owner, repositoryName } = input;
 
 			if (!giteaId || !owner || !repositoryName) {
@@ -127,6 +158,8 @@ export const giteaRouter = createTRPCRouter({
 						"Gitea provider ID, owner, and repository name are required.",
 				});
 			}
+			const provider = await findGiteaById(giteaId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
 
 			try {
 				return await getGiteaBranches({
@@ -134,19 +167,20 @@ export const giteaRouter = createTRPCRouter({
 					owner,
 					repo: repositoryName,
 				});
-			} catch (error) {
-				console.error("Error fetching Gitea branches:", error);
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message: error instanceof Error ? error.message : String(error),
+					message: "Error fetching Gitea branches",
 				});
 			}
 		}),
 
 	testConnection: protectedProcedure
 		.input(apiGiteaTestConnection)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ input, ctx }) => {
 			const giteaId = input.giteaId ?? "";
+			const provider = await findGiteaById(giteaId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
 
 			try {
 				const result = await testGiteaConnection({
@@ -154,11 +188,10 @@ export const giteaRouter = createTRPCRouter({
 				});
 
 				return `Found ${result} repositories`;
-			} catch (error) {
-				console.error("Gitea connection test error:", error);
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message: error instanceof Error ? error.message : String(error),
+					message: "Error testing the Gitea connection",
 				});
 			}
 		}),
@@ -167,25 +200,53 @@ export const giteaRouter = createTRPCRouter({
 		.input(apiUpdateGitea)
 		.mutation(async ({ input, ctx }) => {
 			assertByoGitProvidersAllowed("Gitea");
-			if (input.name) {
-				await updateGitProvider(input.gitProviderId, {
+			const urls = assertGitProviderUrlConfigurationAllowed({
+				providerType: "gitea",
+				userRole: ctx.user.role,
+				providerUrl: input.giteaUrl,
+				internalUrl: input.giteaInternalUrl,
+			});
+			const provider = await findGiteaById(input.giteaId);
+			await assertGitProviderWritable(
+				ctx.session,
+				ctx.user.role,
+				provider.gitProvider,
+				input.gitProviderId,
+			);
+			try {
+				await updateGitProvider(provider.gitProviderId, {
 					name: input.name,
 					organizationId: ctx.session.activeOrganizationId,
 				});
-
 				await updateGitea(input.giteaId, {
-					...input,
+					giteaUrl: urls.providerUrl,
+					giteaInternalUrl: urls.internalUrl,
+					redirectUri: input.redirectUri,
+					clientId: input.clientId,
+					expiresAt: input.expiresAt,
+					scopes: input.scopes,
+					lastAuthenticatedAt: input.lastAuthenticatedAt,
+					...(input.clientSecret?.trim()
+						? { clientSecret: input.clientSecret }
+						: {}),
+					...(input.accessToken?.trim()
+						? { accessToken: input.accessToken }
+						: {}),
+					...(input.refreshToken?.trim()
+						? { refreshToken: input.refreshToken }
+						: {}),
 				});
-			} else {
-				await updateGitea(input.giteaId, {
-					...input,
+			} catch {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Error updating this Gitea provider",
 				});
 			}
 
 			await audit(ctx, {
 				action: "update",
 				resourceType: "gitProvider",
-				resourceId: input.giteaId,
+				resourceId: provider.gitProviderId,
 				resourceName: input.name,
 			});
 
@@ -194,7 +255,7 @@ export const giteaRouter = createTRPCRouter({
 
 	getGiteaUrl: protectedProcedure
 		.input(apiFindOneGitea)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
 			const { giteaId } = input;
 
 			if (!giteaId) {
@@ -205,6 +266,7 @@ export const giteaRouter = createTRPCRouter({
 			}
 
 			const giteaProvider = await findGiteaById(giteaId);
+			await assertGitProviderReadable(ctx.session, giteaProvider.gitProvider);
 
 			// Return the base URL of the Gitea instance
 			return giteaProvider.giteaUrl;

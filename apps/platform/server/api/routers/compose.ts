@@ -1,21 +1,20 @@
 import {
 	addDomainToCompose,
 	clearOldDeployments,
-	cloneCompose,
 	createCommand,
 	createCompose,
 	createComposeByTemplate,
 	createDomain,
 	createMount,
 	deleteMount,
-	execAsync,
-	execAsyncRemote,
+	executePreparedShellCommand,
 	findComposeById,
 	findDomainsByComposeId,
 	findEnvironmentById,
-	findGitProviderById,
 	findProjectById,
 	findServerById,
+	findSSHKeyById,
+	getAccessibleGitProviderIds,
 	getAccessibleServerIds,
 	getComposeContainer,
 	getContainerLogs,
@@ -45,6 +44,7 @@ import {
 	fetchTemplatesList,
 } from "@nearzero/server/templates/github";
 import { processTemplate } from "@nearzero/server/templates/processors";
+import { cloneCompose } from "@nearzero/server/utils/docker/domain";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import _ from "lodash";
@@ -67,17 +67,22 @@ import {
 	environments,
 	projects,
 } from "@/server/db/schema";
-import { deploymentWorker } from "@/server/queues/deployments-queue";
 import type { DeploymentJob } from "@/server/queues/queue-types";
 import {
 	cleanQueuesByCompose,
 	getJobsByComposeId,
 	killDockerBuild,
+	prepareDeploymentJobsForServiceDeletion,
 } from "@/server/queues/queueSetup";
-import { cancelQueuedDeployment, enqueueDeployment } from "@/server/utils/deploy";
+import {
+	cancelQueuedDeployment,
+	enqueueDeployment,
+} from "@/server/utils/deploy";
 import { generatePassword } from "@/templates/utils";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { audit } from "../utils/audit";
+import { assertGitProviderAssociationsReadable } from "../utils/git-provider-security";
+import { toPublicService } from "../utils/public-service";
 import {
 	assertRuntimePlacement,
 	resolveRuntimeServerId,
@@ -133,7 +138,7 @@ export const composeRouter = createTRPCRouter({
 					resourceId: newService.composeId,
 					resourceName: newService.appName,
 				});
-				return newService;
+				return toPublicService(newService);
 			} catch (error) {
 				throw error;
 			}
@@ -176,23 +181,18 @@ export const composeRouter = createTRPCRouter({
 			const gitProviderId = getGitProviderId();
 
 			if (gitProviderId) {
-				try {
-					const gitProvider = await findGitProviderById(gitProviderId);
-					if (gitProvider.userId !== ctx.session.userId) {
-						hasGitProviderAccess = false;
-						unauthorizedProvider = compose.sourceType;
-					}
-				} catch {
+				const accessibleIds = await getAccessibleGitProviderIds(ctx.session);
+				if (!accessibleIds.has(gitProviderId)) {
 					hasGitProviderAccess = false;
 					unauthorizedProvider = compose.sourceType;
 				}
 			}
 
-			return {
+			return toPublicService({
 				...compose,
 				hasGitProviderAccess,
 				unauthorizedProvider,
-			};
+			});
 		}),
 
 	update: protectedProcedure
@@ -201,6 +201,46 @@ export const composeRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.composeId, {
 				service: ["create"],
 			});
+			await assertGitProviderAssociationsReadable(ctx.session, input);
+			const current = await findComposeById(input.composeId);
+			if (Object.hasOwn(input, "env")) {
+				await checkServicePermissionAndAccess(ctx, input.composeId, {
+					envVars: ["write"],
+				});
+			}
+			if (Object.hasOwn(input, "refreshToken")) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Refresh tokens can only be rotated by the token endpoint",
+				});
+			}
+			if (
+				input.environmentId &&
+				input.environmentId !== current.environmentId
+			) {
+				const targetEnvironment = await findEnvironmentById(
+					input.environmentId,
+				);
+				const targetProject = await findProjectById(
+					targetEnvironment.projectId,
+				);
+				if (targetProject.organizationId !== ctx.session.activeOrganizationId) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Environment not found",
+					});
+				}
+				await checkServiceAccess(ctx, targetProject.projectId, "create");
+			}
+			if (input.customGitSSHKeyId) {
+				const sshKey = await findSSHKeyById(input.customGitSSHKeyId);
+				if (sshKey.organizationId !== ctx.session.activeOrganizationId) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "SSH key not found",
+					});
+				}
+			}
 			const updated = await updateCompose(input.composeId, input);
 			await audit(ctx, {
 				action: "update",
@@ -208,7 +248,7 @@ export const composeRouter = createTRPCRouter({
 				resourceId: input.composeId,
 				resourceName: updated?.name,
 			});
-			return updated;
+			return { success: true, composeId: input.composeId };
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesCompose)
@@ -239,7 +279,7 @@ export const composeRouter = createTRPCRouter({
 		.input(apiDeleteCompose)
 		.mutation(async ({ input, ctx }) => {
 			await checkServiceAccess(ctx, input.composeId, "delete");
-			const composeResult = await findComposeById(input.composeId);
+			let composeResult = await findComposeById(input.composeId);
 
 			if (
 				composeResult.environment.project.organizationId !==
@@ -250,23 +290,49 @@ export const composeRouter = createTRPCRouter({
 					message: "You are not authorized to delete this compose",
 				});
 			}
+			await cancelQueuedDeployment({
+				composeId: input.composeId,
+				applicationType: "compose",
+			});
+			composeResult = await findComposeById(input.composeId);
+			if (composeResult.composeStatus === "running") {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message:
+						"Wait for the active Compose deployment to finish before deleting this service",
+				});
+			}
 
-			const result = await db
+			const queueJobs = await getJobsByComposeId(input.composeId);
+			if (!(await prepareDeploymentJobsForServiceDeletion(queueJobs))) {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message:
+						"Wait for the active Compose deployment to finish before deleting this service",
+				});
+			}
+
+			// Fail closed: every route and managed DNS record must be removed while
+			// the Compose parent is still available for reconciliation and rollback.
+			for (const domain of composeResult.domains) {
+				await removeDomainById(domain.domainId);
+			}
+			// Do not discard the parent record until remote runtime removal succeeds;
+			// otherwise an unreachable server could keep an untracked stack running.
+			await removeCompose(composeResult, input.deleteVolumes);
+
+			await db
 				.delete(composeTable)
 				.where(eq(composeTable.composeId, input.composeId))
 				.returning();
 
-			const queueJobs = await getJobsByComposeId(input.composeId);
-			for (const job of queueJobs) {
-				if (job.id) {
-					deploymentWorker.cancelJob(job.id, "User requested cancellation");
-				}
-			}
-
 			const cleanupOperations = [
-				async () => await removeCompose(composeResult, input.deleteVolumes),
 				async () => await removeDeploymentsByComposeId(composeResult),
-				async () => await removeComposeDirectory(composeResult.appName),
+				async () =>
+					await removeComposeDirectory(
+						composeResult.appName,
+						composeResult.serverId,
+					),
 			];
 
 			for (const operation of cleanupOperations) {
@@ -281,7 +347,7 @@ export const composeRouter = createTRPCRouter({
 				resourceId: composeResult.composeId,
 				resourceName: composeResult.appName,
 			});
-			return composeResult;
+			return { success: true, composeId: composeResult.composeId };
 		}),
 	cleanQueues: protectedProcedure
 		.input(apiFindCompose)
@@ -353,12 +419,8 @@ export const composeRouter = createTRPCRouter({
 				});
 				const compose = await findComposeById(input.composeId);
 
-				const command = await cloneCompose(compose);
-				if (compose.serverId) {
-					await execAsyncRemote(compose.serverId, command);
-				} else {
-					await execAsync(command);
-				}
+				const prepared = await cloneCompose(compose);
+				await executePreparedShellCommand(prepared, compose.serverId);
 				return compose.sourceType;
 			} catch (err) {
 				throw new TRPCError({
@@ -673,7 +735,7 @@ export const composeRouter = createTRPCRouter({
 				resourceId: compose.composeId,
 				resourceName: compose.name,
 			});
-			return compose;
+			return toPublicService(compose);
 		}),
 
 	templates: protectedProcedure
@@ -1033,10 +1095,10 @@ export const composeRouter = createTRPCRouter({
 					success: true,
 					message: "Template imported successfully",
 				};
-			} catch (error) {
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message: `Error importing template: ${error instanceof Error ? error.message : error}`,
+					message: "Error importing template",
 				});
 			}
 		}),

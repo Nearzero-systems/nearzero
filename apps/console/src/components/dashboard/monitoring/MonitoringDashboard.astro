@@ -1,50 +1,9 @@
 ---
-import { createServerTrpcClient } from "@/lib/server-api";
-import {
-	buildHostMetricsUrl,
-	resolveHostMetricsToken,
-} from "@/lib/host-metrics";
-
-const envMetricsUrl =
-	process.env.NEARZERO_METRICS_URL?.trim() ||
-	import.meta.env.PUBLIC_METRICS_URL?.trim() ||
-	"";
-const envMetricsToken =
-	process.env.NEARZERO_METRICS_TOKEN?.trim() ||
-	import.meta.env.PUBLIC_METRICS_TOKEN?.trim() ||
-	"";
-
-let metricsUrl = envMetricsUrl;
-let metricsToken = envMetricsToken;
-let configError = "";
-
-try {
-	const api = createServerTrpcClient(Astro.request);
-	const metricsInfo = await api.user.getMetricsToken.query();
-	if (!envMetricsUrl) {
-		metricsUrl = buildHostMetricsUrl(metricsInfo);
-	}
-	if (!envMetricsToken) {
-		metricsToken = resolveHostMetricsToken(metricsInfo);
-	}
-} catch {
-	if (!metricsUrl) {
-		metricsUrl = buildHostMetricsUrl(null);
-	}
-}
-
-if (!metricsToken) {
-	configError =
-		"Monitoring is not configured yet. Use the web server actions above to start the monitoring service, then refresh this page.";
-}
 ---
 
 <div
 	class="nz-monitoring w-full min-w-0"
 	id="nz-monitoring-root"
-	data-metrics-url={metricsUrl}
-	data-metrics-token={metricsToken}
-	data-config-error={configError}
 >
 	<div id="nz-monitoring-loading" class="nz-monitoring__state">
 		<span>Loading metrics...</span>
@@ -56,7 +15,6 @@ if (!metricsToken) {
 		<div class="nz-monitoring__error-card">
 			<p class="nz-monitoring__error-title">Error fetching metrics</p>
 			<p id="nz-monitoring-error-msg" class="nz-monitoring__error-message"></p>
-			{metricsUrl ? <p class="nz-monitoring__error-url">URL: {metricsUrl}</p> : null}
 		</div>
 	</div>
 	<div id="nz-monitoring-content" class="nz-monitoring__content hidden">
@@ -266,20 +224,9 @@ if (!metricsToken) {
 		}
 	}
 
-	async function fetchMetrics(root: HTMLElement) {
-		const url = root.dataset.metricsUrl ?? "";
-		const token = root.dataset.metricsToken ?? "";
-		const configError = root.dataset.configError ?? "";
-		if (configError) {
-			throw new Error(configError);
-		}
-		if (!url || !token) {
-			throw new Error(
-				"Monitoring is not configured yet. Use the web server actions above to start the monitoring service, then refresh this page.",
-			);
-		}
+	async function fetchMetrics() {
 		const dataPoints = (document.getElementById("nz-mon-data-points") as HTMLSelectElement)?.value ?? "50";
-		const data = await trpcQuery<MetricPoint[]>("server.getServerMetrics", { url, token, dataPoints });
+		const data = await trpcQuery<MetricPoint[]>("server.getServerMetrics", { dataPoints });
 		history = (data ?? []).map((m) => ({
 			...m,
 			cpu: Number.parseFloat(String(m.cpu)),
@@ -306,11 +253,11 @@ if (!metricsToken) {
 			const refresh = Number.parseInt((document.getElementById("nz-mon-refresh") as HTMLSelectElement)?.value ?? "5000", 10);
 			const dataPoints = (document.getElementById("nz-mon-data-points") as HTMLSelectElement)?.value ?? "50";
 			if (dataPoints !== "all") {
-				pollTimer = setInterval(() => void fetchMetrics(root), refresh);
+				pollTimer = setInterval(() => void fetchMetrics(), refresh);
 			}
 		};
 
-		void fetchMetrics(root)
+		void fetchMetrics()
 			.then(() => {
 				loading?.classList.add("hidden");
 				content?.classList.remove("hidden");
@@ -323,7 +270,7 @@ if (!metricsToken) {
 			});
 
 		document.getElementById("nz-mon-data-points")?.addEventListener("change", () => {
-			void fetchMetrics(root).then(schedule);
+			void fetchMetrics().then(schedule);
 		});
 		document.getElementById("nz-mon-refresh")?.addEventListener("change", schedule);
 	}

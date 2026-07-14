@@ -1,30 +1,27 @@
 import {
 	consumeManagedGitProviderState,
 	createGitea,
-	getManagedGitProviderCallbackBaseUrl,
 	getManagedGiteaConfig,
+	getManagedGitProviderCallbackBaseUrl,
 	isHostedEditionMode,
 	isManagedGitProviderState,
 	updateGitea,
 } from "@nearzero/server";
+import { db } from "@nearzero/server/db";
+import { eq } from "drizzle-orm";
+import { parseGitProviderBaseUrl } from "@/server/api/utils/git-provider-url-security";
+import { gitea } from "@/server/db/schema";
+import { consumeByoGitProviderTargetState } from "@/server/routes/handlers/providers/byo-oauth-state";
 import type { ApiRequest, ApiResponse } from "@/server/types/api";
-import { findGitea, type Gitea, redirectWithError } from "./helper";
-
-// Helper to parse the state parameter
-const parseState = (state: string): string | null => {
-	try {
-		const stateObj =
-			state.startsWith("{") && state.endsWith("}") ? JSON.parse(state) : {};
-		return stateObj.giteaId || state || null;
-	} catch {
-		return null;
-	}
-};
+import { type Gitea, redirectWithError } from "./helper";
 
 // Helper to fetch access token from Gitea
 const fetchAccessToken = async (gitea: Gitea, code: string) => {
 	// Use internal URL for token exchange when Gitea is on same instance as Nearzero
-	const baseUrl = gitea.giteaInternalUrl || gitea.giteaUrl;
+	const baseUrl = parseGitProviderBaseUrl(
+		gitea.giteaInternalUrl || gitea.giteaUrl,
+		"Gitea token URL",
+	);
 	const response = await fetch(`${baseUrl}/login/oauth/access_token`, {
 		method: "POST",
 		headers: {
@@ -43,13 +40,10 @@ const fetchAccessToken = async (gitea: Gitea, code: string) => {
 	const responseText = await response.text();
 	return response.ok
 		? JSON.parse(responseText)
-		: { error: "Token exchange failed", responseText };
+		: { error: "Token exchange failed" };
 };
 
-export default async function handler(
-	req: ApiRequest,
-	res: ApiResponse,
-) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
 	const { code, state } = req.query;
 
 	if (!code || Array.isArray(code) || !state || Array.isArray(state)) {
@@ -112,7 +106,8 @@ export default async function handler(
 
 		return res.redirect(
 			307,
-			managedState.returnTo || "/dashboard/settings/git-providers?connected=true",
+			managedState.returnTo ||
+				"/dashboard/settings/git-providers?connected=true",
 		);
 	}
 
@@ -123,31 +118,26 @@ export default async function handler(
 		);
 	}
 
-	const giteaId = parseState(state as string);
-	if (!giteaId) return redirectWithError(res, "Invalid state format");
-
-	const gitea = await findGitea(giteaId);
-	if (!gitea) return redirectWithError(res, "Failed to find Gitea provider");
-
-	// Fetch the access token from Gitea
-	const result = await fetchAccessToken(gitea, code as string);
-
-	if (result.error) {
-		console.error("Token exchange failed:", result);
-		return redirectWithError(res, result.error);
-	}
-
-	if (!result.access_token) {
-		console.error("Missing access token:", result);
-		return redirectWithError(res, "No access token received");
-	}
-
-	const expiresAt = result.expires_in
-		? Math.floor(Date.now() / 1000) + result.expires_in
-		: null;
-
 	try {
-		await updateGitea(gitea.giteaId, {
+		const { state: byoState, provider } =
+			await consumeByoGitProviderTargetState(state, "gitea");
+		const integration = await db.query.gitea.findFirst({
+			where: eq(gitea.gitProviderId, provider.gitProviderId),
+			with: { gitProvider: true },
+		});
+		if (!integration) {
+			return redirectWithError(res, "Gitea provider not found");
+		}
+
+		const result = await fetchAccessToken(integration, code as string);
+		if (result.error || !result.access_token) {
+			return redirectWithError(res, "Gitea token exchange failed");
+		}
+		const expiresAt = result.expires_in
+			? Math.floor(Date.now() / 1000) + result.expires_in
+			: null;
+
+		await updateGitea(integration.giteaId, {
 			accessToken: result.access_token,
 			refreshToken: result.refresh_token,
 			expiresAt,
@@ -158,10 +148,12 @@ export default async function handler(
 
 		return res.redirect(
 			307,
-			"/dashboard/settings/git-providers?connected=true",
+			byoState.returnTo || "/dashboard/settings/git-providers?connected=true",
 		);
-	} catch (updateError) {
-		console.error("Failed to update Gitea provider:", updateError);
-		return redirectWithError(res, "Failed to store access token");
+	} catch {
+		return redirectWithError(
+			res,
+			"Invalid or expired Gitea authorization state",
+		);
 	}
 }

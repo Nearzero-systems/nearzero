@@ -22,17 +22,17 @@ const orgId = (ctx: { session: { activeOrganizationId: string } }) =>
 
 export const dnsRouter = createTRPCRouter({
 	zones: createTRPCRouter({
-		list: withPermission("domain", "read").query(async ({ ctx }) =>
+		list: withPermission("dns", "read").query(async ({ ctx }) =>
 			listDnsZones(orgId(ctx)),
 		),
 
-		one: withPermission("domain", "read")
+		one: withPermission("dns", "read")
 			.input(z.object({ dnsZoneId: z.string().min(1) }))
 			.query(async ({ ctx, input }) =>
 				findDnsZoneById(input.dnsZoneId, orgId(ctx)),
 			),
 
-		create: withPermission("domain", "create")
+		create: withPermission("dns", "create")
 			.input(apiCreateDnsZone)
 			.mutation(async ({ ctx, input }) => {
 				const zone = await createDnsZone(orgId(ctx), input);
@@ -46,7 +46,7 @@ export const dnsRouter = createTRPCRouter({
 				return zone;
 			}),
 
-		delete: withPermission("domain", "delete")
+		delete: withPermission("dns", "delete")
 			.input(z.object({ dnsZoneId: z.string().min(1) }))
 			.mutation(async ({ ctx, input }) => {
 				const zone = await deleteDnsZone(input.dnsZoneId, orgId(ctx));
@@ -60,7 +60,7 @@ export const dnsRouter = createTRPCRouter({
 				return zone;
 			}),
 
-		publish: withPermission("domain", "update")
+		publish: withPermission("dns", "update")
 			.input(z.object({ dnsZoneId: z.string().min(1) }))
 			.mutation(async ({ ctx, input }) => {
 				const zone = await publishDnsZone(input.dnsZoneId, orgId(ctx));
@@ -74,7 +74,7 @@ export const dnsRouter = createTRPCRouter({
 				return zone;
 			}),
 
-		publishAll: withPermission("domain", "update")
+		publishAll: withPermission("dns", "update")
 			.mutation(async ({ ctx }) => {
 				const count = await publishAllDnsZones(orgId(ctx));
 				await audit(ctx, {
@@ -86,7 +86,7 @@ export const dnsRouter = createTRPCRouter({
 				return { count };
 			}),
 
-		instructions: withPermission("domain", "read")
+		instructions: withPermission("dns", "read")
 			.input(z.object({ dnsZoneId: z.string().min(1) }))
 			.query(async ({ ctx, input }) => {
 				const zone = await findDnsZoneById(input.dnsZoneId, orgId(ctx));
@@ -95,13 +95,13 @@ export const dnsRouter = createTRPCRouter({
 	}),
 
 	records: createTRPCRouter({
-		list: withPermission("domain", "read")
+		list: withPermission("dns", "read")
 			.input(z.object({ dnsZoneId: z.string().min(1) }))
 			.query(async ({ ctx, input }) =>
 				listDnsRecords(input.dnsZoneId, orgId(ctx)),
 			),
 
-		upsert: withPermission("domain", "update")
+		upsert: withPermission("dns", "update")
 			.input(apiUpsertDnsRecord)
 			.mutation(async ({ ctx, input }) => {
 				const record = await upsertDnsRecord(orgId(ctx), input);
@@ -115,7 +115,7 @@ export const dnsRouter = createTRPCRouter({
 				return record;
 			}),
 
-		delete: withPermission("domain", "delete")
+		delete: withPermission("dns", "delete")
 			.input(z.object({ dnsRecordId: z.string().min(1) }))
 			.mutation(async ({ ctx, input }) => {
 				const record = await deleteDnsRecord(input.dnsRecordId, orgId(ctx));
@@ -130,11 +130,11 @@ export const dnsRouter = createTRPCRouter({
 			}),
 	}),
 
-	health: withPermission("domain", "read").query(async ({ ctx }) =>
+	health: withPermission("dns", "read").query(async ({ ctx }) =>
 		checkDnsHealth(orgId(ctx)),
 	),
 
-	readiness: withPermission("domain", "read").query(async ({ ctx }) =>
+	readiness: withPermission("dns", "read").query(async ({ ctx }) =>
 		getManagedDnsReadiness(orgId(ctx)),
 	),
 });

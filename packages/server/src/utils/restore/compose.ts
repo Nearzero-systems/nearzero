@@ -2,8 +2,13 @@ import type { apiRestoreBackup } from "@nearzero/server/db/schema";
 import type { Compose } from "@nearzero/server/services/compose";
 import type { Destination } from "@nearzero/server/services/destination";
 import type { z } from "zod";
-import { getS3Credentials } from "../backups/utils";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import {
+	getDestinationSensitiveValues,
+	getRestoreFailureMessage,
+	getS3Credentials,
+	quoteShellArgument,
+} from "../backups/utils";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import { getRestoreCommand } from "./utils";
 
 interface DatabaseCredentials {
@@ -26,10 +31,10 @@ export const restoreComposeBackup = async (
 		const rcloneFlags = getS3Credentials(destination);
 		const bucketPath = `:s3:${destination.bucket}`;
 		const backupPath = `${bucketPath}/${backupInput.backupFile}`;
-		let rcloneCommand = `rclone cat ${rcloneFlags.join(" ")} "${backupPath}" | gunzip`;
+		let rcloneCommand = `rclone cat ${rcloneFlags.join(" ")} ${quoteShellArgument(backupPath)} | gunzip`;
 
 		if (backupInput.metadata?.mongo) {
-			rcloneCommand = `rclone copy ${rcloneFlags.join(" ")} "${backupPath}"`;
+			rcloneCommand = `rclone copy ${rcloneFlags.join(" ")} ${quoteShellArgument(backupPath)}`;
 		}
 
 		let credentials: DatabaseCredentials = {};
@@ -79,24 +84,20 @@ export const restoreComposeBackup = async (
 		emit("Starting restore...");
 		emit(`Backup path: ${backupPath}`);
 
-		emit(`Executing command: ${restoreCommand}`);
-
-		if (serverId) {
-			await execAsyncRemote(serverId, restoreCommand);
-		} else {
-			await execAsync(restoreCommand);
-		}
+		emit("Executing restore command...");
+		await executeSensitiveShellScript({
+			serverId,
+			script: restoreCommand,
+			sensitiveValues: getDestinationSensitiveValues(
+				destination,
+				credentials.databasePassword,
+			),
+		});
 
 		emit("Restore completed successfully!");
 	} catch (error) {
-		console.error(error);
-		emit(
-			`Error: ${
-				error instanceof Error ? error.message : "Error restoring mongo backup"
-			}`,
-		);
-		throw new Error(
-			error instanceof Error ? error.message : "Error restoring mongo backup",
-		);
+		const message = getRestoreFailureMessage(error);
+		emit(`Error: ${message}`);
+		throw new Error(message);
 	}
 };

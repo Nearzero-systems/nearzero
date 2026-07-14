@@ -1,23 +1,18 @@
 import {
+	consumeByoGitProviderOAuthState,
 	consumeManagedGitProviderState,
 	createGithub,
+	findGitProviderById,
 	getManagedGithubConfig,
+	isByoGitProviderOAuthState,
 	isHostedEditionMode,
 	isManagedGitProviderState,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
 import { eq } from "drizzle-orm";
-import type { ApiRequest, ApiResponse } from "@/server/types/api";
 import { Octokit } from "octokit";
 import { github } from "@/server/db/schema";
-
-type Query = {
-	code: string;
-	state: string;
-	installation_id: string;
-	setup_action: string;
-	returnTo?: string;
-};
+import type { ApiRequest, ApiResponse } from "@/server/types/api";
 
 function safeReturnTo(value: unknown) {
 	if (typeof value !== "string") return "";
@@ -32,15 +27,22 @@ function redirectWithError(res: ApiResponse, error: string) {
 	);
 }
 
-export default async function handler(
-	req: ApiRequest,
-	res: ApiResponse,
-) {
-	const { code, state, installation_id, returnTo }: Query = req.query as Query;
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+	const code = typeof req.query.code === "string" ? req.query.code : "";
+	const state = typeof req.query.state === "string" ? req.query.state : "";
+	const installationId =
+		typeof req.query.installation_id === "string"
+			? req.query.installation_id
+			: "";
+	if (!state) {
+		return redirectWithError(res, "Invalid GitHub authorization state");
+	}
 
 	if (isManagedGitProviderState(state)) {
-		if (!installation_id) {
-			return res.status(400).json({ error: "Missing installation_id parameter" });
+		if (!installationId) {
+			return res
+				.status(400)
+				.json({ error: "Missing installation_id parameter" });
 		}
 		const managedState = await consumeManagedGitProviderState(state, "github");
 		const config = getManagedGithubConfig();
@@ -50,7 +52,7 @@ export default async function handler(
 				githubAppName: `https://github.com/apps/${config.appSlug}`,
 				githubAppId: config.appId,
 				githubClientId: config.clientId,
-				githubInstallationId: installation_id,
+				githubInstallationId: installationId,
 				githubWebhookSecret: null,
 			},
 			managedState.organizationId,
@@ -59,7 +61,8 @@ export default async function handler(
 		);
 		return res.redirect(
 			307,
-			managedState.returnTo || "/dashboard/settings/git-providers?connected=true",
+			managedState.returnTo ||
+				"/dashboard/settings/git-providers?connected=true",
 		);
 	}
 
@@ -70,52 +73,69 @@ export default async function handler(
 		);
 	}
 
-	if (!code) {
-		return res.status(400).json({ error: "Missing code parameter" });
+	if (!isByoGitProviderOAuthState(state)) {
+		return redirectWithError(res, "Invalid GitHub authorization state");
 	}
-	const [action, ...rest] = state?.split(":");
-	// For gh_init: rest[0] = organizationId, rest[1] = userId
-	// For gh_setup: rest[0] = githubProviderId
 
-	if (action === "gh_init") {
-		const organizationId = rest[0];
-		const userId = rest[1] || (req.query.userId as string);
+	try {
+		const byoState = await consumeByoGitProviderOAuthState(state, "github");
+		if (!byoState.targetGitProviderId) {
+			if (!code) {
+				return redirectWithError(res, "Missing GitHub manifest code");
+			}
 
-		if (!userId) {
-			return res.status(400).json({ error: "Missing userId parameter" });
+			const octokit = new Octokit({});
+			const { data } = await octokit.request(
+				"POST /app-manifests/{code}/conversions",
+				{
+					code: code as string,
+				},
+			);
+
+			await createGithub(
+				{
+					name: data.name,
+					githubAppName: data.html_url,
+					githubAppId: data.id,
+					githubClientId: data.client_id,
+					githubClientSecret: data.client_secret,
+					githubWebhookSecret: data.webhook_secret,
+					githubPrivateKey: data.pem,
+				},
+				byoState.organizationId,
+				byoState.userId,
+			);
+		} else {
+			if (!installationId) {
+				return redirectWithError(res, "Missing GitHub installation ID");
+			}
+			const provider = await findGitProviderById(byoState.targetGitProviderId);
+			if (
+				provider.organizationId !== byoState.organizationId ||
+				provider.providerType !== "github" ||
+				provider.connectionMode !== "byo"
+			) {
+				return redirectWithError(res, "Invalid GitHub authorization state");
+			}
+			const updated = await db
+				.update(github)
+				.set({ githubInstallationId: installationId })
+				.where(eq(github.gitProviderId, provider.gitProviderId))
+				.returning({ githubId: github.githubId });
+			if (updated.length !== 1) {
+				return redirectWithError(res, "GitHub provider not found");
+			}
 		}
 
-		const octokit = new Octokit({});
-		const { data } = await octokit.request(
-			"POST /app-manifests/{code}/conversions",
-			{
-				code: code as string,
-			},
+		const target = safeReturnTo(byoState.returnTo ?? undefined);
+		return res.redirect(
+			307,
+			target || "/dashboard/settings/git-providers?connected=true",
 		);
-
-		await createGithub(
-			{
-				name: data.name,
-				githubAppName: data.html_url,
-				githubAppId: data.id,
-				githubClientId: data.client_id,
-				githubClientSecret: data.client_secret,
-				githubWebhookSecret: data.webhook_secret,
-				githubPrivateKey: data.pem,
-			},
-			organizationId as string,
-			userId,
+	} catch {
+		return redirectWithError(
+			res,
+			"Invalid or expired GitHub authorization state",
 		);
-	} else if (action === "gh_setup") {
-		await db
-			.update(github)
-			.set({
-				githubInstallationId: installation_id,
-			})
-			.where(eq(github.githubId, rest[0] as string))
-			.returning();
 	}
-
-	const target = safeReturnTo(returnTo);
-	res.redirect(307, target || "/dashboard/settings/git-providers?connected=true");
 }

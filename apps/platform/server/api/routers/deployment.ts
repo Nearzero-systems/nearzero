@@ -52,13 +52,26 @@ const deploymentFollowColumns = {
 	logPath: true,
 } as const;
 
-const queueMessage = (state: string | null | undefined, failedReason?: string) => {
+const PUBLIC_DEPLOYMENT_FAILURE_MESSAGE =
+	"Deployment failed. Check the build logs for the failing step.";
+
+const toPublicDeployment = <T extends { errorMessage?: string | null }>(
+	deployment: T,
+) => ({
+	...deployment,
+	...(Object.hasOwn(deployment, "errorMessage")
+		? {
+				errorMessage: deployment.errorMessage
+					? PUBLIC_DEPLOYMENT_FAILURE_MESSAGE
+					: deployment.errorMessage,
+			}
+		: {}),
+});
+
+const queueMessage = (state: string | null | undefined) => {
 	switch ((state ?? "").toLowerCase()) {
 		case "failed":
-			return (
-				failedReason?.trim() ||
-				"Deployment worker failed before build logs were created."
-			);
+			return "Deployment worker failed before build logs were created.";
 		case "active":
 			return "Deployment worker is starting. Build logs should appear shortly.";
 		case "waiting":
@@ -81,10 +94,7 @@ const deploymentMessage = (deployment: {
 		case "done":
 			return "Deployment complete.";
 		case "error":
-			return (
-				deployment.errorMessage?.trim() ||
-				"Deployment failed. Check the build logs for the failing step."
-			);
+			return PUBLIC_DEPLOYMENT_FAILURE_MESSAGE;
 		case "cancelled":
 			return "Deployment was cancelled.";
 		default:
@@ -99,7 +109,9 @@ export const deploymentRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				deployment: ["read"],
 			});
-			return await findAllDeploymentsByApplicationId(input.applicationId);
+			return (await findAllDeploymentsByApplicationId(input.applicationId)).map(
+				toPublicDeployment,
+			);
 		}),
 
 	allByCompose: protectedProcedure
@@ -108,7 +120,9 @@ export const deploymentRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.composeId, {
 				deployment: ["read"],
 			});
-			return await findAllDeploymentsByComposeId(input.composeId);
+			return (await findAllDeploymentsByComposeId(input.composeId)).map(
+				toPublicDeployment,
+			);
 		}),
 
 	allByDatabase: protectedProcedure
@@ -121,7 +135,9 @@ export const deploymentRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.serviceId, {
 				deployment: ["read"],
 			});
-			return findDatabaseDeploymentsForService(input.serviceId);
+			return (await findDatabaseDeploymentsForService(input.serviceId)).map(
+				toPublicDeployment,
+			);
 		}),
 
 	allByServer: withPermission("deployment", "read")
@@ -134,7 +150,9 @@ export const deploymentRouter = createTRPCRouter({
 					message: "You don't have access to this server.",
 				});
 			}
-			return await findAllDeploymentsByServerId(input.serverId);
+			return (await findAllDeploymentsByServerId(input.serverId)).map(
+				toPublicDeployment,
+			);
 		}),
 	allCentralized: withPermission("deployment", "read").query(
 		async ({ ctx }) => {
@@ -146,7 +164,9 @@ export const deploymentRouter = createTRPCRouter({
 			if (accessedServices !== null && accessedServices.length === 0) {
 				return [];
 			}
-			return findAllDeploymentsCentralized(orgId, accessedServices);
+			return (await findAllDeploymentsCentralized(orgId, accessedServices)).map(
+				toPublicDeployment,
+			);
 		},
 	),
 
@@ -185,7 +205,6 @@ export const deploymentRouter = createTRPCRouter({
 				timestamp?: number;
 				processedOn?: number;
 				finishedOn?: number;
-				failedReason?: string;
 			} | null = null;
 
 			if (deployment) {
@@ -210,7 +229,9 @@ export const deploymentRouter = createTRPCRouter({
 						createdAt: deployment.createdAt,
 						startedAt: deployment.startedAt,
 						finishedAt: deployment.finishedAt,
-						errorMessage: deployment.errorMessage,
+						errorMessage: deployment.errorMessage
+							? PUBLIC_DEPLOYMENT_FAILURE_MESSAGE
+							: deployment.errorMessage,
 					},
 					logsAvailable: Boolean(deployment.logPath),
 					retryAfterMs:
@@ -236,7 +257,6 @@ export const deploymentRouter = createTRPCRouter({
 							timestamp: job.timestamp,
 							processedOn: job.processedOn,
 							finishedOn: job.finishedOn,
-							failedReason: job.failedReason ?? undefined,
 						};
 					}
 				} else {
@@ -267,7 +287,6 @@ export const deploymentRouter = createTRPCRouter({
 							timestamp: matching.timestamp,
 							processedOn: matching.processedOn,
 							finishedOn: matching.finishedOn,
-							failedReason: matching.failedReason ?? undefined,
 						};
 					}
 				}
@@ -282,10 +301,14 @@ export const deploymentRouter = createTRPCRouter({
 			const queueState = queue?.state?.toLowerCase();
 			const failed = queueState === "failed";
 			return {
-				state: failed ? "error" : queueState === "active" ? "running" : "queued",
+				state: failed
+					? "error"
+					: queueState === "active"
+						? "running"
+						: "queued",
 				message: queueLookupFailed
 					? "Deployment was queued. Waiting for the build worker to create logs."
-					: queueMessage(queueState, queue?.failedReason),
+					: queueMessage(queueState),
 				applicationStatus: applicationStatusRow?.applicationStatus ?? null,
 				queue,
 				deployment: null,
@@ -296,6 +319,10 @@ export const deploymentRouter = createTRPCRouter({
 
 	queueList: withPermission("deployment", "read").query(async ({ ctx }) => {
 		const orgId = ctx.session.activeOrganizationId;
+		const accessedServices =
+			ctx.user.role !== "owner" && ctx.user.role !== "admin"
+				? (await findMemberByUserId(ctx.user.id, orgId)).accessedServices
+				: null;
 		// Only in-flight jobs are relevant here: the UI discards terminal-state
 		// (completed/failed) queue rows because the database deployment records
 		// are the source of truth for finished runs. The deployments queue keeps
@@ -319,26 +346,44 @@ export const deploymentRouter = createTRPCRouter({
 				return {
 					id: String(job.id),
 					name: job.name ?? undefined,
-					data: job.data as Record<string, unknown>,
+					data: job.data,
 					timestamp: job.timestamp,
 					processedOn: job.processedOn,
 					finishedOn: job.finishedOn,
-					failedReason: job.failedReason ?? undefined,
 					state,
 				};
 			}),
 		);
 		rows.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
 
-		return Promise.all(
-			rows.map(async (row) => ({
-				...row,
-				servicePath: await resolveServicePath(
-					orgId,
-					(row.data ?? {}) as Record<string, unknown>,
-				),
-			})),
+		const scopedRows = await Promise.all(
+			rows.map(async (row) => {
+				const rawData = (row.data ?? {}) as Record<string, unknown>;
+				const servicePath = await resolveServicePath(orgId, rawData);
+				const serviceId = String(
+					rawData.applicationId ?? rawData.composeId ?? "",
+				);
+				if (
+					!servicePath.href ||
+					(accessedServices !== null && !accessedServices.includes(serviceId))
+				) {
+					return null;
+				}
+				return {
+					...row,
+					data: {
+						applicationId: rawData.applicationId,
+						composeId: rawData.composeId,
+						applicationType: rawData.applicationType,
+						type: rawData.type,
+						titleLog: rawData.titleLog,
+						descriptionLog: rawData.descriptionLog,
+					},
+					servicePath,
+				};
+			}),
 		);
+		return scopedRows.filter((row) => row !== null);
 	}),
 
 	allByType: protectedProcedure
@@ -351,10 +396,18 @@ export const deploymentRouter = createTRPCRouter({
 				where: eq(deployments[`${input.type}Id`], input.id),
 				orderBy: desc(deployments.createdAt),
 				with: {
-					rollback: true,
+					rollback: {
+						columns: {
+							rollbackId: true,
+							deploymentId: true,
+							version: true,
+							image: true,
+							createdAt: true,
+						},
+					},
 				},
 			});
-			return deploymentsList;
+			return deploymentsList.map(toPublicDeployment);
 		}),
 	killProcess: protectedProcedure
 		.input(
@@ -392,10 +445,7 @@ export const deploymentRouter = createTRPCRouter({
 					deploymentId: deployment.deploymentId,
 					serverId: resolveDeploymentLogServerId(deployment),
 				});
-				await updateDeploymentStatus(
-					deployment.deploymentId,
-					"cancelled",
-				);
+				await updateDeploymentStatus(deployment.deploymentId, "cancelled");
 				await audit(ctx, {
 					action: "cancel",
 					resourceType: "deployment",
@@ -448,13 +498,13 @@ export const deploymentRouter = createTRPCRouter({
 					});
 				}
 			}
-			const result = await removeDeployment(input.deploymentId);
+			await removeDeployment(input.deploymentId);
 			await audit(ctx, {
 				action: "delete",
 				resourceType: "deployment",
 				resourceId: deployment.deploymentId,
 			});
-			return result;
+			return { success: true, deploymentId: input.deploymentId };
 		}),
 
 	readLogs: protectedProcedure

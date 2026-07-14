@@ -308,6 +308,7 @@ function deleteBlockedTitle(sshKeyId: string) {
 		const formError = document.getElementById("nz-ssh-form-error");
 		const genRow = document.getElementById("nz-ssh-generate-row");
 		const deleteConfirm = document.getElementById("nz-ssh-delete-confirm");
+		const privateDownload = document.getElementById("nz-ssh-dl-private");
 
 		if (
 			!(form instanceof HTMLFormElement) ||
@@ -369,6 +370,11 @@ function deleteBlockedTitle(sshKeyId: string) {
 			nameEl.value = "";
 			descEl.value = "";
 			privateEl.value = "";
+			privateEl.readOnly = false;
+			privateEl.placeholder = "-----BEGIN RSA PRIVATE KEY-----";
+			if (privateDownload instanceof HTMLButtonElement) {
+				privateDownload.disabled = false;
+			}
 			publicEl.value = "";
 			setSshFormSubmitLabel("Create");
 			genRow.classList.remove("hidden");
@@ -382,11 +388,16 @@ function deleteBlockedTitle(sshKeyId: string) {
 			formId.value = sshKeyId;
 			setSshFormSubmitLabel("Update");
 			genRow.classList.add("hidden");
+			privateEl.value = "";
+			privateEl.readOnly = true;
+			privateEl.placeholder = "Stored private keys cannot be displayed";
+			if (privateDownload instanceof HTMLButtonElement) {
+				privateDownload.disabled = true;
+			}
 			try {
 				const data = await trpcQuery<any>("sshKey.one", { sshKeyId });
 				nameEl.value = data.name ?? "";
 				descEl.value = data.description ?? "";
-				privateEl.value = data.privateKey ?? "";
 				publicEl.value = data.publicKey ?? "";
 				openDialog(SSH_FORM_DIALOG);
 			} catch (err) {

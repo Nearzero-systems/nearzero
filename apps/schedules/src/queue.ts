@@ -1,3 +1,4 @@
+import { sanitizePublicErrorMessage } from "@nearzero/server";
 import { Queue, type RepeatableJob } from "bullmq";
 import { logger } from "./logger.js";
 import type { QueueJob } from "./schema.js";
@@ -17,7 +18,10 @@ export const cleanQueue = async () => {
 		await jobQueue.obliterate({ force: true });
 		logger.info("Queue Cleaned");
 	} catch (error) {
-		logger.error("Error cleaning queue:", error);
+		logger.error(
+			{ error: sanitizePublicErrorMessage(error, "Failed to clean queue") },
+			"Error cleaning queue",
+		);
 	}
 };
 

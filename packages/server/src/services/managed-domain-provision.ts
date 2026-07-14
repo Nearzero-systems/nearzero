@@ -2,37 +2,44 @@ import { getPlatformDefaultDomain } from "@nearzero/server/constants";
 import { db } from "@nearzero/server/db";
 import { dnsZones, previewDeployments } from "@nearzero/server/db/schema";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
-import {
-	createDomain,
-	findDomainByOrganizationAndHost,
-	findDomainsByApplicationId,
-	findDomainsByComposeId,
-	getDomainHost,
-	syncManagedDnsRecordForDomain,
-	type Domain,
-	updateDomainById,
-} from "./domain";
-import { resolveDomainTargetIp } from "./domain-target";
-import { findEnvironmentForDomain } from "./environment";
-import { findApplicationById } from "./application";
-import { findComposeById } from "./compose";
-import { getWebServerSettings } from "./web-server-settings";
-import { checkDnsHealth } from "./dns";
-import {
-	buildManagedPreviewHost,
-	buildManagedServiceHost,
-	buildPlatformDefaultServiceHost,
-	buildPlatformDefaultPreviewHost,
-	buildPreviewServiceSlug,
-	slugifyServiceName,
-} from "./managed-domain";
-import { manageDomain } from "../utils/traefik/domain";
+import { and, eq } from "drizzle-orm";
+import { normalizeDnsHostname } from "../utils/dns/zone-file";
+import { getRemoteDocker } from "../utils/servers/remote-docker";
 import {
 	loadOrCreateConfig,
 	loadOrCreateConfigRemote,
 } from "../utils/traefik/application";
-import { getRemoteDocker } from "../utils/servers/remote-docker";
+import { manageDomain } from "../utils/traefik/domain";
+import { findApplicationById } from "./application";
+import {
+	findComposeById,
+	reconcileComposeDomainRoutes,
+	withComposeRoutingMutationLock,
+} from "./compose";
+import { checkDnsHealth, deleteManagedDnsRecordForDomain } from "./dns";
+import {
+	createDomain,
+	type Domain,
+	findDomainByHost,
+	findDomainsByApplicationId,
+	findDomainsByComposeId,
+	getDomainHost,
+	syncManagedDnsRecordForDomain,
+	updateDomainById,
+} from "./domain";
+import { resolveDomainTargetIp } from "./domain-target";
+import { findEnvironmentById, findEnvironmentForDomain } from "./environment";
+import {
+	buildManagedPreviewHost,
+	buildManagedServiceHost,
+	buildPlatformDefaultPreviewHost,
+	buildPlatformDefaultServiceHost,
+	buildPreviewServiceSlug,
+	canUsePlatformDomainForServer,
+	isNearzeroAssignedDomain,
+	slugifyServiceName,
+} from "./managed-domain";
+import { getWebServerSettings } from "./web-server-settings";
 
 export type ServiceDomainMode =
 	| "org-zone"
@@ -65,6 +72,8 @@ export type ProvisionServiceDomainInput = {
 	port: number;
 	serverId?: string | null;
 	path?: string;
+	deferComposeRouteReconciliation?: boolean;
+	composeRoutingLockHeld?: boolean;
 } & (
 	| { applicationId: string; domainType: "application" }
 	| { composeId: string; domainType: "compose" }
@@ -96,7 +105,9 @@ export type PreviewDomainPlan = {
 };
 
 function serviceIdForProvision(input: ProvisionServiceDomainInput) {
-	return input.domainType === "application" ? input.applicationId : input.composeId;
+	return input.domainType === "application"
+		? input.applicationId
+		: input.composeId;
 }
 
 function domainBelongsToProvisionedService(
@@ -115,15 +126,14 @@ function appendHostnameSuffix(host: string, suffix: string) {
 }
 
 async function resolveProvisionedHost(input: {
-	organizationId: string;
 	baseHost: string;
 	provision: ProvisionServiceDomainInput;
 }) {
-	const existing = await findDomainByOrganizationAndHost(
-		input.organizationId,
-		input.baseHost,
-	);
-	if (!existing || domainBelongsToProvisionedService(existing, input.provision)) {
+	const existing = await findDomainByHost(input.baseHost);
+	if (
+		!existing ||
+		domainBelongsToProvisionedService(existing, input.provision)
+	) {
 		return { host: input.baseHost, existing };
 	}
 
@@ -137,11 +147,11 @@ async function resolveProvisionedHost(input: {
 	];
 
 	for (const host of candidates) {
-		const conflict = await findDomainByOrganizationAndHost(
-			input.organizationId,
-			host,
-		);
-		if (!conflict || domainBelongsToProvisionedService(conflict, input.provision)) {
+		const conflict = await findDomainByHost(host);
+		if (
+			!conflict ||
+			domainBelongsToProvisionedService(conflict, input.provision)
+		) {
 			return { host, existing: conflict };
 		}
 	}
@@ -175,24 +185,127 @@ async function syncProvisionedDomain(
 	input: ProvisionServiceDomainInput,
 	domain: Domain,
 	path: string,
+	managed?: {
+		host?: string;
+		dnsZoneId?: string | null;
+		managedByNearzero: boolean;
+		dnsMode: "external" | "nearzero_managed" | "platform";
+		isSystemAssigned?: boolean;
+	},
 ): Promise<Domain> {
-	const update: { port?: number; path?: string } = {};
+	const update: Partial<Domain> = {};
 	if (domain.port !== input.port) {
 		update.port = input.port;
 	}
 	if ((domain.path ?? "/") !== path) {
 		update.path = path;
 	}
+	if (managed) {
+		if (managed.host && domain.host !== managed.host) {
+			update.host = managed.host;
+		}
+		if (domain.managedByNearzero !== managed.managedByNearzero) {
+			update.managedByNearzero = managed.managedByNearzero;
+		}
+		if ((domain.dnsZoneId ?? null) !== (managed.dnsZoneId ?? null)) {
+			update.dnsZoneId = managed.dnsZoneId ?? null;
+		}
+		if (domain.dnsMode !== managed.dnsMode) update.dnsMode = managed.dnsMode;
+		if (!domain.isSystemAssigned && managed.isSystemAssigned !== false) {
+			update.isSystemAssigned = true;
+		}
+		if (managed.managedByNearzero) {
+			if (!domain.https) update.https = true;
+			if (domain.certificateType !== "letsencrypt") {
+				update.certificateType = "letsencrypt";
+			}
+		}
+	}
 
-	const next =
-		Object.keys(update).length > 0
-			? (await updateDomainById(domain.domainId, update)) ?? domain
-			: domain;
-	return (await syncApplicationDomainRoute(input, next)) ?? next;
+	const changed = Object.keys(update).length > 0;
+	const composeBefore =
+		input.domainType === "compose" && !input.deferComposeRouteReconciliation
+			? await findComposeById(input.composeId)
+			: null;
+	const next = changed
+		? ((await updateDomainById(domain.domainId, update, {
+				allowPlatformHostnameChange: true,
+			})) ?? domain)
+		: domain;
+	let composeRouteApplied = false;
+	try {
+		const routed = (await syncApplicationDomainRoute(input, next)) ?? next;
+		if (composeBefore) {
+			const reconciliation = await reconcileComposeDomainRoutes(
+				composeBefore.composeId,
+				[
+					...composeBefore.domains.filter(
+						(existing) => existing.domainId !== routed.domainId,
+					),
+					routed,
+				],
+			);
+			composeRouteApplied = reconciliation.applied;
+		}
+		return await syncManagedDnsRecordForDomain(routed, {
+			serverId: input.serverId,
+		});
+	} catch (error) {
+		if (composeRouteApplied && composeBefore) {
+			try {
+				await reconcileComposeDomainRoutes(
+					composeBefore.composeId,
+					composeBefore.domains,
+				);
+			} catch (rollbackError) {
+				throw new TRPCError({
+					code: "INTERNAL_SERVER_ERROR",
+					message:
+						"Managed domain update failed and its Compose route could not be rolled back; the domain record was retained for safe recovery",
+					cause: new AggregateError(
+						[error, rollbackError],
+						"Compose domain route rollback failed",
+					),
+				});
+			}
+		}
+		if (changed) {
+			await updateDomainById(
+				domain.domainId,
+				{
+					host: domain.host,
+					port: domain.port,
+					path: domain.path,
+					https: domain.https,
+					certificateType: domain.certificateType,
+					dnsZoneId: domain.dnsZoneId,
+					dnsRecordId: domain.dnsRecordId,
+					managedByNearzero: domain.managedByNearzero,
+					dnsMode: domain.dnsMode,
+					isSystemAssigned: domain.isSystemAssigned,
+				},
+				{ allowPlatformHostnameChange: true },
+			).catch(() => undefined);
+		}
+		await syncApplicationDomainRoute(input, domain).catch(() => undefined);
+		if (domain.managedByNearzero && domain.dnsZoneId) {
+			await syncManagedDnsRecordForDomain(domain, {
+				serverId: input.serverId,
+			}).catch(() => undefined);
+		} else {
+			await deleteManagedDnsRecordForDomain(domain.domainId).catch(
+				() => undefined,
+			);
+		}
+		throw error;
+	}
 }
 
 function replaceWildcardHost(baseDomain: string, previewSlug: string) {
-	const normalized = baseDomain.trim().toLowerCase().replace(/\.$/, "");
+	const normalized = normalizeDnsHostname(baseDomain, {
+		allowWildcard: true,
+		requireFqdn: true,
+	});
 	if (!normalized.startsWith("*.")) {
 		throw new Error('The preview wildcard domain must start with "*."');
 	}
@@ -223,7 +336,10 @@ export async function resolvePreviewDomainPlan(input: {
 
 	if (env.dnsZoneId) {
 		const zone = await db.query.dnsZones.findFirst({
-			where: eq(dnsZones.dnsZoneId, env.dnsZoneId),
+			where: and(
+				eq(dnsZones.dnsZoneId, env.dnsZoneId),
+				eq(dnsZones.organizationId, env.project.organizationId),
+			),
 		});
 		if (!zone) {
 			throw new TRPCError({ code: "NOT_FOUND", message: "DNS zone not found" });
@@ -243,12 +359,13 @@ export async function resolvePreviewDomainPlan(input: {
 		};
 	}
 
-	if (platformApex) {
+	if (platformApex && canUsePlatformDomainForServer(input.serverId)) {
 		return {
 			mode: "platform",
 			host: buildPlatformDefaultPreviewHost({
 				previewSlug,
 				projectName: input.projectName,
+				organizationId: env.project.organizationId,
 			}),
 			targetIp,
 			managedByNearzero: false,
@@ -306,7 +423,10 @@ export async function ensurePreviewDeploymentDomain(input: {
 	previewCustomCertResolver?: string | null;
 }): Promise<Domain> {
 	const preview = await db.query.previewDeployments.findFirst({
-		where: eq(previewDeployments.previewDeploymentId, input.previewDeploymentId),
+		where: eq(
+			previewDeployments.previewDeploymentId,
+			input.previewDeploymentId,
+		),
 		with: { domain: true },
 	});
 	if (!preview) {
@@ -341,6 +461,7 @@ export async function ensurePreviewDeploymentDomain(input: {
 			previewDeploymentId: input.previewDeploymentId,
 			dnsZoneId: plan.dnsZoneId,
 			managedByNearzero: plan.managedByNearzero,
+			isSystemAssigned: true,
 		}));
 
 	const update: Partial<Domain> = {};
@@ -357,27 +478,20 @@ export async function ensurePreviewDeploymentDomain(input: {
 	if (domain.managedByNearzero !== plan.managedByNearzero) {
 		update.managedByNearzero = plan.managedByNearzero;
 	}
+	if (!domain.isSystemAssigned) update.isSystemAssigned = true;
 
 	const next =
 		Object.keys(update).length > 0
-			? (await updateDomainById(domain.domainId, update)) ?? domain
+			? ((await updateDomainById(domain.domainId, update)) ?? domain)
 			: domain;
 
 	if (!preview.domainId) {
 		await db
 			.update(previewDeployments)
 			.set({ domainId: next.domainId })
-			.where(eq(previewDeployments.previewDeploymentId, input.previewDeploymentId));
-	}
-
-	if (next.managedByNearzero && next.dnsZoneId) {
-		await syncManagedDnsRecordForDomain(next, {
-			previewDeploymentId: input.previewDeploymentId,
-			dnsZoneId: next.dnsZoneId,
-			managedByNearzero: true,
-			serverId: input.serverId,
-			managedBy: "preview-domain",
-		});
+			.where(
+				eq(previewDeployments.previewDeploymentId, input.previewDeploymentId),
+			);
 	}
 
 	await manageDomain(
@@ -388,7 +502,13 @@ export async function ensurePreviewDeploymentDomain(input: {
 		},
 		next,
 	);
-	return next;
+	return await syncManagedDnsRecordForDomain(next, {
+		previewDeploymentId: input.previewDeploymentId,
+		dnsZoneId: next.dnsZoneId ?? undefined,
+		managedByNearzero: next.managedByNearzero,
+		serverId: input.serverId,
+		managedBy: "preview-domain",
+	});
 }
 
 export async function verifyApplicationDomainRoute(input: {
@@ -417,9 +537,7 @@ export async function verifyApplicationDomainRoute(input: {
 		input.domain.dnsZoneId &&
 		!input.domain.dnsRecordId
 	) {
-		messages.push(
-			"DNS needs setup: managed DNS record was not published yet.",
-		);
+		messages.push("DNS needs setup: managed DNS record was not published yet.");
 	}
 
 	const serviceName = `${input.appName}-service-${input.domain.uniqueConfigKey}`;
@@ -432,7 +550,8 @@ export async function verifyApplicationDomainRoute(input: {
 		const service = config.http?.services?.[serviceName] as
 			| { loadBalancer?: { servers?: Array<{ url?: string }> } }
 			| undefined;
-		const urls = service?.loadBalancer?.servers?.map((server) => server.url) ?? [];
+		const urls =
+			service?.loadBalancer?.servers?.map((server) => server.url) ?? [];
 		routeOk = urls.includes(expectedUrl);
 		messages.push(
 			routeOk
@@ -492,7 +611,10 @@ export async function previewServiceDomain(
 
 	if (env.dnsZoneId) {
 		const zone = await db.query.dnsZones.findFirst({
-			where: eq(dnsZones.dnsZoneId, env.dnsZoneId),
+			where: and(
+				eq(dnsZones.dnsZoneId, env.dnsZoneId),
+				eq(dnsZones.organizationId, env.project.organizationId),
+			),
 		});
 		if (zone) {
 			zoneName = zone.name;
@@ -508,15 +630,21 @@ export async function previewServiceDomain(
 			});
 			mode = "org-zone";
 		}
-	} else if (platformApex) {
+	} else if (platformApex && canUsePlatformDomainForServer(input.serverId)) {
 		host = buildPlatformDefaultServiceHost({
 			serviceName: input.serviceName,
 			projectName: env.project.name,
+			organizationId: env.project.organizationId,
 			environment: env,
 		});
 		zoneName = platformApex;
 		mode = "platform";
 	} else if (targetIp) {
+		if (platformApex && input.serverId) {
+			warnings.push(
+				"The platform apex is not a per-server DNS service. Bind a Nearzero-managed zone to use that domain on this remote server.",
+			);
+		}
 		host = buildManagedPreviewHost({
 			appName: input.serviceName,
 			zoneName: "sslip.io",
@@ -546,13 +674,26 @@ export async function previewServiceDomain(
 export async function provisionServiceDomain(
 	input: ProvisionServiceDomainInput,
 ): Promise<Domain | null> {
+	if (input.domainType === "compose" && !input.composeRoutingLockHeld) {
+		return withComposeRoutingMutationLock(input.composeId, () =>
+			provisionServiceDomain({ ...input, composeRoutingLockHeld: true }),
+		);
+	}
 	const env = await findEnvironmentForDomain(input.environmentId);
 	const platformApex = getPlatformDefaultDomain();
 	const path = input.path ?? "/";
+	const attachedDomains =
+		input.domainType === "application"
+			? await findDomainsByApplicationId(input.applicationId)
+			: await findDomainsByComposeId(input.composeId);
+	const migratableFallback = attachedDomains.find(isNearzeroAssignedDomain);
 
 	if (env.dnsZoneId) {
 		const zone = await db.query.dnsZones.findFirst({
-			where: eq(dnsZones.dnsZoneId, env.dnsZoneId),
+			where: and(
+				eq(dnsZones.dnsZoneId, env.dnsZoneId),
+				eq(dnsZones.organizationId, env.project.organizationId),
+			),
 		});
 		if (!zone) {
 			throw new TRPCError({ code: "NOT_FOUND", message: "DNS zone not found" });
@@ -563,55 +704,94 @@ export async function provisionServiceDomain(
 			environment: env,
 		});
 		const resolved = await resolveProvisionedHost({
-			organizationId: env.project.organizationId,
 			baseHost: host,
 			provision: input,
 		});
 		if (resolved.existing) {
-			return syncProvisionedDomain(input, resolved.existing, path);
+			return syncProvisionedDomain(input, resolved.existing, path, {
+				host: resolved.host,
+				dnsZoneId: zone.dnsZoneId,
+				managedByNearzero: true,
+				dnsMode: "nearzero_managed",
+			});
 		}
-		const domain = await createDomain({
-			host: resolved.host,
-			port: input.port,
-			path,
-			https: true,
-			certificateType: "letsencrypt",
-			domainType: input.domainType,
-			dnsZoneId: env.dnsZoneId,
-			managedByNearzero: true,
-			...(input.domainType === "application"
-				? { applicationId: input.applicationId }
-				: { composeId: input.composeId }),
-		});
-		return syncProvisionedDomain(input, domain, path);
+		if (migratableFallback) {
+			return syncProvisionedDomain(input, migratableFallback, path, {
+				host: resolved.host,
+				dnsZoneId: zone.dnsZoneId,
+				managedByNearzero: true,
+				dnsMode: "nearzero_managed",
+			});
+		}
+		const domain = await createDomain(
+			{
+				host: resolved.host,
+				port: input.port,
+				path,
+				https: true,
+				certificateType: "letsencrypt",
+				domainType: input.domainType,
+				dnsZoneId: env.dnsZoneId,
+				managedByNearzero: true,
+				isSystemAssigned: true,
+				...(input.domainType === "application"
+					? { applicationId: input.applicationId }
+					: { composeId: input.composeId }),
+			},
+			{
+				reconcileComposeRoute: !input.deferComposeRouteReconciliation,
+				composeRoutingLockHeld: input.domainType === "compose",
+			},
+		);
+		return domain;
 	}
 
-	if (platformApex) {
+	if (platformApex && canUsePlatformDomainForServer(input.serverId)) {
 		const host = buildPlatformDefaultServiceHost({
 			serviceName: input.serviceName,
 			projectName: env.project.name,
+			organizationId: env.project.organizationId,
 			environment: env,
 		});
 		const resolved = await resolveProvisionedHost({
-			organizationId: env.project.organizationId,
 			baseHost: host,
 			provision: input,
 		});
 		if (resolved.existing) {
-			return syncProvisionedDomain(input, resolved.existing, path);
+			return syncProvisionedDomain(input, resolved.existing, path, {
+				host: resolved.host,
+				managedByNearzero: false,
+				dnsMode: "platform",
+			});
 		}
-		const domain = await createDomain({
-			host: resolved.host,
-			port: input.port,
-			path,
-			https: true,
-			certificateType: "letsencrypt",
-			domainType: input.domainType,
-			...(input.domainType === "application"
-				? { applicationId: input.applicationId }
-				: { composeId: input.composeId }),
-		});
-		return syncProvisionedDomain(input, domain, path);
+		if (migratableFallback) {
+			return syncProvisionedDomain(input, migratableFallback, path, {
+				host: resolved.host,
+				managedByNearzero: false,
+				dnsZoneId: null,
+				dnsMode: "platform",
+			});
+		}
+		const domain = await createDomain(
+			{
+				host: resolved.host,
+				port: input.port,
+				path,
+				https: true,
+				certificateType: "letsencrypt",
+				domainType: input.domainType,
+				dnsMode: "platform",
+				isSystemAssigned: true,
+				...(input.domainType === "application"
+					? { applicationId: input.applicationId }
+					: { composeId: input.composeId }),
+			},
+			{
+				reconcileComposeRoute: !input.deferComposeRouteReconciliation,
+				composeRoutingLockHeld: input.domainType === "compose",
+			},
+		);
+		return domain;
 	}
 
 	const targetIp = await resolveDomainTargetIp(input.serverId).catch(
@@ -626,26 +806,44 @@ export async function provisionServiceDomain(
 		targetIp,
 	});
 	const resolved = await resolveProvisionedHost({
-		organizationId: env.project.organizationId,
 		baseHost: host,
 		provision: input,
 	});
 	if (resolved.existing) {
-		return syncProvisionedDomain(input, resolved.existing, path);
+		return syncProvisionedDomain(input, resolved.existing, path, {
+			host: resolved.host,
+			managedByNearzero: false,
+			dnsMode: "external",
+		});
 	}
-	const domain = await createDomain({
-		host: resolved.host,
-		port: input.port,
-		path,
-		https: true,
-		certificateType: "letsencrypt",
-		domainType: input.domainType,
-		managedByNearzero: false,
-		...(input.domainType === "application"
-			? { applicationId: input.applicationId }
-			: { composeId: input.composeId }),
-	});
-	return syncProvisionedDomain(input, domain, path);
+	if (migratableFallback) {
+		return syncProvisionedDomain(input, migratableFallback, path, {
+			host: resolved.host,
+			managedByNearzero: false,
+			dnsZoneId: null,
+			dnsMode: "external",
+		});
+	}
+	const domain = await createDomain(
+		{
+			host: resolved.host,
+			port: input.port,
+			path,
+			https: true,
+			certificateType: "letsencrypt",
+			domainType: input.domainType,
+			managedByNearzero: false,
+			isSystemAssigned: true,
+			...(input.domainType === "application"
+				? { applicationId: input.applicationId }
+				: { composeId: input.composeId }),
+		},
+		{
+			reconcileComposeRoute: !input.deferComposeRouteReconciliation,
+			composeRoutingLockHeld: input.domainType === "compose",
+		},
+	);
+	return domain;
 }
 
 export async function ensureDefaultServiceDomain(input: {
@@ -653,32 +851,85 @@ export async function ensureDefaultServiceDomain(input: {
 	serviceId: string;
 	port?: number;
 	serverId?: string | null;
+	deferComposeRouteReconciliation?: boolean;
+	composeRoutingLockHeld?: boolean;
 }): Promise<Domain | null> {
+	if (input.serviceType === "compose" && !input.composeRoutingLockHeld) {
+		return withComposeRoutingMutationLock(input.serviceId, () =>
+			ensureDefaultServiceDomain({
+				...input,
+				composeRoutingLockHeld: true,
+			}),
+		);
+	}
 	const port = input.port ?? 3000;
 	const existing =
 		input.serviceType === "application"
 			? await findDomainsByApplicationId(input.serviceId)
 			: await findDomainsByComposeId(input.serviceId);
 	if (existing.length > 0) {
-		const domain = existing[0] ?? null;
+		const migratableFallback = existing.find(isNearzeroAssignedDomain);
+		if (migratableFallback) {
+			if (input.serviceType === "application") {
+				const application = await findApplicationById(input.serviceId);
+				return provisionServiceDomain({
+					environmentId: application.environmentId,
+					serviceName: application.name,
+					port,
+					serverId: input.serverId ?? application.serverId,
+					applicationId: input.serviceId,
+					domainType: "application",
+				});
+			}
+			const compose = await findComposeById(input.serviceId);
+			return provisionServiceDomain({
+				environmentId: compose.environmentId,
+				serviceName: compose.name,
+				port,
+				serverId: input.serverId ?? compose.serverId,
+				composeId: input.serviceId,
+				domainType: "compose",
+				deferComposeRouteReconciliation: input.deferComposeRouteReconciliation,
+				composeRoutingLockHeld: input.composeRoutingLockHeld,
+			});
+		}
+		const domain =
+			existing.find((candidate) => candidate.managedByNearzero) ??
+			existing[0] ??
+			null;
 		if (!domain) {
 			return domain;
 		}
-		const updated =
-			domain.port === port
-				? domain
-				: (await updateDomainById(domain.domainId, { port })) ?? domain;
 		if (input.serviceType === "application") {
 			const application = await findApplicationById(input.serviceId);
-			await manageDomain(
+			return syncProvisionedDomain(
 				{
-					...application,
+					environmentId: application.environmentId,
+					serviceName: application.name,
+					port,
 					serverId: input.serverId ?? application.serverId,
+					applicationId: input.serviceId,
+					domainType: "application",
 				},
-				updated,
+				domain,
+				domain.path ?? "/",
 			);
 		}
-		return updated;
+		const compose = await findComposeById(input.serviceId);
+		return syncProvisionedDomain(
+			{
+				environmentId: compose.environmentId,
+				serviceName: compose.name,
+				port,
+				serverId: input.serverId ?? compose.serverId,
+				composeId: input.serviceId,
+				domainType: "compose",
+				deferComposeRouteReconciliation: input.deferComposeRouteReconciliation,
+				composeRoutingLockHeld: input.composeRoutingLockHeld,
+			},
+			domain,
+			domain.path ?? "/",
+		);
 	}
 
 	if (input.serviceType === "application") {
@@ -698,10 +949,73 @@ export async function ensureDefaultServiceDomain(input: {
 		environmentId: compose.environmentId,
 		serviceName: compose.name,
 		port,
-		serverId: compose.serverId,
+		serverId: input.serverId ?? compose.serverId,
 		composeId: input.serviceId,
 		domainType: "compose",
+		deferComposeRouteReconciliation: input.deferComposeRouteReconciliation,
+		composeRoutingLockHeld: input.composeRoutingLockHeld,
 	});
+}
+
+export async function reconcileEnvironmentDefaultDomains(
+	environmentId: string,
+): Promise<{ attempted: number; updated: number; failed: number }> {
+	const environment = await findEnvironmentById(environmentId);
+	const services = [
+		...environment.applications.map((application) => ({
+			serviceType: "application" as const,
+			serviceId: application.applicationId,
+			serviceName: application.name,
+			serverId: application.serverId,
+			domains: application.domains,
+		})),
+		...environment.compose.map((compose) => ({
+			serviceType: "compose" as const,
+			serviceId: compose.composeId,
+			serviceName: compose.name,
+			serverId: compose.serverId,
+			domains: compose.domains,
+		})),
+	];
+
+	let attempted = 0;
+	let updated = 0;
+	let failed = 0;
+	for (const service of services) {
+		const assigned = service.domains.find(isNearzeroAssignedDomain);
+		if (!assigned) continue;
+		attempted += 1;
+		try {
+			const reconciled = await provisionServiceDomain({
+				environmentId,
+				serviceName:
+					service.serviceType === "compose"
+						? assigned.serviceName?.trim() || service.serviceName
+						: service.serviceName,
+				port: assigned.port ?? 3000,
+				serverId: service.serverId,
+				path: assigned.path ?? "/",
+				...(service.serviceType === "application"
+					? {
+							applicationId: service.serviceId,
+							domainType: "application" as const,
+						}
+					: {
+							composeId: service.serviceId,
+							domainType: "compose" as const,
+						}),
+			});
+			if (reconciled) updated += 1;
+			else failed += 1;
+		} catch {
+			// The environment binding is already durable. Report a count only; a
+			// later ensure/deploy retries the same idempotent reconciliation without
+			// exposing remote command or DNS provider errors through the API.
+			failed += 1;
+		}
+	}
+
+	return { attempted, updated, failed };
 }
 
 export async function getManagedDnsReadiness(organizationId: string) {

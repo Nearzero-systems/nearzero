@@ -44,7 +44,7 @@ const {
 		<div class="min-w-0">
 			<p class="truncate text-xs font-semibold text-[var(--nz-text)]">Domains</p>
 			<p class="mt-1 truncate text-[11px] text-[var(--nz-text-muted)]">
-				Bind a managed DNS zone or use platform defaults; attach domains per service.
+				Bind a managed DNS zone for direct remote-server routing; attach domains per service.
 			</p>
 		</div>
 	</div>
@@ -62,7 +62,7 @@ const {
 					name="dnsZoneId"
 					class="rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg)] px-2 py-1.5 text-xs"
 				>
-					<option value="">None (manual / platform apex only)</option>
+					<option value="">None (manual / shared-edge platform apex)</option>
 					{
 						dnsZones.map((zone) => (
 							<option value={zone.dnsZoneId} selected={zone.dnsZoneId === dnsZoneId}>
@@ -87,7 +87,7 @@ const {
 				{
 					dnsZoneName
 						? `Active zone: ${dnsZoneName}`
-						: "No org zone bound — bind a zone here or use platform auto URLs."
+						: "No org zone bound — remote-server apps cannot receive per-server managed DNS yet."
 				}
 			</p>
 			<ul class="list-disc space-y-1 pl-4 text-[11px] text-[var(--nz-text-muted)]">
@@ -106,7 +106,7 @@ const {
 					— platform routing and managed DNS guidance
 				</li>
 				<li>
-					Optional: set <code>NEARZERO_PLATFORM_DOMAIN</code> for wildcard platform URLs
+					<code>NEARZERO_PLATFORM_DOMAIN</code> is only for an externally configured wildcard DNS record and shared edge; it does not publish per-server A records
 				</li>
 			</ul>
 			<p class="text-[11px] text-[var(--nz-text-muted)]">

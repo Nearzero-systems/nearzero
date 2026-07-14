@@ -8,6 +8,42 @@ export type ApplicationBuildType =
 
 export type BuildSelectionMode = "automatic" | "explicit";
 
+/**
+ * Facts discovered while Nearzero inspects a repository before building it.
+ * Diagnostics explain the resolved build authority but never rewrite source.
+ */
+export type ApplicationBuildPlanDiagnostic =
+	| {
+			code: "dockerfile_authoritative";
+			severity: "info";
+			message: string;
+			dockerfile: string;
+	  }
+	| {
+			code: "multiple_package_manager_lockfiles";
+			severity: "warning";
+			message: string;
+			lockfiles: string[];
+			packageManagers: string[];
+	  }
+	| {
+			code: "dockerfile_package_manager_mismatch";
+			severity: "warning";
+			message: string;
+			repositoryPackageManager: string;
+			dockerfilePackageManagers: string[];
+	  }
+	| {
+			code: "managed_builder_preferred_over_dockerfile";
+			severity: "info";
+			message: string;
+			dockerfile: string;
+			framework: string;
+			repositoryPackageManager: string;
+			dockerfilePackageManagers: string[];
+			preferredBuilder: ApplicationBuildType;
+	  };
+
 export interface DetectedApplicationBuildTarget {
 	path: string;
 	packageName: string | null;
@@ -45,6 +81,8 @@ export interface ApplicationBuildPlan {
 		build: string | null;
 		start: string | null;
 	};
+	/** Optional so deployments created before this diagnostic existed remain valid. */
+	diagnostics?: ApplicationBuildPlanDiagnostic[];
 	healingHints: string[];
 	requiredCapabilities: string[];
 	generatedAt: string;

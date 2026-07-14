@@ -12,6 +12,7 @@ import {
 	recreateDirectoryRemote,
 } from "../filesystem/directory";
 import { execAsyncRemote } from "../process/execAsync";
+import { createSshHostVerification } from "../servers/ssh-host-verification";
 
 export const unzipDrop = async (zipFile: File, application: Application) => {
 	let sftp: SFTPWrapper | null = null;
@@ -112,8 +113,16 @@ const getSFTPConnection = async (serverId: string): Promise<SFTPWrapper> => {
 
 	return new Promise((resolve, reject) => {
 		const conn = new Client();
+		const hostVerification = createSshHostVerification(server);
 		conn
 			.on("ready", () => {
+				try {
+					hostVerification.commit();
+				} catch (error) {
+					conn.end();
+					reject(error);
+					return;
+				}
 				conn.sftp((err, sftp) => {
 					if (err) return reject(err);
 					resolve(sftp);
@@ -124,6 +133,8 @@ const getSFTPConnection = async (serverId: string): Promise<SFTPWrapper> => {
 				port: server.port,
 				username: server.username,
 				privateKey: server.sshKey?.privateKey,
+				hostVerifier: hostVerification.hostVerifier,
+				readyTimeout: 30_000,
 			});
 	});
 };

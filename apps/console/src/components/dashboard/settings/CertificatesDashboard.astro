@@ -290,6 +290,8 @@ const privateKeyPlaceholder =
 			nameEl.value = "";
 			dataEl.value = "";
 			privateEl.value = "";
+			privateEl.required = true;
+			privateEl.placeholder = "-----BEGIN PRIVATE KEY-----";
 			if (serverEl instanceof HTMLSelectElement) {
 				serverEl.value = "nearzero";
 			}
@@ -310,18 +312,19 @@ const privateKeyPlaceholder =
 			resetForm();
 			formId.value = certificateId;
 			formTitle.textContent = "Update Certificate";
-			formDesc.textContent = "Modify the certificate details";
+			formDesc.textContent = "Leave the private key blank to keep the stored key";
 			formSubmit.textContent = "Update";
 			serverRow.classList.add("hidden");
+			privateEl.required = false;
+			privateEl.placeholder = "Leave blank to keep the stored private key";
 			try {
 				const cert = await trpcQuery<{
 					name?: string;
 					certificateData?: string;
-					privateKey?: string;
 				}>("certificates.one", { certificateId });
 				nameEl.value = cert.name || "";
 				dataEl.value = cert.certificateData || "";
-				privateEl.value = cert.privateKey || "";
+				privateEl.value = "";
 				formDlg.showModal();
 			} catch {
 				showToast("Could not load certificate", "error");
@@ -374,11 +377,14 @@ const privateKeyPlaceholder =
 			const basePayload = {
 				name: nameEl.value,
 				certificateData: dataEl.value,
-				privateKey: privateEl.value,
 			};
 			try {
 				if (id) {
-					await trpcMutate("certificates.update", { certificateId: id, ...basePayload });
+					await trpcMutate("certificates.update", {
+						certificateId: id,
+						...basePayload,
+						...(privateEl.value.trim() ? { privateKey: privateEl.value } : {}),
+					});
 					showToast("Certificate Updated", "success");
 				} else {
 					const serverId =
@@ -387,8 +393,8 @@ const privateKeyPlaceholder =
 							: undefined;
 					await trpcMutate("certificates.create", {
 						...basePayload,
+						privateKey: privateEl.value,
 						serverId,
-						organizationId: "",
 					});
 					showToast("Certificate Created", "success");
 				}

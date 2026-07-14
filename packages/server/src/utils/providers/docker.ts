@@ -1,34 +1,37 @@
+import { loginDockerRegistry } from "@nearzero/server/services/registry";
 import type { ApplicationNested } from "../builders";
 
-export const buildRemoteDocker = async (application: ApplicationNested) => {
+const shellQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`;
+
+export const buildRemoteDocker = async (
+	application: ApplicationNested,
+	buildServerId?: string | null,
+) => {
 	const { registryUrl, dockerImage, username, password } = application;
 
 	try {
 		if (!dockerImage) {
 			throw new Error("Docker image not found");
 		}
-		let command = `
-echo "Pulling ${dockerImage}";		
-		`;
-
 		if (username && password) {
-			command += `
-if ! echo "${password}" | docker login --username "${username}" --password-stdin "${registryUrl || ""}" 2>&1; then
-	echo "❌ Login failed";
-	exit 1;
-fi
-`;
+			await loginDockerRegistry({
+				registryUrl: registryUrl ?? undefined,
+				username,
+				password,
+				serverId: buildServerId,
+			});
 		}
 
-		command += `
-docker pull ${dockerImage} 2>&1 || { 
+		const image = shellQuote(dockerImage);
+		return `
+echo "Pulling container image";
+docker pull ${image} 2>&1 || {
   echo "❌ Pulling image failed";
   exit 1;
 }
 
 echo "✅ Pulling image completed.";
 `;
-		return command;
 	} catch (error) {
 		throw error;
 	}

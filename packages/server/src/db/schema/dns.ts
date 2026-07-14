@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	index,
 	integer,
@@ -47,10 +47,7 @@ export const dnsZones = pgTable(
 		mode: dnsZoneMode("mode").notNull().default("nearzero_authoritative"),
 		soaEmail: text("soaEmail").notNull(),
 		ttl: integer("ttl").notNull().default(300),
-		nameservers: text("nameservers")
-			.array()
-			.notNull()
-			.default([]),
+		nameservers: text("nameservers").array().notNull().default([]),
 		lastPublishedAt: text("lastPublishedAt"),
 		lastError: text("lastError"),
 		createdAt: text("createdAt")
@@ -64,6 +61,9 @@ export const dnsZones = pgTable(
 		orgNameIdx: uniqueIndex("dns_zone_organizationId_name_idx").on(
 			t.organizationId,
 			t.name,
+		),
+		globalNameLowerIdx: uniqueIndex("dns_zone_name_lower_unique_idx").on(
+			sql`lower(${t.name})`,
 		),
 	}),
 );
@@ -99,6 +99,13 @@ export const dnsRecords = pgTable(
 			t.value,
 		),
 		zoneIdx: index("dns_record_dnsZoneId_idx").on(t.dnsZoneId),
+		managedAddressOwnerIdx: uniqueIndex(
+			"dns_record_managed_address_owner_unique_idx",
+		)
+			.on(t.dnsZoneId, t.name, t.type)
+			.where(
+				sql`${t.domainId} is not null and ${t.type} in ('A', 'AAAA', 'CNAME')`,
+			),
 	}),
 );
 
@@ -116,8 +123,8 @@ export const dnsRecordsRelations = relations(dnsRecords, ({ one }) => ({
 export const apiCreateDnsZone = z.object({
 	name: z.string().min(1),
 	soaEmail: z.string().email(),
-	ttl: z.number().int().positive().optional(),
-	nameservers: z.array(z.string()).optional(),
+	ttl: z.number().int().min(1).max(2_147_483_647).optional(),
+	nameservers: z.array(z.string().min(1).max(253)).max(16).optional(),
 });
 
 export const apiUpsertDnsRecord = z.object({
@@ -125,10 +132,6 @@ export const apiUpsertDnsRecord = z.object({
 	name: z.string().min(1),
 	type: z.enum(["A", "AAAA", "CNAME", "TXT", "MX", "CAA", "NS"]),
 	value: z.string().min(1),
-	ttl: z.number().int().positive().optional(),
-	priority: z.number().int().optional(),
-	managedBy: z
-		.enum(["user", "service-domain", "preview-domain", "system"])
-		.optional(),
-	domainId: z.string().optional(),
+	ttl: z.number().int().min(1).max(2_147_483_647).optional(),
+	priority: z.number().int().min(0).max(65_535).optional(),
 });

@@ -25,9 +25,9 @@ Copy `.env.example` from `apps/platform` to `apps/platform/.env`.
 
 Set `BACKEND_URL=http://127.0.0.1:3000` in `apps/console/.env` (default).
 
-Optional client env (see `src/lib/client-env.ts`):
-
-- `PUBLIC_METRICS_URL` / `PUBLIC_METRICS_TOKEN` — monitoring charts on About Nearzero
+Monitoring credentials belong only on the platform server. Never add metrics tokens,
+API keys, or other credentials to `PUBLIC_*` variables: Astro/Vite embeds those
+values in browser assets.
 
 For Git provider OAuth, set `PUBLIC_GIT_PROVIDER_BASE_URL` to your console’s public HTTPS URL (see `apps/console/.env.example`).
 

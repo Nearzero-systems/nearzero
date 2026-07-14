@@ -1,17 +1,16 @@
 import {
+	buildMongoPasswordChangeScript,
 	checkPortInUse,
 	createMongo,
 	createMount,
 	deployMongo,
-	execAsync,
-	execAsyncRemote,
+	executeSensitiveShellScript,
 	findBackupsByDbId,
 	findEnvironmentById,
 	findMongoById,
 	findProjectById,
 	getAccessibleServerIds,
 	getContainerLogs,
-	getServiceContainerCommand,
 	rebuildDatabase,
 	removeMongoById,
 	removeService,
@@ -19,6 +18,7 @@ import {
 	startServiceRemote,
 	stopService,
 	stopServiceRemote,
+	toPublicServerRelation,
 	updateMongoById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -139,7 +139,7 @@ export const mongoRouter = createTRPCRouter({
 					message: "You are not authorized to access this mongo",
 				});
 			}
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 
 	start: protectedProcedure
@@ -175,7 +175,7 @@ export const mongoRouter = createTRPCRouter({
 				resourceId: service.mongoId,
 				resourceName: service.appName,
 			});
-			return service;
+			return toPublicServerRelation(service);
 		}),
 	stop: protectedProcedure
 		.input(apiFindOneMongo)
@@ -209,7 +209,7 @@ export const mongoRouter = createTRPCRouter({
 				resourceId: mongo.mongoId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	saveExternalPort: protectedProcedure
 		.input(apiSaveExternalPortMongo)
@@ -250,7 +250,7 @@ export const mongoRouter = createTRPCRouter({
 				resourceId: mongo.mongoId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	deploy: protectedProcedure
 		.input(apiDeployMongo)
@@ -344,7 +344,7 @@ export const mongoRouter = createTRPCRouter({
 				resourceId: mongo.mongoId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	reload: protectedProcedure
 		.input(apiResetMongo)
@@ -419,7 +419,7 @@ export const mongoRouter = createTRPCRouter({
 				} catch (_) {}
 			}
 
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesMongo)
@@ -489,15 +489,12 @@ export const mongoRouter = createTRPCRouter({
 			const mongo = await findMongoById(mongoId);
 			const { appName, serverId, databaseUser, databasePassword } = mongo;
 
-			const containerCmd = getServiceContainerCommand(appName);
-			const command = `
-				CONTAINER_ID=$(${containerCmd})
-				if [ -z "$CONTAINER_ID" ]; then
-					echo "No running container found for ${appName}" >&2
-					exit 1
-				fi
-				docker exec "$CONTAINER_ID" mongosh -u '${databaseUser}' -p '${databasePassword}' --authenticationDatabase admin --eval "db.getSiblingDB('admin').changeUserPassword('${databaseUser}', '${password}')"
-			`;
+			const script = buildMongoPasswordChangeScript({
+				appName,
+				databaseUser,
+				oldPassword: databasePassword,
+				newPassword: password,
+			});
 
 			await db.transaction(async (tx) => {
 				await tx
@@ -505,11 +502,11 @@ export const mongoRouter = createTRPCRouter({
 					.set({ databasePassword: password })
 					.where(eq(mongoTable.mongoId, mongoId));
 
-				if (serverId) {
-					await execAsyncRemote(serverId, command);
-				} else {
-					await execAsync(command, { shell: "/bin/bash" });
-				}
+				await executeSensitiveShellScript({
+					serverId,
+					script,
+					sensitiveValues: [databasePassword, password],
+				});
 			});
 
 			await audit(ctx, {

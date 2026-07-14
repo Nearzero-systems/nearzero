@@ -1,18 +1,37 @@
 import { db } from "@nearzero/server/db";
-import { dnsZones, domains, environments, projects, applications, compose } from "@nearzero/server/db/schema";
-import { manageDomain, removeDomain } from "@nearzero/server/utils/traefik/domain";
+import {
+	applications,
+	compose,
+	dnsZones,
+	domains,
+	environments,
+	projects,
+} from "@nearzero/server/db/schema";
+import {
+	manageDomain,
+	removeDomain,
+} from "@nearzero/server/utils/traefik/domain";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { normalizeDnsHostname } from "../utils/dns/zone-file";
 import { findApplicationById } from "./application";
-import { findComposeById } from "./compose";
 import {
-	findDomainById,
-	syncManagedDnsRecordForDomain,
-	type Domain,
-} from "./domain";
+	findComposeById,
+	reconcileComposeDomainRoutes,
+	withDomainRoutingMutationLock,
+} from "./compose";
 import { deleteManagedDnsRecordForDomain } from "./dns";
-import { findMemberByUserId } from "./permission";
+import {
+	assertExternalDomainPointsToServer,
+	assertHostnameIsNotReservedForPlatform,
+	type Domain,
+	findDomainByHost,
+	findDomainById,
+	managedRecordNameForHost,
+	syncManagedDnsRecordForDomain,
+} from "./domain";
 import { provisionServiceDomain } from "./managed-domain-provision";
+import { findMemberByUserId } from "./permission";
 
 export type CentralizedDomainRow = {
 	domainId: string;
@@ -70,9 +89,11 @@ async function resolveComposeDomainServiceName(
 ) {
 	const requested = requestedName?.trim() ?? "";
 	const { loadServices } = await import("./compose");
-	const services = await loadServices(composeId, "cache").catch(() => [] as string[]);
+	const services = await loadServices(composeId, "cache").catch(
+		() => [] as string[],
+	);
 	if (requested && services.includes(requested)) return requested;
-	if (services.length === 1) return services[0];
+	if (services.length === 1) return services[0] as string;
 	if (requested && services.length === 0) return requested;
 	throw new TRPCError({
 		code: "BAD_REQUEST",
@@ -192,16 +213,41 @@ export async function registerDomain(
 	organizationId: string,
 	input: {
 		host: string;
-		dnsMode?: "external" | "nearzero_managed" | "platform";
+		dnsMode?: "external" | "nearzero_managed";
 		https?: boolean;
 		certificateType?: "letsencrypt" | "none" | "custom";
 		customCertResolver?: string;
 		dnsZoneId?: string;
+		serverId?: string | null;
 	},
 ) {
-	const host = input.host.trim().toLowerCase();
+	if ((input as { dnsMode?: string }).dnsMode === "platform") {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message:
+				"Platform domains are assigned by Nearzero and cannot be registered manually",
+		});
+	}
+	let host: string;
+	try {
+		host = normalizeDnsHostname(input.host);
+	} catch (error) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: error instanceof Error ? error.message : "Invalid hostname",
+			cause: error,
+		});
+	}
 	const dnsMode = input.dnsMode ?? "external";
+	assertHostnameIsNotReservedForPlatform(host, dnsMode);
 	const managedByNearzero = dnsMode === "nearzero_managed";
+	if (dnsMode === "external" && input.serverId === undefined) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message:
+				"Select the server this external hostname points to before registering it",
+		});
+	}
 
 	if (managedByNearzero && !input.dnsZoneId) {
 		throw new TRPCError({
@@ -209,17 +255,33 @@ export async function registerDomain(
 			message: "dnsZoneId is required for Nearzero DNS mode",
 		});
 	}
-
-	const existing = await db.query.domains.findFirst({
-		where: and(
-			eq(domains.organizationId, organizationId),
-			eq(domains.host, host),
-		),
-	});
-	if (existing) {
+	if (!managedByNearzero && input.dnsZoneId) {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message: "A hostname with this name already exists in your organization",
+			message: "dnsZoneId is only valid for Nearzero-managed DNS",
+		});
+	}
+	if (input.dnsZoneId) {
+		const zone = await db.query.dnsZones.findFirst({
+			where: and(
+				eq(dnsZones.dnsZoneId, input.dnsZoneId),
+				eq(dnsZones.organizationId, organizationId),
+			),
+		});
+		if (!zone) {
+			throw new TRPCError({ code: "NOT_FOUND", message: "DNS zone not found" });
+		}
+		managedRecordNameForHost(host, zone.name);
+	}
+	if (dnsMode === "external") {
+		await assertExternalDomainPointsToServer(host, input.serverId);
+	}
+
+	const existing = await findDomainByHost(host);
+	if (existing) {
+		throw new TRPCError({
+			code: "CONFLICT",
+			message: "This hostname is already claimed in this Nearzero installation",
 		});
 	}
 
@@ -231,8 +293,10 @@ export async function registerDomain(
 			dnsMode,
 			managedByNearzero,
 			dnsZoneId: input.dnsZoneId ?? null,
-			https: input.https ?? false,
-			certificateType: input.certificateType ?? "none",
+			https: input.https ?? dnsMode !== "external",
+			certificateType:
+				input.certificateType ??
+				(dnsMode === "external" ? "none" : "letsencrypt"),
 			customCertResolver: input.customCertResolver,
 		})
 		.returning();
@@ -247,7 +311,7 @@ export async function registerDomain(
 	return created;
 }
 
-export async function assignDomainToService(input: {
+type AssignDomainToServiceInput = {
 	domainId: string;
 	applicationId?: string;
 	composeId?: string;
@@ -256,7 +320,11 @@ export async function assignDomainToService(input: {
 	path?: string;
 	https?: boolean;
 	certificateType?: "letsencrypt" | "none" | "custom";
-}) {
+};
+
+async function assignDomainToServiceUnlocked(
+	input: AssignDomainToServiceInput,
+) {
 	const domain = await findDomainById(input.domainId);
 	if (domain.previewDeploymentId) {
 		throw new TRPCError({
@@ -265,76 +333,181 @@ export async function assignDomainToService(input: {
 		});
 	}
 
+	if (
+		Number(Boolean(input.applicationId)) + Number(Boolean(input.composeId)) !==
+		1
+	) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: "Choose exactly one application or compose service",
+		});
+	}
+
 	const port = input.port ?? domain.port ?? 3000;
 	const path = input.path ?? domain.path ?? "/";
 	const https = input.https ?? domain.https;
+	const oldApplication = domain.applicationId
+		? await findApplicationById(domain.applicationId)
+		: null;
+	const targetApplication = input.applicationId
+		? await findApplicationById(input.applicationId)
+		: null;
+	const targetCompose = input.composeId
+		? await findComposeById(input.composeId)
+		: null;
+	const oldCompose = domain.composeId
+		? await findComposeById(domain.composeId)
+		: null;
+	const targetOrganizationId =
+		targetApplication?.environment.project.organizationId ??
+		targetCompose?.environment.project.organizationId;
+	if (
+		!domain.organizationId ||
+		targetOrganizationId !== domain.organizationId
+	) {
+		throw new TRPCError({
+			code: "FORBIDDEN",
+			message: "A domain cannot be assigned across organizations",
+		});
+	}
+	const serviceName = input.composeId
+		? await resolveComposeDomainServiceName(input.composeId, input.serviceName)
+		: null;
+	const update = {
+		applicationId: input.applicationId ?? null,
+		composeId: input.composeId ?? null,
+		domainType: input.applicationId
+			? ("application" as const)
+			: ("compose" as const),
+		serviceName,
+		port,
+		path,
+		https,
+		certificateType: input.certificateType ?? domain.certificateType,
+	};
+	const candidate = { ...domain, ...update };
+	let newRouteWritten = false;
+	let oldRouteRemoved = false;
+	let targetComposeRouteApplied = false;
+	let oldComposeRouteApplied = false;
+	let databaseUpdated = false;
 
-	if (input.applicationId) {
-		const application = await findApplicationById(input.applicationId);
+	try {
+		if (domain.dnsMode === "external" && !domain.managedByNearzero) {
+			await assertExternalDomainPointsToServer(
+				domain.host,
+				targetApplication?.serverId ?? targetCompose?.serverId,
+			);
+		}
+		if (targetApplication) {
+			await manageDomain(targetApplication, candidate);
+			newRouteWritten = true;
+		}
+		if (targetCompose) {
+			const result = await reconcileComposeDomainRoutes(
+				targetCompose.composeId,
+				[
+					...targetCompose.domains.filter(
+						(existing) => existing.domainId !== domain.domainId,
+					),
+					candidate,
+				],
+			);
+			targetComposeRouteApplied = result.applied;
+		}
+		if (
+			oldApplication &&
+			oldApplication.applicationId !== targetApplication?.applicationId
+		) {
+			await removeDomain(oldApplication, domain.uniqueConfigKey);
+			oldRouteRemoved = true;
+		}
+		if (oldCompose && oldCompose.composeId !== targetCompose?.composeId) {
+			const result = await reconcileComposeDomainRoutes(
+				oldCompose.composeId,
+				oldCompose.domains.filter(
+					(existing) => existing.domainId !== domain.domainId,
+				),
+			);
+			oldComposeRouteApplied = result.applied;
+		}
+
 		const [updated] = await db
 			.update(domains)
-			.set({
-				applicationId: input.applicationId,
-				composeId: null,
-				domainType: "application",
-				serviceName: null,
-				port,
-				path,
-				https,
-				certificateType: input.certificateType ?? domain.certificateType,
-			})
+			.set(update)
 			.where(eq(domains.domainId, input.domainId))
 			.returning();
-
 		if (!updated) {
 			throw new TRPCError({ code: "NOT_FOUND", message: "Domain not found" });
 		}
-
-		await manageDomain(application, updated);
-		if (updated.managedByNearzero && updated.dnsZoneId) {
-			return syncManagedDnsRecordForDomain(updated);
-		}
-		return updated;
-	}
-
-	if (input.composeId) {
-		await findComposeById(input.composeId);
-		const serviceName = await resolveComposeDomainServiceName(
-			input.composeId,
-			input.serviceName,
-		);
-		const [updated] = await db
-			.update(domains)
-			.set({
-				composeId: input.composeId,
-				applicationId: null,
-				domainType: "compose",
-				serviceName,
-				port,
-				path,
-				https,
-				certificateType: input.certificateType ?? domain.certificateType,
-			})
-			.where(eq(domains.domainId, input.domainId))
-			.returning();
-
-		if (!updated) {
-			throw new TRPCError({ code: "NOT_FOUND", message: "Domain not found" });
-		}
+		databaseUpdated = true;
 
 		if (updated.managedByNearzero && updated.dnsZoneId) {
-			return syncManagedDnsRecordForDomain(updated);
+			return await syncManagedDnsRecordForDomain(updated);
 		}
 		return updated;
+	} catch (error) {
+		if (databaseUpdated) {
+			await db
+				.update(domains)
+				.set({
+					applicationId: domain.applicationId,
+					composeId: domain.composeId,
+					domainType: domain.domainType,
+					serviceName: domain.serviceName,
+					port: domain.port,
+					path: domain.path,
+					https: domain.https,
+					certificateType: domain.certificateType,
+					dnsRecordId: domain.dnsRecordId,
+				})
+				.where(eq(domains.domainId, domain.domainId))
+				.catch(() => undefined);
+		}
+		if (newRouteWritten && targetApplication) {
+			if (targetApplication.applicationId === oldApplication?.applicationId) {
+				await manageDomain(oldApplication, domain).catch(() => undefined);
+			} else {
+				await removeDomain(targetApplication, domain.uniqueConfigKey).catch(
+					() => undefined,
+				);
+			}
+		}
+		if (oldRouteRemoved && oldApplication) {
+			await manageDomain(oldApplication, domain).catch(() => undefined);
+		}
+		if (targetComposeRouteApplied && targetCompose) {
+			await reconcileComposeDomainRoutes(
+				targetCompose.composeId,
+				targetCompose.domains,
+			).catch(() => undefined);
+		}
+		if (oldComposeRouteApplied && oldCompose) {
+			await reconcileComposeDomainRoutes(
+				oldCompose.composeId,
+				oldCompose.domains,
+			).catch(() => undefined);
+		}
+		if (domain.managedByNearzero && domain.dnsZoneId) {
+			if (domain.applicationId || domain.composeId) {
+				await syncManagedDnsRecordForDomain(domain).catch(() => undefined);
+			} else {
+				await deleteManagedDnsRecordForDomain(domain.domainId).catch(
+					() => undefined,
+				);
+			}
+		}
+		throw error;
 	}
-
-	throw new TRPCError({
-		code: "BAD_REQUEST",
-		message: "applicationId or composeId is required",
-	});
 }
 
-export async function unassignDomain(domainId: string) {
+export function assignDomainToService(input: AssignDomainToServiceInput) {
+	return withDomainRoutingMutationLock(input.domainId, input.composeId, () =>
+		assignDomainToServiceUnlocked(input),
+	);
+}
+
+async function unassignDomainUnlocked(domainId: string) {
 	const domain = await findDomainById(domainId);
 	if (domain.previewDeploymentId) {
 		throw new TRPCError({
@@ -343,28 +516,70 @@ export async function unassignDomain(domainId: string) {
 		});
 	}
 
-	if (domain.applicationId) {
-		const application = await findApplicationById(domain.applicationId);
-		await removeDomain(application, domain.uniqueConfigKey);
+	const application = domain.applicationId
+		? await findApplicationById(domain.applicationId)
+		: null;
+	const composeService = domain.composeId
+		? await findComposeById(domain.composeId)
+		: null;
+	let routeRemoved = false;
+	let composeRouteApplied = false;
+	let dnsRemoved = false;
+	try {
+		if (application) {
+			await removeDomain(application, domain.uniqueConfigKey);
+			routeRemoved = true;
+		}
+		if (composeService) {
+			const result = await reconcileComposeDomainRoutes(
+				composeService.composeId,
+				composeService.domains.filter(
+					(existing) => existing.domainId !== domain.domainId,
+				),
+			);
+			composeRouteApplied = result.applied;
+		}
+		if (domain.managedByNearzero) {
+			await deleteManagedDnsRecordForDomain(domainId);
+			dnsRemoved = true;
+		}
+
+		const [updated] = await db
+			.update(domains)
+			.set({
+				applicationId: null,
+				composeId: null,
+				serviceName: null,
+				domainType: null,
+				dnsRecordId: null,
+			})
+			.where(eq(domains.domainId, domainId))
+			.returning();
+		if (!updated) {
+			throw new TRPCError({ code: "NOT_FOUND", message: "Domain not found" });
+		}
+		return updated;
+	} catch (error) {
+		if (routeRemoved && application) {
+			await manageDomain(application, domain).catch(() => undefined);
+		}
+		if (composeRouteApplied && composeService) {
+			await reconcileComposeDomainRoutes(
+				composeService.composeId,
+				composeService.domains,
+			).catch(() => undefined);
+		}
+		if (dnsRemoved && domain.managedByNearzero && domain.dnsZoneId) {
+			await syncManagedDnsRecordForDomain(domain).catch(() => undefined);
+		}
+		throw error;
 	}
+}
 
-	if (domain.managedByNearzero) {
-		await deleteManagedDnsRecordForDomain(domainId);
-	}
-
-	const [updated] = await db
-		.update(domains)
-		.set({
-			applicationId: null,
-			composeId: null,
-			serviceName: null,
-			domainType: null,
-			dnsRecordId: null,
-		})
-		.where(eq(domains.domainId, domainId))
-		.returning();
-
-	return updated;
+export function unassignDomain(domainId: string) {
+	return withDomainRoutingMutationLock(domainId, null, () =>
+		unassignDomainUnlocked(domainId),
+	);
 }
 
 export async function generateSubdomainForService(input: {
@@ -423,7 +638,7 @@ export async function listEnvironmentDnsBindings(
 		userRole,
 	);
 
-	let envFilter = eq(projects.organizationId, organizationId);
+	const envFilter = eq(projects.organizationId, organizationId);
 
 	const rows = await db
 		.select({

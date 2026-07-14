@@ -1,5 +1,5 @@
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import {
 	execAsync,
 	execAsyncRemote,
@@ -11,6 +11,8 @@ import { compose } from "../db/schema";
 import {
 	initializeStandaloneTraefik,
 	initializeTraefikService,
+	TRAEFIK_PORT,
+	TRAEFIK_SSL_PORT,
 	type TraefikOptions,
 } from "../setup/traefik-setup";
 export interface IUpdateData {
@@ -58,6 +60,57 @@ interface TreeDataItem {
 	children?: TreeDataItem[];
 }
 
+const quoteShellArgument = (value: string) =>
+	`'${value.replaceAll("'", `'"'"'`)}'`;
+
+const isTraefikYaml = (value: string) =>
+	new Set([".yml", ".yaml"]).has(extname(value).toLowerCase());
+
+function buildRemoteDirectoryTree(
+	rootPath: string,
+	entries: Array<{ path: string; type: "file" | "directory" }>,
+) {
+	const root = resolve(rootPath);
+	const result: TreeDataItem[] = [];
+	const children = new Map<string, TreeDataItem[]>([[root, result]]);
+	const safeEntries = entries
+		.map((entry) => ({ ...entry, path: resolve(entry.path) }))
+		.filter(
+			(entry) =>
+				entry.path !== root &&
+				entry.path.startsWith(`${root}/`) &&
+				/^[A-Za-z0-9._/-]+$/.test(entry.path) &&
+				(entry.type === "directory" || isTraefikYaml(entry.path)),
+		)
+		.sort(
+			(left, right) =>
+				left.path.split("/").length - right.path.split("/").length ||
+				left.path.localeCompare(right.path),
+		);
+
+	for (const entry of safeEntries) {
+		const parentChildren = children.get(dirname(entry.path));
+		if (!parentChildren) continue;
+		if (entry.type === "directory") {
+			const nested: TreeDataItem[] = [];
+			parentChildren.push({
+				id: entry.path,
+				name: basename(entry.path),
+				type: "directory",
+				children: nested,
+			});
+			children.set(entry.path, nested);
+		} else {
+			parentChildren.push({
+				id: entry.path,
+				name: basename(entry.path),
+				type: "file",
+			});
+		}
+	}
+	return result;
+}
+
 export const readDirectory = async (
 	dirPath: string,
 	serverId?: string,
@@ -65,56 +118,19 @@ export const readDirectory = async (
 	if (serverId) {
 		const { stdout } = await execAsyncRemote(
 			serverId,
-			`
-process_items() {
-    local parent_dir="$1"
-    local __resultvar=$2
-
-    local items_json=""
-    local first=true
-    for item in "$parent_dir"/*; do
-        [ -e "$item" ] || continue
-        process_item "$item" item_json
-        if [ "$first" = true ]; then
-            first=false
-            items_json="$item_json"
-        else
-            items_json="$items_json,$item_json"
-        fi
-    done
-
-    eval $__resultvar="'[$items_json]'"
-}
-
-process_item() {
-    local item_path="$1"
-    local __resultvar=$2
-
-    local item_name=$(basename "$item_path")
-    local escaped_name=$(echo "$item_name" | sed 's/"/\\"/g')
-    local escaped_path=$(echo "$item_path" | sed 's/"/\\"/g')
-
-    if [ -d "$item_path" ]; then
-        # Is directory
-        process_items "$item_path" children_json
-        local json='{"id":"'"$escaped_path"'","name":"'"$escaped_name"'","type":"directory","children":'"$children_json"'}'
-    else
-        # Is file
-        local json='{"id":"'"$escaped_path"'","name":"'"$escaped_name"'","type":"file"}'
-    fi
-
-    eval $__resultvar="'$json'"
-}
-
-root_dir=${dirPath}
-
-process_items "$root_dir" json_output
-
-echo "$json_output"
-			`,
+			`set -eu
+root=${quoteShellArgument(dirPath)}
+find "$root" -xdev -type d -print | sed 's/^/D/'
+find "$root" -xdev -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sed 's/^/F/'`,
 		);
-		const result = JSON.parse(stdout);
-		return result;
+		const entries = stdout
+			.split("\n")
+			.filter((line) => /^[DF]\//.test(line))
+			.map((line) => ({
+				path: line.slice(1),
+				type: line.startsWith("D") ? ("directory" as const) : ("file" as const),
+			}));
+		return buildRemoteDirectoryTree(dirPath, entries);
 	}
 
 	const stack = [dirPath];
@@ -130,6 +146,7 @@ echo "$json_output"
 
 		for (const item of items) {
 			const fullPath = join(currentPath, item.name);
+			if (item.isSymbolicLink()) continue;
 			if (item.isDirectory()) {
 				stack.push(fullPath);
 				const directoryItem: TreeDataItem = {
@@ -140,7 +157,7 @@ echo "$json_output"
 				};
 				currentDirectoryResult.push(directoryItem);
 				parentMap[fullPath] = directoryItem.children as TreeDataItem[];
-			} else {
+			} else if (item.isFile() && isTraefikYaml(fullPath)) {
 				const fileItem: TreeDataItem = {
 					id: fullPath,
 					name: item.name,
@@ -288,7 +305,11 @@ export const readPorts = async (
 				publishedPort: port.PublishedPort,
 				protocol: port.Protocol,
 			}))
-			.filter((port: any) => port.targetPort !== 80 && port.targetPort !== 443);
+			.filter(
+				(port: any) =>
+					port.targetPort !== TRAEFIK_PORT &&
+					port.targetPort !== TRAEFIK_SSL_PORT,
+			);
 	}
 	const ports: {
 		targetPort: number;
@@ -319,7 +340,8 @@ export const readPorts = async (
 		}
 	}
 	return ports.filter(
-		(port: any) => port.targetPort !== 80 && port.targetPort !== 443,
+		(port: any) =>
+			port.targetPort !== TRAEFIK_PORT && port.targetPort !== TRAEFIK_SSL_PORT,
 	);
 };
 

@@ -6,6 +6,7 @@ import {
 	getBackupTimestamp,
 	getS3Credentials,
 	normalizeS3Path,
+	quoteShellArgument,
 } from "../backups/utils";
 
 export const getVolumeServiceAppName = (
@@ -42,20 +43,22 @@ export const backupVolume = async (
 	const rcloneDestination = `:s3:${destination.bucket}/${bucketDestination}`;
 	const volumeBackupPath = path.join(VOLUME_BACKUPS_PATH, volumeBackup.appName);
 
-	const rcloneCommand = `rclone copyto ${rcloneFlags.join(" ")} "${volumeBackupPath}/${backupFileName}" "${rcloneDestination}"`;
+	const backupFilePath = `${volumeBackupPath}/${backupFileName}`;
+	const rcloneCommand = `rclone copyto ${rcloneFlags.join(" ")} ${quoteShellArgument(backupFilePath)} ${quoteShellArgument(rcloneDestination)}`;
+	const archiveCommand = `cd /volume_data && tar cvf ${quoteShellArgument(`/backup/${backupFileName}`)} .`;
 
 	const backupCommand = `
 	set -e
-	echo "Volume name: ${volumeName}"
-	echo "Backup file name: ${backupFileName}"
+	printf 'Volume name: %s\n' ${quoteShellArgument(volumeName)}
+	printf 'Backup file name: %s\n' ${quoteShellArgument(backupFileName)}
 	echo "Turning off volume backup: ${turnOff ? "Yes" : "No"}"
 	echo "Starting volume backup" 
-	echo "Dir: ${volumeBackupPath}"
+	printf 'Dir: %s\n' ${quoteShellArgument(volumeBackupPath)}
     docker run --rm \
-  -v ${volumeName}:/volume_data \
-  -v ${volumeBackupPath}:/backup \
+  -v ${quoteShellArgument(`${volumeName}:/volume_data`)} \
+  -v ${quoteShellArgument(`${volumeBackupPath}:/backup`)} \
   ubuntu \
-  bash -c "cd /volume_data && tar cvf /backup/${backupFileName} ."
+  bash -c ${quoteShellArgument(archiveCommand)}
   echo "Volume backup done ✅"
   `;
 
@@ -64,7 +67,7 @@ export const backupVolume = async (
   ${rcloneCommand}
   echo "Upload to S3 done ✅"
   echo "Cleaning up local backup file..."
-  rm "${volumeBackupPath}/${backupFileName}"
+  rm -f -- ${quoteShellArgument(backupFilePath)}
   echo "Local backup file cleaned up ✅"
   `;
 
@@ -85,7 +88,7 @@ export const backupVolume = async (
 	const lockWrapper = (body: string) => `
 		set -e
 
-		LOCK_PATH="${lockPath}"
+		LOCK_PATH=${quoteShellArgument(lockPath)}
 
 		echo "Waiting for volume backup lock: $LOCK_PATH"
 
@@ -108,22 +111,16 @@ export const backupVolume = async (
 		echo "Volume backup lock released"
 	`;
 
-	console.log(
-		lockWrapper(`
-		echo "Volume backup lock acquired"
-		echo "Volume backup lock released"
-	`),
-	);
-
 	if (serviceType === "application") {
+		const applicationService = volumeBackup.application?.appName ?? "";
 		return lockWrapper(`
 		echo "Stopping application to 0 replicas"
-		ACTUAL_REPLICAS=$(docker service inspect ${volumeBackup.application?.appName} --format "{{.Spec.Mode.Replicated.Replicas}}")
+		ACTUAL_REPLICAS=$(docker service inspect ${quoteShellArgument(applicationService)} --format "{{.Spec.Mode.Replicated.Replicas}}")
 		echo "Actual replicas: $ACTUAL_REPLICAS"
-		docker service update --replicas=0 ${volumeBackup.application?.appName}
+		docker service update --replicas=0 ${quoteShellArgument(applicationService)}
         ${backupCommand}
 		echo "Starting application to $ACTUAL_REPLICAS replicas"
-        docker service update --replicas=$ACTUAL_REPLICAS --with-registry-auth ${volumeBackup.application?.appName}
+        docker service update --replicas=$ACTUAL_REPLICAS --with-registry-auth ${quoteShellArgument(applicationService)}
 		${uploadCommand}
   `);
 	}
@@ -135,25 +132,26 @@ export const backupVolume = async (
 		let startCommand = "";
 
 		if (compose.composeType === "stack") {
+			const composeService = `${compose.appName}_${volumeBackup.serviceName}`;
 			stopCommand = `
 			echo "Stopping compose to 0 replicas"
-			echo "Service name: ${compose.appName}_${volumeBackup.serviceName}"
-            ACTUAL_REPLICAS=$(docker service inspect ${compose.appName}_${volumeBackup.serviceName} --format "{{.Spec.Mode.Replicated.Replicas}}")
+			printf 'Service name: %s\n' ${quoteShellArgument(composeService)}
+            ACTUAL_REPLICAS=$(docker service inspect ${quoteShellArgument(composeService)} --format "{{.Spec.Mode.Replicated.Replicas}}")
             echo "Actual replicas: $ACTUAL_REPLICAS"
-            docker service update --replicas=0 ${compose.appName}_${volumeBackup.serviceName}`;
+            docker service update --replicas=0 ${quoteShellArgument(composeService)}`;
 
 			startCommand = `
 			echo "Starting compose to $ACTUAL_REPLICAS replicas"
-			docker service update --replicas=$ACTUAL_REPLICAS --with-registry-auth ${compose.appName}_${volumeBackup.serviceName}`;
+			docker service update --replicas=$ACTUAL_REPLICAS --with-registry-auth ${quoteShellArgument(composeService)}`;
 		} else {
 			stopCommand = `
 			echo "Stopping compose container"
-            ID=$(docker ps -q --filter "label=com.docker.compose.project=${compose.appName}" --filter "label=com.docker.compose.service=${volumeBackup.serviceName}")
-            docker stop $ID`;
+            ID=$(docker ps -q --filter ${quoteShellArgument(`label=com.docker.compose.project=${compose.appName}`)} --filter ${quoteShellArgument(`label=com.docker.compose.service=${volumeBackup.serviceName}`)})
+			docker stop -- "$ID"`;
 
 			startCommand = `
             echo "Starting compose container"
-            docker start $ID
+            docker start -- "$ID"
 			echo "Compose container started"
 			`;
 		}

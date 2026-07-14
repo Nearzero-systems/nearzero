@@ -34,6 +34,8 @@ export function openCertificateCreateDialog() {
 	nameEl.value = "";
 	dataEl.value = "";
 	privateEl.value = "";
+	privateEl.required = true;
+	privateEl.placeholder = "-----BEGIN PRIVATE KEY-----";
 	if (serverEl instanceof HTMLSelectElement) serverEl.value = "nearzero";
 	formError.classList.add("hidden");
 	formError.textContent = "";
@@ -103,6 +105,8 @@ export function initCertificatesPanel() {
 		nameEl.value = "";
 		dataEl.value = "";
 		privateEl.value = "";
+		privateEl.required = true;
+		privateEl.placeholder = "-----BEGIN PRIVATE KEY-----";
 		if (serverEl instanceof HTMLSelectElement) {
 			serverEl.value = "nearzero";
 		}
@@ -119,15 +123,16 @@ export function initCertificatesPanel() {
 		if (formTitle) formTitle.textContent = "Update certificate";
 		formSubmit.textContent = "Update";
 		serverRow.classList.add("hidden");
+		privateEl.required = false;
+		privateEl.placeholder = "Leave blank to keep the stored private key";
 		try {
 			const cert = await trpcQuery<{
 				name?: string;
 				certificateData?: string;
-				privateKey?: string;
 			}>("certificates.one", { certificateId });
 			nameEl.value = cert.name || "";
 			dataEl.value = cert.certificateData || "";
-			privateEl.value = cert.privateKey || "";
+			privateEl.value = "";
 			openDialog("nz-cert-form-dialog");
 		} catch {
 			showToast("Could not load certificate", "error");
@@ -175,11 +180,14 @@ export function initCertificatesPanel() {
 		const basePayload = {
 			name: nameEl.value,
 			certificateData: dataEl.value,
-			privateKey: privateEl.value,
 		};
 		try {
 			if (id) {
-				await trpcMutate("certificates.update", { certificateId: id, ...basePayload });
+				await trpcMutate("certificates.update", {
+					certificateId: id,
+					...basePayload,
+					...(privateEl.value.trim() ? { privateKey: privateEl.value } : {}),
+				});
 				showToast("Certificate updated", "success");
 			} else {
 				const serverId =
@@ -190,8 +198,8 @@ export function initCertificatesPanel() {
 						: undefined;
 				await trpcMutate("certificates.create", {
 					...basePayload,
+					privateKey: privateEl.value,
 					serverId,
-					organizationId: "",
 				});
 				showToast("Certificate uploaded", "success");
 			}

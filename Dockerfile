@@ -1,21 +1,41 @@
-# syntax=docker/dockerfile:1
-FROM oven/bun:1.3.10 AS base
+# syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+FROM docker:28.5.2-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d AS docker-cli
+
+FROM oven/bun:1.3.10@sha256:b86c67b531d87b4db11470d9b2bd0c519b1976eee6fcd71634e73abfa6230d2e AS base
 WORKDIR /usr/src/app
 
 FROM base AS build
-COPY . /usr/src/app
+
+# Install from manifests first so application source changes do not invalidate
+# the expensive, architecture-specific dependency layer.
+COPY package.json bun.lock ./
+COPY apps/console/package.json ./apps/console/package.json
+COPY apps/platform/package.json ./apps/platform/package.json
+COPY apps/schedules/package.json ./apps/schedules/package.json
+COPY packages/agent/package.json ./packages/agent/package.json
+COPY packages/edition-community/package.json ./packages/edition-community/package.json
+COPY packages/edition-contract/package.json ./packages/edition-contract/package.json
+COPY packages/server/package.json ./packages/server/package.json
+COPY packages/trpc-openapi/package.json ./packages/trpc-openapi/package.json
 
 RUN apt-get update && apt-get install -y python3 make g++ git python3-pip pkg-config libsecret-1-dev curl node-gyp && rm -rf /var/lib/apt/lists/*
 
-RUN bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx node-pty || true)
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx node-pty || true)
+
+COPY . /usr/src/app
+
 RUN for dir in node_modules/.bun/node-pty@*/node_modules/node-pty; do \
       [ -d "$dir" ] || continue; \
       (cd "$dir" && (node scripts/prebuild.js || node-gyp rebuild) && node scripts/post-install.js); \
     done
-RUN for dir in node_modules/.bun/bcrypt@*/node_modules/bcrypt; do \
+RUN set -eu; found=0; for dir in node_modules/.bun/bcrypt@*/node_modules/bcrypt; do \
       [ -d "$dir" ] || continue; \
-      (cd "$dir" && ../.bin/node-pre-gyp install --fallback-to-build); \
-    done
+      (cd "$dir" && npm_config_build_from_source=true npm_config_nodedir=/usr/include/nodejs ../.bin/node-pre-gyp install --build-from-source); \
+      test -s "$dir/lib/binding/napi-v3/bcrypt_lib.node"; \
+      found=1; \
+    done; \
+    test "$found" -eq 1
 
 ENV NODE_ENV=production
 RUN bun run --filter @nearzero/server build
@@ -44,6 +64,9 @@ COPY --from=build /usr/src/app/packages/server ./packages/server
 COPY --from=build /usr/src/app/packages/agent ./packages/agent
 COPY --from=build /usr/src/app/packages/trpc-openapi ./packages/trpc-openapi
 COPY docker/entrypoint.sh ./entrypoint.sh
+COPY scripts/install-verified-build-tools.sh /tmp/install-verified-build-tools.sh
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
 RUN chmod +x ./entrypoint.sh
 
 RUN set -eu; \
@@ -73,17 +96,17 @@ RUN set -eu; \
       done; \
     done
 
-RUN curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh --version 28.5.2 && rm get-docker.sh && curl https://rclone.org/install.sh | bash
-
-ARG NIXPACKS_VERSION=1.41.0
-RUN curl -sSL https://nixpacks.com/install.sh -o install.sh && chmod +x install.sh && ./install.sh
-
-ARG RAILPACK_VERSION=0.15.4
-RUN curl -sSL https://railpack.com/install.sh | bash
+RUN chmod +x /tmp/install-verified-build-tools.sh && \
+    /tmp/install-verified-build-tools.sh nixpacks railpack buildpacks rclone && \
+    rm -f /tmp/install-verified-build-tools.sh && \
+    docker --version && docker buildx version && docker compose version
 
 EXPOSE 3000 4321
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
   CMD curl -fs http://localhost:3000/api/health || exit 1
+
+LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 ENTRYPOINT ["./entrypoint.sh"]

@@ -1,4 +1,5 @@
 import {
+	assertByoGitProvidersAllowed,
 	detectGithubRepositoryApps,
 	findGithubById,
 	getAccessibleGitProviderIds,
@@ -6,13 +7,13 @@ import {
 	getGithubInstallationAccountName,
 	getGithubRepositories,
 	haveGithubRequirements,
-	assertByoGitProvidersAllowed,
 	isGitProviderConnectionAllowed,
 	updateGithub,
 	updateGitProvider,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
 import { TRPCError } from "@trpc/server";
+import { inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
 	createTRPCRouter,
@@ -21,24 +22,57 @@ import {
 } from "@/server/api/trpc";
 import { audit } from "@/server/api/utils/audit";
 import {
+	assertGitProviderReadable,
+	assertGitProviderWritable,
+	toPublicGithubDetails,
+	toPublicGitProvider,
+} from "@/server/api/utils/git-provider-security";
+import {
 	apiFindGithubBranches,
 	apiFindOneGithub,
 	apiUpdateGithub,
+	github,
 } from "@/server/db/schema";
 
 export const githubRouter = createTRPCRouter({
-	one: protectedProcedure.input(apiFindOneGithub).query(async ({ input }) => {
-		return await findGithubById(input.githubId);
-	}),
+	one: protectedProcedure
+		.input(apiFindOneGithub)
+		.query(async ({ input, ctx }) => {
+			const provider = await findGithubById(input.githubId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
+			return {
+				...toPublicGithubDetails(provider),
+				gitProvider: toPublicGitProvider(provider.gitProvider),
+			};
+		}),
 	getGithubRepositories: protectedProcedure
 		.input(apiFindOneGithub)
-		.query(async ({ input }) => {
-			return await getGithubRepositories(input.githubId);
+		.query(async ({ input, ctx }) => {
+			const provider = await findGithubById(input.githubId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
+			try {
+				return await getGithubRepositories(input.githubId);
+			} catch {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Error fetching GitHub repositories",
+				});
+			}
 		}),
 	getGithubBranches: protectedProcedure
 		.input(apiFindGithubBranches)
-		.query(async ({ input }) => {
-			return await getGithubBranches(input);
+		.query(async ({ input, ctx }) => {
+			if (!input.githubId) return [];
+			const provider = await findGithubById(input.githubId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
+			try {
+				return await getGithubBranches(input);
+			} catch {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Error fetching GitHub branches",
+				});
+			}
 		}),
 	detectRepositoryApps: protectedProcedure
 		.input(
@@ -49,13 +83,24 @@ export const githubRouter = createTRPCRouter({
 				branch: z.string().optional(),
 			}),
 		)
-		.query(async ({ input }) => {
-			return await detectGithubRepositoryApps(input);
+		.query(async ({ input, ctx }) => {
+			const provider = await findGithubById(input.githubId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
+			try {
+				return await detectGithubRepositoryApps(input);
+			} catch {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Error inspecting the GitHub repository",
+				});
+			}
 		}),
 	githubProviders: protectedProcedure.query(async ({ ctx }) => {
 		const accessibleIds = await getAccessibleGitProviderIds(ctx.session);
+		if (accessibleIds.size === 0) return [];
 
 		let result = await db.query.github.findMany({
+			where: inArray(github.gitProviderId, [...accessibleIds]),
 			with: {
 				gitProvider: true,
 			},
@@ -79,9 +124,7 @@ export const githubRouter = createTRPCRouter({
 					return {
 						githubId: provider.githubId,
 						githubUsername,
-						gitProvider: {
-							...provider.gitProvider,
-						},
+						gitProvider: toPublicGitProvider(provider.gitProvider),
 					};
 				}),
 		);
@@ -91,14 +134,16 @@ export const githubRouter = createTRPCRouter({
 
 	testConnection: protectedProcedure
 		.input(apiFindOneGithub)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ input, ctx }) => {
+			const provider = await findGithubById(input.githubId);
+			await assertGitProviderReadable(ctx.session, provider.gitProvider);
 			try {
 				const result = await getGithubRepositories(input.githubId);
 				return `Found ${result.length} repositories`;
-			} catch (err) {
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message: err instanceof Error ? err?.message : `Error: ${err}`,
+					message: "Error testing the GitHub connection",
 				});
 			}
 		}),
@@ -106,20 +151,35 @@ export const githubRouter = createTRPCRouter({
 		.input(apiUpdateGithub)
 		.mutation(async ({ input, ctx }) => {
 			assertByoGitProvidersAllowed("GitHub");
-			await updateGitProvider(input.gitProviderId, {
-				name: input.name,
-				organizationId: ctx.session.activeOrganizationId,
-			});
+			const provider = await findGithubById(input.githubId);
+			await assertGitProviderWritable(
+				ctx.session,
+				ctx.user.role,
+				provider.gitProvider,
+				input.gitProviderId,
+			);
+			try {
+				await updateGitProvider(provider.gitProviderId, {
+					name: input.name,
+					organizationId: ctx.session.activeOrganizationId,
+				});
 
-			await updateGithub(input.githubId, {
-				...input,
-			});
+				await updateGithub(input.githubId, {
+					githubAppName: input.githubAppName,
+				});
+			} catch {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Error updating this GitHub provider",
+				});
+			}
 
 			await audit(ctx, {
 				action: "update",
 				resourceType: "gitProvider",
-				resourceId: input.gitProviderId,
+				resourceId: provider.gitProviderId,
 				resourceName: input.name,
 			});
+			return { success: true };
 		}),
 });

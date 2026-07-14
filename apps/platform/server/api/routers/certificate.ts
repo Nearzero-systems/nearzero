@@ -2,6 +2,7 @@ import {
 	createCertificate,
 	findCertificateById,
 	removeCertificateById,
+	toPublicCertificate,
 	updateCertificate,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -30,7 +31,7 @@ export const certificateRouter = createTRPCRouter({
 				resourceId: cert.certificateId,
 				resourceName: cert.name,
 			});
-			return cert;
+			return toPublicCertificate(cert);
 		}),
 
 	one: withPermission("certificate", "read")
@@ -43,7 +44,7 @@ export const certificateRouter = createTRPCRouter({
 					message: "You are not allowed to access this certificate",
 				});
 			}
-			return certificates;
+			return toPublicCertificate(certificates);
 		}),
 	remove: withPermission("certificate", "delete")
 		.input(apiFindCertificate)
@@ -65,12 +66,20 @@ export const certificateRouter = createTRPCRouter({
 			return true;
 		}),
 	all: withPermission("certificate", "read").query(async ({ ctx }) => {
-		return await db.query.certificates.findMany({
+		const certificateRows = await db.query.certificates.findMany({
 			where: eq(certificates.organizationId, ctx.session.activeOrganizationId),
+			columns: { privateKey: false },
 			with: {
-				server: true,
+				server: {
+					columns: {
+						serverId: true,
+						name: true,
+						ipAddress: true,
+					},
+				},
 			},
 		});
+		return certificateRows.map(toPublicCertificate);
 	}),
 	update: withPermission("certificate", "update")
 		.input(apiUpdateCertificate)
@@ -82,10 +91,11 @@ export const certificateRouter = createTRPCRouter({
 					message: "You are not allowed to update this certificate",
 				});
 			}
-			return await updateCertificate(input.certificateId, {
+			const updatedCertificate = await updateCertificate(input.certificateId, {
 				name: input.name,
 				certificateData: input.certificateData,
 				privateKey: input.privateKey,
 			});
+			return toPublicCertificate(updatedCertificate);
 		}),
 });

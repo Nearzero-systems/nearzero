@@ -1,14 +1,10 @@
-import {
-	getEnvironmentVariablesObject,
-	prepareEnvironmentVariablesForShell,
-} from "@nearzero/server/utils/docker/utils";
 import { quote } from "shell-quote";
 import {
 	getBuildAppDirectory,
 	getDockerContextPath,
 } from "../filesystem/directory";
 import type { ApplicationNested } from ".";
-import { createEnvFileCommand } from "./utils";
+import { getBuildRuntimePreamble, NEARZERO_BUILD_ENV_SECRET_ID } from "./utils";
 
 export const getDockerCommand = (
 	application: ApplicationNested,
@@ -16,93 +12,79 @@ export const getDockerCommand = (
 ) => {
 	const {
 		appName,
-		env,
 		publishDirectory,
-		buildArgs,
-		buildSecrets,
 		dockerBuildStage,
 		cleanCache,
 		createEnvFile,
 	} = application;
 	const dockerFilePath = getBuildAppDirectory(application, buildServerId);
+	const defaultContextPath =
+		dockerFilePath.substring(0, dockerFilePath.lastIndexOf("/") + 1) || ".";
+	const dockerContextPath =
+		getDockerContextPath(application, buildServerId) || defaultContextPath;
 
-	try {
-		const image = `${appName}`;
-
-		const defaultContextPath =
-			dockerFilePath.substring(0, dockerFilePath.lastIndexOf("/") + 1) || ".";
-
-		const dockerContextPath =
-			getDockerContextPath(application, buildServerId) || defaultContextPath;
-
-		const commandArgs = ["build", "-t", image, "-f", dockerFilePath, "."];
-
-		if (dockerBuildStage) {
-			commandArgs.push("--target", dockerBuildStage);
-		}
-
-		if (cleanCache) {
-			commandArgs.push("--no-cache");
-		}
-
-		const args = prepareEnvironmentVariablesForShell(
-			buildArgs,
-			application.environment.project.env,
-			application.environment.env,
-		);
-
-		for (const arg of args) {
-			commandArgs.push("--build-arg", arg);
-		}
-
-		const secrets = getEnvironmentVariablesObject(
-			buildSecrets,
-			application.environment.project.env,
-			application.environment.env,
-		);
-
-		const joinedSecrets = Object.entries(secrets)
-			.map(([key, value]) => `${key}=${quote([value])}`)
-			.join(" ");
-
-		/*
-			Do not generate an environment file when publishDirectory is specified,
-			as it could be publicly exposed.
-			Also respect the createEnvFile flag.
-		*/
-		let command = "";
-		if (!publishDirectory && createEnvFile) {
-			command += createEnvFileCommand(
-				dockerFilePath,
-				env,
-				application.environment.project.env,
-				application.environment.env,
-			);
-		}
-
-		for (const key in secrets) {
-			// Although buildx is smart enough to know we may be referring to an environment variable name,
-			// we still make sure it doesn't fall back to `type=file`.
-			// See: https://docs.docker.com/reference/cli/docker/buildx/build/#secret
-			commandArgs.push("--secret", `type=env,id=${key}`);
-		}
-
-		command += `
+	return `${getBuildRuntimePreamble()}
 echo "Building ${appName}" ;
-cd ${dockerContextPath} || {
-  echo "❌ The path ${dockerContextPath} does not exist" ;
-  exit 1;
+cd ${quote([dockerContextPath])} || {
+	echo "❌ The configured Docker build context does not exist" ;
+	exit 1;
 }
 
-${joinedSecrets} docker ${commandArgs.join(" ")} || {
-  echo "❌ Docker build failed" ;
-  exit 1;
+NZ_DOCKER_BUILD_ARGS=(
+	buildx build
+	--load
+	-t ${quote([appName])}
+	-f ${quote([dockerFilePath])}
+)
+${dockerBuildStage ? `NZ_DOCKER_BUILD_ARGS+=(--target ${quote([dockerBuildStage])})` : ""}
+${cleanCache ? "NZ_DOCKER_BUILD_ARGS+=(--no-cache)" : ""}
+${
+	cleanCache
+		? ""
+		: `if [ -s "$NZ_BUILD_SECRET_KEYS_FILE" ]${!publishDirectory && createEnvFile ? ' || [ -s "$NZ_BUILD_ENV_KEYS_FILE" ]' : ""}; then
+	NZ_DOCKER_BUILD_ARGS+=(--no-cache)
+fi`
+}
+
+# Build args are an explicitly non-secret channel. Values are inherited from
+# the protected environment so they do not enter this script or child argv,
+# but Docker may retain them in image history/provenance.
+nz_load_argument_environment
+while IFS= read -r NZ_BUILD_KEY; do
+	[ -n "$NZ_BUILD_KEY" ] || continue
+	NZ_DOCKER_BUILD_ARGS+=(--build-arg "$NZ_BUILD_KEY")
+done < "$NZ_BUILD_ARGUMENT_KEYS_FILE"
+
+# Dockerfile build secrets remain files from end to end. The value is never an
+# argv element and BuildKit does not copy the mount into an image layer.
+while IFS= read -r NZ_BUILD_KEY; do
+	[ -n "$NZ_BUILD_KEY" ] || continue
+	NZ_DOCKER_BUILD_ARGS+=(--secret "type=file,id=$NZ_BUILD_KEY,src=$NZ_BUILD_SECRET_DIR/$NZ_BUILD_KEY")
+done < "$NZ_BUILD_SECRET_KEYS_FILE"
+
+${
+	!publishDirectory && createEnvFile
+		? `# Legacy createEnvFile is intentionally implemented as BuildKit secrets.
+# Writing .env into the checkout lets COPY instructions bake credentials into
+# images. Dockerfiles can instead mount id=${NEARZERO_BUILD_ENV_SECRET_ID}
+# (a shell export file), or mount an individual variable name.
+if [ -s "$NZ_BUILD_ENV_KEYS_FILE" ]; then
+	NZ_DOCKER_BUILD_ARGS+=(--secret "type=file,id=${NEARZERO_BUILD_ENV_SECRET_ID},src=$NZ_BUILD_ENV_EXPORT_FILE")
+	while IFS= read -r NZ_BUILD_KEY; do
+		[ -n "$NZ_BUILD_KEY" ] || continue
+		if ! grep -Fxq "$NZ_BUILD_KEY" "$NZ_BUILD_SECRET_KEYS_FILE"; then
+			NZ_DOCKER_BUILD_ARGS+=(--secret "type=file,id=$NZ_BUILD_KEY,src=$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY")
+		fi
+	done < "$NZ_BUILD_ENV_KEYS_FILE"
+fi`
+		: ""
+}
+
+NZ_DOCKER_BUILD_ARGS+=(.)
+docker "\${NZ_DOCKER_BUILD_ARGS[@]}" || {
+	echo "❌ Docker build failed" ;
+	exit 1;
 }
 echo "✅ Docker build completed." ;
-		`;
-
-		return command;
-	} catch (error) {
-		throw error;
-	}
+`;
 };

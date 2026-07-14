@@ -1,9 +1,16 @@
 import fs, { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import path from "node:path";
+import { domainToASCII } from "node:url";
 import { paths } from "@nearzero/server/constants";
+import {
+	isSafeTraefikRuleFragment,
+	isValidDomainHost,
+} from "@nearzero/server/db/validations/domain";
 import type { Compose } from "@nearzero/server/services/compose";
 import type { Domain } from "@nearzero/server/services/domain";
+import { quote } from "shell-quote";
 import { parse, stringify } from "yaml";
+import type { PreparedShellCommand } from "../process/execAsync";
 import { execAsyncRemote } from "../process/execAsync";
 import { cloneBitbucketRepository } from "../providers/bitbucket";
 import { cloneGitRepository } from "../providers/git";
@@ -20,41 +27,263 @@ import type {
 } from "./types";
 import { encodeBase64 } from "./utils";
 
-export const cloneCompose = async (compose: Compose) => {
-	let command = "set -e;";
+const TRAEFIK_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const TRAEFIK_MIDDLEWARE_PATTERN =
+	/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:@[A-Za-z0-9][A-Za-z0-9_.-]*)?$/;
+const COMPOSE_SERVICE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const NEARZERO_ROUTING_MARKER = "nearzero.managed-domain-routing";
+
+const assertTraefikName = (value: string, field: string, maxLength = 128) => {
+	if (value.length > maxLength || !TRAEFIK_NAME_PATTERN.test(value)) {
+		throw new Error(
+			`${field} may only contain letters, numbers, periods, underscores, and hyphens`,
+		);
+	}
+};
+
+const assertSafePath = (value: string | null, field: string) => {
+	if (value === null) return;
+	if (
+		value.length === 0 ||
+		value.length > 2048 ||
+		!value.startsWith("/") ||
+		!isSafeTraefikRuleFragment(value)
+	) {
+		throw new Error(`${field} is not safe for a Traefik routing rule`);
+	}
+};
+
+const validateDomainLabelInputs = (
+	appName: string,
+	domain: Domain,
+	entrypoint: string,
+) => {
+	assertTraefikName(appName, "Application name", 63);
+	assertTraefikName(entrypoint, "Traefik entrypoint");
+	if (
+		!Number.isSafeInteger(domain.uniqueConfigKey) ||
+		domain.uniqueConfigKey < 1
+	) {
+		throw new Error("Domain configuration key must be a positive integer");
+	}
+	if (!isValidDomainHost(domain.host)) {
+		throw new Error("Domain host is not safe for a Traefik routing rule");
+	}
+	assertSafePath(domain.path, "Domain path");
+	assertSafePath(domain.internalPath, "Internal path");
+	if (domain.customEntrypoint) {
+		assertTraefikName(domain.customEntrypoint, "Custom Traefik entrypoint");
+	}
+	if (domain.customCertResolver) {
+		assertTraefikName(domain.customCertResolver, "Custom certificate resolver");
+	}
+	if (domain.certificateType === "custom" && !domain.customCertResolver) {
+		throw new Error(
+			"A custom certificate resolver is required for custom certificates",
+		);
+	}
+	if ((domain.middlewares?.length ?? 0) > 64) {
+		throw new Error("A domain cannot use more than 64 Traefik middlewares");
+	}
+	for (const middleware of domain.middlewares ?? []) {
+		if (
+			middleware.length > 256 ||
+			!TRAEFIK_MIDDLEWARE_PATTERN.test(middleware)
+		) {
+			throw new Error("Invalid Traefik middleware name");
+		}
+	}
+	if (
+		!Number.isInteger(domain.port) ||
+		(domain.port ?? 0) < 1 ||
+		(domain.port ?? 0) > 65535
+	) {
+		throw new Error(
+			"Compose domain port must be an integer between 1 and 65535",
+		);
+	}
+};
+
+const labelKey = (label: string) => {
+	const separator = label.indexOf("=");
+	return separator === -1 ? label : label.slice(0, separator);
+};
+
+const isNearzeroDomainLabel = (key: string, appName: string) => {
+	const routerPrefix = `traefik.http.routers.${appName}-`;
+	const servicePrefix = `traefik.http.services.${appName}-`;
+	const stripPrefix = `traefik.http.middlewares.stripprefix-${appName}-`;
+	const addPrefix = `traefik.http.middlewares.addprefix-${appName}-`;
+
+	if (key.startsWith(routerPrefix)) {
+		return /^\d+-/.test(key.slice(routerPrefix.length));
+	}
+	if (key.startsWith(servicePrefix)) {
+		return /^\d+-/.test(key.slice(servicePrefix.length));
+	}
+	if (key.startsWith(stripPrefix)) {
+		return /^\d+\./.test(key.slice(stripPrefix.length));
+	}
+	if (key.startsWith(addPrefix)) {
+		return /^\d+\./.test(key.slice(addPrefix.length));
+	}
+	return false;
+};
+
+const removeNearzeroDomainLabels = (
+	labels: DefinitionsService["labels"] | undefined,
+	appName: string,
+) => {
+	if (Array.isArray(labels)) {
+		const retained = labels.filter(
+			(label) => !isNearzeroDomainLabel(labelKey(label), appName),
+		);
+		labels.splice(0, labels.length, ...retained);
+		return;
+	}
+	if (labels && typeof labels === "object") {
+		for (const key of Object.keys(labels)) {
+			if (isNearzeroDomainLabel(key, appName)) {
+				delete labels[key];
+			}
+		}
+	}
+};
+
+const hasNearzeroDomainLabels = (
+	labels: DefinitionsService["labels"] | undefined,
+	appName: string,
+) => {
+	if (Array.isArray(labels)) {
+		return labels.some((label) => {
+			const key = labelKey(label);
+			return (
+				key === NEARZERO_ROUTING_MARKER || isNearzeroDomainLabel(key, appName)
+			);
+		});
+	}
+	return Boolean(
+		labels &&
+			Object.keys(labels).some(
+				(key) =>
+					key === NEARZERO_ROUTING_MARKER ||
+					isNearzeroDomainLabel(key, appName),
+			),
+	);
+};
+
+const removeComposeLabel = (
+	labels: DefinitionsService["labels"] | undefined,
+	key: string,
+	expectedValue?: string,
+) => {
+	if (Array.isArray(labels)) {
+		for (let index = labels.length - 1; index >= 0; index -= 1) {
+			const label = labels[index] ?? "";
+			const separator = label.indexOf("=");
+			const value = separator === -1 ? "" : label.slice(separator + 1);
+			if (
+				labelKey(label) === key &&
+				(expectedValue === undefined || value === expectedValue)
+			) {
+				labels.splice(index, 1);
+			}
+		}
+		return;
+	}
+	if (
+		labels &&
+		Object.hasOwn(labels, key) &&
+		(expectedValue === undefined || String(labels[key]) === expectedValue)
+	) {
+		delete labels[key];
+	}
+};
+
+const addComposeLabel = (
+	labels: NonNullable<DefinitionsService["labels"]>,
+	label: string,
+	prepend = false,
+) => {
+	const separator = label.indexOf("=");
+	if (separator < 1) {
+		throw new Error("Invalid generated Docker Compose label");
+	}
+	const key = label.slice(0, separator);
+	const value = label.slice(separator + 1);
+	if (Array.isArray(labels)) {
+		for (let index = labels.length - 1; index >= 0; index -= 1) {
+			if (labelKey(labels[index] ?? "") === key) labels.splice(index, 1);
+		}
+		if (prepend) labels.unshift(label);
+		else labels.push(label);
+		return;
+	}
+	labels[key] = value;
+};
+
+export const cloneCompose = async (
+	compose: Compose,
+): Promise<PreparedShellCommand> => {
+	const prepared: PreparedShellCommand = { command: "set -e;" };
 	const entity = {
 		...compose,
 		type: "compose" as const,
 	};
 	if (compose.sourceType === "github") {
-		command += await cloneGithubRepository(entity);
+		const gitClone = await cloneGithubRepository(entity);
+		prepared.command += gitClone.command;
+		prepared.input = gitClone.input;
 	} else if (compose.sourceType === "gitlab") {
-		command += await cloneGitlabRepository(entity);
+		const gitClone = await cloneGitlabRepository(entity);
+		prepared.command += gitClone.command;
+		prepared.input = gitClone.input;
 	} else if (compose.sourceType === "bitbucket") {
-		command += await cloneBitbucketRepository(entity);
+		const gitClone = await cloneBitbucketRepository(entity);
+		prepared.command += gitClone.command;
+		prepared.input = gitClone.input;
 	} else if (compose.sourceType === "git") {
-		command += await cloneGitRepository(entity);
+		const gitClone = await cloneGitRepository(entity);
+		prepared.command += gitClone.command;
+		prepared.input = gitClone.input;
 	} else if (compose.sourceType === "gitea") {
-		command += await cloneGiteaRepository(entity);
+		const gitClone = await cloneGiteaRepository(entity);
+		prepared.command += gitClone.command;
+		prepared.input = gitClone.input;
 	} else if (compose.sourceType === "raw") {
-		command += getCreateComposeFileCommand(compose);
+		prepared.command += getCreateComposeFileCommand(compose);
 	}
-	return command;
+	return prepared;
 };
 
 export const getComposePath = (compose: Compose) => {
 	const { COMPOSE_PATH } = paths(!!compose.serverId);
 	const { appName, sourceType, composePath } = compose;
-	let path = "";
-
-	if (sourceType === "raw") {
-		path = "docker-compose.yml";
-	} else {
-		path = composePath;
+	assertTraefikName(appName, "Application name", 63);
+	const projectPath = path.resolve(COMPOSE_PATH, appName, "code");
+	const relativePath =
+		sourceType === "raw" ? "docker-compose.yml" : composePath.trim();
+	if (
+		!relativePath ||
+		path.isAbsolute(relativePath) ||
+		relativePath.includes("\0")
+	) {
+		throw new Error(
+			"Compose file path must be relative to its project directory",
+		);
 	}
-
-	return join(COMPOSE_PATH, appName, "code", path);
+	const composeFilePath = path.resolve(projectPath, relativePath);
+	if (
+		composeFilePath === projectPath ||
+		!composeFilePath.startsWith(`${projectPath}${path.sep}`)
+	) {
+		throw new Error("Compose file path escapes its project directory");
+	}
+	return composeFilePath;
 };
+
+export const getComposeProjectPath = (compose: Compose) =>
+	path.resolve(paths(!!compose.serverId).COMPOSE_PATH, compose.appName, "code");
 
 export const loadDockerCompose = async (
 	compose: Compose,
@@ -81,7 +310,7 @@ export const loadDockerComposeRemote = async (
 		}
 		const { stdout, stderr } = await execAsyncRemote(
 			compose.serverId,
-			`cat ${path}`,
+			`cat -- ${quote([path])}`,
 		);
 
 		if (stderr) {
@@ -123,10 +352,20 @@ exit 1;
 
 		const composeString = stringify(composeConverted, { lineWidth: 1000 });
 		const encodedContent = encodeBase64(composeString);
-		return `echo "${encodedContent}" | base64 -d > "${path}";`;
-	} catch (error) {
-		// @ts-ignore
-		return `echo "❌ Has occurred an error: ${error?.message || error}";
+		const pathArgument = quote([path]);
+		return `nearzero_compose_directory=$(dirname -- ${pathArgument});
+nearzero_compose_candidate=$(mktemp "$nearzero_compose_directory/.nearzero-domain-labels.XXXXXX");
+trap 'rm -f -- "$nearzero_compose_candidate"' EXIT;
+printf '%s' '${encodedContent}' | base64 -d > "$nearzero_compose_candidate";
+chmod 600 "$nearzero_compose_candidate";
+mv -f -- "$nearzero_compose_candidate" ${pathArgument};
+nearzero_compose_candidate='';
+trap - EXIT;`;
+	} catch {
+		// Do not interpolate parser or validation errors into the generated shell
+		// command: Compose content is user-controlled and may contain shell syntax
+		// or secrets. The generated deployment command receives a generic failure.
+		return `echo "❌ Error: Could not update Compose domain routing labels";
 exit 1;
 		`;
 	}
@@ -134,9 +373,8 @@ exit 1;
 export const addDomainToCompose = async (
 	compose: Compose,
 	domains: Domain[],
+	options: { applyDeploymentTransforms?: boolean } = {},
 ) => {
-	const { appName } = compose;
-
 	let result: ComposeSpecification | null;
 
 	if (compose.serverId) {
@@ -148,27 +386,99 @@ export const addDomainToCompose = async (
 	if (!result) {
 		return null;
 	}
+	return reconcileDomainsInComposeSpecification(
+		compose,
+		domains,
+		result,
+		options,
+	);
+};
 
-	if (compose.isolatedDeployment) {
+/**
+ * Reconcile Nearzero-owned routing labels in an already parsed Compose file.
+ * Live routing updates pass `applyDeploymentTransforms: false` because the
+ * cached deployment file has already had randomization/isolation transforms
+ * applied and applying them twice would corrupt service names and volumes.
+ */
+export const reconcileDomainsInComposeSpecification = (
+	compose: Compose,
+	domains: Domain[],
+	composeSpecification: ComposeSpecification,
+	options: { applyDeploymentTransforms?: boolean } = {},
+) => {
+	const { appName } = compose;
+	let result = composeSpecification;
+	assertTraefikName(appName, "Application name", 63);
+
+	if (
+		options.applyDeploymentTransforms !== false &&
+		compose.isolatedDeployment
+	) {
 		const randomized = randomizeDeployableSpecificationFile(
 			result,
 			compose.isolatedDeploymentsVolume,
 			compose.suffix || compose.appName,
 		);
 		result = randomized;
-	} else if (compose.randomize) {
+	} else if (options.applyDeploymentTransforms !== false && compose.randomize) {
 		const randomized = randomizeSpecificationFile(result, compose.suffix);
 		result = randomized;
+	}
+
+	if (!result.services || typeof result.services !== "object") {
+		throw new Error("Compose file does not define any services");
+	}
+
+	const uniqueConfigKeys = new Set<number>();
+	for (const domain of domains) {
+		validateDomainLabelInputs(
+			appName,
+			domain,
+			domain.customEntrypoint || "web",
+		);
+		if (
+			!domain.serviceName ||
+			!COMPOSE_SERVICE_PATTERN.test(domain.serviceName)
+		) {
+			throw new Error("Compose domain has an invalid service name");
+		}
+		if (!Object.hasOwn(result.services, domain.serviceName)) {
+			throw new Error(
+				`Compose service "${domain.serviceName}" does not exist in the compose file`,
+			);
+		}
+		if (uniqueConfigKeys.has(domain.uniqueConfigKey)) {
+			throw new Error("Compose domains must have unique configuration keys");
+		}
+		uniqueConfigKeys.add(domain.uniqueConfigKey);
+	}
+
+	// Reconcile the full generated-label namespace on every build. This removes
+	// routers left behind when a domain is deleted, moved to another service, or
+	// changes entrypoints/TLS settings, while preserving user-authored labels.
+	const previouslyManagedServices = new Set<string>();
+	for (const [serviceName, service] of Object.entries(result.services)) {
+		if (
+			hasNearzeroDomainLabels(service.labels, appName) ||
+			hasNearzeroDomainLabels(service.deploy?.labels, appName)
+		) {
+			previouslyManagedServices.add(serviceName);
+		}
+		removeNearzeroDomainLabels(service.labels, appName);
+		removeNearzeroDomainLabels(service.deploy?.labels, appName);
+		removeComposeLabel(service.labels, NEARZERO_ROUTING_MARKER);
+		removeComposeLabel(service.deploy?.labels, NEARZERO_ROUTING_MARKER);
 	}
 
 	for (const domain of domains) {
 		const { serviceName, https } = domain;
 		if (!serviceName) {
-			throw new Error(`Domain "${domain.host}" is missing a service name`);
+			throw new Error("Compose domain is missing its service name");
 		}
-		if (!result?.services?.[serviceName]) {
+		const service = result.services[serviceName];
+		if (!service) {
 			throw new Error(
-				`Domain "${domain.host}" is attached to service "${serviceName}" which does not exist in the compose`,
+				"Compose domain service disappeared during reconciliation",
 			);
 		}
 
@@ -184,52 +494,55 @@ export const addDomainToCompose = async (
 
 		let labels: DefinitionsService["labels"] = [];
 		if (compose.composeType === "docker-compose") {
-			if (!result.services[serviceName].labels) {
-				result.services[serviceName].labels = [];
+			if (!service.labels) {
+				service.labels = [];
 			}
 
-			labels = result.services[serviceName].labels;
+			labels = service.labels;
 		} else {
 			// Stack Case
-			if (!result.services[serviceName].deploy) {
-				result.services[serviceName].deploy = {};
+			if (!service.deploy) {
+				service.deploy = {};
 			}
-			if (!result.services[serviceName].deploy.labels) {
-				result.services[serviceName].deploy.labels = [];
+			if (!service.deploy.labels) {
+				service.deploy.labels = [];
 			}
 
-			labels = result.services[serviceName].deploy.labels;
+			labels = service.deploy.labels;
 		}
 
-		if (Array.isArray(labels)) {
-			const filteredLabels = labels.filter(
-				(label) =>
-					!isDomainLabelForUniqueKey(label, appName, domain.uniqueConfigKey),
+		for (const label of httpLabels) {
+			addComposeLabel(labels, label, true);
+		}
+		addComposeLabel(labels, `${NEARZERO_ROUTING_MARKER}=true`, true);
+		addComposeLabel(labels, "traefik.enable=true", true);
+		if (!compose.isolatedDeployment) {
+			addComposeLabel(
+				labels,
+				compose.composeType === "docker-compose"
+					? "traefik.docker.network=nearzero-network"
+					: "traefik.swarm.network=nearzero-network",
+				true,
 			);
-			labels.splice(0, labels.length, ...filteredLabels);
-			if (!labels.includes("traefik.enable=true")) {
-				labels.unshift("traefik.enable=true");
-			}
-			labels.unshift(...httpLabels);
-			if (!compose.isolatedDeployment) {
-				if (compose.composeType === "docker-compose") {
-					if (!labels.includes("traefik.docker.network=nearzero-network")) {
-						labels.unshift("traefik.docker.network=nearzero-network");
-					}
-				} else {
-					// Stack Case
-					if (!labels.includes("traefik.swarm.network=nearzero-network")) {
-						labels.unshift("traefik.swarm.network=nearzero-network");
-					}
-				}
-			}
 		}
 
 		if (!compose.isolatedDeployment) {
 			// Add the nearzero-network to the service
-			result.services[serviceName].networks = addNearzeroNetworkToService(
-				result.services[serviceName].networks,
-			);
+			service.networks = addNearzeroNetworkToService(service.networks);
+		}
+	}
+
+	const desiredServiceNames = new Set(
+		domains.map((domain) => domain.serviceName).filter(Boolean),
+	);
+	for (const serviceName of previouslyManagedServices) {
+		if (desiredServiceNames.has(serviceName)) continue;
+		const service = result.services[serviceName];
+		if (!service) continue;
+		for (const labels of [service.labels, service.deploy?.labels]) {
+			removeComposeLabel(labels, "traefik.enable", "true");
+			removeComposeLabel(labels, "traefik.docker.network", "nearzero-network");
+			removeComposeLabel(labels, "traefik.swarm.network", "nearzero-network");
 		}
 	}
 
@@ -257,36 +570,14 @@ export const writeComposeFile = async (
 	}
 };
 
-const toPunycode = (host: string): string => {
-	try {
-		return new URL(`http://${host}`).hostname;
-	} catch {
-		return host;
-	}
-};
-
-function isDomainLabelForUniqueKey(
-	label: string,
-	appName: string,
-	uniqueConfigKey: number,
-) {
-	const routerPrefix = `traefik.http.routers.${appName}-${uniqueConfigKey}-`;
-	const servicePrefix = `traefik.http.services.${appName}-${uniqueConfigKey}-`;
-	const stripPrefix = `traefik.http.middlewares.stripprefix-${appName}-${uniqueConfigKey}.`;
-	const addPrefix = `traefik.http.middlewares.addprefix-${appName}-${uniqueConfigKey}.`;
-	return (
-		label.startsWith(routerPrefix) ||
-		label.startsWith(servicePrefix) ||
-		label.startsWith(stripPrefix) ||
-		label.startsWith(addPrefix)
-	);
-}
+const toPunycode = (host: string): string => domainToASCII(host).toLowerCase();
 
 export const createDomainLabels = (
 	appName: string,
 	domain: Domain,
 	entrypoint: string,
 ) => {
+	validateDomainLabelInputs(appName, domain, entrypoint);
 	const {
 		host,
 		port,
@@ -359,7 +650,9 @@ export const createDomainLabels = (
 	}
 
 	// Add TLS configuration for websecure
-	if (entrypoint === "websecure" || (customEntrypoint && https)) {
+	const isTlsRouter =
+		https && (entrypoint === "websecure" || entrypoint === customEntrypoint);
+	if (isTlsRouter) {
 		if (certificateType === "letsencrypt") {
 			labels.push(
 				`traefik.http.routers.${routerName}.tls.certresolver=letsencrypt`,
@@ -368,7 +661,7 @@ export const createDomainLabels = (
 			labels.push(
 				`traefik.http.routers.${routerName}.tls.certresolver=${customCertResolver}`,
 			);
-		} else if (certificateType === "none" && https) {
+		} else if (certificateType === "none") {
 			// No cert resolver, but HTTPS is enabled (default/custom certificate):
 			// explicitly enable TLS so Traefik serves the router over HTTPS.
 			labels.push(`traefik.http.routers.${routerName}.tls=true`);

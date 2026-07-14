@@ -1,7 +1,11 @@
 import { join } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import { TRPCError } from "@trpc/server";
-import { execAsync, execAsyncRemote } from "../utils/process/execAsync";
+import {
+	execAsync,
+	execAsyncRemote,
+	executePreparedShellCommand,
+} from "../utils/process/execAsync";
 import { cloneBitbucketRepository } from "../utils/providers/bitbucket";
 import { cloneGitRepository } from "../utils/providers/git";
 import { cloneGiteaRepository } from "../utils/providers/gitea";
@@ -50,23 +54,30 @@ export const ensurePatchRepo = async ({
 	};
 
 	let command = "set -e;";
+	let input: string | undefined;
 	if (application.sourceType === "github") {
-		command += await cloneGithubRepository(applicationEntity);
+		const gitClone = await cloneGithubRepository(applicationEntity);
+		command += gitClone.command;
+		input = gitClone.input;
 	} else if (application.sourceType === "gitlab") {
-		command += await cloneGitlabRepository(applicationEntity);
+		const gitClone = await cloneGitlabRepository(applicationEntity);
+		command += gitClone.command;
+		input = gitClone.input;
 	} else if (application.sourceType === "gitea") {
-		command += await cloneGiteaRepository(applicationEntity);
+		const gitClone = await cloneGiteaRepository(applicationEntity);
+		command += gitClone.command;
+		input = gitClone.input;
 	} else if (application.sourceType === "bitbucket") {
-		command += await cloneBitbucketRepository(applicationEntity);
+		const gitClone = await cloneBitbucketRepository(applicationEntity);
+		command += gitClone.command;
+		input = gitClone.input;
 	} else if (application.sourceType === "git") {
-		command += await cloneGitRepository(applicationEntity);
+		const gitClone = await cloneGitRepository(applicationEntity);
+		command += gitClone.command;
+		input = gitClone.input;
 	}
 
-	if (serverId) {
-		await execAsyncRemote(serverId, command);
-	} else {
-		await execAsync(command);
-	}
+	await executePreparedShellCommand({ command, input }, serverId);
 
 	return repoPath;
 };

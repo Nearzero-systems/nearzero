@@ -7,12 +7,15 @@ import { findEnvironmentById } from "@nearzero/server/services/environment";
 import type { MySql } from "@nearzero/server/services/mysql";
 import { findProjectById } from "@nearzero/server/services/project";
 import { sendDatabaseBackupNotifications } from "../notifications/database-backup";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import {
 	getBackupCommand,
+	getBackupFailureMessage,
+	getBackupSensitiveValues,
 	getBackupTimestamp,
 	getS3Credentials,
 	normalizeS3Path,
+	quoteShellArgument,
 } from "./utils";
 
 export const runMySqlBackup = async (mysql: MySql, backup: BackupSchedule) => {
@@ -33,7 +36,7 @@ export const runMySqlBackup = async (mysql: MySql, backup: BackupSchedule) => {
 		const rcloneFlags = getS3Credentials(destination);
 		const rcloneDestination = `:s3:${destination.bucket}/${bucketDestination}`;
 
-		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} "${rcloneDestination}"`;
+		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} ${quoteShellArgument(rcloneDestination)}`;
 
 		const backupCommand = getBackupCommand(
 			backup,
@@ -41,13 +44,11 @@ export const runMySqlBackup = async (mysql: MySql, backup: BackupSchedule) => {
 			deployment.logPath,
 		);
 
-		if (mysql.serverId) {
-			await execAsyncRemote(mysql.serverId, backupCommand);
-		} else {
-			await execAsync(backupCommand, {
-				shell: "/bin/bash",
-			});
-		}
+		await executeSensitiveShellScript({
+			serverId: mysql.serverId,
+			script: backupCommand,
+			sensitiveValues: getBackupSensitiveValues(backup),
+		});
 		await sendDatabaseBackupNotifications({
 			applicationName: name,
 			projectName: project.name,
@@ -58,14 +59,12 @@ export const runMySqlBackup = async (mysql: MySql, backup: BackupSchedule) => {
 		});
 		await updateDeploymentStatus(deployment.deploymentId, "done");
 	} catch (error) {
-		console.log(error);
 		await sendDatabaseBackupNotifications({
 			applicationName: name,
 			projectName: project.name,
 			databaseType: "mysql",
 			type: "error",
-			// @ts-ignore
-			errorMessage: error?.message || "Error message not provided",
+			errorMessage: getBackupFailureMessage(error),
 			organizationId: project.organizationId,
 			databaseName: backup.database,
 		});

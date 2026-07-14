@@ -1,20 +1,21 @@
 import { join } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import {
+	assertGitProviderConnectionAllowed,
+	isHostedEditionMode,
+} from "@nearzero/server/services/git-provider-policy";
+import {
 	findGiteaById,
 	type Gitea,
 	updateGitea,
 } from "@nearzero/server/services/gitea";
-import {
-	assertGitProviderConnectionAllowed,
-	isHostedEditionMode,
-} from "@nearzero/server/services/git-provider-policy";
 import {
 	getManagedGiteaConfig,
 	isNearzeroManagedGitProvider,
 } from "@nearzero/server/services/managed-git-shared";
 import type { InferResultType } from "@nearzero/server/types/with";
 import { TRPCError } from "@trpc/server";
+import { prepareCredentialedGitClone } from "./credentialed-git";
 
 export const getErrorCloneRequirements = (entity: {
 	giteaRepository?: string | null;
@@ -68,7 +69,8 @@ export const refreshGiteaToken = async (giteaProviderId: string) => {
 			grant_type: "refresh_token",
 			refresh_token: giteaProvider.refreshToken,
 			client_id: managedConfig?.clientId || giteaProvider.clientId || "",
-			client_secret: managedConfig?.clientSecret || giteaProvider.clientSecret || "",
+			client_secret:
+				managedConfig?.clientSecret || giteaProvider.clientSecret || "",
 		});
 
 		const response = await fetch(tokenEndpoint, {
@@ -111,19 +113,6 @@ export const refreshGiteaToken = async (giteaProviderId: string) => {
 	}
 };
 
-const buildGiteaCloneUrl = (
-	giteaUrl: string,
-	accessToken: string,
-	owner: string,
-	repository: string,
-) => {
-	const protocol = giteaUrl.startsWith("http://") ? "http" : "https";
-	const baseUrl = giteaUrl.replace(/^https?:\/\//, "");
-	const repoClone = `${owner}/${repository}.git`;
-	const cloneUrl = `${protocol}://oauth2:${accessToken}@${baseUrl}/${repoClone}`;
-	return cloneUrl;
-};
-
 export type ApplicationWithGitea = InferResultType<
 	"applications",
 	{ gitea: true }
@@ -148,10 +137,10 @@ interface CloneGiteaRepository {
 	outputPathOverride?: string;
 }
 
-export const cloneGiteaRepository = async ({
-	type = "application",
-	...entity
-}: CloneGiteaRepository, options?: { targetServerId?: string | null }) => {
+export const cloneGiteaRepository = async (
+	{ type = "application", ...entity }: CloneGiteaRepository,
+	options?: { targetServerId?: string | null },
+) => {
 	let command = "set -e;";
 	const {
 		appName,
@@ -168,7 +157,7 @@ export const cloneGiteaRepository = async ({
 
 	if (!giteaId) {
 		command += `echo "Error: ❌ Gitea Provider not found"; exit 1;`;
-		return command;
+		return { command };
 	}
 
 	await refreshGiteaToken(giteaId);
@@ -176,25 +165,29 @@ export const cloneGiteaRepository = async ({
 
 	if (!giteaProvider) {
 		command += `echo "❌ [ERROR] Gitea provider not found in the database"; exit 1;`;
-		return command;
+		return { command };
+	}
+	const requirements = getErrorCloneRequirements(entity);
+	if (requirements.length > 0) {
+		command += `echo "Gitea Repository configuration failed" >&2; exit 1;`;
+		return { command };
 	}
 
 	const basePath = type === "compose" ? COMPOSE_PATH : APPLICATIONS_PATH;
 	const outputPath = outputPathOverride ?? join(basePath, appName, "code");
-	command += `rm -rf ${outputPath};`;
-	command += `mkdir -p ${outputPath};`;
-
-	const repoClone = `${giteaOwner}/${giteaRepository}.git`;
-	const cloneUrl = buildGiteaCloneUrl(
-		giteaProvider.giteaInternalUrl || giteaProvider.giteaUrl,
-		giteaProvider.accessToken!,
-		giteaOwner!,
-		giteaRepository!,
-	);
-
-	command += `echo "Cloning Repo ${repoClone} to ${outputPath}: ✅";`;
-	command += `git clone --branch ${giteaBranch} --depth 1 ${enableSubmodules ? "--recurse-submodules" : ""} ${cloneUrl} ${outputPath} --progress;`;
-	return command;
+	// The checkout can run on a remote server that cannot resolve a
+	// control-plane-only internal endpoint. Provider credentials must traverse
+	// the configured public HTTPS endpoint.
+	const baseUrl = giteaProvider.giteaUrl.replace(/\/+$/, "");
+	return prepareCredentialedGitClone({
+		repositoryUrl: `${baseUrl}/${giteaOwner}/${giteaRepository}.git`,
+		username: "oauth2",
+		password: giteaProvider.accessToken || "",
+		branch: giteaBranch!,
+		outputPath,
+		enableSubmodules,
+		isRemote: !!targetServerId,
+	});
 };
 
 export const haveGiteaRequirements = (giteaProvider: Gitea) => {

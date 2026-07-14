@@ -2,14 +2,14 @@ import { join } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import type { apiGitlabTestConnection } from "@nearzero/server/db/schema";
 import {
+	assertGitProviderConnectionAllowed,
+	isHostedEditionMode,
+} from "@nearzero/server/services/git-provider-policy";
+import {
 	findGitlabById,
 	type Gitlab,
 	updateGitlab,
 } from "@nearzero/server/services/gitlab";
-import {
-	assertGitProviderConnectionAllowed,
-	isHostedEditionMode,
-} from "@nearzero/server/services/git-provider-policy";
 import {
 	getManagedGitlabConfig,
 	isNearzeroManagedGitProvider,
@@ -17,6 +17,7 @@ import {
 import type { InferResultType } from "@nearzero/server/types/with";
 import { TRPCError } from "@trpc/server";
 import type { z } from "zod";
+import { prepareCredentialedGitClone } from "./credentialed-git";
 
 export const refreshGitlabToken = async (gitlabProviderId: string) => {
 	const gitlabProvider = await findGitlabById(gitlabProviderId);
@@ -44,8 +45,10 @@ export const refreshGitlabToken = async (gitlabProviderId: string) => {
 		body: new URLSearchParams({
 			grant_type: "refresh_token",
 			refresh_token: gitlabProvider.refreshToken as string,
-			client_id: managedConfig?.clientId || (gitlabProvider.applicationId as string),
-			client_secret: managedConfig?.clientSecret || (gitlabProvider.secret as string),
+			client_id:
+				managedConfig?.clientId || (gitlabProvider.applicationId as string),
+			client_secret:
+				managedConfig?.clientSecret || (gitlabProvider.secret as string),
 		}),
 	});
 
@@ -101,22 +104,6 @@ export type GitlabInfo =
 	| ApplicationWithGitlab["gitlab"]
 	| ComposeWithGitlab["gitlab"];
 
-const getGitlabRepoClone = (
-	gitlab: GitlabInfo,
-	gitlabPathNamespace: string | null,
-) => {
-	const url = gitlab?.gitlabInternalUrl || gitlab?.gitlabUrl;
-	const repoClone = `${url?.replace(/^https?:\/\//, "")}/${gitlabPathNamespace}.git`;
-	return repoClone;
-};
-
-const getGitlabCloneUrl = (gitlab: GitlabInfo, repoClone: string) => {
-	const url = gitlab?.gitlabInternalUrl || gitlab?.gitlabUrl;
-	const isSecure = url?.startsWith("https://");
-	const cloneUrl = `http${isSecure ? "s" : ""}://oauth2:${gitlab?.accessToken}@${repoClone}`;
-	return cloneUrl;
-};
-
 interface CloneGitlabRepository {
 	appName: string;
 	gitlabBranch: string | null;
@@ -128,10 +115,10 @@ interface CloneGitlabRepository {
 	outputPathOverride?: string;
 }
 
-export const cloneGitlabRepository = async ({
-	type = "application",
-	...entity
-}: CloneGitlabRepository, options?: { targetServerId?: string | null }) => {
+export const cloneGitlabRepository = async (
+	{ type = "application", ...entity }: CloneGitlabRepository,
+	options?: { targetServerId?: string | null },
+) => {
 	let command = "set -e;";
 	const {
 		appName,
@@ -147,7 +134,7 @@ export const cloneGitlabRepository = async ({
 
 	if (!gitlabId) {
 		command += `echo "Error: ❌ Gitlab Provider not found"; exit 1;`;
-		return command;
+		return { command };
 	}
 
 	await refreshGitlabToken(gitlabId);
@@ -158,18 +145,24 @@ export const cloneGitlabRepository = async ({
 	// Check if requirements are met
 	if (requirements.length > 0) {
 		command += `echo "❌ [ERROR] GitLab Repository configuration failed for application: ${appName}"; echo "Reasons:"; echo "${requirements.join("\n")}"; exit 1;`;
-		return command;
+		return { command };
 	}
 
 	const basePath = type === "compose" ? COMPOSE_PATH : APPLICATIONS_PATH;
 	const outputPath = outputPathOverride ?? join(basePath, appName, "code");
-	command += `rm -rf ${outputPath};`;
-	command += `mkdir -p ${outputPath};`;
-	const repoClone = getGitlabRepoClone(gitlab, gitlabPathNamespace);
-	const cloneUrl = getGitlabCloneUrl(gitlab, repoClone);
-	command += `echo "Cloning Repo ${repoClone} to ${outputPath}: ✅";`;
-	command += `git clone --branch ${gitlabBranch} --depth 1 ${enableSubmodules ? "--recurse-submodules" : ""} ${cloneUrl} ${outputPath} --progress;`;
-	return command;
+	// Clones may execute on a separate remote server, where a control-plane-only
+	// internal URL is both unreachable and commonly plain HTTP. Use the public
+	// TLS endpoint for credentialed Git transport.
+	const baseUrl = (gitlab?.gitlabUrl || "").replace(/\/+$/, "");
+	return prepareCredentialedGitClone({
+		repositoryUrl: `${baseUrl}/${gitlabPathNamespace}.git`,
+		username: "oauth2",
+		password: gitlab?.accessToken || "",
+		branch: gitlabBranch!,
+		outputPath,
+		enableSubmodules,
+		isRemote: !!targetServerId,
+	});
 };
 
 export const getGitlabRepositories = async (gitlabId?: string) => {

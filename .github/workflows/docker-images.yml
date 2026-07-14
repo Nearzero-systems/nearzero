@@ -7,13 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional release version, for example v0.0.1"
-        required: false
+        description: "Release version, for example v0.0.1"
+        required: true
         type: string
 
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY: ghcr.io
@@ -22,9 +21,48 @@ env:
   CLOUDFLARE_ACCOUNT_ID: 2888ec0ba25e82e4c0f3819aaceca38e
 
 jobs:
+  verify:
+    name: Verify OSS build inputs
+    runs-on: ubuntu-latest
+    outputs:
+      release_version: ${{ steps.release.outputs.release_version }}
+      short_sha: ${{ steps.release.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - id: release
+        shell: bash
+        env:
+          REQUESTED_RELEASE_VERSION: ${{ github.event.inputs.release_version || '' }}
+        run: |
+          short_sha="${GITHUB_SHA::12}"
+          release_version="$REQUESTED_RELEASE_VERSION"
+          if [[ -z "$release_version" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            release_version="${GITHUB_REF_NAME}"
+          fi
+          release_version="${release_version#v}"
+          if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "release_version must be a version such as v0.1.29" >&2
+            exit 1
+          fi
+
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Reject unsafe build or installer inputs
+        env:
+          EXPECTED_RELEASE_VERSION: ${{ steps.release.outputs.release_version }}
+        run: bash scripts/verify-oss-install.sh
+
   build:
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
+    needs: verify
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -39,82 +77,279 @@ jobs:
             file: Dockerfile.schedule
             image: schedule
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: image-tags
-        shell: bash
-        run: |
-          short_sha="${GITHUB_SHA::12}"
-          release_version="${{ github.event.inputs.release_version || '' }}"
-          if [[ -z "$release_version" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            release_version="${GITHUB_REF_NAME}"
-          fi
-          release_version="${release_version#v}"
-
-          {
-            echo "tags<<EOF"
-            echo "${REGISTRY}/${IMAGE_NAMESPACE}/${{ matrix.image }}:latest"
-            echo "${REGISTRY}/${IMAGE_NAMESPACE}/${{ matrix.image }}:sha-${short_sha}"
-            if [[ -n "$release_version" ]]; then
-              echo "${REGISTRY}/${IMAGE_NAMESPACE}/${{ matrix.image }}:${release_version}"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5.4.0
         with:
           context: .
           file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
+          provenance: mode=max
           push: true
-          tags: ${{ steps.image-tags.outputs.tags }}
+          sbom: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ needs.verify.outputs.short_sha }}
+
+  promote:
+    name: Verify and promote release images
+    runs-on: ubuntu-latest
+    needs: [verify, build, smoke]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Verify public staged multi-architecture images
+        env:
+          SHORT_SHA: ${{ needs.verify.outputs.short_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in nearzero monitoring schedule; do
+            image_ref="${REGISTRY}/${IMAGE_NAMESPACE}/${image}:sha-${SHORT_SHA}"
+            manifest=""
+            for attempt in 1 2 3 4 5 6; do
+              if manifest="$(docker manifest inspect "$image_ref" 2>/dev/null)"; then
+                break
+              fi
+              if [[ "$attempt" != "6" ]]; then sleep 5; fi
+            done
+            if [[ -z "$manifest" ]]; then
+              echo "$image_ref is not anonymously readable" >&2
+              exit 1
+            fi
+            if ! jq -e '([.manifests[]?.platform.architecture] | index("amd64") != null and index("arm64") != null)' <<<"$manifest" >/dev/null; then
+              echo "$image_ref does not contain both linux/amd64 and linux/arm64 manifests" >&2
+              exit 1
+            fi
+          done
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote the complete staged set to the release version
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+          SHORT_SHA: ${{ needs.verify.outputs.short_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in nearzero monitoring schedule; do
+            docker buildx imagetools create \
+              --tag "${REGISTRY}/${IMAGE_NAMESPACE}/${image}:${RELEASE_VERSION}" \
+              "${REGISTRY}/${IMAGE_NAMESPACE}/${image}:sha-${SHORT_SHA}"
+          done
+
+      - name: Verify release images anonymously before latest promotion
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker logout "$REGISTRY"
+          for image in nearzero monitoring schedule; do
+            image_ref="${REGISTRY}/${IMAGE_NAMESPACE}/${image}:${RELEASE_VERSION}"
+            manifest="$(docker manifest inspect "$image_ref")"
+            jq -e '([.manifests[]?.platform.architecture] | index("amd64") != null and index("arm64") != null)' <<<"$manifest" >/dev/null
+          done
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote the verified release set to latest
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in nearzero monitoring schedule; do
+            docker buildx imagetools create \
+              --tag "${REGISTRY}/${IMAGE_NAMESPACE}/${image}:latest" \
+              "${REGISTRY}/${IMAGE_NAMESPACE}/${image}:${RELEASE_VERSION}"
+          done
+
+  smoke:
+    name: Smoke-test staged runtime images
+    runs-on: ubuntu-latest
+    needs: [verify, build]
+    steps:
+      - name: Pull and verify staged images anonymously
+        env:
+          SHORT_SHA: ${{ needs.verify.outputs.short_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          nearzero_image="${REGISTRY}/${IMAGE_NAMESPACE}/nearzero:sha-${SHORT_SHA}"
+          monitoring_image="${REGISTRY}/${IMAGE_NAMESPACE}/monitoring:sha-${SHORT_SHA}"
+          schedule_image="${REGISTRY}/${IMAGE_NAMESPACE}/schedule:sha-${SHORT_SHA}"
+
+          docker pull "$nearzero_image"
+          docker run --rm --entrypoint sh "$nearzero_image" -ec '
+            test -s /app/dist/server.mjs
+            test -s /app/console-dist/server/entry.mjs
+            test -d /app/drizzle
+            node --check /app/dist/server.mjs
+            node --check /app/console-dist/server/entry.mjs
+            docker --version
+            docker buildx version
+            docker compose version
+            nixpacks --version
+            railpack --version
+            pack version
+            rclone version
+            node --input-type=module -e '\''import bcrypt from "bcrypt"; const hash = await bcrypt.hash("smoke", 4); if (!(await bcrypt.compare("smoke", hash))) process.exit(1)'\''
+            test ! -e /app/.env
+          '
+
+          docker pull "$schedule_image"
+          docker run --rm --entrypoint sh "$schedule_image" -ec '
+            test -s /app/dist/index.js
+            node --check /app/dist/index.js
+            NODE_ENV=test node --input-type=module -e '\''import bcrypt from "bcrypt"; const hash = await bcrypt.hash("smoke", 4); if (!(await bcrypt.compare("smoke", hash))) process.exit(1); await import("@hono/node-server"); await import("hono"); const server = await import("@nearzero/server"); if (typeof server.sanitizePublicErrorMessage !== "function") process.exit(1); process.exit(0)'\''
+            test ! -e /app/.env
+          '
+
+          docker pull "$monitoring_image"
+          monitoring_id="$(docker run -d \
+            -e 'METRICS_CONFIG={"server":{"type":"Nearzero","refreshRate":60,"port":4500,"token":"smoke-token","urlCallback":"http://127.0.0.1/unused","retentionDays":1,"cronJob":"0 0 * * *","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":60,"services":{"include":[],"exclude":[]}}}' \
+            "$monitoring_image")"
+          trap 'docker rm -f "$monitoring_id" >/dev/null 2>&1 || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec "$monitoring_id" wget -qO- http://127.0.0.1:4500/health | grep -q '"status":"ok"'; then
+              break
+            fi
+            if [[ "$attempt" == "10" ]]; then
+              docker logs "$monitoring_id"
+              exit 1
+            fi
+            sleep 2
+          done
 
   publish-install-script:
     name: Publish install.sh to R2
     runs-on: ubuntu-latest
-    needs: build
+    needs: [verify, promote]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
-      - id: release
+      - name: Verify OSS installer and release image alignment
+        env:
+          EXPECTED_RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+        run: bash scripts/verify-oss-install.sh
+
+      - name: Verify public multi-architecture companion images
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
         shell: bash
         run: |
-          short_sha="${GITHUB_SHA::12}"
-          release_version="${{ github.event.inputs.release_version || '' }}"
-          if [[ -z "$release_version" && "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            release_version="${GITHUB_REF_NAME}"
-          fi
-          release_version="${release_version#v}"
+          for image in nearzero monitoring schedule; do
+            image_ref="${REGISTRY}/${IMAGE_NAMESPACE}/${image}:${RELEASE_VERSION}"
+            manifest=""
+            for attempt in 1 2 3 4 5 6; do
+              if manifest="$(docker manifest inspect "$image_ref" 2>/dev/null)"; then
+                break
+              fi
+              if [[ "$attempt" != "6" ]]; then sleep 5; fi
+            done
+            if [[ -z "$manifest" ]]; then
+              echo "$image_ref is not anonymously readable" >&2
+              exit 1
+            fi
+            if ! jq -e '([.manifests[]?.platform.architecture] | index("amd64") != null and index("arm64") != null)' <<<"$manifest" >/dev/null; then
+              echo "$image_ref does not contain both linux/amd64 and linux/arm64 manifests" >&2
+              exit 1
+            fi
+          done
 
-          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
-          echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
+      - name: Generate installer checksum
+        working-directory: scripts
+        run: sha256sum install.sh > install.sh.sha256
 
       - name: Upload latest installer
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: r2 object put ${{ env.R2_BUCKET }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control no-cache
 
-      - name: Upload SHA-pinned installer
-        uses: cloudflare/wrangler-action@v3
+      - name: Upload latest installer checksum
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ${{ env.R2_BUCKET }}/releases/sha-${{ steps.release.outputs.short_sha }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control "public, max-age=31536000, immutable"
+          command: r2 object put ${{ env.R2_BUCKET }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control no-cache
+
+      - name: Upload SHA-pinned installer
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/releases/sha-${{ needs.verify.outputs.short_sha }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control "public, max-age=31536000, immutable"
+
+      - name: Upload SHA-pinned installer checksum
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/releases/sha-${{ needs.verify.outputs.short_sha }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control "public, max-age=31536000, immutable"
 
       - name: Upload versioned installer
-        if: steps.release.outputs.release_version != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ steps.release.outputs.release_version }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control "public, max-age=31536000, immutable"
+          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ needs.verify.outputs.release_version }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control "public, max-age=31536000, immutable"
+
+      - name: Upload versioned installer checksum
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ needs.verify.outputs.release_version }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control "public, max-age=31536000, immutable"
+
+      - name: Deploy installer delivery worker
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/install-script
+          command: deploy
+
+      - name: Verify the published versioned installer and checksum
+        env:
+          RELEASE_VERSION: ${{ needs.verify.outputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          download_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$download_dir"' EXIT
+          base_url="https://nearzero.dev/releases/${RELEASE_VERSION}"
+
+          for artifact in install.sh install.sh.sha256; do
+            curl --fail --location \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              --retry 6 --retry-all-errors --retry-delay 5 \
+              --output "$download_dir/$artifact" \
+              "$base_url/$artifact"
+          done
+
+          cmp -s scripts/install.sh "$download_dir/install.sh"
+          (cd "$download_dir" && sha256sum --check install.sh.sha256)

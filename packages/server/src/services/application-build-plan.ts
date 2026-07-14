@@ -1,12 +1,16 @@
 import type {
 	ApplicationBuildPlan,
+	ApplicationBuildPlanDiagnostic,
 	ApplicationBuildType,
 	BuildSelectionMode,
 	DetectedApplicationBuildTarget,
 } from "@nearzero/server/types/application-build-plan";
 import type { ApplicationNested } from "@nearzero/server/utils/builders";
 import { paths } from "@nearzero/server/constants";
-import { getApplicationBuildDirectory } from "@nearzero/server/utils/filesystem/directory";
+import {
+	assertPathWithinApplicationSource,
+	getApplicationBuildDirectory,
+} from "@nearzero/server/utils/filesystem/directory";
 import {
 	execAsync,
 	execAsyncRemote,
@@ -17,18 +21,39 @@ import { quote } from "shell-quote";
 const execute = (serverId: string | null, command: string) =>
 	serverId ? execAsyncRemote(serverId, command) : execAsync(command);
 
+const packageManagerLockfiles = [
+	{ file: "bun.lock", packageManager: "bun" },
+	{ file: "bun.lockb", packageManager: "bun" },
+	{ file: "pnpm-lock.yaml", packageManager: "pnpm" },
+	{ file: "yarn.lock", packageManager: "yarn" },
+	{ file: "package-lock.json", packageManager: "npm" },
+] as const;
+
 export function selectApplicationBuilder(input: {
 	selectionMode: BuildSelectionMode;
 	requestedBuilder: ApplicationBuildType;
 	hasDockerfile: boolean;
 	hasCustomCommands?: boolean;
 	hasWorkspaceDependencies?: boolean;
+	hasManagedFramework?: boolean;
+	hasDockerfilePackageManagerMismatch?: boolean;
+	hasManagedPackageManagerAgreement?: boolean;
+	hasDockerfileOverrides?: boolean;
 }): ApplicationBuildType {
 	if (input.selectionMode === "explicit") {
 		return input.requestedBuilder;
 	}
 	if (input.hasCustomCommands || input.hasWorkspaceDependencies) {
 		return "nixpacks";
+	}
+	if (
+		input.hasDockerfile &&
+		input.hasManagedFramework &&
+		input.hasDockerfilePackageManagerMismatch &&
+		input.hasManagedPackageManagerAgreement &&
+		!input.hasDockerfileOverrides
+	) {
+		return "railpack";
 	}
 	return input.hasDockerfile ? "dockerfile" : "railpack";
 }
@@ -60,6 +85,58 @@ function detectPackageManager(files: Set<string>, packageManager?: string) {
 	if (files.has("yarn.lock")) return "yarn";
 	if (files.has("package-lock.json")) return "npm";
 	return null;
+}
+
+// Railpack owns its install command, so automatic selection is safe only when
+// its documented lockfile precedence resolves to the same package manager as
+// Nearzero's source inspection. This matters when a repository commits more
+// than one lockfile.
+function detectRailpackPackageManager(
+	files: Set<string>,
+	packageManager?: string,
+) {
+	if (packageManager) return packageManager.split("@")[0] || null;
+	if (files.has("pnpm-lock.yaml") || files.has("pnpm-workspace.yaml")) {
+		return "pnpm";
+	}
+	if (files.has("bun.lock") || files.has("bun.lockb")) return "bun";
+	if (files.has(".yarnrc.yml") || files.has(".yarnrc.yaml")) return "yarn";
+	if (files.has("yarn.lock")) return "yarn";
+	return "npm";
+}
+
+function findPackageManagerLockfiles(files: Set<string>) {
+	const matches = packageManagerLockfiles.filter(({ file }) => files.has(file));
+	return {
+		lockfiles: matches.map(({ file }) => file),
+		packageManagers: [...new Set(matches.map(({ packageManager }) => packageManager))],
+	};
+}
+
+function parseDockerfilePackageManagerFingerprint(fingerprint: string | undefined) {
+	const supportedPackageManagers = new Set(["npm", "pnpm", "yarn", "bun"]);
+	return [
+		...new Set(
+			(fingerprint ?? "")
+				.split(/[,\n]/)
+				.map((value) => value.trim().toLowerCase())
+				.filter((value) => supportedPackageManagers.has(value)),
+		),
+	];
+}
+
+const platformManagedDockerBuildKeys = new Set(["NEARZERO_DEPLOY_URL"]);
+
+function hasUserDockerBuildValues(value: string | null | undefined) {
+	return (value ?? "")
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.some((line) => {
+			const separator = line.indexOf("=");
+			const key = (separator >= 0 ? line.slice(0, separator) : line).trim();
+			return !platformManagedDockerBuildKeys.has(key);
+		});
 }
 
 function sourceDirectoryFor(application: ApplicationNested, buildServerId: string | null) {
@@ -226,7 +303,11 @@ function repoPackageManager(rootFiles: Set<string>, rootPackageJson: Record<stri
 }
 
 function buildDetectedApps(input: {
-	packages: Array<{ relativePath: string; packageJson: Record<string, any> | null }>;
+	packages: Array<{
+		relativePath: string;
+		packageJson: Record<string, any> | null;
+		files: Set<string>;
+	}>;
 	rootFiles: Set<string>;
 	rootPackageJson: Record<string, any> | null;
 }): DetectedApplicationBuildTarget[] {
@@ -236,8 +317,7 @@ function buildDetectedApps(input: {
 		input.rootPackageJson,
 	);
 	const apps: DetectedApplicationBuildTarget[] = [];
-	for (const { relativePath, packageJson } of input.packages) {
-		const packageFiles = new Set<string>();
+	for (const { relativePath, packageJson, files: packageFiles } of input.packages) {
 		const packageManager = detectPackageManager(
 			packageFiles,
 			packageJson?.packageManager,
@@ -340,39 +420,69 @@ export async function createApplicationBuildPlan(input: {
 }): Promise<ApplicationBuildPlan> {
 	const sourceDirectory = sourceDirectoryFor(input.application, input.buildServerId);
 	const buildDirectory = getApplicationBuildDirectory(input.application, input.buildServerId);
-	const selectedRelativePath = path.relative(sourceDirectory, buildDirectory) || ".";
 	const directory = quote([buildDirectory]);
 	const sourceDirectoryQuoted = quote([sourceDirectory]);
-	const dockerfile = quote([
-		path.join(selectedRelativePath, input.application.dockerfile || "Dockerfile"),
-	]);
+	const configuredDockerfile = input.application.dockerfile || "Dockerfile";
+	let dockerfile: string | null = null;
+	let dockerfilePathError: Error | null = null;
+	try {
+		const dockerfilePath = assertPathWithinApplicationSource(
+			sourceDirectory,
+			path.join(buildDirectory, configuredDockerfile),
+			"Dockerfile path",
+		);
+		dockerfile = quote([path.relative(sourceDirectory, dockerfilePath)]);
+	} catch (error) {
+		dockerfilePathError =
+			error instanceof Error
+				? error
+				: new Error("Dockerfile path must stay inside the checked-out source directory.");
+	}
 	const { stdout } = await execute(
 		input.buildServerId,
 		[
 			`cd ${sourceDirectoryQuoted}`,
 			"printf '%s\\n' '__NZ_FILES__'",
-			'for file in Dockerfile bun.lock bun.lockb pnpm-lock.yaml pnpm-workspace.yaml yarn.lock package-lock.json package.json turbo.json turbo.jsonc; do test -f "$file" && printf \'%s\\n\' "$file"; done',
-			`test -f ${dockerfile} && printf '%s\\n' '__NZ_DOCKERFILE_PRESENT__' || true`,
+			'for file in Dockerfile bun.lock bun.lockb pnpm-lock.yaml pnpm-workspace.yaml .yarnrc.yml .yarnrc.yaml yarn.lock package-lock.json package.json turbo.json turbo.jsonc; do test -f "$file" && printf \'%s\\n\' "$file"; done',
+			dockerfile
+				? `test -f ${dockerfile} && printf '%s\\n' '__NZ_DOCKERFILE_PRESENT__' || true`
+				: "true",
+			"printf '%s\\n' '__NZ_DOCKERFILE_PACKAGE_MANAGERS__'",
+			dockerfile
+				? `if test -f ${dockerfile}; then NZ_DOCKERFILE_RUN_INSTRUCTIONS="$(head -c 131072 ${dockerfile} | sed -E '/^[[:space:]]*#/d; s/[[:space:]]+#.*$//' | grep -Ei '^[[:space:]]*RUN[[:space:]]' || true)"; printf '%s\\n' "$NZ_DOCKERFILE_RUN_INSTRUCTIONS" | grep -Eiq '.*[^[:alnum:]_]npm[[:space:]]+(ci|install|i)([^[:alnum:]_]|$)' && printf '%s\\n' npm; printf '%s\\n' "$NZ_DOCKERFILE_RUN_INSTRUCTIONS" | grep -Eiq '.*[^[:alnum:]_]pnpm[[:space:]]+(install|i|fetch)([^[:alnum:]_]|$)' && printf '%s\\n' pnpm; printf '%s\\n' "$NZ_DOCKERFILE_RUN_INSTRUCTIONS" | grep -Eiq '.*[^[:alnum:]_]yarn[[:space:]]+(install|--immutable)([^[:alnum:]_]|$)' && printf '%s\\n' yarn; printf '%s\\n' "$NZ_DOCKERFILE_RUN_INSTRUCTIONS" | grep -Eiq '.*[^[:alnum:]_]bun[[:space:]]+(install|i)([^[:alnum:]_]|$)' && printf '%s\\n' bun; fi`
+				: "true",
 			"printf '%s\\n' '__NZ_REVISION__'",
 			"git rev-parse HEAD 2>/dev/null || true",
 			"printf '%s\\n' '__NZ_PACKAGES__'",
-			"find . -maxdepth 4 \\( -path './node_modules/*' -o -path './.git/*' -o -path './.next/*' -o -path './dist/*' -o -path './build/*' \\) -prune -o -name package.json -type f -print 2>/dev/null | sort | while IFS= read -r file; do rel=${file#./}; dir=$(dirname \"$rel\"); [ \"$dir\" = \".\" ] && dir=\".\"; printf '__NZ_PACKAGE_PATH__%s\\n' \"$dir\"; base64 < \"$file\" | tr -d '\\n'; printf '\\n__NZ_PACKAGE_END__\\n'; done",
+			"find . -maxdepth 4 \\( -path './node_modules/*' -o -path './.git/*' -o -path './.next/*' -o -path './dist/*' -o -path './build/*' \\) -prune -o -name package.json -type f -print 2>/dev/null | sort | while IFS= read -r file; do rel=${file#./}; dir=$(dirname \"$rel\"); [ \"$dir\" = \".\" ] && dir=\".\"; printf '__NZ_PACKAGE_PATH__%s\\n__NZ_PACKAGE_FILES__\\n' \"$dir\"; for candidate in bun.lock bun.lockb pnpm-lock.yaml pnpm-workspace.yaml .yarnrc.yml .yarnrc.yaml yarn.lock package-lock.json; do test -f \"$dir/$candidate\" && printf '%s\\n' \"$candidate\"; done; printf '%s\\n' '__NZ_PACKAGE_JSON__'; base64 < \"$file\" | tr -d '\\n'; printf '\\n__NZ_PACKAGE_END__\\n'; done",
+			"printf '%s\\n' '__NZ_SELECTED_FILES__'",
+			`(cd ${directory} && for candidate in package.json bun.lock bun.lockb pnpm-lock.yaml pnpm-workspace.yaml .yarnrc.yml .yarnrc.yaml yarn.lock package-lock.json; do test -f "$candidate" && printf '%s\\n' "$candidate"; done) || true`,
 			"printf '%s\\n' '__NZ_SELECTED_PACKAGE_JSON__'",
 			`cd ${directory} && test -f package.json && cat package.json || true`,
 		].join("\n"),
 	);
 	const filesBlock = stdout
 		.split("__NZ_FILES__")[1]
-		?.split("__NZ_REVISION__")[0];
+		?.split("__NZ_DOCKERFILE_PACKAGE_MANAGERS__")[0];
+	const dockerfilePackageManagersBlock = stdout
+		.split("__NZ_DOCKERFILE_PACKAGE_MANAGERS__")[1]
+		?.split("__NZ_REVISION__")[0]
+		?.trim();
 	const revisionBlock = stdout
 		.split("__NZ_REVISION__")[1]
 		?.split("__NZ_PACKAGES__")[0];
 	const packagesBlock = stdout
 		.split("__NZ_PACKAGES__")[1]
+		?.split("__NZ_SELECTED_FILES__")[0];
+	const selectedFilesBlock = stdout
+		.split("__NZ_SELECTED_FILES__")[1]
 		?.split("__NZ_SELECTED_PACKAGE_JSON__")[0];
 	const selectedPackageJsonBlock = stdout
 		.split("__NZ_SELECTED_PACKAGE_JSON__")[1]
 		?.trim();
+	const dockerfilePackageManagers = parseDockerfilePackageManagerFingerprint(
+		dockerfilePackageManagersBlock,
+	);
 	const files = new Set(
 		(filesBlock ?? "")
 			.split("\n")
@@ -382,12 +492,20 @@ export async function createApplicationBuildPlan(input: {
 	const packages: Array<{
 		relativePath: string;
 		packageJson: Record<string, any> | null;
+		files: Set<string>;
 	}> = [];
 	for (const block of (packagesBlock ?? "").split("__NZ_PACKAGE_PATH__")) {
 		const trimmed = block.trim();
 		if (!trimmed) continue;
 		const [relativePathLine, ...rest] = trimmed.split("\n");
-		const encoded = rest.join("\n").split("__NZ_PACKAGE_END__")[0]?.trim();
+		const payload = rest.join("\n");
+		const packageFilesBlock = payload
+			.split("__NZ_PACKAGE_FILES__")[1]
+			?.split("__NZ_PACKAGE_JSON__")[0];
+		const encoded = payload
+			.split("__NZ_PACKAGE_JSON__")[1]
+			?.split("__NZ_PACKAGE_END__")[0]
+			?.trim();
 		if (!relativePathLine || !encoded) continue;
 		let decoded = "";
 		try {
@@ -398,12 +516,28 @@ export async function createApplicationBuildPlan(input: {
 		packages.push({
 			relativePath: relativePathLine.trim() || ".",
 			packageJson: parsePackageJson(decoded),
+			files: new Set(
+				(packageFilesBlock ?? "")
+					.split("\n")
+					.map((value) => value.trim())
+					.filter(Boolean),
+			),
 		});
 	}
 	const rootPackageJson =
 		packages.find((pkg) => pkg.relativePath === ".")?.packageJson ?? null;
-	const packageJson = parsePackageJson(selectedPackageJsonBlock);
 	const buildPath = normalizeBuildPath(getConfiguredBuildPath(input.application));
+	const selectedPackage = packages.find(
+		(pkg) => pkg.relativePath === toRelativePath(buildPath),
+	);
+	const packageJson =
+		selectedPackage?.packageJson ?? parsePackageJson(selectedPackageJsonBlock);
+	const selectedPackageFiles = new Set(
+		(selectedFilesBlock ?? "")
+			.split("\n")
+			.map((value) => value.trim())
+			.filter(Boolean),
+	);
 	const detectedApps = preferDetectedApps(
 		buildDetectedApps({
 			packages,
@@ -418,7 +552,11 @@ export async function createApplicationBuildPlan(input: {
 			packageName:
 				typeof packageJson?.name === "string" ? packageJson.name : null,
 			framework: detectFramework(packageJson),
-			packageManager: detectPackageManager(files, packageJson?.packageManager),
+			packageManager:
+				detectPackageManager(
+					selectedPackageFiles,
+					packageJson?.packageManager,
+				) ?? repoPackageManager(files, rootPackageJson),
 			hasWorkspaceDependencies: hasWorkspaceDependencies(packageJson),
 			scripts: {
 				install:
@@ -436,18 +574,27 @@ export async function createApplicationBuildPlan(input: {
 			},
 			recommendedCommands: {
 				install: installCommandForPackageManager(
-					detectPackageManager(files, packageJson?.packageManager),
+					detectPackageManager(
+						selectedPackageFiles,
+						packageJson?.packageManager,
+					) ?? repoPackageManager(files, rootPackageJson),
 				),
 				build: packageJson?.scripts?.build
 					? commandForPackageManager(
-							detectPackageManager(files, packageJson?.packageManager),
+							detectPackageManager(
+								selectedPackageFiles,
+								packageJson?.packageManager,
+							) ?? repoPackageManager(files, rootPackageJson),
 							toRelativePath(buildPath),
 							"build",
 						)
 					: null,
 				start: packageJson?.scripts?.start
 					? commandForPackageManager(
-							detectPackageManager(files, packageJson?.packageManager),
+							detectPackageManager(
+								selectedPackageFiles,
+								packageJson?.packageManager,
+							) ?? repoPackageManager(files, rootPackageJson),
 							toRelativePath(buildPath),
 							"start",
 						)
@@ -461,13 +608,42 @@ export async function createApplicationBuildPlan(input: {
 
 	const selectionMode = input.application.buildSelectionMode ?? "explicit";
 	const requestedBuilder = input.application.buildType as ApplicationBuildType;
+	const hasDockerfile = files.has("__NZ_DOCKERFILE_PRESENT__");
+	const hasDockerfilePackageManagerMismatch = Boolean(
+		hasDockerfile &&
+			selectedDetectedApp.packageManager &&
+			dockerfilePackageManagers.length === 1 &&
+			!dockerfilePackageManagers.includes(selectedDetectedApp.packageManager),
+	);
+	const railpackPackageManager = detectRailpackPackageManager(
+		selectedPackageFiles,
+		packageJson?.packageManager,
+	);
+	const hasManagedPackageManagerAgreement = Boolean(
+		selectedDetectedApp.packageManager &&
+			railpackPackageManager === selectedDetectedApp.packageManager,
+	);
+	const hasDockerfileOverrides = Boolean(
+		configuredDockerfile !== "Dockerfile" ||
+			input.application.dockerContextPath?.trim() ||
+			input.application.dockerBuildStage?.trim() ||
+			hasUserDockerBuildValues(input.application.buildArgs) ||
+			hasUserDockerBuildValues(input.application.buildSecrets),
+	);
 	let selectedBuilder = selectApplicationBuilder({
 		selectionMode,
 		requestedBuilder,
-		hasDockerfile: files.has("__NZ_DOCKERFILE_PRESENT__"),
+		hasDockerfile,
 		hasCustomCommands: customCommandConfigured,
 		hasWorkspaceDependencies: hasWorkspaceDeps,
+		hasManagedFramework: Boolean(selectedDetectedApp.framework),
+		hasDockerfilePackageManagerMismatch,
+		hasManagedPackageManagerAgreement,
+		hasDockerfileOverrides,
 	});
+	if (selectedBuilder === "dockerfile" && dockerfilePathError) {
+		throw dockerfilePathError;
+	}
 	let fallbackReason: string | null = null;
 	const healingHints: string[] = [];
 	if (
@@ -491,6 +667,71 @@ export async function createApplicationBuildPlan(input: {
 		healingHints.push("Using user-provided build commands.");
 	}
 
+	const diagnostics: ApplicationBuildPlanDiagnostic[] = [];
+	const lockfileEvidence = findPackageManagerLockfiles(
+		hasWorkspaceDeps ? files : selectedPackageFiles,
+	);
+	if (lockfileEvidence.packageManagers.length > 1) {
+		diagnostics.push({
+			code: "multiple_package_manager_lockfiles",
+			severity: "warning",
+			lockfiles: lockfileEvidence.lockfiles,
+			packageManagers: lockfileEvidence.packageManagers,
+			message:
+				`Multiple package-manager lockfiles were detected (${lockfileEvidence.lockfiles.join(", ")}). ` +
+				"Retain one canonical lockfile and ensure packageManager identifies the intended tool for deterministic managed builds.",
+		});
+	}
+
+	if (
+		selectionMode === "automatic" &&
+		hasDockerfile &&
+		selectedBuilder !== "dockerfile" &&
+		hasDockerfilePackageManagerMismatch &&
+		selectedDetectedApp.framework &&
+		selectedDetectedApp.packageManager
+	) {
+		diagnostics.push({
+			code: "managed_builder_preferred_over_dockerfile",
+			severity: "info",
+			dockerfile: configuredDockerfile,
+			framework: selectedDetectedApp.framework,
+			repositoryPackageManager: selectedDetectedApp.packageManager,
+			dockerfilePackageManagers,
+			preferredBuilder: selectedBuilder,
+			message:
+				`Automatic mode preferred ${selectedBuilder} for the detected ${selectedDetectedApp.framework} application because repository detection resolves to ${selectedDetectedApp.packageManager}, ` +
+				`while ${configuredDockerfile} appears to use ${dockerfilePackageManagers.join(", ")}. ` +
+				"Select Dockerfile explicitly to make its commands authoritative.",
+		});
+	}
+
+	if (selectedBuilder === "dockerfile") {
+		diagnostics.push({
+			code: "dockerfile_authoritative",
+			severity: "info",
+			dockerfile: configuredDockerfile,
+			message:
+				`Repository Dockerfile ${configuredDockerfile} controls dependency installation, build, and start commands. ` +
+				"Nearzero will not override those commands.",
+		});
+		if (
+			selectedDetectedApp.packageManager &&
+			dockerfilePackageManagers.length > 0 &&
+			!dockerfilePackageManagers.includes(selectedDetectedApp.packageManager)
+		) {
+			diagnostics.push({
+				code: "dockerfile_package_manager_mismatch",
+				severity: "warning",
+				repositoryPackageManager: selectedDetectedApp.packageManager,
+				dockerfilePackageManagers,
+				message:
+					`Repository detection resolves to ${selectedDetectedApp.packageManager}, but ${configuredDockerfile} appears to use ${dockerfilePackageManagers.join(", ")}. ` +
+					"Dockerfile commands remain authoritative; align metadata and lockfiles for deterministic managed builds.",
+			});
+		}
+	}
+
 	return {
 		version: 1,
 		selectionMode,
@@ -510,6 +751,7 @@ export async function createApplicationBuildPlan(input: {
 			build: commands.build ?? selectedDetectedApp.recommendedCommands.build,
 			start: commands.start ?? selectedDetectedApp.recommendedCommands.start,
 		},
+		diagnostics,
 		healingHints,
 		requiredCapabilities: ["docker", selectedBuilder],
 		generatedAt: new Date().toISOString(),

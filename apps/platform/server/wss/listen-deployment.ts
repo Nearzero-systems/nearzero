@@ -3,6 +3,7 @@ import type http from "node:http";
 import { findServerById, validateRequest } from "@nearzero/server";
 import { encodeBase64 } from "@nearzero/server/utils/docker/utils";
 import { readValidDirectory } from "@nearzero/server/wss/utils";
+import { createSshHostVerification } from "@nearzero/server/utils/servers/ssh-host-verification";
 import { Client } from "ssh2";
 import { WebSocketServer } from "ws";
 
@@ -68,9 +69,17 @@ export const setupDeploymentLogsWebSocketServer = (
 					return;
 				}
 
-				sshClient = new Client();
-				sshClient
-					.on("ready", () => {
+					sshClient = new Client();
+					const hostVerification = createSshHostVerification(server);
+					sshClient
+						.on("ready", () => {
+							try {
+								hostVerification.commit();
+							} catch {
+								sshClient!.end();
+								ws.close();
+								return;
+							}
 						const encodedPath = encodeBase64(logPath);
 						const command = `tail -n +1 -f "$(echo '${encodedPath}' | base64 -d)"`;
 
@@ -109,9 +118,11 @@ export const setupDeploymentLogsWebSocketServer = (
 					.connect({
 						host: server.ipAddress,
 						port: server.port,
-						username: server.username,
-						privateKey: server.sshKey?.privateKey,
-					});
+							username: server.username,
+							privateKey: server.sshKey?.privateKey,
+							hostVerifier: hostVerification.hostVerifier,
+							readyTimeout: 30_000,
+						});
 
 				ws.on("close", () => {
 					if (sshClient) {

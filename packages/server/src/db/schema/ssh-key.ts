@@ -39,7 +39,7 @@ export const sshKeysRelations = relations(sshKeys, ({ many, one }) => ({
 
 const createSchema = createInsertSchema(
 	sshKeys,
-	/* Private key is not stored in the DB */
+	/* Apply the stricter private-key validation when accepting stored keys. */
 	sshKeyCreate.omit({ privateKey: true }).shape,
 );
 

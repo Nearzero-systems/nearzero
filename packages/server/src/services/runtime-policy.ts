@@ -145,18 +145,75 @@ export async function evaluateRuntimePlacementPolicy(
 	action: RuntimePlacementAction,
 	context: RuntimePlacementContext = {},
 ): Promise<RuntimePlacementResult> {
+	if (context.serverId) {
+		const row = await db.query.server.findFirst({
+			where: eq(server.serverId, context.serverId),
+			columns: {
+				serverId: true,
+				organizationId: true,
+				name: true,
+				serverStatus: true,
+				setupStatus: true,
+			},
+		});
+
+		if (!row || row.organizationId !== actor.organizationId) {
+			return result(
+				action,
+				context,
+				false,
+				"server_missing",
+				"The selected server could not be found for this organization.",
+				"Choose a server from this organization and try again.",
+			);
+		}
+
+		if (row.serverStatus !== "active") {
+			return result(
+				action,
+				context,
+				false,
+				"server_inactive",
+				`Server "${row.name}" is inactive.`,
+				"Reactivate the server or choose another ready server.",
+			);
+		}
+
+		if (row.setupStatus !== "ready") {
+			return result(
+				action,
+				{ ...context, auditMetadata: { setupStatus: row.setupStatus } },
+				false,
+				"server_not_ready",
+				`Server "${row.name}" is not ready yet.`,
+				"Open the server setup logs and wait for setup to finish successfully.",
+			);
+		}
+
+		return result(
+			action,
+			{ ...context, auditMetadata: { serverName: row.name } },
+			true,
+			"ok",
+			requiresRemoteRuntimeServer()
+				? "Allowed by runtime placement policy."
+				: "Allowed on this organization's ready remote server.",
+			"",
+		);
+	}
+
 	if (!requiresRemoteRuntimeServer()) {
 		return result(
 			action,
 			context,
 			true,
 			"ok",
-			"Allowed in Community mode.",
+			"Allowed on the local Community runtime.",
 			"",
 		);
 	}
 
-	if (!context.serverId && context.allowAnyReadyServer) {
+	if (context.allowAnyReadyServer) {
 		const readyServers = await getReadyRuntimeServers(actor.organizationId);
 		if (readyServers.length > 0) {
 			return result(
@@ -176,68 +233,13 @@ export async function evaluateRuntimePlacementPolicy(
 		}
 	}
 
-	if (!context.serverId) {
-		return result(
-			action,
-			context,
-			false,
-			"server_required",
-			"Nearzero Cloud requires a ready server before this action can run.",
-			"Add a server, let setup finish, then try again.",
-		);
-	}
-
-	const row = await db.query.server.findFirst({
-		where: eq(server.serverId, context.serverId),
-		columns: {
-			serverId: true,
-			organizationId: true,
-			name: true,
-			serverStatus: true,
-			setupStatus: true,
-		},
-	});
-
-	if (!row || row.organizationId !== actor.organizationId) {
-		return result(
-			action,
-			context,
-			false,
-			"server_missing",
-			"The selected server could not be found for this organization.",
-			"Choose a server from this organization and try again.",
-		);
-	}
-
-	if (row.serverStatus !== "active") {
-		return result(
-			action,
-			context,
-			false,
-			"server_inactive",
-			`Server "${row.name}" is inactive.`,
-			"Reactivate the server or choose another ready server.",
-		);
-	}
-
-	if (row.setupStatus !== "ready") {
-		return result(
-			action,
-			{ ...context, auditMetadata: { setupStatus: row.setupStatus } },
-			false,
-			"server_not_ready",
-			`Server "${row.name}" is not ready yet.`,
-			"Open the server setup logs and wait for setup to finish successfully.",
-		);
-	}
-
 	return result(
 		action,
-		{ ...context, auditMetadata: { serverName: row.name } },
-		true,
-		"ok",
-		"Allowed by runtime placement policy.",
-		"",
+		context,
+		false,
+		"server_required",
+		"Nearzero Cloud requires a ready server before this action can run.",
+		"Add a server, let setup finish, then try again.",
 	);
 }
 

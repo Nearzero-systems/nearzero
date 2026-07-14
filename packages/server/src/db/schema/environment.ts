@@ -73,7 +73,18 @@ export const apiUpdateEnvironment = z.object({
 	projectId: z.string().optional(),
 	env: z.string().optional(),
 	dnsZoneId: z.string().nullable().optional(),
-	domainPrefix: z.string().nullable().optional(),
+	domainPrefix: z
+		.string()
+		.trim()
+		.max(63)
+		.refine(
+			(value) =>
+				value === "" ||
+				/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(value),
+			"Domain prefix must be one valid DNS label",
+		)
+		.nullable()
+		.optional(),
 });
 
 export const apiDuplicateEnvironment = z.object({

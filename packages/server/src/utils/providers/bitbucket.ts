@@ -17,6 +17,7 @@ import {
 import type { InferResultType } from "@nearzero/server/types/with";
 import { TRPCError } from "@trpc/server";
 import type { z } from "zod";
+import { prepareCredentialedGitClone } from "./credentialed-git";
 
 export type ApplicationWithBitbucket = InferResultType<
 	"applications",
@@ -28,7 +29,7 @@ export type ComposeWithBitbucket = InferResultType<
 	{ bitbucket: true }
 >;
 
-export const getBitbucketCloneUrl = (
+const getBitbucketCloneCredentials = (
 	bitbucketProvider: {
 		apiToken?: string | null;
 		accessToken?: string | null;
@@ -37,18 +38,23 @@ export const getBitbucketCloneUrl = (
 		bitbucketEmail?: string | null;
 		bitbucketWorkspaceName?: string | null;
 	} | null,
-	repoClone: string,
 ) => {
 	if (!bitbucketProvider) {
 		throw new Error("Bitbucket provider is required");
 	}
 
 	if (bitbucketProvider.accessToken) {
-		return `https://x-token-auth:${bitbucketProvider.accessToken}@${repoClone}`;
+		return {
+			username: "x-token-auth",
+			password: bitbucketProvider.accessToken,
+		};
 	}
 
 	if (bitbucketProvider.apiToken) {
-		return `https://x-bitbucket-api-token-auth:${bitbucketProvider.apiToken}@${repoClone}`;
+		return {
+			username: "x-bitbucket-api-token-auth",
+			password: bitbucketProvider.apiToken,
+		};
 	}
 
 	// For app passwords, use username:app_password format
@@ -57,7 +63,10 @@ export const getBitbucketCloneUrl = (
 			"Username and app password are required when not using API token",
 		);
 	}
-	return `https://${bitbucketProvider.bitbucketUsername}:${bitbucketProvider.appPassword}@${repoClone}`;
+	return {
+		username: bitbucketProvider.bitbucketUsername,
+		password: bitbucketProvider.appPassword,
+	};
 };
 
 export const getBitbucketHeaders = (bitbucketProvider: Bitbucket) => {
@@ -117,17 +126,20 @@ export const refreshBitbucketToken = async (bitbucketProviderId: string) => {
 	}
 
 	const config = getManagedBitbucketConfig();
-	const response = await fetch("https://bitbucket.org/site/oauth2/access_token", {
-		method: "POST",
-		headers: {
-			Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
-			"Content-Type": "application/x-www-form-urlencoded",
+	const response = await fetch(
+		"https://bitbucket.org/site/oauth2/access_token",
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`,
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			body: new URLSearchParams({
+				grant_type: "refresh_token",
+				refresh_token: bitbucketProvider.refreshToken,
+			}),
 		},
-		body: new URLSearchParams({
-			grant_type: "refresh_token",
-			refresh_token: bitbucketProvider.refreshToken,
-		}),
-	});
+	);
 
 	if (!response.ok) {
 		return bitbucketProvider.accessToken ?? null;
@@ -142,7 +154,9 @@ export const refreshBitbucketToken = async (bitbucketProviderId: string) => {
 		gitProviderId: bitbucketProvider.gitProviderId,
 		name: bitbucketProvider.gitProvider.name,
 		accessToken,
-		refreshToken: (data.refresh_token as string | undefined) ?? bitbucketProvider.refreshToken,
+		refreshToken:
+			(data.refresh_token as string | undefined) ??
+			bitbucketProvider.refreshToken,
 		expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
 	});
 	return accessToken;
@@ -161,10 +175,10 @@ interface CloneBitbucketRepository {
 	outputPathOverride?: string;
 }
 
-export const cloneBitbucketRepository = async ({
-	type = "application",
-	...entity
-}: CloneBitbucketRepository, options?: { targetServerId?: string | null }) => {
+export const cloneBitbucketRepository = async (
+	{ type = "application", ...entity }: CloneBitbucketRepository,
+	options?: { targetServerId?: string | null },
+) => {
 	let command = "set -e;";
 	const {
 		appName,
@@ -181,26 +195,32 @@ export const cloneBitbucketRepository = async ({
 
 	if (!bitbucketId) {
 		command += `echo "Error: ❌ Bitbucket Provider not found"; exit 1;`;
-		return command;
+		return { command };
 	}
 	const bitbucket = await findBitbucketById(bitbucketId);
 
 	if (!bitbucket) {
 		command += `echo "Error: ❌ Bitbucket Provider not found"; exit 1;`;
-		return command;
+		return { command };
 	}
 	await refreshBitbucketToken(bitbucketId);
 	const refreshedBitbucket = await findBitbucketById(bitbucketId);
 	const basePath = type === "compose" ? COMPOSE_PATH : APPLICATIONS_PATH;
 	const outputPath = outputPathOverride ?? join(basePath, appName, "code");
-	command += `rm -rf ${outputPath};`;
-	command += `mkdir -p ${outputPath};`;
 	const repoToUse = entity.bitbucketRepositorySlug || bitbucketRepository;
-	const repoclone = `bitbucket.org/${bitbucketOwner}/${repoToUse}.git`;
-	const cloneUrl = getBitbucketCloneUrl(refreshedBitbucket, repoclone);
-	command += `echo "Cloning Repo ${repoclone} to ${outputPath}: ✅";`;
-	command += `git clone --branch ${bitbucketBranch} --depth 1 ${enableSubmodules ? "--recurse-submodules" : ""} ${cloneUrl} ${outputPath} --progress;`;
-	return command;
+	if (!bitbucketOwner || !repoToUse || !bitbucketBranch) {
+		throw new Error("Bitbucket repository, owner, and branch are required");
+	}
+	const credentials = getBitbucketCloneCredentials(refreshedBitbucket);
+	return prepareCredentialedGitClone({
+		repositoryUrl: `https://bitbucket.org/${bitbucketOwner}/${repoToUse}.git`,
+		username: credentials.username,
+		password: credentials.password,
+		branch: bitbucketBranch,
+		outputPath,
+		enableSubmodules,
+		isRemote: !!targetServerId,
+	});
 };
 
 export const getBitbucketRepositories = async (bitbucketId?: string) => {
@@ -213,9 +233,10 @@ export const getBitbucketRepositories = async (bitbucketId?: string) => {
 	const username =
 		bitbucketProvider.bitbucketWorkspaceName ||
 		bitbucketProvider.bitbucketUsername;
-	let url = bitbucketProvider.accessToken && !username
-		? "https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100"
-		: `https://api.bitbucket.org/2.0/repositories/${username}?pagelen=100`;
+	let url =
+		bitbucketProvider.accessToken && !username
+			? "https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100"
+			: `https://api.bitbucket.org/2.0/repositories/${username}?pagelen=100`;
 	let repositories: {
 		name: string;
 		url: string;
@@ -319,11 +340,13 @@ export const testBitbucketConnection = async (
 	const provider = await findBitbucketById(input.bitbucketId);
 	const { bitbucketUsername, workspaceName } = input;
 
-	const username = workspaceName || bitbucketUsername || provider.bitbucketWorkspaceName;
+	const username =
+		workspaceName || bitbucketUsername || provider.bitbucketWorkspaceName;
 
-	const url = provider.accessToken && !username
-		? "https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100"
-		: `https://api.bitbucket.org/2.0/repositories/${username}`;
+	const url =
+		provider.accessToken && !username
+			? "https://api.bitbucket.org/2.0/repositories?role=member&pagelen=100"
+			: `https://api.bitbucket.org/2.0/repositories/${username}`;
 	try {
 		const response = await fetch(url, {
 			method: "GET",

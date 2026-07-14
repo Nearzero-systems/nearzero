@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { getPlatformDefaultDomain } from "@nearzero/server/constants";
 import {
 	buildManagedServiceHost,
 	buildPlatformDefaultServiceHost,
+	canUsePlatformDomainForServer,
+	isNearzeroAssignedDomain,
 	slugifyServiceName,
 } from "@nearzero/server/services/managed-domain";
-import { getPlatformDefaultDomain } from "@nearzero/server/constants";
+import { afterEach, describe, expect, it } from "vitest";
 
 describe("slugifyServiceName", () => {
 	it("normalizes service labels", () => {
@@ -29,9 +31,10 @@ describe("buildPlatformDefaultServiceHost", () => {
 			buildPlatformDefaultServiceHost({
 				serviceName: "API",
 				projectName: "Acme App",
+				organizationId: "org-123",
 				environment: { name: "staging", domainPrefix: null },
 			}),
-		).toBe("api.staging.acme-app.nearzero.dev");
+		).toBe("api.staging.acme-app-org-123.nearzero.dev");
 	});
 
 	it("omits environment label for production", () => {
@@ -40,9 +43,10 @@ describe("buildPlatformDefaultServiceHost", () => {
 			buildPlatformDefaultServiceHost({
 				serviceName: "API",
 				projectName: "Acme App",
+				organizationId: "org-123",
 				environment: { name: "production", domainPrefix: null },
 			}),
-		).toBe("api.acme-app.nearzero.dev");
+		).toBe("api.acme-app-org-123.nearzero.dev");
 	});
 });
 
@@ -81,5 +85,62 @@ describe("buildManagedServiceHost", () => {
 				},
 			}),
 		).toBe("web.apps.example.com");
+	});
+});
+
+describe("platform domain routing scope", () => {
+	const original = process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
+
+	afterEach(() => {
+		if (original === undefined) {
+			delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
+		} else {
+			process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = original;
+		}
+	});
+
+	it("uses a platform wildcard locally but not for a direct remote server", () => {
+		delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
+		expect(canUsePlatformDomainForServer(null)).toBe(true);
+		expect(canUsePlatformDomainForServer("remote-server-id")).toBe(false);
+	});
+
+	it("allows remote use only when a shared edge is explicitly configured", () => {
+		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = "true";
+		expect(canUsePlatformDomainForServer("remote-server-id")).toBe(true);
+	});
+});
+
+describe("Nearzero-assigned domain recognition", () => {
+	it("migrates managed, platform, and temporary IP domains", () => {
+		expect(
+			isNearzeroAssignedDomain({
+				host: "api.example.com",
+				dnsMode: "nearzero_managed",
+				isSystemAssigned: true,
+			}),
+		).toBe(true);
+		expect(
+			isNearzeroAssignedDomain({
+				host: "api.platform.example",
+				dnsMode: "platform",
+			}),
+		).toBe(true);
+		expect(
+			isNearzeroAssignedDomain({
+				host: "api-203-0-113-10.sslip.io",
+				dnsMode: "external",
+			}),
+		).toBe(true);
+	});
+
+	it("never treats a user-owned external domain as system-assigned", () => {
+		expect(
+			isNearzeroAssignedDomain({
+				host: "customer.example.com",
+				dnsMode: "nearzero_managed",
+				isSystemAssigned: false,
+			}),
+		).toBe(false);
 	});
 });

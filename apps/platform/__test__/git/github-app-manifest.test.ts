@@ -1,12 +1,11 @@
+import { describe, expect, it } from "vitest";
 import {
 	githubAppManifestAction,
 	normalizeGithubOrganizationSlug,
 } from "../../../console/src/lib/github-app-manifest";
-import { describe, expect, it } from "vitest";
 
 const baseInput = {
-	organizationId: "nearzero-org",
-	userId: "nearzero-user",
+	state: "nz_b_secure-state-token",
 };
 
 describe("GitHub App manifest target", () => {
@@ -18,7 +17,7 @@ describe("GitHub App manifest target", () => {
 				githubOrganizationSlug: "",
 			}),
 		).toBe(
-			"https://github.com/settings/apps/new?state=gh_init:nearzero-org:nearzero-user",
+			"https://github.com/settings/apps/new?state=nz_b_secure-state-token",
 		);
 	});
 
@@ -30,7 +29,7 @@ describe("GitHub App manifest target", () => {
 				githubOrganizationSlug: "nearzero-systems",
 			}),
 		).toBe(
-			"https://github.com/organizations/nearzero-systems/settings/apps/new?state=gh_init:nearzero-org:nearzero-user",
+			"https://github.com/organizations/nearzero-systems/settings/apps/new?state=nz_b_secure-state-token",
 		);
 	});
 

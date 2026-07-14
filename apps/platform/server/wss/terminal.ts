@@ -5,6 +5,7 @@ import {
 	validateRequest,
 } from "@nearzero/server";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
+import { createSshHostVerification } from "@nearzero/server/utils/servers/ssh-host-verification";
 import { publicIpv4, publicIpv6 } from "public-ip";
 import { Client, type ConnectConfig } from "ssh2";
 import { WebSocketServer } from "ws";
@@ -173,14 +174,30 @@ export const setupTerminalWebSocketServer = (
 			};
 		}
 
-		const conn = new Client();
+			const conn = new Client();
+			const hostVerification = createSshHostVerification({
+				ipAddress: String(connectionDetails.host),
+				port: Number(connectionDetails.port ?? 22),
+			});
+			connectionDetails.hostVerifier = hostVerification.hostVerifier;
+			connectionDetails.readyTimeout = 30_000;
 		let _stdout = "";
 		let _stderr = "";
 
 		ws.send("Connecting...\n");
 
-		conn
-			.once("ready", () => {
+			conn
+				.once("ready", () => {
+					try {
+						hostVerification.commit();
+					} catch (error) {
+						ws.send(
+							`${error instanceof Error ? error.message : "SSH host verification failed"}\n`,
+						);
+						conn.end();
+						ws.close();
+						return;
+					}
 				// Clear terminal content once connected
 				ws.send("\x1bc");
 

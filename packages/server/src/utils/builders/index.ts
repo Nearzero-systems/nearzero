@@ -18,6 +18,7 @@ import { getNixpacksCommand } from "./nixpacks";
 import { getPaketoCommand } from "./paketo";
 import { getRailpackBuildCommand, getRailpackCommand } from "./railpack";
 import { getStaticCommand } from "./static";
+import { prepareBuildInput, wrapBuildCommand } from "./utils";
 
 const getPositiveTimeout = (value: string | undefined, fallback: number) => {
 	const parsed = Number(value);
@@ -107,10 +108,15 @@ export const getBuildCommand = async (
 	}
 
 	if (application.registry || application.rollbackRegistry) {
-		command += await uploadImageRemoteCommand(application);
+		command += await uploadImageRemoteCommand(application, buildServerId);
 	}
 
-	return command;
+	const buildInput = prepareBuildInput(application);
+	return {
+		script: wrapBuildCommand(command),
+		input: buildInput.input,
+		sensitiveValues: buildInput.sensitiveValues,
+	};
 };
 
 export const mechanizeDockerContainer = async (

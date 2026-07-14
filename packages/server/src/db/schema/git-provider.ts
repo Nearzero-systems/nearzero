@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { boolean, pgEnum, pgTable, text } from "drizzle-orm/pg-core";
+import { boolean, index, pgEnum, pgTable, text } from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { organization } from "./account";
@@ -72,26 +72,36 @@ export const gitProviderRelations = relations(gitProvider, ({ one }) => ({
 	}),
 }));
 
-export const gitProviderOAuthState = pgTable("git_provider_oauth_state", {
-	stateId: text("stateId")
-		.notNull()
-		.primaryKey()
-		.$defaultFn(() => nanoid()),
-	stateHash: text("stateHash").notNull().unique(),
-	providerType: gitProviderType("providerType").notNull(),
-	organizationId: text("organizationId")
-		.notNull()
-		.references(() => organization.id, { onDelete: "cascade" }),
-	userId: text("userId")
-		.notNull()
-		.references(() => user.id, { onDelete: "cascade" }),
-	returnTo: text("returnTo"),
-	createdAt: text("createdAt")
-		.notNull()
-		.$defaultFn(() => new Date().toISOString()),
-	expiresAt: text("expiresAt").notNull(),
-	consumedAt: text("consumedAt"),
-});
+export const gitProviderOAuthState = pgTable(
+	"git_provider_oauth_state",
+	{
+		stateId: text("stateId")
+			.notNull()
+			.primaryKey()
+			.$defaultFn(() => nanoid()),
+		stateHash: text("stateHash").notNull().unique(),
+		providerType: gitProviderType("providerType").notNull(),
+		organizationId: text("organizationId")
+			.notNull()
+			.references(() => organization.id, { onDelete: "cascade" }),
+		userId: text("userId")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		targetGitProviderId: text("targetGitProviderId").references(
+			() => gitProvider.gitProviderId,
+			{ onDelete: "cascade" },
+		),
+		returnTo: text("returnTo"),
+		createdAt: text("createdAt")
+			.notNull()
+			.$defaultFn(() => new Date().toISOString()),
+		expiresAt: text("expiresAt").notNull(),
+		consumedAt: text("consumedAt"),
+	},
+	(table) => [
+		index("git_provider_oauth_state_target_idx").on(table.targetGitProviderId),
+	],
+);
 
 export const apiRemoveGitProvider = z.object({
 	gitProviderId: z.string().min(1),

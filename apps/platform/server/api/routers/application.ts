@@ -4,7 +4,11 @@ import {
 	createApplication,
 	deleteAllMiddlewares,
 	findApplicationById,
-	findGitProviderById,
+	findDomainsByApplicationId,
+	findDomainsByPreviewDeploymentIds,
+	findRegistryById,
+	findSSHKeyById,
+	getAccessibleGitProviderIds,
 	getAccessibleServerIds,
 	getApplicationStats,
 	getContainerLogs,
@@ -13,9 +17,11 @@ import {
 	readRemoteConfig,
 	removeDeployments,
 	removeDirectoryCode,
+	removeDomainById,
 	removeMonitoringDirectory,
 	removeService,
 	removeTraefikConfig,
+	sanitizePublicErrorMessage,
 	startService,
 	startServiceRemote,
 	stopService,
@@ -45,6 +51,8 @@ import {
 	withPermission,
 } from "@/server/api/trpc";
 import { audit } from "@/server/api/utils/audit";
+import { assertGitProviderAssociationsReadable } from "@/server/api/utils/git-provider-security";
+import { toPublicService } from "@/server/api/utils/public-service";
 import { assertRuntimePlacement } from "@/server/api/utils/runtime-policy";
 import { runServiceScaleAction } from "@/server/api/utils/service-scale";
 import {
@@ -68,11 +76,11 @@ import {
 	environments,
 	projects,
 } from "@/server/db/schema";
-import { deploymentWorker } from "@/server/queues/deployments-queue";
 import type { DeploymentJob } from "@/server/queues/queue-types";
 import {
 	cleanQueuesByApplication,
 	getJobsByApplicationId,
+	prepareDeploymentJobsForServiceDeletion,
 } from "@/server/queues/queueSetup";
 import {
 	cancelQueuedDeployment,
@@ -159,19 +167,18 @@ export const applicationRouter = createTRPCRouter({
 					resourceId: newApplication.applicationId,
 					resourceName: newApplication.appName,
 				});
-				return newApplication;
+				return toPublicService(newApplication);
 			} catch (error: unknown) {
-				console.log("error", error);
 				if (error instanceof TRPCError) {
 					throw error;
 				}
+				console.error(
+					"Failed to create application:",
+					sanitizePublicErrorMessage(error, "application creation failed"),
+				);
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error.message
-							: "Error creating the application",
-					cause: error,
+					message: "Error creating the application",
 				});
 			}
 		}),
@@ -211,23 +218,18 @@ export const applicationRouter = createTRPCRouter({
 			const gitProviderId = getGitProviderId();
 
 			if (gitProviderId) {
-				try {
-					const gitProvider = await findGitProviderById(gitProviderId);
-					if (gitProvider.userId !== ctx.session.userId) {
-						hasGitProviderAccess = false;
-						unauthorizedProvider = application.sourceType;
-					}
-				} catch {
+				const accessibleIds = await getAccessibleGitProviderIds(ctx.session);
+				if (!accessibleIds.has(gitProviderId)) {
 					hasGitProviderAccess = false;
 					unauthorizedProvider = application.sourceType;
 				}
 			}
 
-			return {
+			return toPublicService({
 				...application,
 				hasGitProviderAccess,
 				unauthorizedProvider,
-			};
+			});
 		}),
 
 	reload: protectedProcedure
@@ -263,7 +265,7 @@ export const applicationRouter = createTRPCRouter({
 		.input(apiFindOneApplication)
 		.mutation(async ({ input, ctx }) => {
 			await checkServiceAccess(ctx, input.applicationId, "delete");
-			const application = await findApplicationById(input.applicationId);
+			let application = await findApplicationById(input.applicationId);
 
 			if (
 				application.environment.project.organizationId !==
@@ -274,18 +276,73 @@ export const applicationRouter = createTRPCRouter({
 					message: "You are not authorized to delete this application",
 				});
 			}
+			await cancelQueuedDeployment({
+				applicationId: input.applicationId,
+				applicationType: "application",
+			});
+			application = await findApplicationById(input.applicationId);
+			if (
+				application.applicationStatus === "running" ||
+				application.previewDeployments.some(
+					(preview) => preview.previewStatus === "running",
+				)
+			) {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message:
+						"Wait for or cancel active application and preview deployments before deleting this service",
+				});
+			}
 
-			const result = await db
+			const queueJobs = await getJobsByApplicationId(input.applicationId);
+			if (!(await prepareDeploymentJobsForServiceDeletion(queueJobs))) {
+				throw new TRPCError({
+					code: "CONFLICT",
+					message:
+						"Wait for or cancel the active deployment before deleting this service",
+				});
+			}
+
+			// Remove published routes and managed DNS while the parent row still
+			// exists. If any cleanup fails, retain the application so the operation
+			// can be retried without orphaning externally reachable resources.
+			const attachedDomains = await findDomainsByApplicationId(
+				input.applicationId,
+			);
+			const previewDomains = await findDomainsByPreviewDeploymentIds(
+				application.previewDeployments.map(
+					(preview) => preview.previewDeploymentId,
+				),
+			);
+			const attachedDomainIds = new Set([
+				...attachedDomains.map((domain) => domain.domainId),
+				...previewDomains.map((domain) => domain.domainId),
+				...application.previewDeployments
+					.map((preview) => preview.domainId)
+					.filter((domainId): domainId is string => Boolean(domainId)),
+			]);
+			for (const domainId of attachedDomainIds) {
+				await removeDomainById(domainId);
+			}
+			const serviceRemoval = await removeService(
+				application.appName,
+				application.serverId,
+				true,
+				true,
+			);
+			if (serviceRemoval instanceof Error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						"The application could not be removed from its server; its database record was retained for a safe retry",
+					cause: serviceRemoval,
+				});
+			}
+
+			await db
 				.delete(applications)
 				.where(eq(applications.applicationId, input.applicationId))
 				.returning();
-
-			const queueJobs = await getJobsByApplicationId(input.applicationId);
-			for (const job of queueJobs) {
-				if (job.id) {
-					deploymentWorker.cancelJob(job.id, "User requested cancellation");
-				}
-			}
 
 			const cleanupOperations: Array<{
 				name: string;
@@ -295,7 +352,10 @@ export const applicationRouter = createTRPCRouter({
 					name: "deleteAllMiddlewares",
 					run: () => deleteAllMiddlewares(application),
 				},
-				{ name: "removeDeployments", run: () => removeDeployments(application) },
+				{
+					name: "removeDeployments",
+					run: () => removeDeployments(application),
+				},
 				{
 					name: "removeDirectoryCode",
 					run: () =>
@@ -314,16 +374,6 @@ export const applicationRouter = createTRPCRouter({
 					run: () =>
 						removeTraefikConfig(application.appName, application.serverId),
 				},
-				{
-					name: "removeService",
-					run: () =>
-						removeService(
-							application?.appName,
-							application.serverId,
-							true,
-							true,
-						),
-				},
 			];
 
 			// Best-effort cleanup: we still delete the DB record even if a remote
@@ -341,7 +391,7 @@ export const applicationRouter = createTRPCRouter({
 							`app="${application.appName}" serverId="${
 								application.serverId ?? "local"
 							}":`,
-						error,
+						sanitizePublicErrorMessage(error, "remote cleanup failed"),
 					);
 				}
 			}
@@ -352,7 +402,10 @@ export const applicationRouter = createTRPCRouter({
 				resourceId: application.applicationId,
 				resourceName: application.appName,
 			});
-			return application;
+			return {
+				success: true,
+				applicationId: application.applicationId,
+			};
 		}),
 
 	stop: protectedProcedure
@@ -384,7 +437,7 @@ export const applicationRouter = createTRPCRouter({
 				resourceId: service.applicationId,
 				resourceName: service.appName,
 			});
-			return service;
+			return { success: true, applicationId: service.applicationId };
 		}),
 
 	start: protectedProcedure
@@ -417,7 +470,7 @@ export const applicationRouter = createTRPCRouter({
 				resourceId: service.applicationId,
 				resourceName: service.appName,
 			});
-			return service;
+			return { success: true, applicationId: service.applicationId };
 		}),
 
 	redeploy: protectedProcedure
@@ -562,6 +615,9 @@ export const applicationRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				service: ["create"],
 			});
+			await assertGitProviderAssociationsReadable(ctx.session, {
+				githubId: input.githubId,
+			});
 			await updateApplication(input.applicationId, {
 				repository: input.repository,
 				branch: input.branch,
@@ -588,6 +644,9 @@ export const applicationRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				service: ["create"],
+			});
+			await assertGitProviderAssociationsReadable(ctx.session, {
+				gitlabId: input.gitlabId,
 			});
 			await updateApplication(input.applicationId, {
 				gitlabRepository: input.gitlabRepository,
@@ -617,6 +676,9 @@ export const applicationRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				service: ["create"],
 			});
+			await assertGitProviderAssociationsReadable(ctx.session, {
+				bitbucketId: input.bitbucketId,
+			});
 			await updateApplication(input.applicationId, {
 				bitbucketRepository: input.bitbucketRepository,
 				bitbucketRepositorySlug: input.bitbucketRepositorySlug,
@@ -644,6 +706,9 @@ export const applicationRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				service: ["create"],
 			});
+			await assertGitProviderAssociationsReadable(ctx.session, {
+				giteaId: input.giteaId,
+			});
 			await updateApplication(input.applicationId, {
 				giteaRepository: input.giteaRepository,
 				giteaOwner: input.giteaOwner,
@@ -670,10 +735,14 @@ export const applicationRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				service: ["create"],
 			});
+			const current = await findApplicationById(input.applicationId);
 			await updateApplication(input.applicationId, {
 				dockerImage: input.dockerImage,
 				username: input.username,
-				password: input.password,
+				password:
+					input.password && input.password.length > 0
+						? input.password
+						: current.password,
 				sourceType: "docker",
 				applicationStatus: "idle",
 				registryUrl: input.registryUrl,
@@ -693,6 +762,15 @@ export const applicationRouter = createTRPCRouter({
 			await checkServicePermissionAndAccess(ctx, input.applicationId, {
 				service: ["create"],
 			});
+			if (input.customGitSSHKeyId) {
+				const sshKey = await findSSHKeyById(input.customGitSSHKeyId);
+				if (sshKey.organizationId !== ctx.session.activeOrganizationId) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "SSH key not found",
+					});
+				}
+			}
 			await updateApplication(input.applicationId, {
 				customGitBranch: input.customGitBranch,
 				customGitBuildPath: input.customGitBuildPath,
@@ -788,10 +866,80 @@ export const applicationRouter = createTRPCRouter({
 			});
 			const { applicationId, ...rest } = input;
 			const current = await findApplicationById(applicationId);
-			const maybeServerUpdate = rest as typeof rest & {
-				serverId?: string | null;
-			};
 			const updateData = { ...rest };
+			await assertGitProviderAssociationsReadable(ctx.session, updateData);
+
+			const secretFields = [
+				"env",
+				"previewEnv",
+				"buildArgs",
+				"buildSecrets",
+				"previewBuildArgs",
+				"previewBuildSecrets",
+				"password",
+			] as const;
+			if (secretFields.some((field) => Object.hasOwn(updateData, field))) {
+				await checkServicePermissionAndAccess(ctx, applicationId, {
+					envVars: ["write"],
+				});
+			}
+			if (Object.hasOwn(updateData, "refreshToken")) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Refresh tokens can only be rotated by the token endpoint",
+				});
+			}
+
+			if (
+				updateData.environmentId &&
+				updateData.environmentId !== current.environmentId
+			) {
+				const target = await db.query.environments.findFirst({
+					where: eq(environments.environmentId, updateData.environmentId),
+					columns: { environmentId: true, projectId: true },
+					with: {
+						project: {
+							columns: { projectId: true, organizationId: true },
+						},
+					},
+				});
+				if (
+					!target?.project ||
+					target.project.organizationId !== ctx.session.activeOrganizationId
+				) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Environment not found",
+					});
+				}
+				await checkServiceAccess(ctx, target.projectId, "create");
+			}
+
+			for (const registryId of [
+				updateData.registryId,
+				updateData.rollbackRegistryId,
+			]) {
+				if (!registryId) continue;
+				const targetRegistry = await findRegistryById(registryId);
+				if (
+					targetRegistry.organizationId !== ctx.session.activeOrganizationId
+				) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Registry not found",
+					});
+				}
+			}
+
+			if (updateData.customGitSSHKeyId) {
+				const sshKey = await findSSHKeyById(updateData.customGitSSHKeyId);
+				if (sshKey.organizationId !== ctx.session.activeOrganizationId) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "SSH key not found",
+					});
+				}
+			}
 			if (updateData.buildExecutionTarget) {
 				updateData.buildExecutionTarget = isCloudMode()
 					? "deploy_server"
@@ -810,16 +958,6 @@ export const applicationRouter = createTRPCRouter({
 				}
 			}
 			const updateApp = await updateApplication(applicationId, updateData);
-
-			if (
-				maybeServerUpdate.serverId !== undefined &&
-				maybeServerUpdate.serverId !== current.serverId
-			) {
-				const { resyncManagedDomainsForApplication } = await import(
-					"@nearzero/server/services/domain"
-				);
-				await resyncManagedDomainsForApplication(applicationId);
-			}
 
 			if (!updateApp) {
 				throw new TRPCError({
@@ -1064,7 +1202,10 @@ export const applicationRouter = createTRPCRouter({
 				resourceId: updatedApplication.applicationId,
 				resourceName: updatedApplication.appName,
 			});
-			return updatedApplication;
+			return {
+				success: true,
+				applicationId: updatedApplication.applicationId,
+			};
 		}),
 
 	cancelDeployment: protectedProcedure

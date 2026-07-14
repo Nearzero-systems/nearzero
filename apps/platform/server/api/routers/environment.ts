@@ -4,6 +4,7 @@ import {
 	duplicateEnvironment,
 	findEnvironmentById,
 	findEnvironmentsByProjectId,
+	reconcileEnvironmentDefaultDomains,
 	updateEnvironmentById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -26,6 +27,7 @@ import {
 	apiFindOneEnvironment,
 	apiRemoveEnvironment,
 	apiUpdateEnvironment,
+	dnsZones,
 	environments,
 	projects,
 } from "@/server/db/schema";
@@ -241,6 +243,12 @@ export const environmentRouter = createTRPCRouter({
 				}
 
 				const currentEnvironment = await findEnvironmentById(environmentId);
+				if (
+					updateData.dnsZoneId !== undefined ||
+					updateData.domainPrefix !== undefined
+				) {
+					await checkPermission(ctx, { dns: ["update"] });
+				}
 
 				if (currentEnvironment.isDefault && updateData.name !== undefined) {
 					throw new TRPCError({
@@ -256,6 +264,36 @@ export const environmentRouter = createTRPCRouter({
 						code: "FORBIDDEN",
 						message: "You are not allowed to access this environment",
 					});
+				}
+				if (updateData.dnsZoneId) {
+					const zone = await db.query.dnsZones.findFirst({
+						where: and(
+							eq(dnsZones.dnsZoneId, updateData.dnsZoneId),
+							eq(dnsZones.organizationId, ctx.session.activeOrganizationId),
+						),
+					});
+					if (!zone) {
+						throw new TRPCError({
+							code: "FORBIDDEN",
+							message:
+								"The selected DNS zone does not belong to this organization",
+						});
+					}
+				}
+				if (updateData.projectId) {
+					const project = await db.query.projects.findFirst({
+						where: and(
+							eq(projects.projectId, updateData.projectId),
+							eq(projects.organizationId, ctx.session.activeOrganizationId),
+						),
+					});
+					if (!project) {
+						throw new TRPCError({
+							code: "FORBIDDEN",
+							message:
+								"The selected project does not belong to this organization",
+						});
+					}
 				}
 
 				if (ctx.user.role !== "owner" && ctx.user.role !== "admin") {
@@ -274,10 +312,18 @@ export const environmentRouter = createTRPCRouter({
 					}
 				}
 
+				const domainBindingChanged =
+					(updateData.dnsZoneId !== undefined &&
+						updateData.dnsZoneId !== currentEnvironment.dnsZoneId) ||
+					(updateData.domainPrefix !== undefined &&
+						updateData.domainPrefix !== currentEnvironment.domainPrefix);
 				const environment = await updateEnvironmentById(
 					environmentId,
 					updateData,
 				);
+				const domainReconciliation = domainBindingChanged
+					? await reconcileEnvironmentDefaultDomains(environmentId)
+					: { attempted: 0, updated: 0, failed: 0 };
 				if (environment) {
 					await audit(ctx, {
 						action: "update",
@@ -286,8 +332,11 @@ export const environmentRouter = createTRPCRouter({
 						resourceName: environment.name,
 					});
 				}
-				return environment;
+				return environment
+					? { ...environment, domainReconciliation }
+					: environment;
 			} catch (error) {
+				if (error instanceof TRPCError) throw error;
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message: `Error updating the environment: ${error instanceof Error ? error.message : error}`,

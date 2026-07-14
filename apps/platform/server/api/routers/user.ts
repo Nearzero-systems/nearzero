@@ -3,8 +3,11 @@ import {
 	createOrganizationUserWithCredentials,
 	createWebSocketTicket,
 	ensureOrganizationSlug,
+	findApplicationById,
+	findApplicationByName,
 	findNotificationById,
 	findOrganizationById,
+	findServerById,
 	findUserById,
 	getConsoleUrl,
 	getUserByToken,
@@ -31,11 +34,13 @@ import {
 	user,
 } from "@nearzero/server/db/schema";
 import { emailEquals } from "@nearzero/server/lib/email-identity";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
+import { requestMonitoring } from "@nearzero/server/services/monitoring-client";
 import {
+	checkServiceAccess,
 	hasPermission,
 	resolvePermissions,
 } from "@nearzero/server/services/permission";
-import { hasValidLicense } from "@nearzero/server/services/license-key";
 import { TRPCError } from "@trpc/server";
 import * as bcrypt from "bcrypt";
 import { and, asc, desc, eq, gt, ne } from "drizzle-orm";
@@ -318,10 +323,14 @@ export const userRouter = createTRPCRouter({
 		async ({ ctx }) => {
 			const user = await findUserById(ctx.user.ownerId);
 			const settings = await getWebServerSettings();
+			// Kept under the old route name for API compatibility. Monitoring
+			// credentials are server-side only and must never be returned to a browser.
 			return {
-				serverIp: settings?.serverIp,
 				enabledFeatures: user.enablePaidFeatures,
-				metricsConfig: settings?.metricsConfig,
+				monitoringConfigured: Boolean(
+					process.env.NEARZERO_METRICS_TOKEN?.trim() ||
+						settings?.metricsConfig.server.token?.trim(),
+				),
 			};
 		},
 	),
@@ -460,13 +469,11 @@ export const userRouter = createTRPCRouter({
 	getContainerMetrics: withPermission("monitoring", "read")
 		.input(
 			z.object({
-				url: z.string(),
-				token: z.string(),
 				appName: z.string(),
 				dataPoints: z.string(),
 			}),
 		)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
 			try {
 				if (!input.appName) {
 					throw new Error(
@@ -477,21 +484,47 @@ export const userRouter = createTRPCRouter({
 						].join("\n"),
 					);
 				}
-				const url = new URL(`${input.url}/metrics/containers`);
-				url.searchParams.append("limit", input.dataPoints);
-				url.searchParams.append("appName", input.appName);
-				const response = await fetch(url.toString(), {
-					headers: {
-						Authorization: `Bearer ${input.token}`,
-					},
+				const appSummary = await findApplicationByName(input.appName);
+				if (!appSummary) {
+					throw new TRPCError({
+						code: "NOT_FOUND",
+						message: "Application not found",
+					});
+				}
+				await checkServiceAccess(ctx, appSummary.applicationId, "read");
+				const application = await findApplicationById(appSummary.applicationId);
+				if (
+					application.environment.project.organizationId !==
+					ctx.session.activeOrganizationId
+				) {
+					throw new TRPCError({
+						code: "UNAUTHORIZED",
+						message: "You are not authorized to monitor this application",
+					});
+				}
+				if (application.serverId) {
+					const targetServer = await findServerById(application.serverId);
+					if (
+						targetServer.organizationId !== ctx.session.activeOrganizationId
+					) {
+						throw new TRPCError({
+							code: "UNAUTHORIZED",
+							message: "You are not authorized to monitor this server",
+						});
+					}
+				}
+				const response = await requestMonitoring({
+					serverId: application.serverId ?? undefined,
+					endpoint: { kind: "container", appName: application.appName },
+					limit: input.dataPoints,
 				});
-				if (!response.ok) {
+				if (response.status < 200 || response.status >= 300) {
 					throw new Error(
 						`Error ${response.status}: ${response.statusText}. Please verify that the application "${input.appName}" is running and this service is included in the monitoring configuration.`,
 					);
 				}
 
-				const data = await response.json();
+				const data = JSON.parse(response.body) as unknown;
 				if (!Array.isArray(data) || data.length === 0) {
 					throw new Error(
 						[

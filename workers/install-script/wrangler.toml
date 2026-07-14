@@ -4,6 +4,7 @@ compatibility_date = "2026-07-02"
 
 routes = [
 	{ pattern = "nearzero.dev/install.sh", zone_name = "nearzero.dev" },
+	{ pattern = "nearzero.dev/install.sh.sha256", zone_name = "nearzero.dev" },
 	{ pattern = "nearzero.dev/releases/*", zone_name = "nearzero.dev" },
 ]
 

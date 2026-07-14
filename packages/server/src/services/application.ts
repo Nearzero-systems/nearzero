@@ -12,7 +12,15 @@ import {
 	resolveApplicationRuntimePort,
 } from "@nearzero/server/utils/builders";
 import { getBuildPathPreflightCommand } from "@nearzero/server/utils/builders/preflight";
-import { getRailpackPrepareCommand } from "@nearzero/server/utils/builders/railpack";
+import {
+	getRailpackPackageManagerValidationCommand,
+	getRailpackPrepareCommand,
+	type RailpackPackageManager,
+} from "@nearzero/server/utils/builders/railpack";
+import {
+	prepareBuildInput,
+	wrapBuildCommand,
+} from "@nearzero/server/utils/builders/utils";
 import { SwarmServiceStabilityError } from "@nearzero/server/utils/docker/utils";
 import { sendBuildErrorNotifications } from "@nearzero/server/utils/notifications/build-error";
 import { sendBuildSuccessNotifications } from "@nearzero/server/utils/notifications/build-success";
@@ -68,7 +76,10 @@ import { validUniqueServerAppName } from "./project";
 export type Application = typeof applications.$inferSelect;
 
 type ApplicationNested = Awaited<ReturnType<typeof findApplicationById>>;
-type ApplicationBuildPlanResult = Awaited<ReturnType<typeof createApplicationBuildPlan>>;
+type ApplicationBuildPlanResult = Awaited<
+	ReturnType<typeof createApplicationBuildPlan>
+>;
+type ApplicationSourceCommand = { command: string; input?: string };
 
 const resolveDeploymentPlacement = (
 	application: Awaited<ReturnType<typeof findApplicationById>>,
@@ -85,7 +96,7 @@ const resolveDeploymentPlacement = (
 const getApplicationSourceCommand = async (
 	application: ApplicationNested,
 	placement: ApplicationExecutionPlacement,
-) => {
+): Promise<ApplicationSourceCommand> => {
 	const target = { targetServerId: placement.buildServerId };
 	if (application.sourceType === "github") {
 		return cloneGithubRepository(application, target);
@@ -103,9 +114,11 @@ const getApplicationSourceCommand = async (
 		return cloneGitRepository(application, target);
 	}
 	if (application.sourceType === "docker") {
-		return buildRemoteDocker(application);
+		return {
+			command: await buildRemoteDocker(application, placement.buildServerId),
+		};
 	}
-	return "";
+	return { command: "" };
 };
 
 const getApplicationPreparationPhases = async (
@@ -116,18 +129,17 @@ const getApplicationPreparationPhases = async (
 	const phases: BuildPhase[] = [];
 
 	if (options.includeSource) {
-		const sourceScript = await getApplicationSourceCommand(
-			application,
-			placement,
-		);
-		if (sourceScript.trim()) {
+		const source = await getApplicationSourceCommand(application, placement);
+		if (source.command.trim()) {
 			phases.push({
 				id: "source",
 				label:
 					application.sourceType === "docker"
 						? "Prepare image source"
 						: "Fetch source",
-				script: sourceScript,
+				script: source.command,
+				input: source.input,
+				sensitiveValues: source.input ? [source.input] : undefined,
 				errorCode: "source_fetch_failed",
 				retryPolicy: "transient",
 				timeoutSeconds: 900,
@@ -170,20 +182,54 @@ const getApplicationPreparationPhases = async (
 };
 
 const formatApplicationBuildPlanLog = (plan: ApplicationBuildPlanResult) => {
+	const diagnostics = plan.diagnostics ?? [];
+	const dockerfileAuthoritative =
+		plan.selectedBuilder === "dockerfile" ||
+		diagnostics.some(
+			(diagnostic) => diagnostic.code === "dockerfile_authoritative",
+		);
 	const lines = [
 		"Nearzero build detection",
+		`- Selection mode: ${plan.selectionMode}`,
 		`- Builder: ${plan.selectedBuilder}${plan.fallbackReason ? ` (${plan.fallbackReason})` : ""}`,
+		`- Build authority: ${
+			dockerfileAuthoritative
+				? "repository Dockerfile"
+				: "Nearzero managed builder"
+		}`,
 		`- Selected app: ${plan.selectedAppPath}`,
 		`- Apps detected: ${plan.appCount}`,
 		plan.framework ? `- Framework: ${plan.framework}` : null,
-		plan.packageManager ? `- Package manager: ${plan.packageManager}` : null,
-		plan.commands.install ? `- Install: ${plan.commands.install}` : null,
-		plan.commands.build ? `- Build: ${plan.commands.build}` : null,
-		plan.commands.start ? `- Start: ${plan.commands.start}` : null,
+		plan.packageManager
+			? `- ${dockerfileAuthoritative ? "Repository package-manager hint" : "Package manager"}: ${plan.packageManager}`
+			: null,
+		dockerfileAuthoritative
+			? "- Nearzero will not override Dockerfile install, build, or start commands."
+			: null,
+		!dockerfileAuthoritative && plan.commands.install
+			? `- Install: ${plan.commands.install}`
+			: null,
+		!dockerfileAuthoritative && plan.commands.build
+			? `- Build: ${plan.commands.build}`
+			: null,
+		!dockerfileAuthoritative && plan.commands.start
+			? `- Start: ${plan.commands.start}`
+			: null,
+		...diagnostics
+			.filter((diagnostic) => diagnostic.code !== "dockerfile_authoritative")
+			.map(
+				(diagnostic) =>
+					`- ${diagnostic.severity === "warning" ? "Warning" : "Info"}: ${diagnostic.message}`,
+			),
 		...plan.healingHints.map((hint) => `- Hint: ${hint}`),
 	].filter(Boolean);
 	return `${lines.join("\n")}\n`;
 };
+
+const isRailpackPackageManager = (
+	value: string | null,
+): value is RailpackPackageManager =>
+	value === "npm" || value === "pnpm" || value === "yarn" || value === "bun";
 
 const runApplicationBuildPipeline = async (input: {
 	application: ApplicationNested;
@@ -235,6 +281,20 @@ const runApplicationBuildPipeline = async (input: {
 	});
 
 	if (plan.selectedBuilder === "railpack") {
+		const railpackBuildInput = prepareBuildInput(input.application);
+		const plannedPackageManager = isRailpackPackageManager(plan.packageManager)
+			? plan.packageManager
+			: null;
+		const selectedTarget = plan.detectedApps.find(
+			(target) => target.path === plan.selectedAppPath,
+		);
+		const railpackRequiresNode = Object.values(
+			selectedTarget?.scripts ?? {},
+		).some(
+			(command) =>
+				typeof command === "string" &&
+				/(^|[\s;&|()])node(?=$|[\s;&|()])/.test(command),
+		);
 		try {
 			await runDeploymentPhases({
 				deploymentId: input.deploymentId,
@@ -246,14 +306,35 @@ const runApplicationBuildPipeline = async (input: {
 					{
 						id: "plan",
 						label: "Prepare Railpack build plan",
-						script: getRailpackPrepareCommand(
-							input.application,
-							input.placement.buildServerId,
+						script: wrapBuildCommand(
+							getRailpackPrepareCommand(
+								input.application,
+								input.placement.buildServerId,
+								plannedPackageManager,
+							),
 						),
+						input: railpackBuildInput.input,
+						sensitiveValues: railpackBuildInput.sensitiveValues,
 						errorCode: "build_plan_failed",
 						timeoutSeconds: 300,
 						requiredCapabilities: ["railpack", "docker"],
 					},
+					...(plan.selectionMode === "automatic" && plannedPackageManager
+						? [
+								{
+									id: "plan-contract",
+									label: "Validate Railpack package-manager contract",
+									script: getRailpackPackageManagerValidationCommand(
+										input.application,
+										input.placement.buildServerId,
+										plannedPackageManager,
+										railpackRequiresNode,
+									),
+									errorCode: "build_plan_failed" as const,
+									timeoutSeconds: 60,
+								},
+							]
+						: []),
 				],
 			});
 		} catch (error) {
@@ -265,7 +346,7 @@ const runApplicationBuildPipeline = async (input: {
 			}
 			plan = fallbackApplicationBuildPlanToNixpacks(
 				plan,
-				"Railpack could not generate a build plan.",
+				"Railpack could not produce a compatible build plan.",
 			);
 			await updateDeployment(input.deploymentId, { buildPlan: plan });
 			await appendDeploymentLog({
@@ -277,6 +358,11 @@ const runApplicationBuildPipeline = async (input: {
 		}
 	}
 
+	const preparedBuild = await getBuildCommand(input.application, {
+		buildServerId: input.placement.buildServerId,
+		buildType: plan.selectedBuilder,
+		railpackPrepared: plan.selectedBuilder === "railpack",
+	});
 	await runDeploymentPhases({
 		deploymentId: input.deploymentId,
 		logPath: input.logPath,
@@ -298,11 +384,16 @@ const runApplicationBuildPipeline = async (input: {
 			{
 				id: "build",
 				label: `Build image with ${plan.selectedBuilder}`,
-				script: await getBuildCommand(input.application, {
-					buildServerId: input.placement.buildServerId,
-					buildType: plan.selectedBuilder,
-					railpackPrepared: plan.selectedBuilder === "railpack",
-				}),
+				script:
+					typeof preparedBuild === "string"
+						? preparedBuild
+						: preparedBuild.script,
+				...(typeof preparedBuild === "string"
+					? {}
+					: {
+							input: preparedBuild.input,
+							sensitiveValues: preparedBuild.sensitiveValues,
+						}),
 				errorCode: "app_build_failed",
 				timeoutSeconds: 3600,
 				// Image builds pull base images and Nix/registry layers over the
@@ -399,6 +490,22 @@ const isDeploymentCancellation = (error: unknown) =>
 	error instanceof DeploymentPhaseError &&
 	error.code === "deployment_cancelled";
 
+const appendEnvironmentVariable = (
+	value: string | null | undefined,
+	key: string,
+	variableValue: string,
+) => [value?.trim(), `${key}=${variableValue}`].filter(Boolean).join("\n");
+
+const persistDeploymentFailureDiagnostic = async (
+	deploymentId: string,
+	error: unknown,
+) => {
+	if (!(error instanceof DeploymentPhaseError) || !error.diagnostic) return;
+	await updateDeployment(deploymentId, {
+		errorMessage: error.diagnostic.message,
+	});
+};
+
 const ensureDefaultDomainAfterDeploy = async (input: {
 	serviceType: "application";
 	serviceId: string;
@@ -463,10 +570,8 @@ const ensurePreviewDomainAfterDeploy = async (input: {
 	serverId?: string | null;
 }) => {
 	try {
-		const {
-			ensurePreviewDeploymentDomain,
-			verifyApplicationDomainRoute,
-		} = await import("./managed-domain-provision");
+		const { ensurePreviewDeploymentDomain, verifyApplicationDomainRoute } =
+			await import("./managed-domain-provision");
 		const domain = await ensurePreviewDeploymentDomain({
 			previewDeploymentId: input.previewDeployment.previewDeploymentId,
 			applicationId: input.application.applicationId,
@@ -720,6 +825,12 @@ export const deployApplication = async ({
 			serverId: placement.buildServerId,
 		}).catch(() => undefined);
 		const cancelled = isDeploymentCancellation(error);
+		if (!cancelled) {
+			await persistDeploymentFailureDiagnostic(
+				deployment.deploymentId,
+				error,
+			).catch(() => undefined);
+		}
 		await updateDeploymentStatus(
 			deployment.deploymentId,
 			cancelled ? "cancelled" : "error",
@@ -829,6 +940,12 @@ export const rebuildApplication = async ({
 			serverId: placement.buildServerId,
 		}).catch(() => undefined);
 		const cancelled = isDeploymentCancellation(error);
+		if (!cancelled) {
+			await persistDeploymentFailureDiagnostic(
+				deployment.deploymentId,
+				error,
+			).catch(() => undefined);
+		}
 		await updateDeploymentStatus(
 			deployment.deploymentId,
 			cancelled ? "cancelled" : "error",
@@ -916,9 +1033,21 @@ export const deployPreviewApplication = async ({
 			: "";
 		application.appName = previewDeployment.appName;
 		application.branch = previewDeployment.branch;
-		application.env = `${application.previewEnv}\nNEARZERO_DEPLOY_URL=${previewDeployUrl}`;
-		application.buildArgs = `${application.previewBuildArgs}\nNEARZERO_DEPLOY_URL=${previewDeployUrl}`;
-		application.buildSecrets = `${application.previewBuildSecrets}\nNEARZERO_DEPLOY_URL=${previewDeployUrl}`;
+		application.env = appendEnvironmentVariable(
+			application.previewEnv,
+			"NEARZERO_DEPLOY_URL",
+			previewDeployUrl,
+		);
+		application.buildArgs = appendEnvironmentVariable(
+			application.previewBuildArgs,
+			"NEARZERO_DEPLOY_URL",
+			previewDeployUrl,
+		);
+		application.buildSecrets = appendEnvironmentVariable(
+			application.previewBuildSecrets,
+			"NEARZERO_DEPLOY_URL",
+			previewDeployUrl,
+		);
 		application.rollbackActive = false;
 		application.rollbackRegistry = null;
 		application.registry = null;
@@ -976,6 +1105,12 @@ export const deployPreviewApplication = async ({
 			serverId: placement.buildServerId,
 		}).catch(() => undefined);
 		const cancelled = isDeploymentCancellation(error);
+		if (!cancelled) {
+			await persistDeploymentFailureDiagnostic(
+				deployment.deploymentId,
+				error,
+			).catch(() => undefined);
+		}
 		if (!cancelled) {
 			const comment = getIssueComment(application.name, "error", previewDomain);
 			await updateIssueComment({
@@ -1071,9 +1206,21 @@ export const rebuildPreviewApplication = async ({
 			: "";
 		application.appName = previewDeployment.appName;
 		application.branch = previewDeployment.branch;
-		application.env = `${application.previewEnv}\nNEARZERO_DEPLOY_URL=${previewDeployUrl}`;
-		application.buildArgs = `${application.previewBuildArgs}\nNEARZERO_DEPLOY_URL=${previewDeployUrl}`;
-		application.buildSecrets = `${application.previewBuildSecrets}\nNEARZERO_DEPLOY_URL=${previewDeployUrl}`;
+		application.env = appendEnvironmentVariable(
+			application.previewEnv,
+			"NEARZERO_DEPLOY_URL",
+			previewDeployUrl,
+		);
+		application.buildArgs = appendEnvironmentVariable(
+			application.previewBuildArgs,
+			"NEARZERO_DEPLOY_URL",
+			previewDeployUrl,
+		);
+		application.buildSecrets = appendEnvironmentVariable(
+			application.previewBuildSecrets,
+			"NEARZERO_DEPLOY_URL",
+			previewDeployUrl,
+		);
 		application.rollbackActive = false;
 		application.rollbackRegistry = null;
 		application.registry = null;
@@ -1129,6 +1276,12 @@ export const rebuildPreviewApplication = async ({
 		}).catch(() => undefined);
 
 		const cancelled = isDeploymentCancellation(error);
+		if (!cancelled) {
+			await persistDeploymentFailureDiagnostic(
+				deployment.deploymentId,
+				error,
+			).catch(() => undefined);
+		}
 		if (!cancelled) {
 			const comment = getIssueComment(application.name, "error", previewDomain);
 			await updateIssueComment({

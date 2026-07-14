@@ -1,10 +1,14 @@
 import { findAllDeploymentsByApplicationId } from "@nearzero/server/services/deployment";
-import type { Registry } from "@nearzero/server/services/registry";
+import {
+	loginDockerRegistry,
+	type Registry,
+} from "@nearzero/server/services/registry";
 import { createRollback } from "@nearzero/server/services/rollbacks";
 import type { ApplicationNested } from "../builders";
 
 export const uploadImageRemoteCommand = async (
 	application: ApplicationNested,
+	buildServerId?: string | null,
 ) => {
 	const registry = application.registry;
 	const rollbackRegistry = application.rollbackRegistry;
@@ -23,8 +27,14 @@ export const uploadImageRemoteCommand = async (
 	if (registry) {
 		const registryTag = getRegistryTag(registry, imageName);
 		if (registryTag) {
+			await loginDockerRegistry({
+				registryUrl: registry.registryUrl,
+				username: registry.username,
+				password: registry.password,
+				serverId: buildServerId,
+			});
 			commands.push(`echo "📦 [Enabled Registry Swarm]"`);
-			commands.push(getRegistryCommands(registry, imageName, registryTag));
+			commands.push(getRegistryCommands(imageName, registryTag));
 		}
 	}
 
@@ -46,9 +56,15 @@ export const uploadImageRemoteCommand = async (
 			rollback?.image || "",
 		);
 		if (rollbackRegistryTag) {
+			await loginDockerRegistry({
+				registryUrl: rollbackRegistry.registryUrl,
+				username: rollbackRegistry.username,
+				password: rollbackRegistry.password,
+				serverId: buildServerId,
+			});
 			commands.push(`echo "🔄 [Enabled Rollback Registry]"`);
 			commands.push(
-				getRegistryCommands(rollbackRegistry, imageName, rollbackRegistryTag),
+				getRegistryCommands(imageName, rollbackRegistryTag),
 			);
 		}
 	}
@@ -94,27 +110,22 @@ export const getRegistryTag = (registry: Registry, imageName: string) => {
 		: `${targetPrefix}/${repositoryName}`;
 };
 
-const getRegistryCommands = (
-	registry: Registry,
-	imageName: string,
-	registryTag: string,
-): string => {
+const shellQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`;
+
+const getRegistryCommands = (imageName: string, registryTag: string): string => {
+	const source = shellQuote(imageName);
+	const target = shellQuote(registryTag);
 	return `
-echo "📦 [Enabled Registry] Uploading image to '${registry.registryType}' | '${registryTag}'" ;
-echo "${registry.password}" | docker login ${registry.registryUrl} -u '${registry.username}' --password-stdin || { 
-	echo "❌ DockerHub Failed" ;
-	exit 1;
-}
-echo "✅ Registry Login Success" ;
-docker tag ${imageName} ${registryTag} || { 
+echo "📦 [Enabled Registry] Uploading image" ;
+docker tag ${source} ${target} || {
 	echo "❌ Error tagging image" ;
 	exit 1;
 }
 echo "✅ Image Tagged" ;
-docker push ${registryTag} || { 
+docker push ${target} || {
 	echo "❌ Error pushing image" ;
 	exit 1;
 }
-	echo "✅ Image Pushed" ;
+echo "✅ Image Pushed" ;
 `;
 };

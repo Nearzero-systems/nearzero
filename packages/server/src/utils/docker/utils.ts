@@ -47,18 +47,23 @@ export const pullImage = async (
 		}
 
 		if (authConfig?.username && authConfig?.password) {
-			await spawnAsync(
+			const login = spawnAsync(
 				"docker",
 				[
 					"login",
-					authConfig.registryUrl || "",
+					...(authConfig.registryUrl ? [authConfig.registryUrl] : []),
 					"-u",
 					authConfig.username,
-					"-p",
-					authConfig.password,
+					"--password-stdin",
 				],
 				onData,
 			);
+			if (!login.child.stdin) {
+				login.child.kill();
+				throw new Error("Docker login stdin is unavailable");
+			}
+			login.child.stdin.end(`${authConfig.password}\n`);
+			await login;
 		}
 		const localImage = spawnSync("docker", ["image", "inspect", dockerImage], {
 			stdio: "ignore",
@@ -799,6 +804,11 @@ for attempt in 1 2 3 4 5; do
 	fi
 done
 
+if docker service inspect "$SERVICE_NAME" >/dev/null 2>&1; then
+	printf 'Docker service %s still exists after removal timeout\n' "$SERVICE_NAME" >&2
+	exit 1
+fi
+
 if [ "$DELETE_VOLUMES" = "1" ]; then
 	printf '%s\n' "$SERVICE_VOLUMES" | while IFS= read -r volume_name; do
 		if [ -n "$volume_name" ]; then
@@ -819,11 +829,9 @@ true`;
 			await execAsync(command);
 		}
 	} catch (error) {
-		// The shell script above uses `|| true`, so this catch only fires when the
-		// transport itself fails (e.g. SSH to the remote server is unreachable).
-		// Previously this was returned and almost always silently discarded by
-		// callers, which is how a deleted service could leave an orphaned Swarm
-		// container running on the server. Log it so the failure is diagnosable.
+		// This catches transport failures and the explicit post-removal verification
+		// above. Callers deleting parent records must treat the returned error as a
+		// fail-closed result so a running service never becomes untracked.
 		console.error(
 			`[removeService] failed to remove service "${appName}" on serverId="${
 				serverId ?? "local"

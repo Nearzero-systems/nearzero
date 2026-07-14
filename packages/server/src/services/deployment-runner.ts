@@ -1,3 +1,4 @@
+import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import {
 	ExecError,
@@ -11,6 +12,11 @@ import {
 	repairServerCapabilities,
 } from "../setup/server-capability-repair";
 import { serverValidate } from "../setup/server-validate";
+import {
+	type BuildFailureDiagnostic,
+	diagnoseBuildFailureLog,
+	formatBuildFailureDiagnostic,
+} from "./build-failure-diagnostics";
 import { sanitizeOperationalLogLine } from "./operational-log";
 
 export type DeploymentPhaseErrorCode =
@@ -40,6 +46,10 @@ export interface BuildPhase {
 	id: string;
 	label: string;
 	script: string;
+	/** Sensitive stdin delivered only while the phase runner is executing. */
+	input?: string;
+	/** Exact values scrubbed from phase output before it reaches durable logs. */
+	sensitiveValues?: readonly string[];
 	errorCode?: DeploymentPhaseErrorCode;
 	retryPolicy?: "none" | "transient";
 	requiredCapabilities?: string[];
@@ -57,11 +67,14 @@ export interface DeploymentPhaseContext {
 	phases: BuildPhase[];
 }
 
+const BUILD_FAILURE_DIAGNOSTIC_TIMEOUT_MS = 3_000;
+
 export class DeploymentPhaseError extends Error {
 	public readonly code: DeploymentPhaseErrorCode;
 	public readonly phaseId: string;
 	public readonly phaseLabel: string;
 	public readonly cause?: unknown;
+	public readonly diagnostic?: BuildFailureDiagnostic;
 
 	constructor(input: {
 		code: DeploymentPhaseErrorCode;
@@ -69,6 +82,7 @@ export class DeploymentPhaseError extends Error {
 		phaseLabel: string;
 		message?: string;
 		cause?: unknown;
+		diagnostic?: BuildFailureDiagnostic;
 	}) {
 		super(
 			input.message ??
@@ -79,6 +93,7 @@ export class DeploymentPhaseError extends Error {
 		this.phaseId = input.phaseId;
 		this.phaseLabel = input.phaseLabel;
 		this.cause = input.cause;
+		this.diagnostic = input.diagnostic;
 	}
 
 	toUserMessage() {
@@ -130,8 +145,11 @@ function assertExecutionPlacementContext(context: DeploymentPhaseContext) {
 async function execOnTarget(
 	serverId: string | null | undefined,
 	command: string,
+	input?: string,
 ) {
-	return serverId ? execAsyncRemote(serverId, command) : execAsync(command);
+	return serverId
+		? execAsyncRemote(serverId, command, undefined, { input })
+		: execAsync(command, { input });
 }
 
 function heredocCommand(input: {
@@ -162,14 +180,24 @@ export async function appendDeploymentLog(input: {
 	message: string;
 }) {
 	const content = sanitizeOperationalLogLine(input.message);
-	await execOnTarget(
-		input.serverId,
-		heredocCommand({
-			filePath: input.logPath,
-			content,
-			append: true,
-		}),
-	);
+	if (input.serverId) {
+		const quotedPath = quote([input.logPath]);
+		const quotedDirectory = quote([path.posix.dirname(input.logPath)]);
+		await execAsyncRemote(
+			input.serverId,
+			`umask 077; mkdir -p ${quotedDirectory}; touch ${quotedPath}; chmod 600 ${quotedPath}; cat >> ${quotedPath}`,
+			undefined,
+			{ input: content },
+		);
+		return;
+	}
+
+	await fsPromises.mkdir(path.dirname(input.logPath), {
+		recursive: true,
+		mode: 0o700,
+	});
+	await fsPromises.appendFile(input.logPath, content, { mode: 0o600 });
+	await fsPromises.chmod(input.logPath, 0o600);
 }
 
 function normalizeCapability(capability: string) {
@@ -208,6 +236,34 @@ function getLogServerId(context: DeploymentPhaseContext) {
 	return context.logServerId === undefined
 		? context.serverId
 		: context.logServerId;
+}
+
+async function diagnoseTerminalBuildFailure(context: DeploymentPhaseContext) {
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const result = await Promise.race([
+			execOnTarget(
+				getLogServerId(context),
+				`tail -c 131072 ${quote([context.logPath])} 2>/dev/null || true`,
+			).then(
+				(value) => value,
+				() => null,
+			),
+			new Promise<null>((resolve) => {
+				timeout = setTimeout(
+					() => resolve(null),
+					BUILD_FAILURE_DIAGNOSTIC_TIMEOUT_MS,
+				);
+			}),
+		]);
+		if (!result) return null;
+		const { stdout, stderr } = result;
+		return diagnoseBuildFailureLog(`${stdout}\n${stderr}`);
+	} catch {
+		return null;
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
 }
 
 async function assertCommandCapability(input: {
@@ -259,7 +315,7 @@ async function assertPortableCapabilities(
 			context,
 			capability: "swarm-manager",
 			command:
-				"test \"$(docker info --format '{{.Swarm.ControlAvailable}}' 2>/dev/null)\" = \"true\"",
+				'test "$(docker info --format \'{{.Swarm.ControlAvailable}}\' 2>/dev/null)" = "true"',
 			code: "swarm_not_ready",
 			message: "The selected server is not a Docker Swarm manager.",
 		});
@@ -270,7 +326,7 @@ async function assertPortableCapabilities(
 			context,
 			capability: "architecture",
 			command:
-				"case \"$(uname -m)\" in x86_64|amd64|aarch64|arm64) exit 0 ;; *) exit 1 ;; esac",
+				'case "$(uname -m)" in x86_64|amd64|aarch64|arm64) exit 0 ;; *) exit 1 ;; esac',
 			code: "unsupported_architecture",
 			message: "The build server architecture is not supported.",
 		});
@@ -410,10 +466,7 @@ function collectRemoteCapabilityFailures(
 			});
 		}
 
-		if (
-			validation.privilegeMode !== "root" &&
-			!validation.dockerGroupMember
-		) {
+		if (validation.privilegeMode !== "root" && !validation.dockerGroupMember) {
 			failures.push({
 				code: "server_not_ready",
 				capability: "docker-group",
@@ -509,7 +562,7 @@ async function assertLocalCapabilities(context: DeploymentPhaseContext) {
 		checks.push({
 			capability: "swarm",
 			command:
-				"test \"$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)\" = \"active\"",
+				'test "$(docker info --format \'{{.Swarm.LocalNodeState}}\' 2>/dev/null)" = "active"',
 			code: "swarm_not_ready",
 			message: "Docker Swarm is not active on the Nearzero host.",
 		});
@@ -632,43 +685,165 @@ function getDeploymentCancellationFilePath(deploymentId: string) {
 	return path.posix.join(getDeploymentWorkDir(deploymentId), "cancelled");
 }
 
+const PHASE_LOG_REDACTOR_AWK = `
+function replace_literal(value, needle, result, position) {
+	if (needle == "") return value
+	result = ""
+	while ((position = index(value, needle)) > 0) {
+		result = result substr(value, 1, position - 1) "[REDACTED]"
+		value = substr(value, position + length(needle))
+	}
+	return result value
+}
+BEGIN {
+	while ((getline secret_path < manifest) > 0) {
+		while ((getline secret_line < secret_path) > 0) {
+			if (length(secret_line) > 0) secrets[++secret_count] = secret_line
+		}
+		close(secret_path)
+	}
+}
+{
+	redacted = $0
+	for (secret_index = 1; secret_index <= secret_count; secret_index++) {
+		redacted = replace_literal(redacted, secrets[secret_index])
+	}
+	print redacted
+	fflush()
+}
+`;
+
+function getSensitiveRepresentations(values: readonly string[] | undefined) {
+	const representations = new Set<string>();
+	for (const value of values ?? []) {
+		if (!value) continue;
+		representations.add(value);
+		representations.add(JSON.stringify(value).slice(1, -1));
+		representations.add(value.replaceAll("'", "''"));
+		representations.add(value.replaceAll("'", `'"'"'`));
+		representations.add(value.replaceAll("\\", "\\\\").replaceAll('"', '\\"'));
+		representations.add(Buffer.from(value, "utf8").toString("base64"));
+		representations.add(Buffer.from(value, "utf8").toString("base64url"));
+		try {
+			representations.add(encodeURIComponent(value));
+		} catch {
+			// A malformed surrogate cannot be URI encoded; the raw forms still apply.
+		}
+	}
+	return [...representations].filter(Boolean);
+}
+
+function createPhaseRunnerEnvelope(phase: BuildPhase) {
+	const redactions = getSensitiveRepresentations(phase.sensitiveValues);
+	const records: string[] = [];
+	if (phase.input !== undefined) {
+		records.push(`I|${Buffer.from(phase.input, "utf8").toString("base64")}|`);
+	}
+	for (const value of redactions) {
+		records.push(`R|${Buffer.from(value, "utf8").toString("base64")}|`);
+	}
+	return {
+		input: records.length > 0 ? `${records.join("\n")}\n` : undefined,
+		hasChildInput: phase.input !== undefined,
+		hasRedactions: redactions.length > 0,
+	};
+}
+
 function getPhaseRunnerScript(input: {
 	deploymentId: string;
 	executionCommand: string;
 	logPath: string;
+	envelopeFilePath?: string;
+	hasChildInput: boolean;
+	hasRedactions: boolean;
 }) {
 	const pidPath = quote([getDeploymentProcessFilePath(input.deploymentId)]);
 	const cancellationPath = quote([
 		getDeploymentCancellationFilePath(input.deploymentId),
 	]);
 	const logPath = quote([input.logPath]);
-	const childCommand = `bash -c ${quote([input.executionCommand])}`;
+	const envelopePath = input.envelopeFilePath
+		? quote([input.envelopeFilePath])
+		: null;
+	const stdinPath = input.envelopeFilePath
+		? quote([`${input.envelopeFilePath}.input`])
+		: null;
+	const redactionDirectoryPath = input.envelopeFilePath
+		? quote([`${input.envelopeFilePath}.redactions`])
+		: null;
+	const redactionManifestPath = input.envelopeFilePath
+		? quote([`${input.envelopeFilePath}.redactions.manifest`])
+		: null;
+	const phaseCommand = `bash -c ${quote([input.executionCommand])}${
+		input.hasChildInput && stdinPath ? ` < ${stdinPath}` : ""
+	}`;
+	const redactorCommand = input.hasRedactions
+		? `awk -v manifest=${redactionManifestPath} ${quote([PHASE_LOG_REDACTOR_AWK])}`
+		: null;
+	const childCommand = redactorCommand
+		? `bash -o pipefail -c ${quote([
+				`${phaseCommand} 2>&1 | ${redactorCommand} >> ${logPath}`,
+			])}`
+		: phaseCommand;
+	const childRedirect = redactorCommand ? "" : ` >> ${logPath} 2>&1`;
 
 	return [
 		"#!/usr/bin/env bash",
 		"set -Eeuo pipefail",
 		`pid_file=${pidPath}`,
 		`cancel_file=${cancellationPath}`,
-		"if test -f \"$cancel_file\"; then exit 130; fi",
-		"cleanup() { rm -f \"$pid_file\"; }",
+		...(envelopePath
+			? [
+					`envelope_file=${envelopePath}`,
+					`input_file=${stdinPath}`,
+					`redaction_dir=${redactionDirectoryPath}`,
+					`redaction_manifest=${redactionManifestPath}`,
+				]
+			: []),
+		envelopePath
+			? 'cleanup() { rm -f "$pid_file" "$envelope_file" "$input_file" "$redaction_manifest"; rm -rf "$redaction_dir"; }'
+			: 'cleanup() { rm -f "$pid_file"; }',
 		"trap cleanup EXIT",
+		'if test -f "$cancel_file"; then exit 130; fi',
+		...(envelopePath
+			? [
+					"umask 077",
+					'if ! (set -C; cat > "$envelope_file"); then exit 73; fi',
+					'chmod 600 "$envelope_file"',
+					'mkdir -m 700 "$redaction_dir"',
+					': > "$input_file"',
+					': > "$redaction_manifest"',
+					'chmod 600 "$input_file" "$redaction_manifest"',
+					"input_seen=0",
+					"redaction_count=0",
+					'while IFS="|" read -r record_kind record_payload record_extra; do',
+					'  test -z "$record_extra" || exit 65',
+					'  case "$record_kind" in',
+					'    I) test "$input_seen" = "0" || exit 65; printf "%s" "$record_payload" | base64 -d > "$input_file"; input_seen=1 ;;',
+					'    R) redaction_count=$((redaction_count + 1)); redaction_file="$redaction_dir/$redaction_count"; printf "%s" "$record_payload" | base64 -d > "$redaction_file"; chmod 600 "$redaction_file"; printf "%s\\n" "$redaction_file" >> "$redaction_manifest" ;;',
+					"    *) exit 65 ;;",
+					"  esac",
+					'done < "$envelope_file"',
+					'rm -f "$envelope_file"',
+				]
+			: []),
 		"if command -v setsid >/dev/null 2>&1; then",
-		`  setsid ${childCommand} >> ${logPath} 2>&1 &`,
+		`  setsid ${childCommand}${childRedirect} &`,
 		"  child_pid=$!",
-		"  printf -- '-%s\\n' \"$child_pid\" > \"$pid_file\"",
+		'  printf -- \'-%s\\n\' "$child_pid" > "$pid_file"',
 		"else",
-		`  ${childCommand} >> ${logPath} 2>&1 &`,
+		`  ${childCommand}${childRedirect} &`,
 		"  child_pid=$!",
-		"  printf '%s\\n' \"$child_pid\" > \"$pid_file\"",
+		'  printf \'%s\\n\' "$child_pid" > "$pid_file"',
 		"fi",
 		"set +e",
-		"wait \"$child_pid\"",
+		'wait "$child_pid"',
 		"status=$?",
 		"set -e",
-		"if test -f \"$cancel_file\"; then",
+		'if test -f "$cancel_file"; then',
 		"  exit 130",
 		"fi",
-		"exit \"$status\"",
+		'exit "$status"',
 	].join("\n");
 }
 
@@ -693,7 +868,9 @@ export async function cancelDeploymentProcess(input: {
 }) {
 	const workDir = getDeploymentWorkDir(input.deploymentId);
 	const pidPath = getDeploymentProcessFilePath(input.deploymentId);
-	const cancellationPath = getDeploymentCancellationFilePath(input.deploymentId);
+	const cancellationPath = getDeploymentCancellationFilePath(
+		input.deploymentId,
+	);
 	const command = [
 		`mkdir -p ${quote([workDir])}`,
 		`touch ${quote([cancellationPath])}`,
@@ -779,10 +956,17 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 			const attempts = getPhaseAttemptCount(phase);
 			for (let attempt = 1; attempt <= attempts; attempt += 1) {
 				const startedAt = Date.now();
+				const runnerEnvelope = createPhaseRunnerEnvelope(phase);
 				const runnerScript = getPhaseRunnerScript({
 					deploymentId: context.deploymentId,
 					executionCommand: getPhaseExecutionCommand(phase, scriptPath),
 					logPath: context.logPath,
+					envelopeFilePath:
+						runnerEnvelope.input === undefined
+							? undefined
+							: `${runnerPath}.envelope`,
+					hasChildInput: runnerEnvelope.hasChildInput,
+					hasRedactions: runnerEnvelope.hasRedactions,
 				});
 				await execOnTarget(
 					context.serverId,
@@ -816,6 +1000,7 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 					await execOnTarget(
 						context.serverId,
 						`bash -Eeuo pipefail ${quote([runnerPath])}`,
+						runnerEnvelope.input,
 					);
 					await appendDeploymentLog({
 						logPath: context.logPath,
@@ -825,10 +1010,7 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 					break;
 				} catch (cause) {
 					if (
-						await wasDeploymentCancelled(
-							context.deploymentId,
-							context.serverId,
-						)
+						await wasDeploymentCancelled(context.deploymentId, context.serverId)
 					) {
 						throw new DeploymentPhaseError({
 							code: "deployment_cancelled",
@@ -843,8 +1025,7 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 						? "phase_timeout"
 						: (phase.errorCode ?? "app_build_failed");
 					const retryable =
-						attempt < attempts &&
-						(timedOut || isTransientFailure(cause));
+						attempt < attempts && (timedOut || isTransientFailure(cause));
 					await appendDeploymentLog({
 						logPath: context.logPath,
 						serverId: getLogServerId(context),
@@ -869,23 +1050,36 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 						continue;
 					}
 
+					const diagnostic =
+						!timedOut && code === "app_build_failed" && phase.id === "build"
+							? await diagnoseTerminalBuildFailure(context)
+							: null;
+					if (diagnostic) {
+						await appendDeploymentLog({
+							logPath: context.logPath,
+							serverId: getLogServerId(context),
+							message: `\n${formatBuildFailureDiagnostic(diagnostic)}`,
+						}).catch(() => undefined);
+					}
+
 					throw new DeploymentPhaseError({
 						code,
 						phaseId: phase.id,
 						phaseLabel: phase.label,
 						message: timedOut
 							? `Deployment phase "${phase.label}" exceeded its ${phase.timeoutSeconds ?? "configured"} second timeout.`
-							: `Deployment phase "${phase.label}" failed.`,
+							: (diagnostic?.message ??
+								`Deployment phase "${phase.label}" failed.`),
 						cause,
+						diagnostic: diagnostic ?? undefined,
 					});
 				}
 			}
 		}
 	} finally {
-		await execOnTarget(
-			context.serverId,
-			`rm -rf ${quote([workDir])}`,
-		).catch(() => undefined);
+		await execOnTarget(context.serverId, `rm -rf ${quote([workDir])}`).catch(
+			() => undefined,
+		);
 	}
 }
 

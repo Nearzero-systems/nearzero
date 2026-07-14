@@ -1,13 +1,17 @@
 import {
 	consumeManagedGitProviderState,
 	createGitlab,
-	findGitlabById,
-	getManagedGitProviderCallbackBaseUrl,
 	getManagedGitlabConfig,
+	getManagedGitProviderCallbackBaseUrl,
 	isHostedEditionMode,
 	isManagedGitProviderState,
 	updateGitlab,
 } from "@nearzero/server";
+import { db } from "@nearzero/server/db";
+import { eq } from "drizzle-orm";
+import { parseGitProviderBaseUrl } from "@/server/api/utils/git-provider-url-security";
+import { gitlab } from "@/server/db/schema";
+import { consumeByoGitProviderTargetState } from "@/server/routes/handlers/providers/byo-oauth-state";
 import type { ApiRequest, ApiResponse } from "@/server/types/api";
 
 function redirectWithError(res: ApiResponse, error: string) {
@@ -17,11 +21,8 @@ function redirectWithError(res: ApiResponse, error: string) {
 	);
 }
 
-export default async function handler(
-	req: ApiRequest,
-	res: ApiResponse,
-) {
-	const { code, gitlabId, state } = req.query;
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+	const { code, state } = req.query;
 
 	if (!code || Array.isArray(code)) {
 		return res.status(400).json({ error: "Missing or invalid code" });
@@ -51,7 +52,10 @@ export default async function handler(
 		const result = await response.json();
 
 		if (!result.access_token || !result.refresh_token) {
-			return redirectWithError(res, "Missing or invalid GitLab authorization code");
+			return redirectWithError(
+				res,
+				"Missing or invalid GitLab authorization code",
+			);
 		}
 
 		const expiresAt = Math.floor(Date.now() / 1000) + result.expires_in;
@@ -74,7 +78,8 @@ export default async function handler(
 
 		return res.redirect(
 			307,
-			managedState.returnTo || "/dashboard/settings/git-providers?connected=true",
+			managedState.returnTo ||
+				"/dashboard/settings/git-providers?connected=true",
 		);
 	}
 
@@ -85,54 +90,66 @@ export default async function handler(
 		);
 	}
 
-	const gitlab = await findGitlabById(gitlabId as string);
-	// Use internal URL for token exchange when GitLab is on same instance as Nearzero
-	const baseUrl = gitlab.gitlabInternalUrl || gitlab.gitlabUrl;
-	const gitlabUrl = new URL(baseUrl);
-
-	const headers: HeadersInit = {
-		"Content-Type": "application/x-www-form-urlencoded",
-	};
-
-	// In case of basic auth being present in the URL, we need to remove it from the URL
-	// and add it to the Authorization header.
-	if (gitlabUrl.username && gitlabUrl.password) {
-		headers.Authorization = `Basic ${Buffer.from(`${gitlabUrl.username}:${gitlabUrl.password}`).toString("base64")}`;
+	if (typeof state !== "string") {
+		return redirectWithError(res, "Invalid GitLab authorization state");
 	}
 
-	const url =
-		gitlabUrl.username && gitlabUrl.password
-			? new URL(gitlabUrl, {
-					...gitlabUrl,
-					username: "",
-					password: "",
-				}).toString()
-			: gitlabUrl.toString();
+	try {
+		const { state: byoState, provider } =
+			await consumeByoGitProviderTargetState(state, "gitlab");
+		const integration = await db.query.gitlab.findFirst({
+			where: eq(gitlab.gitProviderId, provider.gitProviderId),
+		});
+		if (
+			!integration?.applicationId ||
+			!integration.secret ||
+			!integration.redirectUri
+		) {
+			return redirectWithError(res, "Incomplete GitLab OAuth configuration");
+		}
 
-	const response = await fetch(`${url}/oauth/token`, {
-		method: "POST",
-		headers,
-		body: new URLSearchParams({
-			client_id: gitlab.applicationId as string,
-			client_secret: gitlab.secret as string,
-			code: code as string,
-			grant_type: "authorization_code",
-			redirect_uri: `${gitlab.redirectUri}?gitlabId=${gitlabId}`,
-		}),
-	});
+		const tokenBaseUrl = parseGitProviderBaseUrl(
+			integration.gitlabInternalUrl || integration.gitlabUrl,
+			"GitLab token URL",
+		);
+		const headers: HeadersInit = {
+			"Content-Type": "application/x-www-form-urlencoded",
+		};
+		const tokenUrl = `${tokenBaseUrl}/oauth/token`;
+		const response = await fetch(tokenUrl, {
+			method: "POST",
+			headers,
+			body: new URLSearchParams({
+				client_id: integration.applicationId,
+				client_secret: integration.secret,
+				code: code as string,
+				grant_type: "authorization_code",
+				redirect_uri: integration.redirectUri,
+			}),
+		});
+		const result = await response.json();
+		if (!result.access_token || !result.refresh_token) {
+			return redirectWithError(
+				res,
+				"Missing or invalid GitLab authorization code",
+			);
+		}
 
-	const result = await response.json();
+		const expiresAt = Math.floor(Date.now() / 1000) + result.expires_in;
+		await updateGitlab(integration.gitlabId, {
+			accessToken: result.access_token,
+			refreshToken: result.refresh_token,
+			expiresAt,
+		});
 
-	if (!result.access_token || !result.refresh_token) {
-		return res.status(400).json({ error: "Missing or invalid code" });
+		return res.redirect(
+			307,
+			byoState.returnTo || "/dashboard/settings/git-providers?connected=true",
+		);
+	} catch {
+		return redirectWithError(
+			res,
+			"Invalid or expired GitLab authorization state",
+		);
 	}
-
-	const expiresAt = Math.floor(Date.now() / 1000) + result.expires_in;
-	await updateGitlab(gitlab.gitlabId, {
-		accessToken: result.access_token,
-		refreshToken: result.refresh_token,
-		expiresAt,
-	});
-
-	return res.redirect(307, "/dashboard/settings/git-providers?connected=true");
 }

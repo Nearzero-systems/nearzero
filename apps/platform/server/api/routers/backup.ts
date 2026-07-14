@@ -27,16 +27,19 @@ import {
 	updateBackupById,
 } from "@nearzero/server";
 import { findDestinationById } from "@nearzero/server/services/destination";
-import { checkServicePermissionAndAccess } from "@nearzero/server/services/permission";
+import { sanitizePublicErrorMessage } from "@nearzero/server/services/operational-log";
+import {
+	checkPermission,
+	checkServicePermissionAndAccess,
+} from "@nearzero/server/services/permission";
 import { runComposeBackup } from "@nearzero/server/utils/backups/compose";
 import {
+	getDestinationSensitiveValues,
 	getS3Credentials,
 	normalizeS3Path,
+	quoteShellArgument,
 } from "@nearzero/server/utils/backups/utils";
-import {
-	execAsync,
-	execAsyncRemote,
-} from "@nearzero/server/utils/process/execAsync";
+import { executeSensitiveShellScript } from "@nearzero/server/utils/process/execAsync";
 import {
 	restoreComposeBackup,
 	restoreLibsqlBackup,
@@ -75,11 +78,55 @@ interface RcloneFile {
 	};
 }
 
+const BACKUP_PRIVATE_KEYS = new Set([
+	"accessKey",
+	"secretAccessKey",
+	"databasePassword",
+	"databaseRootPassword",
+	"password",
+	"privateKey",
+	"token",
+	"env",
+	"buildArgs",
+	"buildSecrets",
+]);
+
+function redactBackupTree(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(redactBackupTree);
+	if (!value || typeof value !== "object") return value;
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>)
+			.filter(([key]) => !BACKUP_PRIVATE_KEYS.has(key))
+			.map(([key, nested]) => [key, redactBackupTree(nested)]),
+	);
+}
+
+function toPublicBackup<T extends object>(backup: T): T {
+	return redactBackupTree(backup) as T;
+}
+
+function assertDestinationOrganization(
+	destination: { organizationId: string },
+	activeOrganizationId: string,
+) {
+	if (destination.organizationId !== activeOrganizationId) {
+		throw new TRPCError({
+			code: "UNAUTHORIZED",
+			message: "You do not have access to this backup destination",
+		});
+	}
+}
+
 export const backupRouter = createTRPCRouter({
 	create: protectedProcedure
 		.input(apiCreateBackup)
 		.mutation(async ({ input, ctx }) => {
 			try {
+				const destination = await findDestinationById(input.destinationId);
+				assertDestinationOrganization(
+					destination,
+					ctx.session.activeOrganizationId,
+				);
 				const serviceId =
 					input.postgresId ||
 					input.mysqlId ||
@@ -91,6 +138,8 @@ export const backupRouter = createTRPCRouter({
 					await checkServicePermissionAndAccess(ctx, serviceId, {
 						backup: ["create"],
 					});
+				} else {
+					await checkPermission(ctx, { backup: ["create"] });
 				}
 
 				const newBackup = await createBackup(input);
@@ -140,13 +189,12 @@ export const backupRouter = createTRPCRouter({
 					resourceId: backup.backupId,
 				});
 			} catch (error) {
-				console.error(error);
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error.message
-							: "Error creating the Backup",
+					message: sanitizePublicErrorMessage(
+						error instanceof Error ? error.message : error,
+						"Error creating the backup",
+					),
 					cause: error,
 				});
 			}
@@ -155,6 +203,10 @@ export const backupRouter = createTRPCRouter({
 		.input(apiFindOneBackup)
 		.query(async ({ input, ctx }) => {
 			const backup = await findBackupById(input.backupId);
+			assertDestinationOrganization(
+				backup.destination,
+				ctx.session.activeOrganizationId,
+			);
 
 			const serviceId =
 				backup.postgresId ||
@@ -167,15 +219,26 @@ export const backupRouter = createTRPCRouter({
 				await checkServicePermissionAndAccess(ctx, serviceId, {
 					backup: ["read"],
 				});
+			} else {
+				await checkPermission(ctx, { backup: ["read"] });
 			}
 
-			return backup;
+			return toPublicBackup(backup);
 		}),
 	update: protectedProcedure
 		.input(apiUpdateBackup)
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const existing = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					existing.destination,
+					ctx.session.activeOrganizationId,
+				);
+				const nextDestination = await findDestinationById(input.destinationId);
+				assertDestinationOrganization(
+					nextDestination,
+					ctx.session.activeOrganizationId,
+				);
 				const serviceId =
 					existing.postgresId ||
 					existing.mysqlId ||
@@ -187,10 +250,16 @@ export const backupRouter = createTRPCRouter({
 					await checkServicePermissionAndAccess(ctx, serviceId, {
 						backup: ["update"],
 					});
+				} else {
+					await checkPermission(ctx, { backup: ["update"] });
 				}
 
 				await updateBackupById(input.backupId, input);
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 
 				if (process.env.JOBS_URL) {
 					if (backup.enabled) {
@@ -220,8 +289,10 @@ export const backupRouter = createTRPCRouter({
 					resourceId: backup.backupId,
 				});
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : "Error updating this Backup";
+				const message = sanitizePublicErrorMessage(
+					error instanceof Error ? error.message : error,
+					"Error updating this backup",
+				);
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message,
@@ -233,6 +304,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				const serviceId =
 					backup.postgresId ||
 					backup.mysqlId ||
@@ -244,6 +319,8 @@ export const backupRouter = createTRPCRouter({
 					await checkServicePermissionAndAccess(ctx, serviceId, {
 						backup: ["delete"],
 					});
+				} else {
+					await checkPermission(ctx, { backup: ["delete"] });
 				}
 
 				const value = await removeBackupById(input.backupId);
@@ -265,8 +342,10 @@ export const backupRouter = createTRPCRouter({
 				});
 				return value;
 			} catch (error) {
-				const message =
-					error instanceof Error ? error.message : "Error deleting this Backup";
+				const message = sanitizePublicErrorMessage(
+					error instanceof Error ? error.message : error,
+					"Error deleting this backup",
+				);
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message,
@@ -278,6 +357,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				if (backup.postgresId) {
 					await checkServicePermissionAndAccess(ctx, backup.postgresId, {
 						backup: ["create"],
@@ -293,10 +376,10 @@ export const backupRouter = createTRPCRouter({
 				});
 				return true;
 			} catch (error) {
-				const message =
-					error instanceof Error
-						? error.message
-						: "Error running manual Postgres backup ";
+				const message = sanitizePublicErrorMessage(
+					error instanceof Error ? error.message : error,
+					"Error running manual Postgres backup",
+				);
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message,
@@ -309,6 +392,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				if (backup.mysqlId) {
 					await checkServicePermissionAndAccess(ctx, backup.mysqlId, {
 						backup: ["create"],
@@ -336,6 +423,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				if (backup.mariadbId) {
 					await checkServicePermissionAndAccess(ctx, backup.mariadbId, {
 						backup: ["create"],
@@ -363,6 +454,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				if (backup.composeId) {
 					await checkServicePermissionAndAccess(ctx, backup.composeId, {
 						backup: ["create"],
@@ -390,6 +485,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				if (backup.mongoId) {
 					await checkServicePermissionAndAccess(ctx, backup.mongoId, {
 						backup: ["create"],
@@ -417,6 +516,10 @@ export const backupRouter = createTRPCRouter({
 		.mutation(async ({ input, ctx }) => {
 			try {
 				const backup = await findBackupById(input.backupId);
+				assertDestinationOrganization(
+					backup.destination,
+					ctx.session.activeOrganizationId,
+				);
 				if (backup.libsqlId) {
 					await checkServicePermissionAndAccess(ctx, backup.libsqlId, {
 						backup: ["create"],
@@ -443,6 +546,10 @@ export const backupRouter = createTRPCRouter({
 		.input(apiFindOneBackup)
 		.mutation(async ({ input, ctx }) => {
 			const backup = await findBackupById(input.backupId);
+			assertDestinationOrganization(
+				backup.destination,
+				ctx.session.activeOrganizationId,
+			);
 			await runWebServerBackup(backup);
 			await keepLatestNBackups(backup);
 			await audit(ctx, {
@@ -494,24 +601,17 @@ export const backupRouter = createTRPCRouter({
 						: input.search;
 
 				const searchPath = baseDir ? `${bucketPath}/${baseDir}` : bucketPath;
-				const listCommand = `rclone lsjson ${rcloneFlags.join(" ")} "${searchPath}" --no-mimetype --no-modtime 2>/dev/null`;
-
-				let stdout = "";
-
-				if (input.serverId) {
-					const result = await execAsyncRemote(input.serverId, listCommand);
-					stdout = result.stdout;
-				} else {
-					const result = await execAsync(listCommand);
-					stdout = result.stdout;
-				}
+				const listCommand = `rclone lsjson ${rcloneFlags.join(" ")} ${quoteShellArgument(searchPath)} --no-mimetype --no-modtime 2>/dev/null`;
+				const { stdout } = await executeSensitiveShellScript({
+					serverId: input.serverId,
+					script: listCommand,
+					sensitiveValues: getDestinationSensitiveValues(destination),
+				});
 
 				let files: RcloneFile[] = [];
 				try {
 					files = JSON.parse(stdout) as RcloneFile[];
-				} catch (error) {
-					console.error("Error parsing JSON response:", error);
-					console.error("Raw stdout:", stdout);
+				} catch {
 					throw new Error("Failed to parse backup files list");
 				}
 
@@ -534,13 +634,12 @@ export const backupRouter = createTRPCRouter({
 
 				return results.slice(0, 100);
 			} catch (error) {
-				console.error("Error in listBackupFiles:", error);
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error.message
-							: "Error listing backup files",
+					message: sanitizePublicErrorMessage(
+						error instanceof Error ? error.message : error,
+						"Error listing backup files",
+					),
 					cause: error,
 				});
 			}
@@ -561,8 +660,14 @@ export const backupRouter = createTRPCRouter({
 				await checkServicePermissionAndAccess(ctx, input.databaseId, {
 					backup: ["restore"],
 				});
+			} else {
+				await checkPermission(ctx, { backup: ["restore"] });
 			}
 			const destination = await findDestinationById(input.destinationId);
+			assertDestinationOrganization(
+				destination,
+				ctx.session.activeOrganizationId,
+			);
 			const queue: string[] = [];
 			let done = false;
 			const onLog = (log: string) => queue.push(log);
@@ -594,7 +699,7 @@ export const backupRouter = createTRPCRouter({
 			runRestore()
 				.catch((error) => {
 					onLog(
-						`Error: ${error instanceof Error ? error.message : String(error)}`,
+						`Error: ${sanitizePublicErrorMessage(error, "Restore failed. Check the server logs for details.")}`,
 					);
 				})
 				.finally(() => {

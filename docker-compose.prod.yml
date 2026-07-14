@@ -1,8 +1,65 @@
 name: nearzero
 
 services:
+  dns-init:
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.29}
+    profiles: ["managed-dns"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 022
+        mkdir -p /etc/coredns/zones
+        if [ -d /legacy-nearzero/dns/zones ]; then
+          cp -n /legacy-nearzero/dns/zones/*.zone /etc/coredns/zones/ 2>/dev/null || true
+        fi
+        if [ ! -f /etc/coredns/Corefile ]; then
+          printf '%s\n' \
+            '# Managed by Nearzero. Authoritative zones only; this is not a recursive resolver.' \
+            '.:53 {' \
+            '  auto {' \
+            '    directory /etc/coredns/zones (.*)\.zone {1}' \
+            '    reload 2s' \
+            '  }' \
+            '  reload 30s' \
+            '  errors' \
+            '}' > /etc/coredns/Corefile
+        fi
+    volumes:
+      - nearzero-data:/legacy-nearzero:ro
+      - nearzero-dns:/etc/coredns
+    read_only: true
+    network_mode: none
+    mem_limit: 128m
+    pids_limit: 64
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  dns:
+    container_name: nearzero-dns
+    image: ${NEARZERO_DNS_IMAGE:-coredns/coredns:1.14.6}
+    profiles: ["managed-dns"]
+    command: ["-conf", "/etc/coredns/Corefile"]
+    depends_on:
+      dns-init:
+        condition: service_completed_successfully
+    ports:
+      - "${NEARZERO_DNS_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_DNS_PORT:-53}:53/tcp"
+      - "${NEARZERO_DNS_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_DNS_PORT:-53}:53/udp"
+    volumes:
+      - nearzero-dns:/etc/coredns:ro
+    read_only: true
+    mem_limit: 128m
+    pids_limit: 128
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   platform:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:latest}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.29}
     env_file:
       - path: .env
         required: false
@@ -12,13 +69,16 @@ services:
       NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
       NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
       NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
-      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.29}
+      NEARZERO_PLATFORM_DOMAIN: ${NEARZERO_PLATFORM_DOMAIN:-}
+      NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE: ${NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE:-false}
     ports:
       - "${NEARZERO_PLATFORM_PORT:-3000}:3000"
       - "${NEARZERO_CONSOLE_PORT:-4321}:4321"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - nearzero-data:/etc/nearzero
+      - nearzero-dns:/etc/nearzero/dns
     depends_on:
       monitoring:
         condition: service_healthy
@@ -26,20 +86,19 @@ services:
 
   monitoring:
     container_name: nearzero-monitoring
-    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:latest}
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.29}
     environment:
       METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
-      HOST_PROC: /host/proc
       HOST_SYS: /host/sys
       NEARZERO_HOST_ROOT: /host/root
     ports:
       - "127.0.0.1:${NEARZERO_METRICS_PORT:-4500}:${NEARZERO_METRICS_PORT:-4500}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /:/host/root:ro
+      # statfs on this same-filesystem directory reports host disk usage
+      # without exposing the host's entire root filesystem to monitoring.
+      - /etc/nearzero/monitoring:/host/root:ro
       - /sys:/host/sys:ro
       - /etc/os-release:/etc/os-release:ro
-      - /proc:/host/proc:ro
       - /etc/nearzero/monitoring/monitoring.db:/app/monitoring.db
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${NEARZERO_METRICS_PORT:-4500}/health >/dev/null 2>&1"]
@@ -49,15 +108,15 @@ services:
     restart: unless-stopped
 
   schedules:
-    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:latest}
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.29}
     profiles: ["schedules"]
-    env_file:
-      - path: .env
-        required: false
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      API_KEY: ${API_KEY:-}
+      PORT: ${NEARZERO_SCHEDULE_PORT:-4001}
     restart: unless-stopped
 
 volumes:
   nearzero-data:
+  nearzero-dns:

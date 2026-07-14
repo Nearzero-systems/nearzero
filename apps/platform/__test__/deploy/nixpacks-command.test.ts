@@ -41,9 +41,11 @@ const createApplication = (overrides = {}) =>
 const executeWithFakeNixpacks = ({
 	packageJson,
 	plan,
+	sourceFiles = {},
 }: {
 	packageJson: Record<string, unknown>;
 	plan: Record<string, unknown>;
+	sourceFiles?: Record<string, string>;
 }) => {
 	const tempDirectory = mkdtempSync(
 		path.join(os.tmpdir(), "nearzero-nixpacks-test-"),
@@ -57,6 +59,10 @@ const executeWithFakeNixpacks = ({
 	const fakeBinDirectory = path.join(tempDirectory, "bin");
 	const fakePlanPath = path.join(tempDirectory, "raw-plan.json");
 	const capturedPlanPath = path.join(tempDirectory, "captured-plan.json");
+	const capturedDockerignorePath = path.join(
+		tempDirectory,
+		"captured.dockerignore",
+	);
 	const fakeNixpacksPath = path.join(fakeBinDirectory, "nixpacks");
 
 	mkdirSync(sourceDirectory, { recursive: true });
@@ -65,6 +71,11 @@ const executeWithFakeNixpacks = ({
 		path.join(sourceDirectory, "package.json"),
 		JSON.stringify(packageJson),
 	);
+	for (const [relativePath, contents] of Object.entries(sourceFiles)) {
+		const filePath = path.join(sourceDirectory, relativePath);
+		mkdirSync(path.dirname(filePath), { recursive: true });
+		writeFileSync(filePath, contents);
+	}
 	writeFileSync(fakePlanPath, JSON.stringify(plan));
 	writeFileSync(
 		fakeNixpacksPath,
@@ -75,6 +86,9 @@ if [ "$1" = "plan" ]; then
 	exit 0
 fi
 if [ "$1" = "build" ]; then
+	if [ -n "$NZ_CAPTURED_DOCKERIGNORE" ] && [ -f .dockerignore ]; then
+		cp .dockerignore "$NZ_CAPTURED_DOCKERIGNORE"
+	fi
 	while [ "$#" -gt 0 ]; do
 		if [ "$1" = "--config" ]; then
 			cp "$2" "$NZ_CAPTURED_PLAN"
@@ -105,10 +119,14 @@ exit 2
 				PATH: `${fakeBinDirectory}:${process.env.PATH ?? ""}`,
 				NZ_FAKE_PLAN: fakePlanPath,
 				NZ_CAPTURED_PLAN: capturedPlanPath,
+				NZ_CAPTURED_DOCKERIGNORE: capturedDockerignorePath,
 			},
 			stdio: ["ignore", "pipe", "pipe"],
 		});
-		return JSON.parse(readFileSync(capturedPlanPath, "utf8"));
+		return {
+			normalized: JSON.parse(readFileSync(capturedPlanPath, "utf8")),
+			dockerignore: readFileSync(capturedDockerignorePath, "utf8"),
+		};
 	} finally {
 		rmSync(applicationDirectory, { recursive: true, force: true });
 		rmSync(tempDirectory, { recursive: true, force: true });
@@ -125,6 +143,9 @@ describe("getNixpacksCommand", () => {
 				stdio: ["pipe", "pipe", "pipe"],
 			}),
 		).not.toThrow();
+		expect(command).toContain("NZ_NIXPACKS_DOCKERIGNORE");
+		expect(command).toContain("Nearzero managed-build context requirements");
+		expect(command).toContain("printf '!%s\\n' \"$NZ_KEEP_LOCK\"");
 	});
 
 	it("normalizes an isolated staging copy instead of mutating the source checkout", () => {
@@ -142,9 +163,40 @@ describe("getNixpacksCommand", () => {
 			'NZ_NIXPACKS_REQUESTED_DIR="$NZ_NIXPACKS_SOURCE_DIR/$NZ_NIXPACKS_RELATIVE_BUILD_PATH"',
 		);
 		expect(command).not.toContain(
-			`NZ_NIXPACKS_SOURCE_DIR=/etc/nearzero/applications/hypeframe-paper-8stkv8/code`,
+			"NZ_NIXPACKS_SOURCE_DIR=/etc/nearzero/applications/hypeframe-paper-8stkv8/code",
 		);
 	});
+
+	it("keeps managed lockfiles available without dropping repository exclusions", () => {
+		const { dockerignore } = executeWithFakeNixpacks({
+			packageJson: {
+				name: "managed-lockfile-fixture",
+				version: "1.0.0",
+				scripts: { build: "node build.js", start: "node server.js" },
+			},
+			plan: {
+				providers: ["node"],
+				phases: {
+					setup: { nixPkgs: ["nodejs_22", "bun"] },
+					install: { cmds: ["bun install --frozen-lockfile"] },
+				},
+			},
+			sourceFiles: {
+				".dockerignore": "node_modules\n.env\nbun.lock\n",
+				"bun.lock": "",
+				"yarn.lock": "",
+				"package-lock.json": "{}",
+			},
+		});
+
+		const lines = dockerignore.split("\n");
+		expect(lines).toContain("node_modules");
+		expect(lines).toContain(".env");
+		expect(lines.lastIndexOf("!bun.lock")).toBeGreaterThan(
+			lines.lastIndexOf("bun.lock"),
+		);
+		expect(lines).not.toContain("!package-lock.json");
+	}, 15_000);
 
 	it("passes workspace install/start commands and uses Turbo when available", () => {
 		const command = getNixpacksCommand(createApplication());
@@ -245,38 +297,26 @@ describe("getNixpacksCommand", () => {
 
 		// A repo can install with yarn/pnpm but run nested scripts that shell out to
 		// bun. Scan packageManager, lockfiles, and scripts across the repo package graph.
-		expect(command).toContain(
-			"Resolve the complete package-manager toolchain",
-		);
+		expect(command).toContain("Resolve the complete package-manager toolchain");
 		expect(command).toContain("packageManager declares");
 		expect(command).toContain("package script invokes bun/bunx");
 		expect(command).toContain('find "$NZ_NIXPACKS_SOURCE_DIR" -maxdepth 5');
 		expect(command).toContain("NZ_PACKAGE_JSON_LIST_FILE");
 		expect(command).not.toContain("done <<NZ_PACKAGE_JSON_LIST");
 		expect(command).toContain("nz_refresh_pm_bootstrap");
-		expect(command).toContain(
-			"npm install --global --force corepack@0.31.0",
-		);
+		expect(command).toContain("npm install --global --force corepack@0.31.0");
 		expect(command).toContain(
 			"corepack prepare $NZ_YARN_INSTALL_SPEC --activate",
 		);
 		expect(command).toContain(
 			"corepack prepare $NZ_PNPM_INSTALL_SPEC --activate",
 		);
-		expect(command).toContain(
-			"generated Nixpacks plan requires yarn",
-		);
-		expect(command).toContain(
-			"generated Nixpacks plan requires pnpm",
-		);
-		expect(command).toContain(
-			"generated Nixpacks plan requires bun",
-		);
+		expect(command).toContain("generated Nixpacks plan requires yarn");
+		expect(command).toContain("generated Nixpacks plan requires pnpm");
+		expect(command).toContain("generated Nixpacks plan requires bun");
 		expect(command).toContain("NZ_REMOVE_BUN_JSON=false");
 		expect(command).toContain("NZ_REMOVE_BUN_JSON=true");
-		expect(command).toContain(
-			'--argjson removeBun "$NZ_REMOVE_BUN_JSON"',
-		);
+		expect(command).toContain('--argjson removeBun "$NZ_REMOVE_BUN_JSON"');
 		expect(command).toContain(
 			"npm install --global --prefix /usr/local $NZ_BUN_INSTALL_SPEC",
 		);
@@ -307,7 +347,9 @@ describe("getNixpacksCommand", () => {
 		expect(command).toContain("nixpacks plan");
 		expect(command).toContain("--format json");
 		expect(command).toContain("nz_generate_frozen_nixpacks_plan");
-		expect(command).toContain(".nearzero-nixpacks-plan.raw.json");
+		expect(command).toContain(
+			'NZ_RAW_PLAN="$NZ_NIXPACKS_PRIVATE_DIR/nixpacks-plan.raw.json"',
+		);
 		expect(command).toContain(".nearzero-nixpacks-plan.json");
 		expect(command).toContain('--config ".nearzero-nixpacks-plan.json"');
 		expect(command).toContain(".providers = []");
@@ -340,10 +382,7 @@ describe("getNixpacksCommand", () => {
 				},
 				install: {
 					dependsOn: ["setup"],
-					cmds: [
-						"npm i -g corepack@0.24.1 && corepack enable",
-						"npm ci",
-					],
+					cmds: ["npm i -g corepack@0.24.1 && corepack enable", "npm ci"],
 				},
 			},
 		};
@@ -441,13 +480,12 @@ describe("getNixpacksCommand", () => {
 			manager: "bun",
 			spec: "bun@1.2.15+sha512.deadbeef",
 			nixPackage: "bun",
-			expectedBootstrap:
-				"npm install --global --prefix /usr/local bun@1.2.15",
+			expectedBootstrap: "npm install --global --prefix /usr/local bun@1.2.15",
 		},
 	])(
 		"normalizes the real generated plan and bootstraps exact $manager versions",
 		({ spec, nixPackage, expectedBootstrap }) => {
-			const normalized = executeWithFakeNixpacks({
+			const { normalized } = executeWithFakeNixpacks({
 				packageJson: {
 					name: "package-manager-fixture",
 					version: "1.0.0",
@@ -473,18 +511,13 @@ describe("getNixpacksCommand", () => {
 			});
 
 			expect(normalized.providers).toEqual([]);
-			expect(normalized.phases.setup.nixPkgs).toEqual([
-				"nodejs_22",
-				"gcc",
-			]);
-			expect(normalized.phases.install.cmds[0]).toContain(
-				expectedBootstrap,
-			);
+			expect(normalized.phases.setup.nixPkgs).toEqual(["nodejs_22", "gcc"]);
+			expect(normalized.phases.install.cmds[0]).toContain(expectedBootstrap);
 		},
 	);
 
 	it("discovers secondary package managers from the generated plan and bootstraps them once", () => {
-		const normalized = executeWithFakeNixpacks({
+		const { normalized } = executeWithFakeNixpacks({
 			packageJson: {
 				name: "mixed-package-manager-fixture",
 				version: "1.0.0",
@@ -498,21 +531,11 @@ describe("getNixpacksCommand", () => {
 				providers: ["node"],
 				phases: {
 					setup: {
-						nixPkgs: [
-							"nodejs_22",
-							"npm-27_x",
-							"yarn_99",
-							"pnpm-42_x",
-							"bun",
-						],
+						nixPkgs: ["nodejs_22", "npm-27_x", "yarn_99", "pnpm-42_x", "bun"],
 					},
 					install: {
 						dependsOn: ["setup"],
-						cmds: [
-							"yarn install",
-							"pnpm run prepare",
-							"bun run generate",
-						],
+						cmds: ["yarn install", "pnpm run prepare", "bun run generate"],
 					},
 				},
 			},
@@ -521,18 +544,14 @@ describe("getNixpacksCommand", () => {
 		expect(normalized.phases.setup.nixPkgs).toEqual(["nodejs_22"]);
 		const bootstrap = normalized.phases.install.cmds[0];
 		expect(bootstrap).toContain("npm install --global npm@10.9.2");
-		expect(bootstrap).toContain(
-			"npm install --global --force corepack@0.31.0",
-		);
+		expect(bootstrap).toContain("npm install --global --force corepack@0.31.0");
 		expect(bootstrap).toContain("corepack prepare yarn@stable --activate");
 		expect(bootstrap).toContain("corepack prepare pnpm@latest --activate");
 		expect(bootstrap).toContain(
 			"npm install --global --prefix /usr/local bun@latest",
 		);
 		expect(bootstrap).toContain("ln -sf /usr/local/bin/bun /usr/bin/bun");
-		expect(bootstrap).toContain(
-			"ln -sf /usr/local/bin/bunx /usr/bin/bunx",
-		);
+		expect(bootstrap).toContain("ln -sf /usr/local/bin/bunx /usr/bin/bunx");
 		expect(bootstrap).toContain("hash -r && bun --version");
 		expect(bootstrap.match(/corepack enable/g)).toHaveLength(1);
 	});

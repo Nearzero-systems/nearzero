@@ -17,68 +17,89 @@ import {
 	prepareEnvironmentVariables,
 	upsertSwarmService,
 } from "../utils/docker/utils";
-import { execAsync, execAsyncRemote } from "../utils/process/execAsync";
+import { execAsyncRemote, execFileAsync } from "../utils/process/execAsync";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
 import { type Application, findApplicationById } from "./application";
 import { findDeploymentById } from "./deployment";
 import type { Mount } from "./mount";
 import type { Port } from "./port";
 import type { Project } from "./project";
-import { type Registry, safeDockerLoginCommand } from "./registry";
+import { loginDockerRegistry, type Registry } from "./registry";
+
+export type PublicRollback = Omit<typeof rollbacks.$inferSelect, "fullContext">;
+
+export function toPublicRollback(
+	value: typeof rollbacks.$inferSelect,
+): PublicRollback {
+	return {
+		rollbackId: value.rollbackId,
+		deploymentId: value.deploymentId,
+		version: value.version,
+		image: value.image,
+		createdAt: value.createdAt,
+	};
+}
 
 export const createRollback = async (
 	input: z.infer<typeof createRollbackSchema>,
 ) => {
-	return await db.transaction(async (tx) => {
-		const { fullContext, ...other } = input;
-		const rollback = await tx
-			.insert(rollbacks)
-			.values(other)
-			.returning()
-			.then((res) => res[0]);
+	try {
+		return await db.transaction(async (tx) => {
+			const { fullContext, ...other } = input;
+			const rollback = await tx
+				.insert(rollbacks)
+				.values(other)
+				.returning()
+				.then((res) => res[0]);
 
-		if (!rollback) {
-			throw new Error("Failed to create rollback");
-		}
+			if (!rollback) {
+				throw new Error("Failed to create rollback");
+			}
 
-		const tagImage = `${input.appName}:v${rollback.version}`;
-		const deployment = await findDeploymentById(rollback.deploymentId);
+			const tagImage = `${input.appName}:v${rollback.version}`;
+			const deployment = await findDeploymentById(rollback.deploymentId);
 
-		if (!deployment?.applicationId) {
-			throw new Error("Deployment not found");
-		}
+			if (!deployment?.applicationId) {
+				throw new Error("Deployment not found");
+			}
 
-		const {
-			deployments: _,
-			bitbucket,
-			github,
-			gitlab,
-			gitea,
-			...rest
-		} = await findApplicationById(deployment.applicationId);
+			const {
+				deployments: _,
+				bitbucket,
+				github,
+				gitlab,
+				gitea,
+				...rest
+			} = await findApplicationById(deployment.applicationId);
 
-		await tx
-			.update(rollbacks)
-			.set({
-				image: tagImage,
-				fullContext: rest,
-			})
-			.where(eq(rollbacks.rollbackId, rollback.rollbackId));
+			await tx
+				.update(rollbacks)
+				.set({
+					image: tagImage,
+					fullContext: rest,
+				})
+				.where(eq(rollbacks.rollbackId, rollback.rollbackId));
 
-		// Update the deployment to reference this rollback
-		await tx
-			.update(deploymentsSchema)
-			.set({
-				rollbackId: rollback.rollbackId,
-			})
-			.where(eq(deploymentsSchema.deploymentId, rollback.deploymentId));
+			// Update the deployment to reference this rollback
+			await tx
+				.update(deploymentsSchema)
+				.set({
+					rollbackId: rollback.rollbackId,
+				})
+				.where(eq(deploymentsSchema.deploymentId, rollback.deploymentId));
 
-		const updatedRollback = await tx.query.rollbacks.findFirst({
-			where: eq(rollbacks.rollbackId, rollback.rollbackId),
+			const updatedRollback = await tx.query.rollbacks.findFirst({
+				where: eq(rollbacks.rollbackId, rollback.rollbackId),
+			});
+
+			return updatedRollback;
 		});
-
-		return updatedRollback;
-	});
+	} catch {
+		// Drizzle includes SQL parameters in its error message. The rollback
+		// context contains application and registry secrets, so never propagate or
+		// attach the original database error to queue/API-visible failures.
+		throw new Error("Failed to create rollback metadata");
+	}
 };
 
 export const findRollbackById = async (rollbackId: string) => {
@@ -109,12 +130,14 @@ export const findRollbackById = async (rollbackId: string) => {
 };
 
 const deleteRollbackImage = async (image: string, serverId?: string | null) => {
-	const command = `docker image rm ${image} --force`;
-
 	if (serverId) {
-		await execAsyncRemote(serverId, command);
+		const quotedImage = `'${image.replaceAll("'", `'"'"'`)}'`;
+		await execAsyncRemote(
+			serverId,
+			`docker image rm --force -- ${quotedImage}`,
+		);
 	} else {
-		await execAsync(command);
+		await execFileAsync("docker", ["image", "rm", "--force", image]);
 	}
 };
 
@@ -125,28 +148,24 @@ export const removeRollbackById = async (rollbackId: string) => {
 		throw new Error("Rollback not found");
 	}
 
-	if (rollback?.image) {
-		try {
-			const deployment = await findDeploymentById(rollback.deploymentId);
+	if (rollback.image) {
+		const deployment = await findDeploymentById(rollback.deploymentId);
 
-			if (!deployment?.applicationId) {
-				throw new Error("Deployment not found");
-			}
-
-			const application = await findApplicationById(deployment.applicationId);
-			await deleteRollbackImage(rollback.image, application.serverId);
-
-			await db
-				.delete(rollbacks)
-				.where(eq(rollbacks.rollbackId, rollbackId))
-				.returning()
-				.then((res) => res[0]);
-		} catch (error) {
-			console.error(error);
+		if (!deployment?.applicationId) {
+			throw new Error("Deployment not found");
 		}
+
+		const application = await findApplicationById(deployment.applicationId);
+		await deleteRollbackImage(rollback.image, application.serverId);
 	}
 
-	return rollback;
+	const deleted = await db
+		.delete(rollbacks)
+		.where(eq(rollbacks.rollbackId, rollbackId))
+		.returning()
+		.then((res) => res[0]);
+	if (!deleted) throw new Error("Rollback not found");
+	return deleted;
 };
 
 export const rollback = async (rollbackId: string) => {
@@ -176,17 +195,12 @@ const dockerLoginForRegistry = async (
 	registry: Registry,
 	serverId?: string | null,
 ) => {
-	const loginCommand = safeDockerLoginCommand(
-		registry.registryUrl,
-		registry.username,
-		registry.password,
-	);
-
-	if (serverId) {
-		await execAsyncRemote(serverId, loginCommand);
-	} else {
-		await execAsync(loginCommand);
-	}
+	await loginDockerRegistry({
+		registryUrl: registry.registryUrl,
+		username: registry.username,
+		password: registry.password,
+		serverId,
+	});
 };
 
 const rollbackApplication = async (

@@ -2,6 +2,10 @@ import { getDockerCommand } from "@nearzero/server/utils/builders/docker-file";
 import { getCreateFileCommand } from "../docker/utils";
 import { getBuildAppDirectory } from "../filesystem/directory";
 import type { ApplicationNested } from ".";
+import {
+	PROTECTED_BUILD_CONTEXT_PATHS,
+	resolveImmutableBuilderImage,
+} from "./utils";
 
 const nginxSpaConfig = `
 worker_processes 1;
@@ -34,6 +38,10 @@ export const getStaticCommand = (
 ) => {
 	const { publishDirectory, isStaticSpa } = application;
 	const buildAppDirectory = getBuildAppDirectory(application, buildServerId);
+	const nginxImage = resolveImmutableBuilderImage(
+		"NEARZERO_STATIC_NGINX_IMAGE",
+		"nginx:alpine",
+	);
 	let command = "";
 	if (isStaticSpa) {
 		command += getCreateFileCommand(
@@ -46,14 +54,19 @@ export const getStaticCommand = (
 	command += getCreateFileCommand(
 		buildAppDirectory,
 		".dockerignore",
-		[".git", ".env", "Dockerfile", ".dockerignore"].join("\n"),
+		[
+			".git",
+			...PROTECTED_BUILD_CONTEXT_PATHS,
+			"Dockerfile",
+			".dockerignore",
+		].join("\n"),
 	);
 
 	command += getCreateFileCommand(
 		buildAppDirectory,
 		"Dockerfile",
 		[
-			"FROM nginx:alpine",
+			`FROM ${nginxImage}`,
 			"WORKDIR /usr/share/nginx/html/",
 			isStaticSpa ? "COPY nginx.conf /etc/nginx/nginx.conf" : "",
 			`COPY ${publishDirectory || "."} .`,
@@ -61,10 +74,13 @@ export const getStaticCommand = (
 		].join("\n"),
 	);
 
-	command += getDockerCommand({
-		...application,
-		buildType: "dockerfile",
-		dockerfile: "Dockerfile",
-	}, buildServerId);
+	command += getDockerCommand(
+		{
+			...application,
+			buildType: "dockerfile",
+			dockerfile: "Dockerfile",
+		},
+		buildServerId,
+	);
 	return command;
 };

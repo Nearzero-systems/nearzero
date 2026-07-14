@@ -34,12 +34,58 @@ const automaticRailpackPlan: ApplicationBuildPlan = {
 };
 
 describe("application build plan selection", () => {
-	it("selects a detected Dockerfile before automatic builders", () => {
+	it("selects Railpack when automatic framework metadata conflicts with the Dockerfile package manager", () => {
 		expect(
 			selectApplicationBuilder({
 				selectionMode: "automatic",
 				requestedBuilder: "nixpacks",
 				hasDockerfile: true,
+				hasManagedFramework: true,
+				hasDockerfilePackageManagerMismatch: true,
+				hasManagedPackageManagerAgreement: true,
+				hasDockerfileOverrides: false,
+			}),
+		).toBe("railpack");
+	});
+
+	it("keeps an automatic Dockerfile when no managed framework conflict exists", () => {
+		expect(
+			selectApplicationBuilder({
+				selectionMode: "automatic",
+				requestedBuilder: "nixpacks",
+				hasDockerfile: true,
+				hasManagedFramework: false,
+				hasDockerfilePackageManagerMismatch: true,
+			}),
+		).toBe("dockerfile");
+		expect(
+			selectApplicationBuilder({
+				selectionMode: "automatic",
+				requestedBuilder: "nixpacks",
+				hasDockerfile: true,
+				hasManagedFramework: true,
+				hasDockerfilePackageManagerMismatch: false,
+			}),
+		).toBe("dockerfile");
+		expect(
+			selectApplicationBuilder({
+				selectionMode: "automatic",
+				requestedBuilder: "nixpacks",
+				hasDockerfile: true,
+				hasManagedFramework: true,
+				hasDockerfilePackageManagerMismatch: true,
+				hasManagedPackageManagerAgreement: false,
+			}),
+		).toBe("dockerfile");
+		expect(
+			selectApplicationBuilder({
+				selectionMode: "automatic",
+				requestedBuilder: "nixpacks",
+				hasDockerfile: true,
+				hasManagedFramework: true,
+				hasDockerfilePackageManagerMismatch: true,
+				hasManagedPackageManagerAgreement: true,
+				hasDockerfileOverrides: true,
 			}),
 		).toBe("dockerfile");
 	});
@@ -86,17 +132,272 @@ describe("application build plan selection", () => {
 		).toBe("paketo_buildpacks");
 	});
 
+	it("uses a managed framework build for automatic package-manager conflicts while preserving explicit Dockerfiles", async () => {
+		const appName = `build-plan-dockerfile-${Date.now()}`;
+		const dockerfileOnlyValue = "NZ_TEST_DOCKERFILE_LITERAL=do-not-return";
+		const sourceDirectory = path.join(
+			paths(false).APPLICATIONS_PATH,
+			appName,
+			"code",
+		);
+		try {
+			mkdirSync(sourceDirectory, { recursive: true });
+			writeFileSync(
+				path.join(sourceDirectory, "Dockerfile"),
+				`FROM node:20-slim\n# ${dockerfileOnlyValue}\nCOPY package*.json ./\nRUN npm ci\n`,
+			);
+			writeFileSync(path.join(sourceDirectory, "bun.lock"), "");
+			writeFileSync(path.join(sourceDirectory, "yarn.lock"), "");
+			writeFileSync(path.join(sourceDirectory, "package-lock.json"), "{}");
+			writeFileSync(
+				path.join(sourceDirectory, "package.json"),
+				JSON.stringify({
+					name: "dockerfile-app",
+					scripts: {
+						build: "node scripts/run-next.js build",
+						start: "next start",
+					},
+					dependencies: {
+						next: "16.1.7",
+						"next-auth": "^4.24.11",
+					},
+				}),
+			);
+
+			const plan = await createApplicationBuildPlan({
+				buildServerId: null,
+				application: {
+					appName,
+					sourceType: "github",
+					buildPath: "/",
+					buildType: "railpack",
+					buildSelectionMode: "automatic",
+					dockerfile: null,
+					buildArgs: "NEARZERO_DEPLOY_URL=preview.example.test",
+					buildSecrets: "NEARZERO_DEPLOY_URL=preview.example.test",
+				} as any,
+			});
+
+			expect(plan.selectedBuilder).toBe("railpack");
+			expect(plan.packageManager).toBe("bun");
+			expect(plan.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "managed_builder_preferred_over_dockerfile",
+						dockerfile: "Dockerfile",
+						repositoryPackageManager: "bun",
+						dockerfilePackageManagers: ["npm"],
+						preferredBuilder: "railpack",
+					}),
+					expect.objectContaining({
+						code: "multiple_package_manager_lockfiles",
+						lockfiles: ["bun.lock", "yarn.lock", "package-lock.json"],
+					}),
+				]),
+			);
+			expect(plan.diagnostics).not.toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ code: "dockerfile_authoritative" }),
+				]),
+			);
+
+			const explicitPlan = await createApplicationBuildPlan({
+				buildServerId: null,
+				application: {
+					appName,
+					sourceType: "github",
+					buildPath: "/",
+					buildType: "dockerfile",
+					buildSelectionMode: "explicit",
+					dockerfile: null,
+				} as any,
+			});
+			expect(explicitPlan.selectedBuilder).toBe("dockerfile");
+			expect(explicitPlan.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ code: "dockerfile_authoritative" }),
+					expect.objectContaining({
+						code: "dockerfile_package_manager_mismatch",
+						repositoryPackageManager: "bun",
+						dockerfilePackageManagers: ["npm"],
+					}),
+				]),
+			);
+
+			const configuredDockerPlan = await createApplicationBuildPlan({
+				buildServerId: null,
+				application: {
+					appName,
+					sourceType: "github",
+					buildPath: "/",
+					buildType: "railpack",
+					buildSelectionMode: "automatic",
+					dockerfile: null,
+					buildArgs: "USER_CONFIGURED_ARG=value",
+				} as any,
+			});
+			expect(configuredDockerPlan.selectedBuilder).toBe("dockerfile");
+			expect(JSON.stringify(plan)).not.toContain(dockerfileOnlyValue);
+		} finally {
+			rmSync(path.join(paths(false).APPLICATIONS_PATH, appName), {
+				recursive: true,
+				force: true,
+			});
+		}
+	});
+
+	it("does not inspect an invalid Dockerfile path for an explicit managed build", async () => {
+		const appName = `build-plan-managed-${Date.now()}`;
+		const sourceDirectory = path.join(
+			paths(false).APPLICATIONS_PATH,
+			appName,
+			"code",
+		);
+		try {
+			mkdirSync(sourceDirectory, { recursive: true });
+			writeFileSync(
+				path.join(sourceDirectory, "package.json"),
+				JSON.stringify({
+					name: "managed-app",
+					scripts: { build: "node build.js", start: "node server.js" },
+				}),
+			);
+
+			const managedPlan = await createApplicationBuildPlan({
+				buildServerId: null,
+				application: {
+					appName,
+					sourceType: "github",
+					buildPath: "/",
+					buildType: "nixpacks",
+					buildSelectionMode: "explicit",
+					dockerfile: "../../outside/Dockerfile",
+				} as any,
+			});
+			expect(managedPlan.selectedBuilder).toBe("nixpacks");
+
+			await expect(
+				createApplicationBuildPlan({
+					buildServerId: null,
+					application: {
+						appName,
+						sourceType: "github",
+						buildPath: "/",
+						buildType: "dockerfile",
+						buildSelectionMode: "explicit",
+						dockerfile: "../../outside/Dockerfile",
+					} as any,
+				}),
+			).rejects.toThrow(
+				"Dockerfile path must stay inside the checked-out source directory.",
+			);
+		} finally {
+			rmSync(path.join(paths(false).APPLICATIONS_PATH, appName), {
+				recursive: true,
+				force: true,
+			});
+		}
+	});
+
+	it("resolves package managers from the selected build path instead of unrelated root lockfiles", async () => {
+		const appName = `build-plan-nested-lockfile-${Date.now()}`;
+		const sourceDirectory = path.join(
+			paths(false).APPLICATIONS_PATH,
+			appName,
+			"code",
+		);
+		try {
+			mkdirSync(path.join(sourceDirectory, "apps/web"), { recursive: true });
+			writeFileSync(
+				path.join(sourceDirectory, "package.json"),
+				JSON.stringify({ name: "repository-root" }),
+			);
+			writeFileSync(path.join(sourceDirectory, "package-lock.json"), "{}");
+			writeFileSync(
+				path.join(sourceDirectory, "apps/web/package.json"),
+				JSON.stringify({
+					name: "nested-web",
+					scripts: { build: "next build", start: "next start" },
+					dependencies: { next: "16.1.7" },
+				}),
+			);
+			writeFileSync(path.join(sourceDirectory, "apps/web/bun.lock"), "");
+			writeFileSync(
+				path.join(sourceDirectory, "apps/web/Dockerfile"),
+				"FROM node:20-slim\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\n",
+			);
+
+			const plan = await createApplicationBuildPlan({
+				buildServerId: null,
+				application: {
+					appName,
+					sourceType: "github",
+					buildPath: "/apps/web",
+					buildType: "railpack",
+					buildSelectionMode: "automatic",
+					dockerfile: null,
+				} as any,
+			});
+
+			expect(plan.selectedAppPath).toBe("/apps/web");
+			expect(plan.packageManager).toBe("bun");
+			expect(plan.selectedBuilder).toBe("railpack");
+			expect(plan.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "managed_builder_preferred_over_dockerfile",
+						repositoryPackageManager: "bun",
+					}),
+				]),
+			);
+			expect(plan.diagnostics).not.toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "multiple_package_manager_lockfiles",
+					}),
+				]),
+			);
+		} finally {
+			rmSync(path.join(paths(false).APPLICATIONS_PATH, appName), {
+				recursive: true,
+				force: true,
+			});
+		}
+	});
+
 	it("falls back from Railpack to Nixpacks only before compilation", () => {
-		expect(
-			fallbackApplicationBuildPlanToNixpacks(
-				automaticRailpackPlan,
-				"Railpack planning failed.",
-			),
-		).toMatchObject({
+		const preferredPlan: ApplicationBuildPlan = {
+			...automaticRailpackPlan,
+			diagnostics: [
+				{
+					code: "managed_builder_preferred_over_dockerfile",
+					severity: "info",
+					message: "Automatic mode preferred Railpack.",
+					dockerfile: "Dockerfile",
+					framework: "next",
+					repositoryPackageManager: "bun",
+					dockerfilePackageManagers: ["npm"],
+					preferredBuilder: "railpack",
+				},
+			],
+		};
+		const fallbackPlan = fallbackApplicationBuildPlanToNixpacks(
+			preferredPlan,
+			"Railpack planning failed.",
+		);
+		expect(fallbackPlan).toMatchObject({
 			selectedBuilder: "nixpacks",
 			fallbackReason: "Railpack planning failed.",
 			requiredCapabilities: ["docker", "nixpacks"],
 		});
+		expect(fallbackPlan.diagnostics).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					code: "managed_builder_preferred_over_dockerfile",
+					preferredBuilder: "railpack",
+				}),
+			]),
+		);
 	});
 
 	it("uses Turbo to build selected workspace apps with dependencies first", async () => {

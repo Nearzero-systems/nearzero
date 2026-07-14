@@ -58,7 +58,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("static roles bypass enterprise resources", () => {
+describe("privileged static roles bypass enterprise licensing", () => {
 	it("owner bypasses deployment.read", async () => {
 		memberToReturn = mockMemberData("owner");
 		await expect(
@@ -73,14 +73,14 @@ describe("static roles bypass enterprise resources", () => {
 		).resolves.toBeUndefined();
 	});
 
-	it("member bypasses schedule.delete", async () => {
+	it("member uses its explicit service-level enterprise permissions", async () => {
 		memberToReturn = mockMemberData("member");
 		await expect(
 			checkPermission(ctx, { schedule: ["delete"] }),
 		).resolves.toBeUndefined();
 	});
 
-	it("member bypasses multiple enterprise permissions at once", async () => {
+	it("member uses multiple explicitly granted service-level permissions", async () => {
 		memberToReturn = mockMemberData("member");
 		await expect(
 			checkPermission(ctx, {
@@ -89,6 +89,28 @@ describe("static roles bypass enterprise resources", () => {
 				domain: ["delete"],
 			}),
 		).resolves.toBeUndefined();
+	});
+
+	it("member cannot bypass an org-level enterprise permission", async () => {
+		memberToReturn = mockMemberData("member");
+		await expect(
+			checkPermission(ctx, { server: ["delete"] }),
+		).rejects.toThrow();
+	});
+
+	it("member cannot administer authoritative DNS", async () => {
+		memberToReturn = mockMemberData("member");
+		await expect(checkPermission(ctx, { dns: ["update"] })).rejects.toThrow();
+	});
+
+	it("member cannot bypass multiple org-level enterprise permissions", async () => {
+		memberToReturn = mockMemberData("member");
+		await expect(
+			checkPermission(ctx, {
+				server: ["read"],
+				registry: ["create"],
+			}),
+		).rejects.toThrow();
 	});
 });
 

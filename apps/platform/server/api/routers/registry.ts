@@ -1,8 +1,7 @@
 import {
 	createRegistry,
-	execAsyncRemote,
-	execFileAsync,
 	findRegistryById,
+	loginDockerRegistry,
 	removeRegistry,
 	updateRegistry,
 } from "@nearzero/server";
@@ -49,7 +48,8 @@ export const registryRouter = createTRPCRouter({
 				resourceId: registry.registryId,
 				resourceName: registry.registryName,
 			});
-			return await removeRegistry(input.registryId);
+			await removeRegistry(input.registryId);
+			return registry;
 		}),
 	update: withPermission("registry", "create")
 		.input(apiUpdateRegistry)
@@ -84,6 +84,7 @@ export const registryRouter = createTRPCRouter({
 	all: withPermission("registry", "read").query(async ({ ctx }) => {
 		const registryResponse = await db.query.registry.findMany({
 			where: eq(registry.organizationId, ctx.session.activeOrganizationId),
+			columns: { password: false },
 		});
 		return registryResponse;
 	}),
@@ -103,34 +104,18 @@ export const registryRouter = createTRPCRouter({
 		.input(apiTestRegistry)
 		.mutation(async ({ input }) => {
 			try {
-				const args = [
-					"login",
-					input.registryUrl,
-					"--username",
-					input.username,
-					"--password-stdin",
-				];
-
-				if (input.serverId && input.serverId !== "none") {
-					await execAsyncRemote(
-						input.serverId,
-						`echo ${input.password} | docker ${args.join(" ")}`,
-					);
-				} else {
-					await execFileAsync("docker", args, {
-						input: Buffer.from(input.password).toString(),
-					});
-				}
+				await loginDockerRegistry({
+					registryUrl: input.registryUrl,
+					username: input.username,
+					password: input.password,
+					serverId: input.serverId,
+				});
 
 				return true;
-			} catch (error) {
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error.message
-							: "Error testing the registry",
-					cause: error,
+					message: "Registry authentication failed",
 				});
 			}
 		}),
@@ -156,34 +141,18 @@ export const registryRouter = createTRPCRouter({
 					});
 				}
 
-				const args = [
-					"login",
-					registryData.registryUrl,
-					"--username",
-					registryData.username,
-					"--password-stdin",
-				];
-
-				if (input.serverId && input.serverId !== "none") {
-					await execAsyncRemote(
-						input.serverId,
-						`echo ${registryData.password} | docker ${args.join(" ")}`,
-					);
-				} else {
-					await execFileAsync("docker", args, {
-						input: Buffer.from(registryData.password).toString(),
-					});
-				}
+				await loginDockerRegistry({
+					registryUrl: registryData.registryUrl,
+					username: registryData.username,
+					password: registryData.password,
+					serverId: input.serverId,
+				});
 
 				return true;
-			} catch (error) {
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message:
-						error instanceof Error
-							? error.message
-							: "Error testing the registry",
-					cause: error,
+					message: "Registry authentication failed",
 				});
 			}
 		}),

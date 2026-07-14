@@ -1,4 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { serve } from "@hono/node-server";
+import { sanitizePublicErrorMessage } from "@nearzero/server";
 import { Hono } from "hono";
 import "dotenv/config";
 import { zValidator } from "@hono/zod-validator";
@@ -14,6 +16,20 @@ import { initializeJobs } from "./utils.js";
 import { firstWorker, secondWorker, thirdWorker } from "./workers.js";
 
 const app = new Hono();
+const configuredApiKey = process.env.API_KEY?.trim();
+if (!configuredApiKey) {
+	throw new Error("API_KEY is required for the schedules service");
+}
+
+const matchesApiKey = (supplied: string | undefined) => {
+	if (!supplied) return false;
+	const expectedBuffer = Buffer.from(configuredApiKey);
+	const suppliedBuffer = Buffer.from(supplied);
+	return (
+		expectedBuffer.length === suppliedBuffer.length &&
+		timingSafeEqual(expectedBuffer, suppliedBuffer)
+	);
+};
 
 cleanQueue();
 initializeJobs();
@@ -24,7 +40,7 @@ app.use(async (c, next) => {
 	}
 	const authHeader = c.req.header("X-API-Key");
 
-	if (process.env.API_KEY !== authHeader) {
+	if (!matchesApiKey(authHeader)) {
 		return c.json({ message: "Invalid API Key" }, 403);
 	}
 
@@ -100,12 +116,20 @@ process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 process.on("uncaughtException", (err) => {
-	logger.error(err, "Uncaught exception");
+	logger.error(
+		{ error: sanitizePublicErrorMessage(err, "Uncaught schedules exception") },
+		"Uncaught exception",
+	);
 });
 
 process.on("unhandledRejection", (reason, _promise) => {
 	logger.error(
-		reason instanceof Error ? reason : { reason: String(reason) },
+		{
+			error: sanitizePublicErrorMessage(
+				reason instanceof Error ? reason : String(reason),
+				"Unhandled schedules rejection",
+			),
+		},
 		"Unhandled Rejection at: Promise",
 	);
 });

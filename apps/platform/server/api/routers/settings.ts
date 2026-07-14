@@ -1,3 +1,4 @@
+import { getEdition } from "@nearzero/edition-contract";
 import {
 	CLEANUP_CRON_JOB,
 	checkGPUStatus,
@@ -12,13 +13,12 @@ import {
 	cleanupImages,
 	cleanupSystem,
 	cleanupVolumes,
-	DEFAULT_UPDATE_DATA,
-	execAsync,
 	ensureTraefikSetup,
+	execAsync,
 	findServerById,
 	getDockerDiskUsage,
-	getNearzeroImageTag,
 	getLogCleanupStatus,
+	getNearzeroImageTag,
 	getUpdateData,
 	getWebServerSettings,
 	parseRawConfig,
@@ -50,7 +50,6 @@ import {
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
 import { checkPermission } from "@nearzero/server/services/permission";
-import { getEdition } from "@nearzero/edition-contract";
 import { generateOpenApiDocument } from "@nearzero/trpc-openapi";
 import { TRPCError } from "@trpc/server";
 import { eq, sql } from "drizzle-orm";
@@ -81,6 +80,26 @@ import {
 	protectedProcedure,
 	publicProcedure,
 } from "../trpc";
+
+type OrganizationContext = {
+	session: { activeOrganizationId?: string | null };
+};
+
+const assertSettingsServerAccess = async (
+	ctx: OrganizationContext,
+	serverId?: string,
+) => {
+	if (!serverId) return null;
+	const targetServer = await findServerById(serverId);
+	if (
+		!ctx.session.activeOrganizationId ||
+		targetServer.organizationId !== ctx.session.activeOrganizationId
+	) {
+		// Do not reveal whether another organization owns the supplied identifier.
+		throw new TRPCError({ code: "NOT_FOUND", message: "Server not found" });
+	}
+	return targetServer;
+};
 
 export const settingsRouter = createTRPCRouter({
 	getWebServerSettings: protectedProcedure.query(async () => {
@@ -136,6 +155,7 @@ export const settingsRouter = createTRPCRouter({
 	reloadTraefik: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			// Run in background so the request returns immediately; avoids proxy timeouts.
 			void reloadDockerResource("nearzero-traefik", input?.serverId).catch(
 				(err) => {
@@ -152,34 +172,21 @@ export const settingsRouter = createTRPCRouter({
 	toggleDashboard: adminProcedure
 		.input(apiEnableDashboard)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input.serverId);
+			if (input.enableDashboard) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						"Direct Traefik dashboard publishing on port 8080 is disabled. Configure an authenticated HTTPS router if dashboard access is required.",
+				});
+			}
 			const ports = await readPorts("nearzero-traefik", input.serverId);
 			const env = await readEnvironmentVariables(
 				"nearzero-traefik",
 				input.serverId,
 			);
 			const preparedEnv = prepareEnvironmentVariables(env);
-			let newPorts = ports;
-			// If receive true, add 8080 to ports
-			if (input.enableDashboard) {
-				// Check if port 8080 is already in use before enabling dashboard
-				const portCheck = await checkPortInUse(8080, input.serverId);
-				if (portCheck.isInUse) {
-					const conflictInfo = portCheck.conflictingContainer
-						? ` by ${portCheck.conflictingContainer}`
-						: "";
-					throw new TRPCError({
-						code: "CONFLICT",
-						message: `Port 8080 is already in use${conflictInfo}. Please stop the conflicting service or use a different port for the Traefik dashboard.`,
-					});
-				}
-				newPorts.push({
-					targetPort: 8080,
-					publishedPort: 8080,
-					protocol: "tcp",
-				});
-			} else {
-				newPorts = ports.filter((port) => port.targetPort !== 8080);
-			}
+			const newPorts = ports.filter((port) => port.targetPort !== 8080);
 
 			// Run in background so the request returns immediately; client polls /api/health.
 			// Avoids proxy timeouts (520) while Traefik is recreated.
@@ -200,6 +207,7 @@ export const settingsRouter = createTRPCRouter({
 	cleanUnusedImages: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			await cleanupImages(input?.serverId);
 			await audit(ctx, {
 				action: "delete",
@@ -211,6 +219,7 @@ export const settingsRouter = createTRPCRouter({
 	cleanUnusedVolumes: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			await cleanupVolumes(input?.serverId);
 			await audit(ctx, {
 				action: "delete",
@@ -222,6 +231,7 @@ export const settingsRouter = createTRPCRouter({
 	cleanStoppedContainers: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			await cleanupContainers(input?.serverId);
 			await audit(ctx, {
 				action: "delete",
@@ -233,6 +243,7 @@ export const settingsRouter = createTRPCRouter({
 	cleanDockerBuilder: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			await cleanupBuilders(input?.serverId);
 			await audit(ctx, {
 				action: "delete",
@@ -243,6 +254,7 @@ export const settingsRouter = createTRPCRouter({
 	cleanDockerPrune: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			await cleanupSystem(input?.serverId);
 			await cleanupBuilders(input?.serverId);
 			await audit(ctx, {
@@ -255,6 +267,7 @@ export const settingsRouter = createTRPCRouter({
 	cleanAll: adminProcedure
 		.input(apiServerSchema)
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			// Execute cleanup in background and return immediately to avoid gateway timeouts
 			const result = await cleanupAllBackground(input?.serverId);
 			await audit(ctx, {
@@ -346,21 +359,14 @@ export const settingsRouter = createTRPCRouter({
 		.input(apiUpdateDockerCleanup)
 		.mutation(async ({ input, ctx }) => {
 			if (input.serverId) {
+				await assertSettingsServerAccess(ctx, input.serverId);
 				await updateServerById(input.serverId, {
 					enableDockerCleanup: input.enableDockerCleanup,
 				});
 
 				const server = await findServerById(input.serverId);
 
-				if (server.organizationId !== ctx.session?.activeOrganizationId) {
-					throw new TRPCError({
-						code: "UNAUTHORIZED",
-						message: "You are not authorized to access this server",
-					});
-				}
-
 				if (server.enableDockerCleanup) {
-					const server = await findServerById(input.serverId);
 					if (server.serverStatus === "inactive") {
 						throw new TRPCError({
 							code: "NOT_FOUND",
@@ -511,6 +517,7 @@ export const settingsRouter = createTRPCRouter({
 		.query(async ({ ctx, input }) => {
 			try {
 				await checkPermission(ctx, { traefikFiles: ["read"] });
+				await assertSettingsServerAccess(ctx, input?.serverId);
 				const { MAIN_TRAEFIK_PATH } = paths(!!input?.serverId);
 				const result = await readDirectory(MAIN_TRAEFIK_PATH, input?.serverId);
 				return result || [];
@@ -523,6 +530,7 @@ export const settingsRouter = createTRPCRouter({
 		.input(apiModifyTraefikConfig)
 		.mutation(async ({ input, ctx }) => {
 			await checkPermission(ctx, { traefikFiles: ["write"] });
+			await assertSettingsServerAccess(ctx, input.serverId);
 			await writeTraefikConfigInPath(
 				input.path,
 				input.traefikConfig,
@@ -540,14 +548,7 @@ export const settingsRouter = createTRPCRouter({
 		.input(apiReadTraefikConfig)
 		.query(async ({ input, ctx }) => {
 			await checkPermission(ctx, { traefikFiles: ["read"] });
-
-			if (input.serverId) {
-				const server = await findServerById(input.serverId);
-
-				if (server.organizationId !== ctx.session?.activeOrganizationId) {
-					throw new TRPCError({ code: "UNAUTHORIZED" });
-				}
-			}
+			await assertSettingsServerAccess(ctx, input.serverId);
 
 			return readConfigInPath(input.path, input.serverId);
 		}),
@@ -654,7 +655,8 @@ export const settingsRouter = createTRPCRouter({
 	),
 	readTraefikEnv: adminProcedure
 		.input(apiServerSchema)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			const envVars = await readEnvironmentVariables(
 				"nearzero-traefik",
 				input?.serverId,
@@ -665,6 +667,7 @@ export const settingsRouter = createTRPCRouter({
 	writeTraefikEnv: adminProcedure
 		.input(z.object({ env: z.string(), serverId: z.string().optional() }))
 		.mutation(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input.serverId);
 			const envs = prepareEnvironmentVariables(input.env);
 			const ports = await readPorts("nearzero-traefik", input?.serverId);
 
@@ -685,7 +688,8 @@ export const settingsRouter = createTRPCRouter({
 		}),
 	haveTraefikDashboardPortEnabled: adminProcedure
 		.input(apiServerSchema)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			const ports = await readPorts("nearzero-traefik", input?.serverId);
 			return ports.some((port) => port.targetPort === 8080);
 		}),
@@ -834,6 +838,7 @@ export const settingsRouter = createTRPCRouter({
 		)
 		.mutation(async ({ input, ctx }) => {
 			try {
+				await assertSettingsServerAccess(ctx, input.serverId);
 				await setupGPUSupport(input.serverId);
 				await audit(ctx, {
 					action: "update",
@@ -852,7 +857,7 @@ export const settingsRouter = createTRPCRouter({
 				serverId: z.string().optional(),
 			}),
 		)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
 			if (!input.serverId) {
 				return {
 					driverInstalled: false,
@@ -870,6 +875,7 @@ export const settingsRouter = createTRPCRouter({
 			}
 
 			try {
+				await assertSettingsServerAccess(ctx, input.serverId);
 				return await checkGPUStatus(input.serverId || "");
 			} catch (error) {
 				const message =
@@ -888,13 +894,14 @@ export const settingsRouter = createTRPCRouter({
 					z.object({
 						targetPort: z.number(),
 						publishedPort: z.number(),
-						protocol: z.enum(["tcp", "udp", "sctp"]),
+						protocol: z.enum(["tcp", "udp"]),
 					}),
 				),
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
 			try {
+				await assertSettingsServerAccess(ctx, input.serverId);
 				const env = await readEnvironmentVariables(
 					"nearzero-traefik",
 					input?.serverId,
@@ -944,7 +951,8 @@ export const settingsRouter = createTRPCRouter({
 		}),
 	getTraefikPorts: adminProcedure
 		.input(apiServerSchema)
-		.query(async ({ input }) => {
+		.query(async ({ input, ctx }) => {
+			await assertSettingsServerAccess(ctx, input?.serverId);
 			const ports = await readPorts("nearzero-traefik", input?.serverId);
 			return ports;
 		}),

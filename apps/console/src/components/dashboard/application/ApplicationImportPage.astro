@@ -401,10 +401,16 @@ const serverRequirementMessage = runtimeServerRequirementMessage(servers);
 					<div class="nz-app-import-env-section__head">
 						<h2 class="nz-app-import-env-section__title">Environment variables</h2>
 						<p class="nz-app-import-env-section__lead">
-							Optional - edit anytime on the application page.
+							Optional - values are hidden by default and can be edited anytime on the application page.
 						</p>
 					</div>
 					<div id="nz-app-import-env-rows" class="nz-app-import-env-rows"></div>
+					<p
+						id="nz-app-import-env-public-warning"
+						class="nz-app-import-env-warning hidden"
+						role="alert"
+						hidden
+					></p>
 					<button
 						type="button"
 						class="nz-app-import-btn nz-app-import-btn--ghost nz-app-import-env-section__add"

@@ -154,23 +154,12 @@ sudo chown -R USERNAME nearzero or sudo chown -R $(whoami) ~/.docker
 
 ## Application deploy
 
-In case you want to deploy the application on your machine and you selected nixpacks or buildpacks, you need to install first.
+If you deploy applications on a Linux amd64/arm64 machine with Nixpacks,
+Railpack, or Buildpacks, install the repository-pinned binaries after their
+SHA-256 digests have been verified:
 
 ```bash
-# Install Nixpacks
-curl -sSL https://nixpacks.com/install.sh -o install.sh \
-    && chmod +x install.sh \
-    && ./install.sh
-```
-
-```bash
-# Install Railpack
-curl -sSL https://railpack.com/install.sh | sh
-```
-
-```bash
-# Install Buildpacks
-curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.39.1/pack-v0.39.1-linux.tgz" | tar -C /usr/local/bin/ --no-same-owner -xzv pack
+sudo sh scripts/install-verified-build-tools.sh nixpacks railpack buildpacks
 ```
 
 ## Pull Request

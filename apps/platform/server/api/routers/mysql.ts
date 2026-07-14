@@ -1,17 +1,16 @@
 import {
+	buildMySqlPasswordChangeScript,
 	checkPortInUse,
 	createMount,
 	createMysql,
 	deployMySql,
-	execAsync,
-	execAsyncRemote,
+	executeSensitiveShellScript,
 	findBackupsByDbId,
 	findEnvironmentById,
 	findMySqlById,
 	findProjectById,
 	getAccessibleServerIds,
 	getContainerLogs,
-	getServiceContainerCommand,
 	rebuildDatabase,
 	removeMySqlById,
 	removeService,
@@ -19,6 +18,7 @@ import {
 	startServiceRemote,
 	stopService,
 	stopServiceRemote,
+	toPublicServerRelation,
 	updateMySqlById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -139,7 +139,7 @@ export const mysqlRouter = createTRPCRouter({
 					message: "You are not authorized to access this MySQL",
 				});
 			}
-			return mysql;
+			return toPublicServerRelation(mysql);
 		}),
 
 	start: protectedProcedure
@@ -175,7 +175,7 @@ export const mysqlRouter = createTRPCRouter({
 				resourceId: service.mysqlId,
 				resourceName: service.appName,
 			});
-			return service;
+			return toPublicServerRelation(service);
 		}),
 	stop: protectedProcedure
 		.input(apiFindOneMySql)
@@ -209,7 +209,7 @@ export const mysqlRouter = createTRPCRouter({
 				resourceId: mongo.mysqlId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	saveExternalPort: protectedProcedure
 		.input(apiSaveExternalPortMySql)
@@ -250,7 +250,7 @@ export const mysqlRouter = createTRPCRouter({
 				resourceId: mysql.mysqlId,
 				resourceName: mysql.appName,
 			});
-			return mysql;
+			return toPublicServerRelation(mysql);
 		}),
 	deploy: protectedProcedure
 		.input(apiDeployMySql)
@@ -338,7 +338,7 @@ export const mysqlRouter = createTRPCRouter({
 				resourceId: mongo.mysqlId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	reload: protectedProcedure
 		.input(apiResetMysql)
@@ -410,7 +410,7 @@ export const mysqlRouter = createTRPCRouter({
 				} catch (_) {}
 			}
 
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesMySql)
@@ -481,17 +481,13 @@ export const mysqlRouter = createTRPCRouter({
 			const my = await findMySqlById(mysqlId);
 			const { appName, serverId, databaseUser, databaseRootPassword } = my;
 
-			const containerCmd = getServiceContainerCommand(appName);
 			const targetUser = type === "root" ? "root" : databaseUser;
-
-			const command = `
-				CONTAINER_ID=$(${containerCmd})
-				if [ -z "$CONTAINER_ID" ]; then
-					echo "No running container found for ${appName}" >&2
-					exit 1
-				fi
-				docker exec "$CONTAINER_ID" mysql -u root -p'${databaseRootPassword}' -e "ALTER USER '${targetUser}'@'%' IDENTIFIED BY '${password}'; FLUSH PRIVILEGES;"
-			`;
+			const script = buildMySqlPasswordChangeScript({
+				appName,
+				rootPassword: databaseRootPassword,
+				targetUser,
+				newPassword: password,
+			});
 
 			await db.transaction(async (tx) => {
 				const setData =
@@ -503,11 +499,11 @@ export const mysqlRouter = createTRPCRouter({
 					.set(setData)
 					.where(eq(mysqlTable.mysqlId, mysqlId));
 
-				if (serverId) {
-					await execAsyncRemote(serverId, command);
-				} else {
-					await execAsync(command, { shell: "/bin/bash" });
-				}
+				await executeSensitiveShellScript({
+					serverId,
+					script,
+					sensitiveValues: [databaseRootPassword, password],
+				});
 			});
 
 			await audit(ctx, {

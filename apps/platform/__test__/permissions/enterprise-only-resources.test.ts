@@ -33,6 +33,7 @@ const ENTERPRISE_RESOURCES = [
 	"volumeBackup",
 	"schedule",
 	"domain",
+	"dns",
 	"destination",
 	"notification",
 	"tag",

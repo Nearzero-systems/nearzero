@@ -8,9 +8,16 @@ import { findVolumeBackupById } from "@nearzero/server/services/volume-backups";
 import {
 	execAsync,
 	execAsyncRemote,
+	executeSensitiveShellScript,
 } from "@nearzero/server/utils/process/execAsync";
 import { scheduledJobs, scheduleJob } from "node-schedule";
-import { getS3Credentials, normalizeS3Path } from "../backups/utils";
+import {
+	getDestinationSensitiveValues,
+	getRestoreFailureMessage,
+	getS3Credentials,
+	normalizeS3Path,
+	quoteShellArgument,
+} from "../backups/utils";
 import { sendVolumeBackupNotifications } from "../notifications/volume-backup";
 import { backupVolume, getVolumeServiceAppName } from "./backup";
 
@@ -85,18 +92,18 @@ const cleanupOldVolumeBackups = async (
 		const rcloneFlags = getS3Credentials(destination);
 		const s3AppName = getVolumeServiceAppName(volumeBackup);
 		const backupFilesPath = `:s3:${destination.bucket}/${s3AppName}/${normalizeS3Path(prefix || "")}`;
-		const listCommand = `rclone lsf ${rcloneFlags.join(" ")} --include \"${volumeName}-*.tar\" ${backupFilesPath}`;
+		const listCommand = `rclone lsf ${rcloneFlags.join(" ")} --include ${quoteShellArgument(`${volumeName}-*.tar`)} ${quoteShellArgument(backupFilesPath)}`;
 		const sortAndPick = `sort -r | tail -n +$((${keepLatestCount}+1)) | xargs -I{}`;
-		const deleteCommand = `rclone delete ${rcloneFlags.join(" ")} ${backupFilesPath}{}`;
+		const deleteCommand = `rclone delete ${rcloneFlags.join(" ")} ${quoteShellArgument(`${backupFilesPath}{}`)}`;
 		const fullCommand = `${listCommand} | ${sortAndPick} ${deleteCommand}`;
 
-		if (serverId) {
-			await execAsyncRemote(serverId, fullCommand);
-		} else {
-			await execAsync(fullCommand);
-		}
+		await executeSensitiveShellScript({
+			serverId,
+			script: fullCommand,
+			sensitiveValues: getDestinationSensitiveValues(destination),
+		});
 	} catch (error) {
-		console.error("Volume backup retention error", error);
+		console.error("Volume backup retention error");
 	}
 };
 
@@ -114,12 +121,12 @@ export const runVolumeBackup = async (volumeBackupId: string) => {
 	try {
 		const command = await backupVolume(volumeBackup);
 
-		const commandWithLog = `(${command}) >> ${deployment.logPath} 2>&1`;
-		if (serverId) {
-			await execAsyncRemote(serverId, commandWithLog);
-		} else {
-			await execAsync(commandWithLog);
-		}
+		const commandWithLog = `(${command}) >> ${quoteShellArgument(deployment.logPath)} 2>&1`;
+		await executeSensitiveShellScript({
+			serverId,
+			script: commandWithLog,
+			sensitiveValues: getDestinationSensitiveValues(volumeBackup.destination),
+		});
 
 		if (volumeBackup.keepLatestCount && volumeBackup.keepLatestCount > 0) {
 			await cleanupOldVolumeBackups(volumeBackup, serverId);
@@ -177,7 +184,7 @@ export const runVolumeBackup = async (volumeBackupId: string) => {
 				serviceType: mappedServiceType,
 				type: "error",
 				organizationId,
-				errorMessage: error instanceof Error ? error.message : String(error),
+				errorMessage: getRestoreFailureMessage(error),
 			});
 		} catch (notificationError) {
 			console.error(

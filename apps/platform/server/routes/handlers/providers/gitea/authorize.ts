@@ -1,11 +1,13 @@
 import { isHostedEditionMode } from "@nearzero/server";
+import { db } from "@nearzero/server/db";
+import { eq } from "drizzle-orm";
+import { parseGitProviderBaseUrl } from "@/server/api/utils/git-provider-url-security";
+import { gitea } from "@/server/db/schema";
+import { inspectByoGitProviderTargetState } from "@/server/routes/handlers/providers/byo-oauth-state";
 import type { ApiRequest, ApiResponse } from "@/server/types/api";
-import { findGitea, redirectWithError } from "./helper";
+import { redirectWithError } from "./helper";
 
-export default async function handler(
-	req: ApiRequest,
-	res: ApiResponse,
-) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
 	try {
 		if (req.method !== "GET") {
 			return res.status(405).json({ error: "Method not allowed" });
@@ -17,32 +19,40 @@ export default async function handler(
 			);
 		}
 
-		const { giteaId } = req.query;
+		const { state } = req.query;
 
-		if (!giteaId || Array.isArray(giteaId)) {
-			return res.status(400).json({ error: "Invalid Gitea provider ID" });
+		if (!state || Array.isArray(state)) {
+			return res
+				.status(400)
+				.json({ error: "Invalid Gitea authorization state" });
 		}
 
-		const gitea = await findGitea(giteaId as string);
-		if (!gitea || !gitea.clientId || !gitea.redirectUri) {
+		const { provider } = await inspectByoGitProviderTargetState(state, "gitea");
+		const integration = await db.query.gitea.findFirst({
+			where: eq(gitea.gitProviderId, provider.gitProviderId),
+		});
+		if (!integration?.clientId || !integration.redirectUri) {
 			return redirectWithError(res, "Incomplete OAuth configuration");
 		}
 
 		// Generate the Gitea authorization URL
-		const authorizationUrl = new URL(`${gitea.giteaUrl}/login/oauth/authorize`);
-		authorizationUrl.searchParams.append("client_id", gitea.clientId as string);
+		const giteaUrl = parseGitProviderBaseUrl(integration.giteaUrl, "Gitea URL");
+		const authorizationUrl = new URL(`${giteaUrl}/login/oauth/authorize`);
+		authorizationUrl.searchParams.append("client_id", integration.clientId);
 		authorizationUrl.searchParams.append("response_type", "code");
 		authorizationUrl.searchParams.append(
 			"redirect_uri",
-			gitea.redirectUri as string,
+			integration.redirectUri,
 		);
 		authorizationUrl.searchParams.append("scope", "read:user repo");
-		authorizationUrl.searchParams.append("state", giteaId as string);
+		authorizationUrl.searchParams.append("state", state);
 
 		// Redirect user to Gitea authorization URL
 		return res.redirect(307, authorizationUrl.toString());
-	} catch (error) {
-		console.error("Error initiating Gitea OAuth flow:", error);
-		return res.status(500).json({ error: "Internal server error" });
+	} catch {
+		return redirectWithError(
+			res,
+			"Invalid or expired Gitea authorization state",
+		);
 	}
 }

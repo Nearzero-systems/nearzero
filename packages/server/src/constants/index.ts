@@ -133,6 +133,7 @@ export const paths = (isServer = false) => {
 		LOGS_PATH: `${BASE_PATH}/logs`,
 		APPLICATIONS_PATH: `${BASE_PATH}/applications`,
 		COMPOSE_PATH: `${BASE_PATH}/compose`,
+		COMPOSE_ENV_PATH: `${BASE_PATH}/secrets/compose-env`,
 		SSH_PATH: `${BASE_PATH}/ssh`,
 		CERTIFICATES_PATH: `${DYNAMIC_TRAEFIK_PATH}/certificates`,
 		MONITORING_PATH: `${BASE_PATH}/monitoring`,

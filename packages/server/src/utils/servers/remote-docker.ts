@@ -3,6 +3,7 @@ import { getDocker } from "@nearzero/server/constants";
 import { findServerById } from "@nearzero/server/services/server";
 import Dockerode from "dockerode";
 import { Client, type ConnectConfig } from "ssh2";
+import { createSshHostVerification } from "./ssh-host-verification";
 
 const getPositiveTimeout = (value: string | undefined, fallback: number) => {
 	const parsed = Number(value);
@@ -108,7 +109,10 @@ function decorateSshStreamAsSocket<T>(stream: T): T {
  * `Invalid port in url` deployment failures. Building the agent ourselves means
  * there is no fallback to the broken transport.
  */
-function createSshDockerAgent(connectOptions: ConnectConfig): Agent {
+function createSshDockerAgent(
+	connectOptions: ConnectConfig,
+	hostVerification: ReturnType<typeof createSshHostVerification>,
+): Agent {
 	const agent = new Agent();
 
 	// docker-modem-style custom connection factory: every HTTP request issued by
@@ -135,6 +139,12 @@ function createSshDockerAgent(connectOptions: ConnectConfig): Agent {
 		try {
 			conn
 				.once("ready", () => {
+					try {
+						hostVerification.commit();
+					} catch (error) {
+						handleError(error as Error);
+						return;
+					}
 					conn.exec("docker system dial-stdio", (err, stream) => {
 						if (err) {
 							handleError(err);
@@ -190,13 +200,18 @@ export const getRemoteDocker = async (serverId?: string | null) => {
 
 	const parsedPort = Number(server.port);
 	const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 22;
+	const hostVerification = createSshHostVerification({
+		ipAddress: server.ipAddress,
+		port,
+	});
 
 	const agent = createSshDockerAgent({
 		host: server.ipAddress,
 		port,
 		username: server.username,
 		privateKey: server.sshKey.privateKey,
-	});
+		hostVerifier: hostVerification.hostVerifier,
+	}, hostVerification);
 
 	return new Dockerode({
 		protocol: "http",

@@ -23,7 +23,10 @@ import {
 	findScheduleById,
 	updateSchedule,
 } from "@nearzero/server/services/schedule";
-import { findServerById } from "@nearzero/server/services/server";
+import {
+	findServerById,
+	toPublicServerRelation,
+} from "@nearzero/server/services/server";
 import { TRPCError } from "@trpc/server";
 import { asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -339,7 +342,7 @@ export const scheduleRouter = createTRPCRouter({
 				server: eq(schedules.serverId, input.id),
 				"nearzero-server": eq(schedules.userId, input.id),
 			};
-			return db.query.schedules.findMany({
+			const scheduleRows = await db.query.schedules.findMany({
 				where: where[input.scheduleType],
 				orderBy: [asc(schedules.createdAt)],
 				with: {
@@ -364,6 +367,7 @@ export const scheduleRouter = createTRPCRouter({
 					},
 				},
 			});
+			return scheduleRows.map(toPublicServerRelation);
 		}),
 
 	one: protectedProcedure
@@ -401,7 +405,7 @@ export const scheduleRouter = createTRPCRouter({
 					});
 				}
 			}
-			return schedule;
+			return toPublicServerRelation(schedule);
 		}),
 
 	runManually: protectedProcedure

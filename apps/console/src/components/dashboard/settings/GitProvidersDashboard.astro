@@ -5,7 +5,6 @@ import GitProviderModals from "@/components/dashboard/settings/GitProviderModals
 import { bootstrapSettingsDashboardPage } from "@/components/dashboard/settings/settingsDashboardBootstrap";
 import { settingsDashboardGates } from "@/components/dashboard/settings/settingsDashboardGates";
 import { gitProviderUiOptions } from "@/lib/git-provider-ui";
-import { getGitlabAuthUrl } from "@/lib/gitlab-utils";
 import { ST } from "@/lib/settings-hub-ui";
 import { createServerTrpcClient } from "@/lib/server-api";
 
@@ -79,7 +78,7 @@ const providerActionMap: Record<string, string> = {
 ---
 
 <div class="w-full">
-	{
+															{
 		loadFailed ? (
 			<div class="min-h-[45vh] flex flex-col items-center justify-center gap-2 text-center text-xs text-muted-foreground p-10">
 				<span>Could not load this page.</span>
@@ -159,24 +158,24 @@ const providerActionMap: Record<string, string> = {
 												const haveGithubRequirements =
 													isGithub &&
 													(isManaged ||
-														(gitProvider.github?.githubPrivateKey &&
-															gitProvider.github?.githubAppId)) &&
-													gitProvider.github?.githubInstallationId;
+														(gitProvider.github?.hasPrivateKey &&
+															gitProvider.github?.hasAppId)) &&
+													gitProvider.github?.hasInstallation;
 												const haveGitlabRequirements =
 													isGitlab &&
-													gitProvider.gitlab?.accessToken &&
-													gitProvider.gitlab?.refreshToken;
+													gitProvider.gitlab?.hasAccessToken &&
+													gitProvider.gitlab?.hasRefreshToken;
 												const haveGiteaRequirements =
 													isGitea &&
 													(isManaged
-														? gitProvider.gitea?.accessToken
-														: gitProvider.gitea?.clientId && gitProvider.gitea?.clientSecret);
+														? gitProvider.gitea?.hasAccessToken
+														: gitProvider.gitea?.hasClientId && gitProvider.gitea?.hasClientSecret);
 												const haveBitbucketRequirements =
 													isBitbucket &&
 													(isManaged
-														? gitProvider.bitbucket?.accessToken
-														: gitProvider.bitbucket?.apiToken ||
-															gitProvider.bitbucket?.appPassword);
+														? gitProvider.bitbucket?.hasAccessToken
+														: gitProvider.bitbucket?.hasApiToken ||
+															gitProvider.bitbucket?.hasAppPassword);
 												const providerRef =
 													isGithub
 														? gitProvider.github?.githubId
@@ -194,10 +193,10 @@ const providerActionMap: Record<string, string> = {
 																{!gitProvider.isOwner ? (
 																	<span class="nz-git-providers__badge">Shared</span>
 																) : null}
-																{
+															{
 																	isBitbucket &&
-																	gitProvider.bitbucket?.appPassword &&
-																	!gitProvider.bitbucket?.apiToken ? (
+																	gitProvider.bitbucket?.hasAppPassword &&
+																	!gitProvider.bitbucket?.hasApiToken ? (
 																		<span class="nz-git-providers__badge nz-git-providers__badge--warn">Deprecated</span>
 																	) : null
 																}
@@ -239,15 +238,17 @@ const providerActionMap: Record<string, string> = {
 																	!haveGithubRequirements && isGithub && !isManaged ? (
 																		<>
 																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
-																			<a
-																				href={`${gitProvider.github?.githubAppName}/installations/new?state=gh_setup:${gitProvider.github?.githubId}`}
-																				class={ST.actionBtn}
-																				target="_blank"
-																				rel="noopener noreferrer"
-																				aria-label="Install GitHub app"
-																			>
-																				Install
-																			</a>
+																				<button
+																					type="button"
+																					class={ST.actionBtn}
+																					data-git-action="authorize-byo"
+																					data-provider-type="github"
+																					data-git-provider-id={gitProvider.gitProviderId}
+																					data-provider-url={`${gitProvider.github?.githubAppName}/installations/new`}
+																					aria-label="Install GitHub app"
+																				>
+																					Install
+																				</button>
 																		</>
 																	) : null
 																}
@@ -255,20 +256,18 @@ const providerActionMap: Record<string, string> = {
 																	!haveGitlabRequirements && isGitlab && !isManaged ? (
 																		<>
 																			<span class="nz-git-providers__badge nz-git-providers__badge--info">Action required</span>
-																			<a
-																				href={getGitlabAuthUrl(
-																					gitProvider.gitlab?.applicationId || "",
-																					gitProvider.gitlab?.gitlabId || "",
-																					gitProvider.gitlab?.gitlabUrl || "https://gitlab.com",
-																					gitProviderBaseUrl,
-																				)}
-																				class={ST.actionBtn}
-																				target="_blank"
-																				rel="noopener noreferrer"
-																				aria-label="Authorize GitLab"
-																			>
-																				Authorize
-																			</a>
+																				<button
+																					type="button"
+																					class={ST.actionBtn}
+																					data-git-action="authorize-byo"
+																					data-provider-type="gitlab"
+																					data-git-provider-id={gitProvider.gitProviderId}
+																					data-provider-client-id={gitProvider.gitlab?.applicationId || ""}
+																					data-provider-url={gitProvider.gitlab?.gitlabUrl || "https://gitlab.com"}
+																					aria-label="Authorize GitLab"
+																				>
+																					Authorize
+																				</button>
 																		</>
 																	) : null
 																}
@@ -349,8 +348,6 @@ const providerActionMap: Record<string, string> = {
 				</div>
 
 				<GitProviderModals
-					organizationId={organizationId}
-					userId={userId}
 					gitProviderBaseUrl={gitProviderBaseUrl}
 					gitProviderBaseUrlIsLocal={gitProviderBaseUrlIsLocal}
 					canConfigureDomain={canConfigureDomain}

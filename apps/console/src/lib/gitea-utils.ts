@@ -1,5 +1,5 @@
 export const getGiteaOAuthUrl = (
-	giteaId: string,
+	state: string,
 	clientId: string,
 	giteaUrl: string,
 	baseUrl: string,
@@ -13,5 +13,5 @@ export const getGiteaOAuthUrl = (
 
 	return `${giteaUrl}/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
 		redirectUri,
-	)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(giteaId)}`;
+	)}&response_type=code&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(state)}`;
 };

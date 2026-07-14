@@ -24,6 +24,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { format } from "date-fns";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import type { z } from "zod";
 import {
 	type Application,
@@ -36,8 +37,10 @@ import {
 	assertApplicationExecutionPlacementSnapshot,
 	resolveApplicationExecutionPlacement,
 } from "./build-execution";
-import { cancelDeploymentProcess } from "./deployment-runner";
 import { type Compose, findComposeById, updateCompose } from "./compose";
+import { findDatabaseDeploymentsCentralized } from "./database-deployment";
+import { cancelDeploymentProcess } from "./deployment-runner";
+import { sanitizePublicErrorMessage } from "./operational-log";
 import {
 	findPreviewDeploymentById,
 	type PreviewDeployment,
@@ -47,9 +50,16 @@ import { removeRollbackById } from "./rollbacks";
 import { findScheduleById } from "./schedule";
 import { findServerById, type Server } from "./server";
 import { findVolumeBackupById } from "./volume-backups";
-import { findDatabaseDeploymentsCentralized } from "./database-deployment";
 
 export type ServicePath = { href: string | null; label: string };
+
+const DEPLOYMENT_INITIALIZATION_FAILURE =
+	"Deployment could not be initialized. Check the server logs for details.";
+
+const createDeploymentLogFileName = (appName: string) => {
+	const timestamp = format(new Date(), "yyyy-MM-dd-HH-mm-ss-SSS");
+	return `${appName}-${timestamp}-${nanoid(8)}.log`;
+};
 
 export async function resolveServicePath(
 	orgId: string,
@@ -197,8 +207,7 @@ export const createDeployment = async (
 			: "local Nearzero runtime";
 
 		const { LOGS_PATH } = paths(!!serverId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${application.appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(application.appName);
 		const logFilePath = path.join(LOGS_PATH, application.appName, fileName);
 
 		if (serverId) {
@@ -253,13 +262,16 @@ export const createDeployment = async (
 				status: "error",
 				logPath: "",
 				description: deployment.description || "",
-				errorMessage: `An error have occurred: ${error instanceof Error ? error.message : error}`,
+				errorMessage: DEPLOYMENT_INITIALIZATION_FAILURE,
 				startedAt: new Date().toISOString(),
 				finishedAt: new Date().toISOString(),
 			})
 			.returning();
 		await updateApplicationStatus(application.applicationId, "error");
-		console.log(error);
+		console.error(
+			`Failed to initialize application deployment ${deployment.applicationId}:`,
+			sanitizePublicErrorMessage(error, DEPLOYMENT_INITIALIZATION_FAILURE),
+		);
 		throw new TRPCError({
 			code: "BAD_REQUEST",
 			message: "Error creating the deployment",
@@ -295,8 +307,7 @@ export const createDeploymentPreview = async (
 	try {
 		const appName = `${previewDeployment.appName}`;
 		const { LOGS_PATH } = paths(!!placement.buildServerId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(appName);
 		const logFilePath = path.join(LOGS_PATH, appName, fileName);
 
 		if (placement.buildServerId) {
@@ -350,7 +361,7 @@ export const createDeploymentPreview = async (
 				status: "error",
 				logPath: "",
 				description: deployment.description || "",
-				errorMessage: `An error have occurred: ${error instanceof Error ? error.message : error}`,
+				errorMessage: DEPLOYMENT_INITIALIZATION_FAILURE,
 				startedAt: new Date().toISOString(),
 				finishedAt: new Date().toISOString(),
 			})
@@ -358,7 +369,10 @@ export const createDeploymentPreview = async (
 		await updatePreviewDeployment(deployment.previewDeploymentId, {
 			previewStatus: "error",
 		});
-		console.log(error);
+		console.error(
+			`Failed to initialize preview deployment ${deployment.previewDeploymentId}:`,
+			sanitizePublicErrorMessage(error, DEPLOYMENT_INITIALIZATION_FAILURE),
+		);
 		throw new TRPCError({
 			code: "BAD_REQUEST",
 			message: "Error creating the deployment",
@@ -374,14 +388,10 @@ export const createDeploymentCompose = async (
 ) => {
 	const compose = await findComposeById(deployment.composeId);
 	await cancelPreviousRunningDeployments(deployment.composeId, "compose");
-	await removeLastTenDeployments(
-		deployment.composeId,
-		"compose",
-	);
+	await removeLastTenDeployments(deployment.composeId, "compose");
 	try {
 		const { LOGS_PATH } = paths(!!compose.serverId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${compose.appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(compose.appName);
 		const logFilePath = path.join(LOGS_PATH, compose.appName, fileName);
 
 		if (compose.serverId) {
@@ -429,7 +439,7 @@ echo "Initializing deployment\n" >> ${logFilePath};
 				status: "error",
 				logPath: "",
 				description: deployment.description || "",
-				errorMessage: `An error have occurred: ${error instanceof Error ? error.message : error}`,
+				errorMessage: DEPLOYMENT_INITIALIZATION_FAILURE,
 				startedAt: new Date().toISOString(),
 				finishedAt: new Date().toISOString(),
 			})
@@ -437,7 +447,10 @@ echo "Initializing deployment\n" >> ${logFilePath};
 		await updateCompose(compose.composeId, {
 			composeStatus: "error",
 		});
-		console.log(error);
+		console.error(
+			`Failed to initialize Compose deployment ${deployment.composeId}:`,
+			sanitizePublicErrorMessage(error, DEPLOYMENT_INITIALIZATION_FAILURE),
+		);
 		throw new TRPCError({
 			code: "BAD_REQUEST",
 			message: "Error creating the deployment",
@@ -467,8 +480,7 @@ export const createDeploymentBackup = async (
 	await removeLastTenDeployments(deployment.backupId, "backup");
 	try {
 		const { LOGS_PATH } = paths(!!serverId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${backup.appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(backup.appName);
 		const logFilePath = path.join(LOGS_PATH, backup.appName, fileName);
 
 		if (serverId) {
@@ -506,6 +518,10 @@ echo "Initializing backup\n" >> ${logFilePath};
 		}
 		return deploymentCreate[0];
 	} catch (error) {
+		console.error(
+			`Failed to initialize backup deployment ${deployment.backupId}:`,
+			sanitizePublicErrorMessage(error, DEPLOYMENT_INITIALIZATION_FAILURE),
+		);
 		await db
 			.insert(deployments)
 			.values({
@@ -514,7 +530,7 @@ echo "Initializing backup\n" >> ${logFilePath};
 				status: "error",
 				logPath: "",
 				description: deployment.description || "",
-				errorMessage: `An error have occurred: ${error instanceof Error ? error.message : error}`,
+				errorMessage: DEPLOYMENT_INITIALIZATION_FAILURE,
 				startedAt: new Date().toISOString(),
 				finishedAt: new Date().toISOString(),
 			})
@@ -542,8 +558,7 @@ export const createDeploymentSchedule = async (
 	await removeLastTenDeployments(deployment.scheduleId, "schedule");
 	try {
 		const { SCHEDULES_PATH } = paths(!!serverId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${schedule.appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(schedule.appName);
 		const logFilePath = path.join(SCHEDULES_PATH, schedule.appName, fileName);
 
 		if (serverId) {
@@ -581,7 +596,10 @@ export const createDeploymentSchedule = async (
 		}
 		return deploymentCreate[0];
 	} catch (error) {
-		console.log(error);
+		console.error(
+			`Failed to initialize schedule deployment ${deployment.scheduleId}:`,
+			sanitizePublicErrorMessage(error, DEPLOYMENT_INITIALIZATION_FAILURE),
+		);
 		await db
 			.insert(deployments)
 			.values({
@@ -590,7 +608,7 @@ export const createDeploymentSchedule = async (
 				status: "error",
 				logPath: "",
 				description: deployment.description || "",
-				errorMessage: `An error have occurred: ${error instanceof Error ? error.message : error}`,
+				errorMessage: DEPLOYMENT_INITIALIZATION_FAILURE,
 				startedAt: new Date().toISOString(),
 				finishedAt: new Date().toISOString(),
 			})
@@ -617,14 +635,10 @@ export const createDeploymentVolumeBackup = async (
 		deployment.volumeBackupId,
 		"volumeBackup",
 	);
-	await removeLastTenDeployments(
-		deployment.volumeBackupId,
-		"volumeBackup",
-	);
+	await removeLastTenDeployments(deployment.volumeBackupId, "volumeBackup");
 	try {
 		const { VOLUME_BACKUPS_PATH } = paths(!!serverId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${volumeBackup.appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(volumeBackup.appName);
 		const logFilePath = path.join(
 			VOLUME_BACKUPS_PATH,
 			volumeBackup.appName,
@@ -669,7 +683,10 @@ export const createDeploymentVolumeBackup = async (
 		}
 		return deploymentCreate[0];
 	} catch (error) {
-		console.log(error);
+		console.error(
+			`Failed to initialize volume backup deployment ${deployment.volumeBackupId}:`,
+			sanitizePublicErrorMessage(error, DEPLOYMENT_INITIALIZATION_FAILURE),
+		);
 		await db
 			.insert(deployments)
 			.values({
@@ -678,7 +695,7 @@ export const createDeploymentVolumeBackup = async (
 				status: "error",
 				logPath: "",
 				description: deployment.description || "",
-				errorMessage: `An error have occurred: ${error instanceof Error ? error.message : error}`,
+				errorMessage: DEPLOYMENT_INITIALIZATION_FAILURE,
 				startedAt: new Date().toISOString(),
 				finishedAt: new Date().toISOString(),
 			})
@@ -710,7 +727,7 @@ export const removeDeployment = async (deploymentId: string) => {
 
 		const logPath = path.join(deployment.logPath);
 		if (logPath && logPath !== ".") {
-			const command = `rm -f ${logPath};`;
+			const command = `rm -f ${quotePath(logPath)}`;
 			const logServerId = existingDeployment
 				? resolveDeploymentLogServerId(existingDeployment)
 				: deployment.serverId;
@@ -722,12 +739,10 @@ export const removeDeployment = async (deploymentId: string) => {
 		}
 
 		return deployment;
-	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Error removing the deployment";
+	} catch {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message,
+			message: "Error removing the deployment",
 		});
 	}
 };
@@ -756,7 +771,15 @@ const getDeploymentsByType = async (
 		where: eq(deployments[`${type}Id`], id),
 		orderBy: desc(deployments.createdAt),
 		with: {
-			rollback: true,
+			rollback: {
+				columns: {
+					rollbackId: true,
+					deploymentId: true,
+					version: true,
+					image: true,
+					createdAt: true,
+				},
+			},
 		},
 	});
 	return deploymentList;
@@ -772,9 +795,7 @@ export const removeDeployments = async (application: Application) => {
 	}
 };
 
-export const clearApplicationDeploymentLogs = async (
-	applicationId: string,
-) => {
+export const clearApplicationDeploymentLogs = async (applicationId: string) => {
 	const deploymentList = await db.query.deployments.findMany({
 		where: eq(deployments.applicationId, applicationId),
 		with: deploymentLogPlacementWith,
@@ -842,19 +863,14 @@ const cancelPreviousRunningDeployments = async (
 		if (runningDeployments.length > 0) {
 			if (type === "application" || type === "previewDeployment") {
 				for (const deployment of runningDeployments) {
-					const placementDeployment =
-						await db.query.deployments.findFirst({
-							where: eq(
-								deployments.deploymentId,
-								deployment.deploymentId,
-							),
-							with: deploymentLogPlacementWith,
-						});
+					const placementDeployment = await db.query.deployments.findFirst({
+						where: eq(deployments.deploymentId, deployment.deploymentId),
+						with: deploymentLogPlacementWith,
+					});
 					if (!placementDeployment) continue;
 					await cancelDeploymentProcess({
 						deploymentId: placementDeployment.deploymentId,
-						serverId:
-							resolveDeploymentLogServerId(placementDeployment),
+						serverId: resolveDeploymentLogServerId(placementDeployment),
 					}).catch(() => undefined);
 				}
 			}
@@ -874,7 +890,7 @@ const cancelPreviousRunningDeployments = async (
 	} catch (err) {
 		console.error(
 			`Failed to cancel previous running deployments for ${type} ${id}:`,
-			err,
+			sanitizePublicErrorMessage(err, "deployment cancellation cleanup failed"),
 		);
 	}
 };
@@ -902,7 +918,7 @@ const removeLastTenDeployments = async (
 			} catch (err) {
 				console.error(
 					`Failed to remove deployment ${oldDeployment.deploymentId} during cleanup:`,
-					err,
+					sanitizePublicErrorMessage(err, "deployment cleanup failed"),
 				);
 			}
 		}
@@ -947,7 +963,15 @@ export const findAllDeploymentsByApplicationId = async (
 		where: eq(deployments.applicationId, applicationId),
 		orderBy: desc(deployments.createdAt),
 		with: {
-			rollback: true,
+			rollback: {
+				columns: {
+					rollbackId: true,
+					deploymentId: true,
+					version: true,
+					image: true,
+					createdAt: true,
+				},
+			},
 		},
 	});
 	return deploymentsList;
@@ -1118,13 +1142,14 @@ export const findAllDeploymentsCentralized = async (
 		findDatabaseDeploymentsCentralized(orgId, accessedServices),
 	]);
 
-	let standardRows: Awaited<
-		ReturnType<typeof db.query.deployments.findMany>
-	> = [];
+	let standardRows: Awaited<ReturnType<typeof db.query.deployments.findMany>> =
+		[];
 
 	if (appIds.length > 0 || compIds.length > 0) {
 		const conditions = [
-			...(appIds.length > 0 ? [inArray(deployments.applicationId, appIds)] : []),
+			...(appIds.length > 0
+				? [inArray(deployments.applicationId, appIds)]
+				: []),
 			...(compIds.length > 0 ? [inArray(deployments.composeId, compIds)] : []),
 		];
 		const whereClause =
@@ -1138,8 +1163,7 @@ export const findAllDeploymentsCentralized = async (
 	}
 
 	return [...dbDeploymentRows, ...standardRows].sort(
-		(a, b) =>
-			new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+		(a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
 	);
 };
 
@@ -1188,8 +1212,7 @@ export const createServerDeployment = async (
 
 		const server = await findServerById(deployment.serverId);
 		await removeLastFiveDeployments(deployment.serverId);
-		const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-		const fileName = `${server.appName}-${formattedDateTime}.log`;
+		const fileName = createDeploymentLogFileName(server.appName);
 		const logFilePath = path.join(LOGS_PATH, server.appName, fileName);
 		await fsPromises.mkdir(path.join(LOGS_PATH, server.appName), {
 			recursive: true,
@@ -1212,12 +1235,10 @@ export const createServerDeployment = async (
 			});
 		}
 		return deploymentCreate[0];
-	} catch (error) {
-		const message =
-			error instanceof Error ? error.message : "Error creating the deployment";
+	} catch {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message,
+			message: "Error creating the deployment",
 		});
 	}
 };

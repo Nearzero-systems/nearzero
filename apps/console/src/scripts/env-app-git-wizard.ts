@@ -12,6 +12,7 @@ import {
 	fetchGitlabRepositories,
 	fetchGiteaBranches,
 	fetchGiteaRepositories,
+	findBrowserExposedSecretEnvKeys,
 	formatEnvBlock,
 	parseEnvBlock,
 	resolvePublicGitDefaultBranch,
@@ -290,7 +291,7 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		[],
 	);
 
-	let state = createInitialState(ctx);
+	const state = createInitialState(ctx);
 	let repoFetchGen = 0;
 	let detectionGen = 0;
 
@@ -391,6 +392,9 @@ export function mountApplicationImportPage(root: HTMLElement) {
 	) as HTMLInputElement | null;
 	let domainPreviewTimer: ReturnType<typeof setTimeout> | null = null;
 	const envRowsEl = document.getElementById("nz-app-import-env-rows");
+	const envPublicWarning = document.getElementById(
+		"nz-app-import-env-public-warning",
+	) as HTMLParagraphElement | null;
 	const envPaste = document.getElementById(
 		"nz-app-import-env-paste",
 	) as HTMLTextAreaElement | null;
@@ -587,7 +591,7 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		}
 	}
 
-	function showBuildPanel(applicationId: string, liveHost: string | null) {
+	function showBuildPanel(applicationId: string, _liveHost: string | null) {
 		root.dataset.appImportMode = "building";
 		gitPanel?.classList.add("hidden");
 		if (gitPanel) gitPanel.hidden = true;
@@ -802,12 +806,38 @@ export function mountApplicationImportPage(root: HTMLElement) {
 			const wrap = document.createElement("div");
 			wrap.className = "nz-app-import-env-row";
 			wrap.innerHTML = `
-				<input type="text" class="nz-app-import-input" placeholder="KEY" data-env-key value="${escapeAttr(row.key)}" />
-				<input type="text" class="nz-app-import-input" placeholder="value" data-env-val value="${escapeAttr(row.value)}" />
+				<input type="text" class="nz-app-import-input" placeholder="KEY" data-env-key value="${escapeAttr(row.key)}" autocomplete="off" autocapitalize="none" spellcheck="false" />
+				<div class="nz-app-import-env-value">
+					<input type="password" class="nz-app-import-input" placeholder="value" data-env-val value="${escapeAttr(row.value)}" autocomplete="off" autocapitalize="none" spellcheck="false" />
+					<button type="button" class="nz-app-import-env-reveal" data-env-reveal aria-label="Show environment variable value" aria-pressed="false">Show</button>
+				</div>
 				<button type="button" class="nz-app-import-env-remove" data-env-remove="${i}" aria-label="Remove variable">${ENV_REMOVE_ICON}</button>
 			`;
 			envRowsEl.appendChild(wrap);
 		}
+		updateEnvPublicSecretWarning();
+	}
+
+	function updateEnvPublicSecretWarning() {
+		if (!envPublicWarning) return;
+		const rows = envRowsEl
+			? Array.from(envRowsEl.querySelectorAll<HTMLElement>(".nz-app-import-env-row")).map(
+					(row) => ({
+						key:
+							(row.querySelector("[data-env-key]") as HTMLInputElement | null)
+								?.value ?? "",
+					}),
+				)
+			: state.envRows;
+		const unsafeKeys = findBrowserExposedSecretEnvKeys(rows);
+		const visible = unsafeKeys.length > 0;
+		envPublicWarning.textContent = visible
+			? `These names look secret but use a browser-public prefix: ${unsafeKeys.join(
+					", ",
+				)}. Rename them to server-only variables before deploying; public-prefixed values are embedded in browser code.`
+			: "";
+		envPublicWarning.hidden = !visible;
+		envPublicWarning.classList.toggle("hidden", !visible);
 	}
 
 	function escapeAttr(value: string) {
@@ -1139,6 +1169,18 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		state.envRows = rows.length ? rows : [{ key: "", value: "" }];
 	}
 
+	function importEnvText(text: string) {
+		const parsed = parseEnvBlock(text);
+		if (parsed.length === 0) return false;
+
+		syncEnvRowsFromDom();
+		const merged = state.envRows.filter((row) => row.key.trim());
+		state.envRows = [...merged, ...parsed];
+		if (envPaste) envPaste.value = "";
+		renderEnvRows();
+		return true;
+	}
+
 	function setSelectedRepoSummary(name: string, meta: string) {
 		if (selectedRepoName) selectedRepoName.textContent = name;
 		if (selectedRepoMeta) selectedRepoMeta.textContent = meta;
@@ -1459,13 +1501,17 @@ export function mountApplicationImportPage(root: HTMLElement) {
 				: preview.mode === "platform"
 					? "Nearzero platform hostname"
 					: preview.mode === "preview"
-						? "Nearzero preview hostname"
+						? "Temporary IP-based hostname"
 						: "Suggested hostname";
 		const warn =
 			preview.warnings.length > 0 ?
 				`<br /><span class="text-amber-700">${preview.warnings.map((w) => escapeAttr(w)).join(" ")}</span>`
 			:	"";
-		domainPreviewEl.innerHTML = `<strong>${escapeAttr(preview.host ?? "")}</strong><br />${escapeAttr(modeLabel)}${warn}`;
+		const setupHint =
+			preview.mode === "preview"
+				? '<br /><span class="text-amber-700">No default application domain is configured, so this points directly to the selected server.</span>'
+				: "";
+		domainPreviewEl.innerHTML = `<strong>${escapeAttr(preview.host ?? "")}</strong><br />${escapeAttr(modeLabel)}${warn}${setupHint}`;
 
 		if (preview.mode === "org-zone") {
 			managedDomainWrap?.classList.remove("hidden");
@@ -1539,6 +1585,14 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		const port = Number.parseInt(managedPortInput?.value ?? "3000", 10);
 		if (!Number.isFinite(port) || port < 1 || port > 65535) {
 			return "Enter a valid service port (1–65535).";
+		}
+		const browserExposedSecrets = findBrowserExposedSecretEnvKeys(
+			state.envRows,
+		);
+		if (browserExposedSecrets.length > 0) {
+			return `Rename these secret-like browser-public variables before creating the application: ${browserExposedSecrets.join(
+				", ",
+			)}. Public-prefixed values are compiled into browser code.`;
 		}
 		state.domainPort = port;
 		return null;
@@ -1927,6 +1981,25 @@ export function mountApplicationImportPage(root: HTMLElement) {
 				return;
 			}
 
+			const revealEnv = target.closest<HTMLButtonElement>("[data-env-reveal]");
+			if (revealEnv) {
+				const valueInput = revealEnv
+					.closest(".nz-app-import-env-value")
+					?.querySelector<HTMLInputElement>("[data-env-val]");
+				if (!valueInput) return;
+				const shouldReveal = valueInput.type === "password";
+				valueInput.type = shouldReveal ? "text" : "password";
+				revealEnv.textContent = shouldReveal ? "Hide" : "Show";
+				revealEnv.setAttribute("aria-pressed", shouldReveal ? "true" : "false");
+				revealEnv.setAttribute(
+					"aria-label",
+					shouldReveal
+						? "Hide environment variable value"
+						: "Show environment variable value",
+				);
+				return;
+			}
+
 			const removeEnv = target.closest<HTMLButtonElement>("[data-env-remove]");
 			if (removeEnv) {
 				syncEnvRowsFromDom();
@@ -2030,16 +2103,41 @@ export function mountApplicationImportPage(root: HTMLElement) {
 	);
 
 	envPaste?.addEventListener(
+		"paste",
+		(event) => {
+			const pastedText = event.clipboardData?.getData("text/plain") ?? "";
+			if (!pastedText) return;
+
+			const selectionStart = envPaste.selectionStart ?? envPaste.value.length;
+			const selectionEnd = envPaste.selectionEnd ?? selectionStart;
+			const nextText = [
+				envPaste.value.slice(0, selectionStart),
+				pastedText,
+				envPaste.value.slice(selectionEnd),
+			].join("");
+
+			if (parseEnvBlock(nextText).length === 0) return;
+			event.preventDefault();
+			importEnvText(nextText);
+		},
+		{ signal },
+	);
+
+	envRowsEl?.addEventListener(
+		"input",
+		(event) => {
+			if (!(event.target instanceof HTMLInputElement)) return;
+			if (!event.target.matches("[data-env-key], [data-env-val]")) return;
+			syncEnvRowsFromDom();
+			updateEnvPublicSecretWarning();
+		},
+		{ signal },
+	);
+
+	envPaste?.addEventListener(
 		"blur",
 		() => {
-			const parsed = parseEnvBlock(envPaste.value);
-			if (parsed.length === 0) return;
-			syncEnvRowsFromDom();
-			const merged = state.envRows.filter((r) => r.key.trim());
-			for (const row of parsed) merged.push(row);
-			state.envRows = merged.length ? merged : [{ key: "", value: "" }];
-			envPaste.value = "";
-			renderEnvRows();
+			importEnvText(envPaste.value);
 		},
 		{ signal },
 	);

@@ -3,6 +3,7 @@ import path from "node:path";
 import { paths } from "@nearzero/server/constants";
 import type { Application } from "@nearzero/server/services/application";
 import { resolveApplicationBuildExecutionServerId } from "@nearzero/server/services/build-execution";
+import { quote } from "shell-quote";
 import { execAsync, execAsyncRemote } from "../process/execAsync";
 
 export const recreateDirectory = async (pathFolder: string): Promise<void> => {
@@ -68,9 +69,12 @@ export const removeComposeDirectory = async (
 	appName: string,
 	serverId?: string | null,
 ) => {
-	const { COMPOSE_PATH } = paths(!!serverId);
+	const { COMPOSE_ENV_PATH, COMPOSE_PATH } = paths(!!serverId);
 	const directoryPath = path.join(COMPOSE_PATH, appName);
-	const command = `rm -rf ${directoryPath}`;
+	const envFilePath = path.join(COMPOSE_ENV_PATH, `${appName}.env`);
+	const command = `rm -rf -- ${quote([directoryPath])}; rm -f -- ${quote([
+		envFilePath,
+	])}`;
 	try {
 		if (serverId) {
 			await execAsyncRemote(serverId, command);
@@ -109,6 +113,7 @@ export const getApplicationBuildDirectory = (
 	const serverId = buildServerId;
 	const { APPLICATIONS_PATH } = paths(!!serverId);
 	const { appName, sourceType, customGitBuildPath } = application;
+	const sourceDirectory = path.join(APPLICATIONS_PATH, appName, "code");
 	let buildPath = "";
 
 	if (sourceType === "github") {
@@ -124,7 +129,29 @@ export const getApplicationBuildDirectory = (
 	} else if (sourceType === "git") {
 		buildPath = customGitBuildPath || "";
 	}
-	return path.join(APPLICATIONS_PATH, appName, "code", buildPath ?? "");
+	return assertPathWithinApplicationSource(
+		sourceDirectory,
+		path.join(sourceDirectory, buildPath ?? ""),
+		"Build path",
+	);
+};
+
+export const assertPathWithinApplicationSource = (
+	sourceDirectory: string,
+	candidatePath: string,
+	label: string,
+) => {
+	const relativePath = path.relative(sourceDirectory, candidatePath);
+	if (
+		relativePath === ".." ||
+		relativePath.startsWith(`..${path.sep}`) ||
+		path.isAbsolute(relativePath)
+	) {
+		throw new Error(
+			`${label} must stay inside the checked-out source directory.`,
+		);
+	}
+	return candidatePath;
 };
 
 export const getBuildAppDirectory = (
@@ -137,7 +164,16 @@ export const getBuildAppDirectory = (
 		buildServerId,
 	);
 	if (buildTypeOverride === "dockerfile") {
-		return path.join(buildDirectory, application.dockerfile || "Dockerfile");
+		const sourceDirectory = path.join(
+			paths(!!buildServerId).APPLICATIONS_PATH,
+			application.appName,
+			"code",
+		);
+		return assertPathWithinApplicationSource(
+			sourceDirectory,
+			path.join(buildDirectory, application.dockerfile || "Dockerfile"),
+			"Dockerfile path",
+		);
 	}
 
 	return buildDirectory;
@@ -153,5 +189,10 @@ export const getDockerContextPath = (
 	if (!dockerContextPath) {
 		return null;
 	}
-	return path.join(APPLICATIONS_PATH, appName, "code", dockerContextPath);
+	const sourceDirectory = path.join(APPLICATIONS_PATH, appName, "code");
+	return assertPathWithinApplicationSource(
+		sourceDirectory,
+		path.join(sourceDirectory, dockerContextPath),
+		"Docker context path",
+	);
 };

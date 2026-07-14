@@ -49,6 +49,8 @@ export const findEnvironmentById = async (environmentId: string) => {
 			isDefault: true,
 			projectId: true,
 			env: true,
+			dnsZoneId: true,
+			domainPrefix: true,
 		},
 		with: {
 			applications: {

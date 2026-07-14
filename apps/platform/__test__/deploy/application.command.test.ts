@@ -201,7 +201,7 @@ describe("deployApplication - Command Generation Tests", () => {
 
 	it("should generate correct git clone command for astro example", async () => {
 		const app = createMockApplication();
-		const command = await cloneGitRepository(app);
+		const { command } = await cloneGitRepository(app);
 		console.log(command);
 
 		expect(command).toContain("https://github.com/nearzero/examples.git");
@@ -213,7 +213,7 @@ describe("deployApplication - Command Generation Tests", () => {
 
 	it("should generate git clone with submodules when enabled", async () => {
 		const app = createMockApplication({ enableSubmodules: true });
-		const command = await cloneGitRepository(app);
+		const { command } = await cloneGitRepository(app);
 
 		expect(command).toContain("--recurse-submodules");
 		expect(command).toContain("https://github.com/nearzero/examples.git");

@@ -5,9 +5,13 @@ import { COREPACK_VERSION } from "@nearzero/server/setup/builder-versions";
 import { getStaticCommand } from "@nearzero/server/utils/builders/static";
 import { nanoid } from "nanoid";
 import { quote } from "shell-quote";
-import { prepareEnvironmentVariablesForShell } from "../docker/utils";
 import { getBuildAppDirectory } from "../filesystem/directory";
 import type { ApplicationNested } from ".";
+import {
+	getBuildRuntimePreamble,
+	NEARZERO_BUILD_ENV_SECRET_ID,
+	PROTECTED_BUILD_CONTEXT_PATHS,
+} from "./utils";
 
 // Modern nixpkgs archive used only when the Nixpacks default archive cannot
 // satisfy the resolved build plan (for example Node 24 or newer Node patches).
@@ -73,11 +77,21 @@ else
 end
 `;
 
+const NIXPACKS_SECURE_PLAN_NORMALIZATION_FILTER = `
+.variables = (
+	(.variables // {})
+	| with_entries(
+		select(.key as $key | (($nearzeroSecretKeys | index($key)) == null))
+	)
+)
+| ${NIXPACKS_PLAN_NORMALIZATION_FILTER}
+`;
+
 export const getNixpacksCommand = (
 	application: ApplicationNested,
 	buildServerId?: string | null,
 ) => {
-	const { env, appName, publishDirectory, cleanCache } = application;
+	const { appName, publishDirectory, cleanCache } = application;
 	const customInstallCommand = application.customInstallCommand?.trim() || "";
 	const customBuildCommand = application.customBuildCommand?.trim() || "";
 	const customStartCommand = application.customStartCommand?.trim() || "";
@@ -92,10 +106,7 @@ export const getNixpacksCommand = (
 		appName,
 		"code",
 	);
-	const buildRelativePath = path.relative(
-		sourceDirectory,
-		buildAppDirectory,
-	);
+	const buildRelativePath = path.relative(sourceDirectory, buildAppDirectory);
 	if (
 		path.isAbsolute(buildRelativePath) ||
 		buildRelativePath === ".." ||
@@ -106,13 +117,11 @@ export const getNixpacksCommand = (
 		);
 	}
 	const buildContainerId = `${appName}-${nanoid(10)}`;
-	const envVariables = prepareEnvironmentVariablesForShell(
-		env,
-		application.environment.project.env,
-		application.environment.env,
-	);
-
-	const envArgs = envVariables.map((env) => `--env ${env}`).join(" ");
+	// Nixpacks accepts `--env KEY` and reads the value from its process
+	// environment. Keys are validated by prepareBuildInput; values never become
+	// script text or argv. They are scrubbed from the frozen plan below.
+	const envArgs =
+		'$(awk \'NF { printf "--env %s ", $0 }\' "$NZ_BUILD_ENV_KEYS_FILE")';
 	const cleanCacheArg = cleanCache ? "--no-cache" : "";
 	const staticArg = publishDirectory ? "--no-error-without-start" : "";
 	const planCommandParts = [
@@ -139,7 +148,9 @@ export const getNixpacksCommand = (
 		// mismatched peer deps (e.g., next-auth@4 + next@16).
 		"--env NPM_CONFIG_LEGACY_PEER_DEPS=true",
 		"--env YARN_IGNORE_ENGINES=true",
-		customInstallCommand ? `--install-cmd ${quote([customInstallCommand])}` : "",
+		customInstallCommand
+			? `--install-cmd ${quote([customInstallCommand])}`
+			: "",
 		customBuildCommand ? `--build-cmd ${quote([customBuildCommand])}` : "",
 		customStartCommand ? `--start-cmd ${quote([customStartCommand])}` : "",
 	].filter(Boolean);
@@ -150,9 +161,7 @@ export const getNixpacksCommand = (
 		customBuildCommand ? "" : '--build-cmd "$NZ_WORKSPACE_BUILD_CMD"',
 		customStartCommand ? "" : '--start-cmd "$NZ_WORKSPACE_START_CMD"',
 	].join(" ");
-	const command = [
-		'cd "$NZ_NIXPACKS_BUILD_DIR"',
-		"&&",
+	const nixpacksBuildCommand = [
 		"nixpacks",
 		"build",
 		".",
@@ -164,13 +173,26 @@ export const getNixpacksCommand = (
 	]
 		.filter(Boolean)
 		.join(" ");
+	const command = 'cd "$NZ_NIXPACKS_BUILD_DIR" && nz_run_nixpacks_build';
 	let bashCommand = `
+		${getBuildRuntimePreamble()}
+		nz_load_runtime_environment
 		NZ_NIXPACKS_ORIGINAL_SOURCE_DIR=${quote([sourceDirectory])}
 		NZ_NIXPACKS_RELATIVE_BUILD_PATH=${quote([buildRelativePath || "."])}
 		NZ_NIXPACKS_STAGE_PARENT="$(dirname "$NZ_NIXPACKS_ORIGINAL_SOURCE_DIR")"
 		NZ_NIXPACKS_SOURCE_DIR="$(mktemp -d "$NZ_NIXPACKS_STAGE_PARENT/.nearzero-nixpacks-stage.XXXXXX")"
+		NZ_NIXPACKS_PRIVATE_DIR="$NZ_BUILD_MATERIAL_DIR"
+		NZ_NIXPACKS_PRIVATE_DIR_OWNED=0
+		if [ -z "$NZ_NIXPACKS_PRIVATE_DIR" ]; then
+			NZ_NIXPACKS_PRIVATE_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/nearzero-nixpacks-material.XXXXXX")"
+			chmod 700 "$NZ_NIXPACKS_PRIVATE_DIR"
+			NZ_NIXPACKS_PRIVATE_DIR_OWNED=1
+		fi
 		nz_cleanup_nixpacks_stage() {
 			rm -rf "$NZ_NIXPACKS_SOURCE_DIR" 2>/dev/null || true
+			if [ "$NZ_NIXPACKS_PRIVATE_DIR_OWNED" = "1" ]; then
+				rm -rf "$NZ_NIXPACKS_PRIVATE_DIR" 2>/dev/null || true
+			fi
 		}
 		trap nz_cleanup_nixpacks_stage EXIT
 		cp -a "$NZ_NIXPACKS_ORIGINAL_SOURCE_DIR/." "$NZ_NIXPACKS_SOURCE_DIR/"
@@ -502,6 +524,7 @@ export const getNixpacksCommand = (
 		echo "Cleaning up conflicting lockfiles..."
 		cd "$NZ_NIXPACKS_BUILD_DIR"
 		NZ_LOCKFILES_FOUND=""
+		NZ_KEEP_LOCK=""
 		for NZ_LOCK in package-lock.json yarn.lock pnpm-lock.yaml bun.lockb bun.lock; do
 			if [ -f "$NZ_LOCK" ]; then
 				NZ_LOCKFILES_FOUND="$NZ_LOCKFILES_FOUND $NZ_LOCK"
@@ -510,7 +533,6 @@ export const getNixpacksCommand = (
 		if [ -n "$NZ_LOCKFILES_FOUND" ]; then
 			echo "Found lockfiles:$NZ_LOCKFILES_FOUND"
 			echo "Keeping lockfile for \${NZ_PRIMARY_PM:-auto} and removing conflicting package-manager lockfiles..."
-			NZ_KEEP_LOCK=""
 			case "$NZ_PRIMARY_PM" in
 				bun)
 					[ -f "bun.lockb" ] && NZ_KEEP_LOCK="bun.lockb"
@@ -539,6 +561,18 @@ export const getNixpacksCommand = (
 		else
 			echo "No lockfiles found, Nixpacks will auto-detect package manager from package.json"
 		fi
+
+		# The repository .dockerignore may target a user-authored Dockerfile and
+		# exclude the lockfile selected by this managed build. We only modify the
+		# ephemeral staging copy: keep every existing exclusion and append the
+		# minimum manifest exceptions required by the frozen Nixpacks plan.
+		NZ_NIXPACKS_DOCKERIGNORE="$NZ_NIXPACKS_BUILD_DIR/.dockerignore"
+		[ -f "$NZ_NIXPACKS_DOCKERIGNORE" ] || : > "$NZ_NIXPACKS_DOCKERIGNORE"
+		printf '\\n# Nearzero managed-build context requirements.\\n!package.json\\n!package.json5\\n!**/package.json\\n' >> "$NZ_NIXPACKS_DOCKERIGNORE"
+		if [ -n "$NZ_KEEP_LOCK" ]; then
+			printf '!%s\\n' "$NZ_KEEP_LOCK" >> "$NZ_NIXPACKS_DOCKERIGNORE"
+		fi
+		printf '\\n# Nearzero protected-material exclusions.\\n${PROTECTED_BUILD_CONTEXT_PATHS.join("\\n")}\\n' >> "$NZ_NIXPACKS_DOCKERIGNORE"
 
 		# Build a safe, version-aware bootstrap command. The declared
 		# packageManager value is validated before it can reach a shell command.
@@ -611,7 +645,9 @@ export const getNixpacksCommand = (
 		# Generate one complete Nixpacks plan per attempt, normalize it once, and
 		# replay exactly that frozen plan. Removing providers prevents Nixpacks
 		# from regenerating the bad package-manager attributes during build.
-		NZ_RAW_PLAN="$NZ_NIXPACKS_BUILD_DIR/.nearzero-nixpacks-plan.raw.json"
+		# The raw plan can contain values imported for provider detection. Keep it
+		# outside the Docker context; only the scrubbed frozen plan may live there.
+		NZ_RAW_PLAN="$NZ_NIXPACKS_PRIVATE_DIR/nixpacks-plan.raw.json"
 		NZ_FROZEN_PLAN="$NZ_NIXPACKS_BUILD_DIR/.nearzero-nixpacks-plan.json"
 		nz_resolve_plan_package_managers() {
 			if jq -e '[.phases[]?.nixPkgs[]? | tostring | select(test("^yarn([-_].*)?$"))] | length > 0' "$NZ_RAW_PLAN" >/dev/null ||
@@ -630,13 +666,16 @@ export const getNixpacksCommand = (
 		}
 		nz_generate_frozen_nixpacks_plan() {
 			rm -f "$NZ_RAW_PLAN" "$NZ_FROZEN_PLAN" 2>/dev/null || true
+			nz_load_runtime_environment
 			if [ -n "$NZ_WORKSPACE_BUILD_CMD" ] && [ -n "$NZ_WORKSPACE_START_CMD" ]; then
 				${workspacePlanCommand} > "$NZ_RAW_PLAN"
 			else
 				${planCommand} > "$NZ_RAW_PLAN"
 			fi
 
+			chmod 600 "$NZ_RAW_PLAN"
 			nz_resolve_plan_package_managers
+			NZ_NEARZERO_SECRET_KEYS_JSON="$(jq -Rsc 'split("\\n") | map(select(length > 0))' "$NZ_BUILD_ENV_KEYS_FILE")"
 			NZ_REMOVE_BUN_JSON=false
 			if [ "$NZ_NEEDS_BUN" = "1" ]; then
 				NZ_REMOVE_BUN_JSON=true
@@ -646,9 +685,20 @@ export const getNixpacksCommand = (
 				--arg bootstrap "$NZ_PM_BOOTSTRAP_COMMAND" \
 				--argjson removeBun "$NZ_REMOVE_BUN_JSON" \
 				--argjson replaceCorepack "$NZ_REPLACE_COREPACK_COMMANDS" \
-				${quote([NIXPACKS_PLAN_NORMALIZATION_FILTER])} \
+				--argjson nearzeroSecretKeys "$NZ_NEARZERO_SECRET_KEYS_JSON" \
+				${quote([NIXPACKS_SECURE_PLAN_NORMALIZATION_FILTER])} \
 				"$NZ_RAW_PLAN" > "$NZ_FROZEN_PLAN"
 			chmod 600 "$NZ_RAW_PLAN" "$NZ_FROZEN_PLAN"
+			while IFS= read -r NZ_BUILD_KEY; do
+				[ -n "$NZ_BUILD_KEY" ] || continue
+				if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
+					'[recurse | strings | select(($nearzeroSecret | length) > 0 and contains($nearzeroSecret))] | length == 0' \
+					"$NZ_FROZEN_PLAN" >/dev/null; then
+					echo "Nixpacks generated a plan containing protected build material" >&2
+					return 66
+				fi
+			done < "$NZ_BUILD_ENV_KEYS_FILE"
+			rm -f "$NZ_RAW_PLAN"
 
 			if jq -e \
 				--arg packageManagerPattern ${quote([NIXPACKS_VERSIONED_PACKAGE_MANAGER_NIX_PATTERN])} \
@@ -661,13 +711,133 @@ export const getNixpacksCommand = (
 			fi
 		}
 
+		nz_write_nixpacks_docker_wrapper() {
+			NZ_NIXPACKS_DOCKER_WRAPPER_DIR="$NZ_BUILD_MATERIAL_DIR/nixpacks-docker-bin"
+			mkdir -m 700 "$NZ_NIXPACKS_DOCKER_WRAPPER_DIR"
+			cat > "$NZ_NIXPACKS_DOCKER_WRAPPER_DIR/docker" <<'NZ_NIXPACKS_DOCKER_WRAPPER'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+NZ_REAL_DOCKER="\${NZ_NIXPACKS_REAL_DOCKER:?}"
+NZ_SECRET_FILE="\${NZ_NIXPACKS_SECRET_FILE:?}"
+NZ_SECRET_KEYS_FILE="\${NZ_NIXPACKS_SECRET_KEYS_FILE:?}"
+NZ_PATCH_DIR="\${NZ_NIXPACKS_PATCH_DIR:?}"
+NZ_DOCKER_ARGS=("$@")
+
+if [ ! -s "$NZ_SECRET_KEYS_FILE" ]; then
+	exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}"
+fi
+if [ "\${NZ_DOCKER_ARGS[0]:-}" != "build" ] &&
+	! { [ "\${NZ_DOCKER_ARGS[0]:-}" = "buildx" ] && [ "\${NZ_DOCKER_ARGS[1]:-}" = "build" ]; }; then
+	exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}"
+fi
+
+NZ_DOCKERFILE=""
+NZ_DOCKERFILE_INDEX=""
+NZ_DOCKERFILE_STYLE="pair"
+for ((NZ_INDEX=0; NZ_INDEX<\${#NZ_DOCKER_ARGS[@]}; NZ_INDEX+=1)); do
+	case "\${NZ_DOCKER_ARGS[$NZ_INDEX]}" in
+		-f|--file)
+			NZ_DOCKERFILE_INDEX=$((NZ_INDEX + 1))
+			NZ_DOCKERFILE="\${NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]:-}"
+			break
+			;;
+		--file=*)
+			NZ_DOCKERFILE_INDEX=$NZ_INDEX
+			NZ_DOCKERFILE_STYLE="equals"
+			NZ_DOCKERFILE="\${NZ_DOCKER_ARGS[$NZ_INDEX]#--file=}"
+			break
+			;;
+	esac
+done
+[ -n "$NZ_DOCKERFILE" ] && [ -f "$NZ_DOCKERFILE" ] || {
+	echo "Nixpacks did not provide a patchable generated Dockerfile" >&2
+	exit 66
+}
+
+NZ_PATCHED_DOCKERFILE="$NZ_PATCH_DIR/nixpacks.Dockerfile.$$.secure"
+NZ_PATCH_COUNT_FILE="$NZ_PATCH_DIR/nixpacks.Dockerfile.$$.count"
+awk -v count_file="$NZ_PATCH_COUNT_FILE" '
+/^[[:space:]]*[Rr][Uu][Nn][[:space:]]+/ {
+	line=$0
+	sub(/^[[:space:]]*[Rr][Uu][Nn][[:space:]]+/, "", line)
+	mounts=""
+	while (match(line, /^--mount=[^[:space:]]+[[:space:]]+/)) {
+		mounts=mounts substr(line, RSTART, RLENGTH)
+		line=substr(line, RLENGTH + 1)
+	}
+	print "RUN --mount=type=secret,id=${NEARZERO_BUILD_ENV_SECRET_ID},target=/run/secrets/${NEARZERO_BUILD_ENV_SECRET_ID} " mounts ". /run/secrets/${NEARZERO_BUILD_ENV_SECRET_ID} && " line
+	patched_count++
+	next
+}
+{ print }
+END { print patched_count + 0 > count_file }
+' "$NZ_DOCKERFILE" > "$NZ_PATCHED_DOCKERFILE"
+NZ_PATCHED_RUN_COUNT="$(cat "$NZ_PATCH_COUNT_FILE")"
+rm -f "$NZ_PATCH_COUNT_FILE"
+if [ "\${NZ_PATCHED_RUN_COUNT:-0}" -lt 1 ]; then
+	echo "Nixpacks generated a Dockerfile with no protected RUN instruction" >&2
+	exit 66
+fi
+chmod 600 "$NZ_PATCHED_DOCKERFILE"
+if [ "$NZ_DOCKERFILE_STYLE" = "equals" ]; then
+	NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]="--file=$NZ_PATCHED_DOCKERFILE"
+else
+	NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]="$NZ_PATCHED_DOCKERFILE"
+fi
+
+NZ_CONTEXT_INDEX=$((\${#NZ_DOCKER_ARGS[@]} - 1))
+NZ_CONTEXT="\${NZ_DOCKER_ARGS[$NZ_CONTEXT_INDEX]}"
+unset 'NZ_DOCKER_ARGS[$NZ_CONTEXT_INDEX]'
+: > "$NZ_PATCH_DIR/nixpacks-docker-used"
+exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}" \
+	--no-cache \
+	--secret "type=file,id=${NEARZERO_BUILD_ENV_SECRET_ID},src=$NZ_SECRET_FILE" \
+	"$NZ_CONTEXT"
+NZ_NIXPACKS_DOCKER_WRAPPER
+			chmod 700 "$NZ_NIXPACKS_DOCKER_WRAPPER_DIR/docker"
+		}
+
+		nz_run_nixpacks_build() {
+			if [ ! -s "$NZ_BUILD_ENV_KEYS_FILE" ]; then
+				${nixpacksBuildCommand}
+				return
+			fi
+			NZ_NIXPACKS_REAL_DOCKER="$(command -v docker)" || {
+				echo "Docker is required for a Nixpacks build" >&2
+				return 1
+			}
+			nz_write_nixpacks_docker_wrapper
+			rm -f "$NZ_BUILD_MATERIAL_DIR/nixpacks-docker-used"
+			while IFS= read -r NZ_BUILD_KEY; do
+				[ -n "$NZ_BUILD_KEY" ] || continue
+				unset "$NZ_BUILD_KEY"
+			done < "$NZ_BUILD_ENV_KEYS_FILE"
+			set +e
+			PATH="$NZ_NIXPACKS_DOCKER_WRAPPER_DIR:$PATH" \
+				NZ_NIXPACKS_REAL_DOCKER="$NZ_NIXPACKS_REAL_DOCKER" \
+				NZ_NIXPACKS_SECRET_FILE="$NZ_BUILD_ENV_EXPORT_FILE" \
+				NZ_NIXPACKS_SECRET_KEYS_FILE="$NZ_BUILD_ENV_KEYS_FILE" \
+				NZ_NIXPACKS_PATCH_DIR="$NZ_BUILD_MATERIAL_DIR" \
+				${nixpacksBuildCommand}
+			NZ_NIXPACKS_RC="$?"
+			set -e
+			if [ "$NZ_NIXPACKS_RC" = "0" ] && [ ! -f "$NZ_BUILD_MATERIAL_DIR/nixpacks-docker-used" ]; then
+				echo "Nixpacks bypassed the protected BuildKit secret boundary" >&2
+				return 66
+			fi
+			return "$NZ_NIXPACKS_RC"
+		}
+
 		# Build with a self-healing retry: if Nixpacks/yarn/npm reports that the
 		# installed Node.js is incompatible with a package's "engines" constraint,
 		# parse the REQUIRED version from the error, bump NZ_NODE_VERSION to a major
 		# that satisfies it, and retry. This recovers automatically when our initial
 		# Node major guess is wrong (e.g. a dependency transitively needs >=24).
-		NZ_BUILD_LOG="$(mktemp 2>/dev/null || echo /tmp/nz-build-$$.log)"
-		NZ_BUILD_RC_FILE="$(mktemp 2>/dev/null || echo /tmp/nz-rc-$$)"
+		NZ_BUILD_LOG="$NZ_NIXPACKS_PRIVATE_DIR/nixpacks-build.log"
+		NZ_BUILD_RC_FILE="$NZ_NIXPACKS_PRIVATE_DIR/nixpacks-build.rc"
+		: > "$NZ_BUILD_LOG"
+		: > "$NZ_BUILD_RC_FILE"
+		chmod 600 "$NZ_BUILD_LOG" "$NZ_BUILD_RC_FILE"
 		NZ_MAX_ATTEMPTS=3
 		NZ_ATTEMPT=1
 		NZ_BUILD_OK=0

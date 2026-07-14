@@ -2,8 +2,13 @@ import type { apiRestoreBackup } from "@nearzero/server/db/schema";
 import type { Destination } from "@nearzero/server/services/destination";
 import type { Mongo } from "@nearzero/server/services/mongo";
 import type { z } from "zod";
-import { getS3Credentials } from "../backups/utils";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import {
+	getDestinationSensitiveValues,
+	getRestoreFailureMessage,
+	getS3Credentials,
+	quoteShellArgument,
+} from "../backups/utils";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import { getRestoreCommand } from "./utils";
 
 export const restoreMongoBackup = async (
@@ -18,7 +23,7 @@ export const restoreMongoBackup = async (
 		const rcloneFlags = getS3Credentials(destination);
 		const bucketPath = `:s3:${destination.bucket}`;
 		const backupPath = `${bucketPath}/${backupInput.backupFile}`;
-		const rcloneCommand = `rclone copy ${rcloneFlags.join(" ")} "${backupPath}"`;
+		const rcloneCommand = `rclone copy ${rcloneFlags.join(" ")} ${quoteShellArgument(backupPath)}`;
 
 		const command = getRestoreCommand({
 			appName,
@@ -35,24 +40,20 @@ export const restoreMongoBackup = async (
 
 		emit("Starting restore...");
 
-		emit(`Executing command: ${command}`);
-
-		if (serverId) {
-			await execAsyncRemote(serverId, command);
-		} else {
-			await execAsync(command);
-		}
+		emit("Executing restore command...");
+		await executeSensitiveShellScript({
+			serverId,
+			script: command,
+			sensitiveValues: getDestinationSensitiveValues(
+				destination,
+				databasePassword,
+			),
+		});
 
 		emit("Restore completed successfully!");
 	} catch (error) {
-		console.error(error);
-		emit(
-			`Error: ${
-				error instanceof Error ? error.message : "Error restoring mongo backup"
-			}`,
-		);
-		throw new Error(
-			error instanceof Error ? error.message : "Error restoring mongo backup",
-		);
+		const message = getRestoreFailureMessage(error);
+		emit(`Error: ${message}`);
+		throw new Error(message);
 	}
 };

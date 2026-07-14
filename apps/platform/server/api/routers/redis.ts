@@ -1,16 +1,15 @@
 import {
+	buildRedisPasswordChangeScript,
 	checkPortInUse,
 	createMount,
 	createRedis,
 	deployRedis,
-	execAsync,
-	execAsyncRemote,
+	executeSensitiveShellScript,
 	findEnvironmentById,
 	findProjectById,
 	findRedisById,
 	getAccessibleServerIds,
 	getContainerLogs,
-	getServiceContainerCommand,
 	rebuildDatabase,
 	removeRedisById,
 	removeService,
@@ -18,6 +17,7 @@ import {
 	startServiceRemote,
 	stopService,
 	stopServiceRemote,
+	toPublicServerRelation,
 	updateRedisById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -130,7 +130,7 @@ export const redisRouter = createTRPCRouter({
 					message: "You are not authorized to access this Redis",
 				});
 			}
-			return redis;
+			return toPublicServerRelation(redis);
 		}),
 
 	start: protectedProcedure
@@ -166,7 +166,7 @@ export const redisRouter = createTRPCRouter({
 				resourceId: redis.redisId,
 				resourceName: redis.appName,
 			});
-			return redis;
+			return toPublicServerRelation(redis);
 		}),
 	reload: protectedProcedure
 		.input(apiResetRedis)
@@ -245,7 +245,7 @@ export const redisRouter = createTRPCRouter({
 				resourceId: redis.redisId,
 				resourceName: redis.appName,
 			});
-			return redis;
+			return toPublicServerRelation(redis);
 		}),
 	saveExternalPort: protectedProcedure
 		.input(apiSaveExternalPortRedis)
@@ -286,7 +286,7 @@ export const redisRouter = createTRPCRouter({
 				resourceId: redis.redisId,
 				resourceName: redis.appName,
 			});
-			return redis;
+			return toPublicServerRelation(redis);
 		}),
 	deploy: protectedProcedure
 		.input(apiDeployRedis)
@@ -373,7 +373,7 @@ export const redisRouter = createTRPCRouter({
 				resourceId: mongo.redisId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	remove: protectedProcedure
 		.input(apiFindOneRedis)
@@ -409,7 +409,7 @@ export const redisRouter = createTRPCRouter({
 				} catch (_) {}
 			}
 
-			return redis;
+			return toPublicServerRelation(redis);
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesRedis)
@@ -479,15 +479,11 @@ export const redisRouter = createTRPCRouter({
 			const rd = await findRedisById(redisId);
 			const { appName, serverId, databasePassword } = rd;
 
-			const containerCmd = getServiceContainerCommand(appName);
-			const command = `
-				CONTAINER_ID=$(${containerCmd})
-				if [ -z "$CONTAINER_ID" ]; then
-					echo "No running container found for ${appName}" >&2
-					exit 1
-				fi
-				docker exec "$CONTAINER_ID" redis-cli -a '${databasePassword}' CONFIG SET requirepass '${password}'
-			`;
+			const script = buildRedisPasswordChangeScript({
+				appName,
+				oldPassword: databasePassword,
+				newPassword: password,
+			});
 
 			await db.transaction(async (tx) => {
 				await tx
@@ -495,11 +491,11 @@ export const redisRouter = createTRPCRouter({
 					.set({ databasePassword: password })
 					.where(eq(redisTable.redisId, redisId));
 
-				if (serverId) {
-					await execAsyncRemote(serverId, command);
-				} else {
-					await execAsync(command, { shell: "/bin/bash" });
-				}
+				await executeSensitiveShellScript({
+					serverId,
+					script,
+					sensitiveValues: [databasePassword, password],
+				});
 			});
 
 			await audit(ctx, {

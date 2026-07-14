@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buildSaveProviderInput,
+	findBrowserExposedSecretEnvKeys,
 	formatEnvBlock,
 	parseEnvBlock,
 } from "../src/lib/git-application-source";
@@ -22,9 +23,39 @@ describe("formatEnvBlock / parseEnvBlock", () => {
 	});
 
 	test("formatEnvBlock omits rows without keys", () => {
-		expect(formatEnvBlock([{ key: "", value: "x" }, { key: "A", value: "1" }])).toBe(
-			"A=1",
-		);
+		expect(
+			formatEnvBlock([
+				{ key: "", value: "x" },
+				{ key: "A", value: "1" },
+			]),
+		).toBe("A=1");
+	});
+});
+
+describe("findBrowserExposedSecretEnvKeys", () => {
+	test("flags secret-like names that framework public prefixes expose", () => {
+		expect(
+			findBrowserExposedSecretEnvKeys([
+				{ key: "NEXT_PUBLIC_GOOGLE_CLIENT_SECRET" },
+				{ key: "VITE_API_KEY" },
+				{ key: "REACT_APP_AUTH_TOKEN" },
+				{ key: "NEXTAUTH_SECRET" },
+			]),
+		).toEqual([
+			"NEXT_PUBLIC_GOOGLE_CLIENT_SECRET",
+			"VITE_API_KEY",
+			"REACT_APP_AUTH_TOKEN",
+		]);
+	});
+
+	test("does not flag intentionally public identifiers and publishable keys", () => {
+		expect(
+			findBrowserExposedSecretEnvKeys([
+				{ key: "NEXT_PUBLIC_GOOGLE_CLIENT_ID" },
+				{ key: "NEXT_PUBLIC_POSTHOG_KEY" },
+				{ key: "VITE_STRIPE_PUBLISHABLE_KEY" },
+			]),
+		).toEqual([]);
 	});
 });
 

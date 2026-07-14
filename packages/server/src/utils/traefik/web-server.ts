@@ -3,11 +3,7 @@ import { join } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import type { webServerSettings } from "@nearzero/server/db/schema/web-server-settings";
 import { parse, stringify } from "yaml";
-import {
-	loadOrCreateConfig,
-	removeTraefikConfig,
-	writeTraefikConfig,
-} from "./application";
+import { loadOrCreateConfig, writeTraefikConfig } from "./application";
 import type { FileConfig } from "./file-types";
 import type { MainTraefikConfig } from "./types";
 
@@ -15,6 +11,11 @@ export const updateServerTraefik = (
 	settings: typeof webServerSettings.$inferSelect | null,
 	newHost: string | null,
 ) => {
+	// A missing hostname means the control-plane domain has not been configured.
+	// Keep the generated local route intact instead of deleting its config during
+	// startup; domain removal is not exposed by the validated settings API.
+	if (!newHost) return;
+
 	const { https, certificateType } = settings || {};
 	const appName = "nearzero";
 	const consolePort =
@@ -78,11 +79,7 @@ export const updateServerTraefik = (
 		currentRouterConfig.middlewares = [];
 	}
 
-	if (newHost) {
-		writeTraefikConfig(config, appName);
-	} else {
-		removeTraefikConfig(appName);
-	}
+	writeTraefikConfig(config, appName);
 };
 
 export const updateLetsEncryptEmail = (newEmail: string | null) => {

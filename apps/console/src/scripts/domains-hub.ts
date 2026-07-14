@@ -1,8 +1,11 @@
 import { trpcMutate, trpcQuery } from "@/lib/client-api";
 import { validateDomainWithEdgeIp } from "@/lib/managed-domain-client";
 import { NZ_TOAST_EVENT } from "@/lib/nzToast";
+import {
+	initCertificatesPanel,
+	openCertificateCreateDialog,
+} from "@/scripts/certificates-panel";
 import { openDialog } from "@/scripts/ui";
-import { initCertificatesPanel, openCertificateCreateDialog } from "@/scripts/certificates-panel";
 
 type ZoneRow = {
 	dnsZoneId: string;
@@ -32,7 +35,11 @@ type ProjectOption = {
 			appName?: string;
 			serverId?: string | null;
 		}>;
-		compose: Array<{ composeId: string; name: string; serverId?: string | null }>;
+		compose: Array<{
+			composeId: string;
+			name: string;
+			serverId?: string | null;
+		}>;
 	}>;
 };
 
@@ -107,7 +114,9 @@ function parseServiceSelectValue(value: string) {
 }
 
 function bindAddNewMenu(root: HTMLElement) {
-	const toggle = root.querySelector<HTMLButtonElement>("[data-domains-add-toggle]");
+	const toggle = root.querySelector<HTMLButtonElement>(
+		"[data-domains-add-toggle]",
+	);
 	const menu = root.querySelector<HTMLElement>("[data-domains-add-menu]");
 	if (!toggle || !menu) return;
 
@@ -125,7 +134,9 @@ function bindAddNewMenu(root: HTMLElement) {
 		}
 	});
 
-	for (const item of root.querySelectorAll<HTMLButtonElement>("[data-domains-add-action]")) {
+	for (const item of root.querySelectorAll<HTMLButtonElement>(
+		"[data-domains-add-action]",
+	)) {
 		item.addEventListener("click", () => {
 			menu.classList.add("hidden");
 			toggle.setAttribute("aria-expanded", "false");
@@ -156,8 +167,21 @@ function bindDomainsSearch() {
 		return;
 	}
 
-	const openClasses = ["w-44", "sm:w-52", "px-2", "opacity-100", "pointer-events-auto", "border-[var(--nz-border)]"];
-	const closedClasses = ["w-0", "px-0", "opacity-0", "pointer-events-none", "border-transparent"];
+	const openClasses = [
+		"w-44",
+		"sm:w-52",
+		"px-2",
+		"opacity-100",
+		"pointer-events-auto",
+		"border-[var(--nz-border)]",
+	];
+	const closedClasses = [
+		"w-0",
+		"px-0",
+		"opacity-0",
+		"pointer-events-none",
+		"border-transparent",
+	];
 
 	const openSearch = () => {
 		toggle.setAttribute("aria-expanded", "true");
@@ -199,7 +223,9 @@ function bindDomainsSearch() {
 function bindTabs(root: HTMLElement) {
 	const tabs = root.querySelectorAll<HTMLButtonElement>("[data-domains-tab]");
 	const panels = root.querySelectorAll<HTMLElement>("[data-domains-panel]");
-	const tabInput = document.getElementById("nz-domains-tab-input") as HTMLInputElement | null;
+	const tabInput = document.getElementById(
+		"nz-domains-tab-input",
+	) as HTMLInputElement | null;
 	const filterForm = document.getElementById("nz-domains-filter-form");
 
 	const setActiveTab = (id: string) => {
@@ -215,12 +241,19 @@ function bindTabs(root: HTMLElement) {
 		}
 
 		for (const panel of panels) {
-			panel.classList.toggle("hidden", panel.getAttribute("data-domains-panel") !== id);
+			panel.classList.toggle(
+				"hidden",
+				panel.getAttribute("data-domains-panel") !== id,
+			);
 		}
 
 		if (filterForm instanceof HTMLElement) {
-			const searchWrap = filterForm.querySelector<HTMLElement>("[data-domains-search-wrap]");
-			const status = filterForm.querySelector<HTMLElement>('select[name="status"]');
+			const searchWrap = filterForm.querySelector<HTMLElement>(
+				"[data-domains-search-wrap]",
+			);
+			const status = filterForm.querySelector<HTMLElement>(
+				'select[name="status"]',
+			);
 			const showFilters = id !== "certificates";
 			searchWrap?.classList.toggle("hidden", !showFilters);
 			status?.classList.toggle("hidden", !showFilters);
@@ -238,10 +271,14 @@ function bindTabs(root: HTMLElement) {
 
 function bindDnsZones(root: HTMLElement) {
 	const zones = readZonesJson();
-	const createForm = document.getElementById("nz-dns-create-form") as HTMLFormElement | null;
+	const createForm = document.getElementById(
+		"nz-dns-create-form",
+	) as HTMLFormElement | null;
 	const recordsBody = document.getElementById("nz-dns-records-body");
 	const recordsMeta = document.getElementById("nz-dns-records-meta");
-	const recordForm = document.getElementById("nz-dns-record-form") as HTMLFormElement | null;
+	const recordForm = document.getElementById(
+		"nz-dns-record-form",
+	) as HTMLFormElement | null;
 	const recordZoneInput = document.getElementById(
 		"nz-dns-record-zone-id",
 	) as HTMLInputElement | null;
@@ -265,7 +302,10 @@ function bindDnsZones(root: HTMLElement) {
 	});
 
 	recordTypeInput?.addEventListener("change", () => {
-		recordPriorityInput?.classList.toggle("hidden", recordTypeInput.value !== "MX");
+		recordPriorityInput?.classList.toggle(
+			"hidden",
+			recordTypeInput.value !== "MX",
+		);
 	});
 
 	recordForm?.addEventListener("submit", async (event) => {
@@ -300,12 +340,16 @@ function bindDnsZones(root: HTMLElement) {
 		window.location.reload();
 	});
 
-	document.getElementById("nz-dns-zones-apply-all")?.addEventListener("click", async () => {
-		await trpcMutate("dns.zones.publishAll", undefined);
-		window.location.reload();
-	});
+	document
+		.getElementById("nz-dns-zones-apply-all")
+		?.addEventListener("click", async () => {
+			await trpcMutate("dns.zones.publishAll", undefined);
+			window.location.reload();
+		});
 
-	for (const button of root.querySelectorAll<HTMLButtonElement>(".nz-dns-publish")) {
+	for (const button of root.querySelectorAll<HTMLButtonElement>(
+		".nz-dns-publish",
+	)) {
 		button.addEventListener("click", async () => {
 			const dnsZoneId = button.getAttribute("data-zone-id");
 			if (!dnsZoneId) return;
@@ -314,7 +358,9 @@ function bindDnsZones(root: HTMLElement) {
 		});
 	}
 
-	for (const button of root.querySelectorAll<HTMLButtonElement>("[data-zone-records]")) {
+	for (const button of root.querySelectorAll<HTMLButtonElement>(
+		"[data-zone-records]",
+	)) {
 		button.addEventListener("click", () => {
 			const zoneId = button.getAttribute("data-zone-records");
 			if (!zoneId || !recordsBody) return;
@@ -432,24 +478,32 @@ async function fillServiceSelect(
 }
 
 function bindHostnameModal(projects: ProjectOption[]) {
-	const form = document.getElementById("nz-add-hostname-form") as HTMLFormElement | null;
+	const form = document.getElementById(
+		"nz-add-hostname-form",
+	) as HTMLFormElement | null;
 	const subdomainMode = document.getElementById(
 		"nz-add-hostname-subdomain-mode",
 	) as HTMLInputElement | null;
 	const fullRow = document.getElementById("nz-add-hostname-full-row");
 	const subdomainRow = document.getElementById("nz-add-hostname-subdomain-row");
-	const hostInput = document.getElementById("nz-add-hostname-host") as HTMLInputElement | null;
+	const hostInput = document.getElementById(
+		"nz-add-hostname-host",
+	) as HTMLInputElement | null;
 	const parentSelect = document.getElementById(
 		"nz-add-hostname-parent",
 	) as HTMLSelectElement | null;
 	const prefixInput = document.getElementById(
 		"nz-add-hostname-prefix",
 	) as HTMLInputElement | null;
-	const subdomainPreview = document.getElementById("nz-add-hostname-subdomain-preview");
+	const subdomainPreview = document.getElementById(
+		"nz-add-hostname-subdomain-preview",
+	);
 	const connectToggle = document.getElementById(
 		"nz-add-hostname-connect",
 	) as HTMLInputElement | null;
-	const connectFields = document.getElementById("nz-add-hostname-connect-fields");
+	const connectFields = document.getElementById(
+		"nz-add-hostname-connect-fields",
+	);
 	const projectSelect = document.getElementById(
 		"nz-add-hostname-project",
 	) as HTMLSelectElement | null;
@@ -459,10 +513,16 @@ function bindHostnameModal(projects: ProjectOption[]) {
 	const serviceSelect = document.getElementById(
 		"nz-add-hostname-service",
 	) as HTMLSelectElement | null;
-	const dnsModeRadios = form?.querySelectorAll<HTMLInputElement>('input[name="dnsMode"]');
+	const dnsModeRadios = form?.querySelectorAll<HTMLInputElement>(
+		'input[name="dnsMode"]',
+	);
 	const zoneRow = document.getElementById("nz-add-hostname-zone-row");
 	const zoneSelect = document.getElementById(
 		"nz-add-hostname-zone",
+	) as HTMLSelectElement | null;
+	const serverRow = document.getElementById("nz-add-hostname-server-row");
+	const serverSelect = document.getElementById(
+		"nz-add-hostname-server",
 	) as HTMLSelectElement | null;
 	const routePathInput = document.getElementById(
 		"nz-add-hostname-path",
@@ -475,7 +535,9 @@ function bindHostnameModal(projects: ProjectOption[]) {
 		const prefix = prefixInput?.value.trim();
 		const parent = parentSelect?.value;
 		subdomainPreview.textContent =
-			prefix && parent ? `Will create: ${prefix}.${parent}` : "Enter subdomain and select parent domain";
+			prefix && parent
+				? `Will create: ${prefix}.${parent}`
+				: "Enter subdomain and select parent domain";
 	};
 
 	const setSubdomainMode = (enabled: boolean) => {
@@ -494,8 +556,21 @@ function bindHostnameModal(projects: ProjectOption[]) {
 	parentSelect?.addEventListener("change", refreshSubdomainPreview);
 	prefixInput?.addEventListener("input", refreshSubdomainPreview);
 
+	const refreshTargetFields = () => {
+		const mode = form?.querySelector<HTMLInputElement>(
+			'input[name="dnsMode"]:checked',
+		)?.value;
+		const connectsToService = Boolean(connectToggle?.checked);
+		zoneRow?.classList.toggle("hidden", mode !== "nearzero_managed");
+		serverRow?.classList.toggle(
+			"hidden",
+			mode !== "external" || connectsToService,
+		);
+	};
+
 	connectToggle?.addEventListener("change", () => {
 		connectFields?.classList.toggle("hidden", !connectToggle.checked);
+		refreshTargetFields();
 	});
 
 	projectSelect?.addEventListener("change", () => {
@@ -506,18 +581,16 @@ function bindHostnameModal(projects: ProjectOption[]) {
 
 	envSelect?.addEventListener("change", () => {
 		const project = projects.find((p) => p.projectId === projectSelect?.value);
-		const env = project?.environments.find((e) => e.environmentId === envSelect.value);
+		const env = project?.environments.find(
+			(e) => e.environmentId === envSelect.value,
+		);
 		if (serviceSelect) void fillServiceSelect(serviceSelect, env);
 	});
 
 	for (const radio of dnsModeRadios ?? []) {
-		radio.addEventListener("change", () => {
-			const mode = form?.querySelector<HTMLInputElement>(
-				'input[name="dnsMode"]:checked',
-			)?.value;
-			zoneRow?.classList.toggle("hidden", mode !== "nearzero_managed");
-		});
+		radio.addEventListener("change", refreshTargetFields);
 	}
+	refreshTargetFields();
 
 	const resolveHost = (): string => {
 		if (subdomainMode?.checked) {
@@ -544,10 +617,11 @@ function bindHostnameModal(projects: ProjectOption[]) {
 		}
 
 		const dnsMode =
-			form.querySelector<HTMLInputElement>('input[name="dnsMode"]:checked')?.value ??
-			"external";
-		const https = (document.getElementById("nz-add-hostname-https") as HTMLInputElement)
-			?.checked;
+			form.querySelector<HTMLInputElement>('input[name="dnsMode"]:checked')
+				?.value ?? "external";
+		const https = (
+			document.getElementById("nz-add-hostname-https") as HTMLInputElement
+		)?.checked;
 		const certType = (
 			document.getElementById("nz-add-hostname-cert") as HTMLSelectElement
 		)?.value as "letsencrypt" | "none" | "custom";
@@ -561,10 +635,12 @@ function bindHostnameModal(projects: ProjectOption[]) {
 
 		try {
 			if (connect && serviceSelect?.value) {
-				const { type, id, serviceName } = parseServiceSelectValue(serviceSelect.value);
+				const { type, id, serviceName } = parseServiceSelectValue(
+					serviceSelect.value,
+				);
 				const port = Number.parseInt(
-					(document.getElementById("nz-add-hostname-port") as HTMLInputElement)?.value ||
-						"3000",
+					(document.getElementById("nz-add-hostname-port") as HTMLInputElement)
+						?.value || "3000",
 					10,
 				);
 				if (type === "application") {
@@ -596,22 +672,33 @@ function bindHostnameModal(projects: ProjectOption[]) {
 			} else {
 				await trpcMutate("domain.register", {
 					host,
-					dnsMode: dnsMode as "external" | "nearzero_managed" | "platform",
+					dnsMode: dnsMode as "external" | "nearzero_managed",
 					https: https ?? false,
 					certificateType: certType,
 					dnsZoneId: dnsMode === "nearzero_managed" ? dnsZoneId : undefined,
+					serverId:
+						dnsMode === "external"
+							? serverSelect?.value === "nearzero"
+								? null
+								: serverSelect?.value || undefined
+							: undefined,
 				});
 			}
 			toast("Domain added", "success");
 			window.location.reload();
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to add domain", "error");
+			toast(
+				err instanceof Error ? err.message : "Failed to add domain",
+				"error",
+			);
 		}
 	});
 }
 
 function bindConnectServiceModal(projects: ProjectOption[]) {
-	const form = document.getElementById("nz-connect-service-form") as HTMLFormElement | null;
+	const form = document.getElementById(
+		"nz-connect-service-form",
+	) as HTMLFormElement | null;
 	const domainIdInput = document.getElementById(
 		"nz-connect-service-domain-id",
 	) as HTMLInputElement | null;
@@ -638,11 +725,15 @@ function bindConnectServiceModal(projects: ProjectOption[]) {
 
 	envSelect?.addEventListener("change", () => {
 		const project = projects.find((p) => p.projectId === projectSelect?.value);
-		const env = project?.environments.find((e) => e.environmentId === envSelect.value);
+		const env = project?.environments.find(
+			(e) => e.environmentId === envSelect.value,
+		);
 		if (serviceSelect) void fillServiceSelect(serviceSelect, env);
 	});
 
-	for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-connect-domain]")) {
+	for (const btn of document.querySelectorAll<HTMLButtonElement>(
+		"[data-connect-domain]",
+	)) {
 		btn.addEventListener("click", () => {
 			const domainId = btn.getAttribute("data-connect-domain");
 			if (domainIdInput && domainId) domainIdInput.value = domainId;
@@ -654,10 +745,12 @@ function bindConnectServiceModal(projects: ProjectOption[]) {
 		e.preventDefault();
 		const domainId = domainIdInput?.value;
 		if (!domainId || !serviceSelect?.value) return;
-		const { type, id, serviceName } = parseServiceSelectValue(serviceSelect.value);
+		const { type, id, serviceName } = parseServiceSelectValue(
+			serviceSelect.value,
+		);
 		const port = Number.parseInt(
-			(document.getElementById("nz-connect-service-port") as HTMLInputElement)?.value ||
-				"3000",
+			(document.getElementById("nz-connect-service-port") as HTMLInputElement)
+				?.value || "3000",
 			10,
 		);
 		const path = normalizeRoutePath(routePathInput?.value);
@@ -682,7 +775,10 @@ function bindConnectServiceModal(projects: ProjectOption[]) {
 			toast("Service connected", "success");
 			window.location.reload();
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to connect service", "error");
+			toast(
+				err instanceof Error ? err.message : "Failed to connect service",
+				"error",
+			);
 		}
 	});
 }
@@ -691,12 +787,18 @@ function bindEnvironmentBindModal(
 	projects: ProjectOption[],
 	zones: Array<{ dnsZoneId: string; name: string }>,
 ) {
-	const form = document.getElementById("nz-bind-env-form") as HTMLFormElement | null;
+	const form = document.getElementById(
+		"nz-bind-env-form",
+	) as HTMLFormElement | null;
 	const projectSelect = document.getElementById(
 		"nz-bind-env-project",
 	) as HTMLSelectElement | null;
-	const envSelect = document.getElementById("nz-bind-env-environment") as HTMLSelectElement | null;
-	const zoneSelect = document.getElementById("nz-bind-env-zone") as HTMLSelectElement | null;
+	const envSelect = document.getElementById(
+		"nz-bind-env-environment",
+	) as HTMLSelectElement | null;
+	const zoneSelect = document.getElementById(
+		"nz-bind-env-zone",
+	) as HTMLSelectElement | null;
 
 	if (projectSelect) fillProjectSelect(projectSelect, projects);
 	if (zoneSelect) {
@@ -714,7 +816,9 @@ function bindEnvironmentBindModal(
 		if (envSelect) fillEnvironmentSelect(envSelect, project);
 	});
 
-	for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-edit-binding]")) {
+	for (const btn of document.querySelectorAll<HTMLButtonElement>(
+		"[data-edit-binding]",
+	)) {
 		btn.addEventListener("click", () => {
 			const envId = btn.getAttribute("data-edit-binding");
 			const projectId = btn.getAttribute("data-binding-project");
@@ -741,24 +845,49 @@ function bindEnvironmentBindModal(
 		if (!environmentId) return;
 		const dnsZoneId = zoneSelect?.value || null;
 		const domainPrefix =
-			(document.getElementById("nz-bind-env-prefix") as HTMLInputElement)?.value.trim() ||
-			null;
+			(
+				document.getElementById("nz-bind-env-prefix") as HTMLInputElement
+			)?.value.trim() || null;
 		try {
-			await trpcMutate("environment.update", {
+			const result = await trpcMutate<{
+				domainReconciliation?: {
+					attempted: number;
+					updated: number;
+					failed: number;
+				};
+			}>("environment.update", {
 				environmentId,
 				dnsZoneId: dnsZoneId || null,
 				domainPrefix,
 			});
-			toast("Environment binding saved", "success");
+			const reconciliation = result?.domainReconciliation;
+			if (reconciliation?.failed) {
+				toast(
+					`Binding saved; ${reconciliation.failed} system-assigned route${reconciliation.failed === 1 ? "" : "s"} still need a deploy retry`,
+					"error",
+				);
+			} else if (reconciliation?.updated) {
+				toast(
+					`Binding saved and ${reconciliation.updated} system-assigned route${reconciliation.updated === 1 ? "" : "s"} updated`,
+					"success",
+				);
+			} else {
+				toast("Environment binding saved", "success");
+			}
 			window.location.reload();
 		} catch (err) {
-			toast(err instanceof Error ? err.message : "Failed to save binding", "error");
+			toast(
+				err instanceof Error ? err.message : "Failed to save binding",
+				"error",
+			);
 		}
 	});
 }
 
 function bindUnassignActions() {
-	for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-unassign-domain]")) {
+	for (const btn of document.querySelectorAll<HTMLButtonElement>(
+		"[data-unassign-domain]",
+	)) {
 		btn.addEventListener("click", async () => {
 			const domainId = btn.getAttribute("data-unassign-domain");
 			if (!domainId) return;
@@ -767,25 +896,35 @@ function bindUnassignActions() {
 				toast("Service disconnected", "success");
 				window.location.reload();
 			} catch (err) {
-				toast(err instanceof Error ? err.message : "Failed to disconnect", "error");
+				toast(
+					err instanceof Error ? err.message : "Failed to disconnect",
+					"error",
+				);
 			}
 		});
 	}
 }
 
 function bindValidateDns() {
-	for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-validate-domain]")) {
+	for (const btn of document.querySelectorAll<HTMLButtonElement>(
+		"[data-validate-domain]",
+	)) {
 		btn.addEventListener("click", async () => {
 			const host = btn.getAttribute("data-validate-domain");
 			if (!host) return;
 			try {
 				const result = await validateDomainWithEdgeIp({ domain: host });
 				toast(
-					result.isValid ? `DNS OK: ${result.resolvedIp}` : result.error ?? "DNS mismatch",
+					result.isValid
+						? `DNS OK: ${result.resolvedIp}`
+						: (result.error ?? "DNS mismatch"),
 					result.isValid ? "success" : "error",
 				);
 			} catch (err) {
-				toast(err instanceof Error ? err.message : "Validation failed", "error");
+				toast(
+					err instanceof Error ? err.message : "Validation failed",
+					"error",
+				);
 			}
 		});
 	}

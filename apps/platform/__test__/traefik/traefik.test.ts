@@ -23,7 +23,7 @@ const baseApp: ApplicationNested = {
 	cleanCache: false,
 	applicationStatus: "done",
 	endpointSpecSwarm: null,
-	appName: "",
+	appName: "test-app",
 	autoDeploy: true,
 	enableSubmodules: false,
 	previewRequireCollaboratorPermissions: false,
@@ -132,7 +132,7 @@ const baseDomain: Domain = {
 	certificateType: "none",
 	createdAt: "",
 	domainId: "",
-	host: "",
+	host: "example.com",
 	https: false,
 	path: null,
 	port: null,
@@ -344,11 +344,54 @@ test("Web entrypoint with empty middlewares array", async () => {
 test("CertificateType on websecure entrypoint", async () => {
 	const router = await createRouterConfig(
 		baseApp,
-		{ ...baseDomain, certificateType: "letsencrypt" },
+		{ ...baseDomain, https: true, certificateType: "letsencrypt" },
 		"websecure",
 	);
 
 	expect(router.tls?.certResolver).toBe("letsencrypt");
+});
+
+test("CertificateType none enables TLS without an ACME resolver", async () => {
+	const router = await createRouterConfig(
+		baseApp,
+		{ ...baseDomain, https: true, certificateType: "none" },
+		"websecure",
+	);
+
+	expect(router.tls).toEqual({});
+	expect(router.tls?.certResolver).toBeUndefined();
+});
+
+test("Rejects unsafe host and path rule fragments", async () => {
+	await expect(
+		createRouterConfig(
+			baseApp,
+			{ ...baseDomain, host: "example.com`) || Host(`attacker.test" },
+			"web",
+		),
+	).rejects.toThrow("Domain host is not safe");
+
+	await expect(
+		createRouterConfig(
+			baseApp,
+			{ ...baseDomain, path: "/safe`) || PathPrefix(`/escaped" },
+			"web",
+		),
+	).rejects.toThrow("Domain path is not safe");
+});
+
+test("Rejects unsafe Traefik object and middleware names", async () => {
+	await expect(
+		createRouterConfig(baseApp, baseDomain, "web\nmalicious"),
+	).rejects.toThrow("Traefik entrypoint");
+
+	await expect(
+		createRouterConfig(
+			baseApp,
+			{ ...baseDomain, middlewares: ["auth@file,attacker@file"] },
+			"web",
+		),
+	).rejects.toThrow("Invalid Traefik middleware name");
 });
 
 test("Custom entrypoint on http domain", async () => {
@@ -403,7 +446,7 @@ test("Custom entrypoint with stripPath adds stripprefix middleware", async () =>
 		"custom",
 	);
 
-	expect(router.middlewares).toContain("stripprefix--1");
+	expect(router.middlewares).toContain("stripprefix-test-app-1");
 	expect(router.entryPoints).toEqual(["custom"]);
 });
 
@@ -418,7 +461,7 @@ test("Custom entrypoint with internalPath adds addprefix middleware", async () =
 		"custom",
 	);
 
-	expect(router.middlewares).toContain("addprefix--1");
+	expect(router.middlewares).toContain("addprefix-test-app-1");
 	expect(router.entryPoints).toEqual(["custom"]);
 });
 
@@ -434,8 +477,9 @@ test("stripPath and internalPath together: stripprefix must come before addprefi
 		"web",
 	);
 
-	const stripIndex = router.middlewares?.indexOf("stripprefix--1") ?? -1;
-	const addIndex = router.middlewares?.indexOf("addprefix--1") ?? -1;
+	const stripIndex =
+		router.middlewares?.indexOf("stripprefix-test-app-1") ?? -1;
+	const addIndex = router.middlewares?.indexOf("addprefix-test-app-1") ?? -1;
 
 	expect(stripIndex).toBeGreaterThanOrEqual(0);
 	expect(addIndex).toBeGreaterThanOrEqual(0);

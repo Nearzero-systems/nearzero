@@ -1,6 +1,7 @@
 import type http from "node:http";
 import { findServerById, validateRequest } from "@nearzero/server";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
+import { createSshHostVerification } from "@nearzero/server/utils/servers/ssh-host-verification";
 import { spawn } from "node-pty";
 import { Client } from "ssh2";
 import { WebSocketServer } from "ws";
@@ -96,10 +97,18 @@ export const setupDockerContainerLogsWebSocketServer = (
 					return;
 				}
 
-				if (!server.sshKeyId) return;
-				const client = new Client();
-				client
-					.once("ready", () => {
+					if (!server.sshKeyId) return;
+					const client = new Client();
+					const hostVerification = createSshHostVerification(server);
+					client
+						.once("ready", () => {
+							try {
+								hostVerification.commit();
+							} catch {
+								client.end();
+								ws.close();
+								return;
+							}
 						const baseCommand = `docker ${runType === "swarm" ? "service" : "container"} logs --timestamps ${
 							runType === "swarm" ? "--raw" : ""
 						} --tail ${tail} ${
@@ -141,9 +150,11 @@ export const setupDockerContainerLogsWebSocketServer = (
 					.connect({
 						host: server.ipAddress,
 						port: server.port,
-						username: server.username,
-						privateKey: server.sshKey?.privateKey,
-					});
+							username: server.username,
+							privateKey: server.sshKey?.privateKey,
+							hostVerifier: hostVerification.hostVerifier,
+							readyTimeout: 30_000,
+						});
 				ws.on("close", () => {
 					clearInterval(pingInterval);
 					client.end();

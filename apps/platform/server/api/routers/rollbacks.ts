@@ -21,21 +21,17 @@ export const rollbackRouter = createTRPCRouter({
 						deployment: ["create"],
 					});
 				}
-				const result = await removeRollbackById(input.rollbackId);
+				await removeRollbackById(input.rollbackId);
 				await audit(ctx, {
 					action: "delete",
 					resourceType: "deployment",
 					resourceId: input.rollbackId,
 				});
-				return result;
-			} catch (error) {
-				const message =
-					error instanceof Error
-						? error.message
-						: "Error input: Deleting rollback";
+				return { success: true, rollbackId: input.rollbackId };
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
-					message,
+					message: "Unable to delete rollback",
 				});
 			}
 		}),
@@ -57,12 +53,10 @@ export const rollbackRouter = createTRPCRouter({
 					resourceId: input.rollbackId,
 				});
 				return result;
-			} catch (error) {
-				console.error(error);
+			} catch {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message: "Error input: Rolling back",
-					cause: error,
 				});
 			}
 		}),

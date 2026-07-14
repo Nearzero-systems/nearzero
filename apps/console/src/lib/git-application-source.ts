@@ -159,6 +159,31 @@ export function parseEnvBlock(text: string): { key: string; value: string }[] {
 	return rows;
 }
 
+const BROWSER_PUBLIC_ENV_PREFIX =
+	/^(?:NEXT_PUBLIC_|VITE_|PUBLIC_|REACT_APP_|NUXT_PUBLIC_)/i;
+const SECRET_LIKE_ENV_NAME =
+	/(?:^|_)(?:SECRET|PASSWORD|PASSWD|PRIVATE_KEY|ACCESS_TOKEN|REFRESH_TOKEN|AUTH_TOKEN|API_KEY)(?:_|$)/i;
+
+/**
+ * Framework public prefixes cause values to be compiled into browser code.
+ * Return names only so the warning path never has to handle secret values.
+ */
+export function findBrowserExposedSecretEnvKeys(
+	rows: ReadonlyArray<{ key: string }>,
+): string[] {
+	return Array.from(
+		new Set(
+			rows
+				.map((row) => row.key.trim())
+				.filter(
+					(key) =>
+						BROWSER_PUBLIC_ENV_PREFIX.test(key) &&
+						SECRET_LIKE_ENV_NAME.test(key),
+				),
+		),
+	);
+}
+
 export function buildSaveProviderInput(
 	state: SaveProviderWizardState,
 	applicationId: string,

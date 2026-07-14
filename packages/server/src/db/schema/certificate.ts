@@ -39,12 +39,20 @@ export const certificatesRelations = relations(certificates, ({ one }) => ({
 	}),
 }));
 
-export const apiCreateCertificate = createInsertSchema(certificates, {
+const certificateCreateSchema = createInsertSchema(certificates, {
 	name: z.string().min(1),
 	certificateData: z.string().min(1),
 	privateKey: z.string().min(1),
 	autoRenew: z.boolean().optional(),
 	serverId: z.string().optional(),
+});
+
+export const apiCreateCertificate = certificateCreateSchema.pick({
+	name: true,
+	certificateData: true,
+	privateKey: true,
+	autoRenew: true,
+	serverId: true,
 });
 
 export const apiFindCertificate = z.object({

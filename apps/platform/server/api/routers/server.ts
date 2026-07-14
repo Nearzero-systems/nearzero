@@ -1,11 +1,15 @@
+import type { ServerServiceInventory } from "@nearzero/server";
 import {
 	createServer,
 	defaultCommand,
 	deleteAllMiddlewares,
 	deleteServer,
+	ensureWebMonitoring,
 	findApplicationById,
 	findBackupsByDbId,
 	findComposeById,
+	findDomainsByApplicationId,
+	findDomainsByPreviewDeploymentIds,
 	findLibsqlById,
 	findMariadbById,
 	findMongoById,
@@ -13,19 +17,17 @@ import {
 	findPostgresById,
 	findRedisById,
 	findServerById,
-	findServersByUserId,
-	findUserById,
 	getAccessibleServerIds,
 	getPublicIpWithFallback,
-	ensureWebMonitoring,
 	getReadyRuntimeServers,
 	getServerServiceInventory,
 	removeCompose,
 	removeComposeDirectory,
-	removeDeploymentsByServerId,
-	removeDeploymentsByComposeId,
 	removeDeployments,
+	removeDeploymentsByComposeId,
+	removeDeploymentsByServerId,
 	removeDirectoryCode,
+	removeDomainById,
 	removeLibsqlById,
 	removeMariadbById,
 	removeMongoById,
@@ -39,16 +41,17 @@ import {
 	serverSetup,
 	serverValidate,
 	setupMonitoring,
+	toPublicServer,
 	updateServerById,
 } from "@nearzero/server";
-import type { ServerServiceInventory } from "@nearzero/server";
+import { db } from "@nearzero/server/db";
+import { hasValidLicense } from "@nearzero/server/services/license-key";
+import { requestMonitoring } from "@nearzero/server/services/monitoring-client";
 import {
 	checkServiceAccess,
 	type PermissionCtx,
 } from "@nearzero/server/services/permission";
-import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
-import { db } from "@nearzero/server/db";
-import { hasValidLicense } from "@nearzero/server/services/license-key";
+import { monitoringDockerAccessConfig } from "@nearzero/server/setup/monitoring-setup";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
@@ -59,6 +62,11 @@ import {
 	withPermission,
 } from "@/server/api/trpc";
 import { audit } from "@/server/api/utils/audit";
+import {
+	assertServerRemoveAllowed,
+	assertServerRemoveCleanupComplete,
+	preflightServerAttachedServiceDeleteAccess,
+} from "@/server/api/utils/server-delete";
 import {
 	apiCreateServer,
 	apiFindOneServer,
@@ -76,17 +84,13 @@ import {
 	redis,
 	server,
 } from "@/server/db/schema";
-import { deploymentWorker } from "@/server/queues/deployments-queue";
 import {
 	getJobsByApplicationId,
 	getJobsByComposeId,
+	prepareDeploymentJobsForServiceDeletion,
 } from "@/server/queues/queueSetup";
 import { cancelJobs } from "@/server/utils/backup";
-import {
-	assertServerRemoveAllowed,
-	assertServerRemoveCleanupComplete,
-	preflightServerAttachedServiceDeleteAccess,
-} from "@/server/api/utils/server-delete";
+import { cancelQueuedDeployment } from "@/server/utils/deploy";
 
 type ServerDeleteCtx = Parameters<typeof audit>[0] & PermissionCtx;
 
@@ -141,21 +145,6 @@ const throwIfCleanupReturnedError = (result: unknown) => {
 	if (result instanceof Error) {
 		throw result;
 	}
-};
-
-const localMetricHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
-
-const resolveCommunityMetricsUrl = (rawUrl: string) => {
-	const requestedUrl = new URL(rawUrl);
-	const internalUrl = process.env.NEARZERO_METRICS_URL?.trim();
-	if (
-		isCommunityMode() &&
-		internalUrl &&
-		localMetricHosts.has(requestedUrl.hostname)
-	) {
-		return new URL(internalUrl);
-	}
-	return requestedUrl;
 };
 
 const wrapAttachedServiceCleanupError = (
@@ -281,11 +270,50 @@ const deleteAttachedApplicationForServerDelete = async (
 	ctx: ServerDeleteCtx,
 ) => {
 	try {
+		await cancelQueuedDeployment({
+			applicationId: application.applicationId,
+			applicationType: "application",
+		});
+		const currentApplication = await findApplicationById(
+			application.applicationId,
+		);
+		if (
+			currentApplication.applicationStatus === "running" ||
+			currentApplication.previewDeployments.some(
+				(preview) => preview.previewStatus === "running",
+			)
+		) {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message:
+					"Wait for or cancel active application and preview deployments before deleting the server",
+			});
+		}
 		const queueJobs = await getJobsByApplicationId(application.applicationId);
-		for (const job of queueJobs) {
-			if (job.id) {
-				deploymentWorker.cancelJob(job.id, "User requested cancellation");
-			}
+		if (!(await prepareDeploymentJobsForServiceDeletion(queueJobs))) {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message:
+					"Wait for or cancel the active deployment before deleting the server",
+			});
+		}
+		const attachedDomains = await findDomainsByApplicationId(
+			currentApplication.applicationId,
+		);
+		const previewDomains = await findDomainsByPreviewDeploymentIds(
+			currentApplication.previewDeployments.map(
+				(preview) => preview.previewDeploymentId,
+			),
+		);
+		const attachedDomainIds = new Set([
+			...attachedDomains.map((domain) => domain.domainId),
+			...previewDomains.map((domain) => domain.domainId),
+			...currentApplication.previewDeployments
+				.map((preview) => preview.domainId)
+				.filter((domainId): domainId is string => Boolean(domainId)),
+		]);
+		for (const domainId of attachedDomainIds) {
+			await removeDomainById(domainId);
 		}
 
 		await deleteAllMiddlewares(application);
@@ -294,7 +322,12 @@ const deleteAttachedApplicationForServerDelete = async (
 		await removeMonitoringDirectory(application.appName, application.serverId);
 		await removeTraefikConfig(application.appName, application.serverId);
 		throwIfCleanupReturnedError(
-			await removeService(application.appName, application.serverId, true, true),
+			await removeService(
+				application.appName,
+				application.serverId,
+				true,
+				true,
+			),
 		);
 		await db
 			.delete(applications)
@@ -317,16 +350,36 @@ const deleteAttachedComposeForServerDelete = async (
 	ctx: ServerDeleteCtx,
 ) => {
 	try {
+		await cancelQueuedDeployment({
+			composeId: composeService.composeId,
+			applicationType: "compose",
+		});
+		const currentCompose = await findComposeById(composeService.composeId);
+		if (currentCompose.composeStatus === "running") {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message:
+					"Wait for the active Compose deployment to finish before deleting the server",
+			});
+		}
 		const queueJobs = await getJobsByComposeId(composeService.composeId);
-		for (const job of queueJobs) {
-			if (job.id) {
-				deploymentWorker.cancelJob(job.id, "User requested cancellation");
-			}
+		if (!(await prepareDeploymentJobsForServiceDeletion(queueJobs))) {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message:
+					"Wait for the active Compose deployment to finish before deleting the server",
+			});
+		}
+		for (const domain of currentCompose.domains) {
+			await removeDomainById(domain.domainId);
 		}
 
 		await removeCompose(composeService, true);
 		await removeDeploymentsByComposeId(composeService);
-		await removeComposeDirectory(composeService.appName);
+		await removeComposeDirectory(
+			composeService.appName,
+			composeService.serverId,
+		);
 		await db
 			.delete(compose)
 			.where(eq(compose.composeId, composeService.composeId))
@@ -479,7 +532,7 @@ export const serverRouter = createTRPCRouter({
 					resourceId: project.serverId,
 					resourceName: project.name,
 				});
-				return project;
+				return toPublicServer(project);
 			} catch (error) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
@@ -508,7 +561,7 @@ export const serverRouter = createTRPCRouter({
 				});
 			}
 
-			return server;
+			return toPublicServer(server);
 		}),
 	getDefaultCommand: withPermission("server", "read")
 		.input(apiFindOneServer)
@@ -537,7 +590,9 @@ export const serverRouter = createTRPCRouter({
 			.orderBy(desc(server.createdAt))
 			.groupBy(server.serverId);
 
-		return result.filter((s) => accessibleIds.has(s.serverId));
+		return result
+			.filter((s) => accessibleIds.has(s.serverId))
+			.map(toPublicServer);
 	}),
 	allForPermissions: withPermission("member", "update")
 		.use(async ({ ctx, next }) => {
@@ -579,17 +634,25 @@ export const serverRouter = createTRPCRouter({
 		const result = await db.query.server.findMany({
 			orderBy: desc(server.createdAt),
 			where: and(
-						isNotNull(server.sshKeyId),
-						eq(server.organizationId, ctx.session.activeOrganizationId),
-					),
+				isNotNull(server.sshKeyId),
+				eq(server.organizationId, ctx.session.activeOrganizationId),
+			),
 		});
-		return result.filter((s) => accessibleIds.has(s.serverId));
+		return result
+			.filter((s) => accessibleIds.has(s.serverId))
+			.map(toPublicServer);
 	}),
-	readyRuntimeServers: withPermission("server", "read").query(async ({ ctx }) => {
-		const accessibleIds = await getAccessibleServerIds(ctx.session);
-		const result = await getReadyRuntimeServers(ctx.session.activeOrganizationId);
-		return result.filter((s) => accessibleIds.has(s.serverId));
-	}),
+	readyRuntimeServers: withPermission("server", "read").query(
+		async ({ ctx }) => {
+			const accessibleIds = await getAccessibleServerIds(ctx.session);
+			const result = await getReadyRuntimeServers(
+				ctx.session.activeOrganizationId,
+			);
+			return result
+				.filter((s) => accessibleIds.has(s.serverId))
+				.map(toPublicServer);
+		},
+	),
 	setup: withPermission("server", "create")
 		.input(apiFindOneServer)
 		.mutation(async ({ input, ctx }) => {
@@ -628,11 +691,11 @@ export const serverRouter = createTRPCRouter({
 						action: "update",
 						resourceType: "server",
 						resourceId: input.serverId,
-							resourceName: server.name,
-							metadata: {
-								event: "server_setup_failed",
-							},
-						});
+						resourceName: server.name,
+						metadata: {
+							event: "server_setup_failed",
+						},
+					});
 				}
 				throw error;
 			}
@@ -660,12 +723,12 @@ export const serverRouter = createTRPCRouter({
 					void audit(ctx, {
 						action: "run",
 						resourceType: "server",
-							resourceId: input.serverId,
-							resourceName: server.name,
-							metadata: {
-								event: "server_setup_log_opened",
-							},
-						});
+						resourceId: input.serverId,
+						resourceName: server.name,
+						metadata: {
+							event: "server_setup_log_opened",
+						},
+					});
 					serverSetup(input.serverId, (log) => {
 						emit.next(log);
 					})
@@ -807,6 +870,9 @@ export const serverRouter = createTRPCRouter({
 						message: "You are not authorized to setup this server",
 					});
 				}
+				monitoringDockerAccessConfig(
+					input.metricsConfig.containers.services.include ?? [],
+				);
 
 				await updateServerById(input.serverId, {
 					metricsConfig: {
@@ -894,7 +960,7 @@ export const serverRouter = createTRPCRouter({
 				await removeDeploymentsByServerId(currentServer);
 				await deleteServer(input.serverId);
 
-				return currentServer;
+				return toPublicServer(currentServer);
 			} catch (error) {
 				throw error;
 			}
@@ -927,7 +993,7 @@ export const serverRouter = createTRPCRouter({
 					resourceId: input.serverId,
 					resourceName: server.name,
 				});
-				return currentServer;
+				return currentServer ? toPublicServer(currentServer) : currentServer;
 			} catch (error) {
 				throw error;
 			}
@@ -951,52 +1017,54 @@ export const serverRouter = createTRPCRouter({
 	getServerMetrics: withPermission("monitoring", "read")
 		.input(
 			z.object({
-				url: z.string(),
-				token: z.string(),
+				serverId: z.string().min(1).optional(),
 				dataPoints: z.string(),
 			}),
 		)
-		.query(async ({ input }) => {
-				try {
-					const url = resolveCommunityMetricsUrl(input.url);
-					url.searchParams.set("limit", input.dataPoints);
+		.query(async ({ input, ctx }) => {
+			try {
+				if (input.serverId) {
+					const target = await findServerById(input.serverId);
+					if (target.organizationId !== ctx.session.activeOrganizationId) {
+						throw new TRPCError({
+							code: "UNAUTHORIZED",
+							message: "You are not authorized to monitor this server",
+						});
+					}
+					const accessibleIds = await getAccessibleServerIds(ctx.session);
+					if (!accessibleIds.has(input.serverId)) {
+						throw new TRPCError({
+							code: "UNAUTHORIZED",
+							message: "You are not authorized to monitor this server",
+						});
+					}
+				}
 
-					console.log(`[getServerMetrics] Fetching from: ${url.toString()}`);
-
-					const fetchMetrics = () =>
-						fetch(url.toString(), {
-							headers: {
-							Authorization: `Bearer ${input.token}`,
-						},
-						signal: AbortSignal.timeout(10_000),
+				const fetchMetrics = () =>
+					requestMonitoring({
+						serverId: input.serverId,
+						endpoint: { kind: "server" },
+						limit: input.dataPoints,
 					});
-
-				let response: Response;
+				let response: Awaited<ReturnType<typeof requestMonitoring>>;
 				try {
 					response = await fetchMetrics();
 				} catch (error) {
-					if (!isCommunityMode()) throw error;
-					await ensureWebMonitoring();
-					response = await fetchMetrics();
-					}
-
-					console.log(`[getServerMetrics] Response status: ${response.status}`);
-
-					if (
-					isCommunityMode() &&
-					response.status === 401 &&
-					localMetricHosts.has(url.hostname)
-				) {
+					if (input.serverId) throw error;
 					await ensureWebMonitoring();
 					response = await fetchMetrics();
 				}
-				if (!response.ok) {
+				if (!input.serverId && response.status === 401) {
+					await ensureWebMonitoring();
+					response = await fetchMetrics();
+				}
+				if (response.status < 200 || response.status >= 300) {
 					throw new Error(
 						`Error ${response.status}: ${response.statusText}. Ensure the container is running and this service is included in the monitoring configuration.`,
 					);
 				}
 
-				const data = await response.json();
+				const data = JSON.parse(response.body) as unknown;
 				if (!Array.isArray(data) || data.length === 0) {
 					throw new Error(
 						[
@@ -1028,10 +1096,10 @@ export const serverRouter = createTRPCRouter({
 					timestamp: string;
 				}[];
 			} catch (error) {
-				console.error(`[getServerMetrics] Error:`, error);
+				console.error("[getServerMetrics] Error:", error);
 				if (error instanceof Error) {
 					console.error(`[getServerMetrics] Error message: ${error.message}`);
-					console.error(`[getServerMetrics] Error cause:`, error.cause);
+					console.error("[getServerMetrics] Error cause:", error.cause);
 				}
 				throw error;
 			}

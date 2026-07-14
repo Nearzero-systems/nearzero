@@ -1,11 +1,11 @@
 import { join, posix as pathPosix } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import type { apiFindGithubBranches } from "@nearzero/server/db/schema";
-import { findGithubById, type Github } from "@nearzero/server/services/github";
 import {
 	assertGitProviderConnectionAllowed,
 	isHostedEditionMode,
 } from "@nearzero/server/services/git-provider-policy";
+import { findGithubById, type Github } from "@nearzero/server/services/github";
 import {
 	getManagedGithubConfig,
 	isNearzeroManagedGitProvider,
@@ -15,6 +15,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { TRPCError } from "@trpc/server";
 import { Octokit } from "octokit";
 import type { z } from "zod";
+import { prepareCredentialedGitClone } from "./credentialed-git";
 
 type GithubWithProvider = Github & {
 	gitProvider?: { connectionMode?: string | null } | null;
@@ -166,10 +167,10 @@ interface CloneGithubRepository {
 	serverId: string | null;
 	outputPathOverride?: string;
 }
-export const cloneGithubRepository = async ({
-	type = "application",
-	...entity
-}: CloneGithubRepository, options?: { targetServerId?: string | null }) => {
+export const cloneGithubRepository = async (
+	{ type = "application", ...entity }: CloneGithubRepository,
+	options?: { targetServerId?: string | null },
+) => {
 	let command = "set -e;";
 	const isCompose = type === "compose";
 	const {
@@ -188,7 +189,7 @@ export const cloneGithubRepository = async ({
 	if (!githubId) {
 		command += `echo "Error: ❌ Github Provider not found"; exit 1;`;
 
-		return command;
+		return { command };
 	}
 
 	const requirements = getErrorCloneRequirements(entity);
@@ -196,7 +197,7 @@ export const cloneGithubRepository = async ({
 	// Check if requirements are met
 	if (requirements.length > 0) {
 		command += `echo "GitHub Repository configuration failed for application: ${appName}"; echo "Reasons:"; echo "${requirements.join("\n")}"; exit 1;`;
-		return command;
+		return { command };
 	}
 
 	const githubProvider = await findGithubById(githubId);
@@ -204,15 +205,15 @@ export const cloneGithubRepository = async ({
 	const outputPath = outputPathOverride ?? join(basePath, appName, "code");
 	const octokit = authGithub(githubProvider);
 	const token = await getGithubToken(octokit);
-	const repoclone = `github.com/${owner}/${repository}.git`;
-	command += `rm -rf ${outputPath};`;
-	command += `mkdir -p ${outputPath};`;
-	const cloneUrl = `https://oauth2:${token}@${repoclone}`;
-
-	command += `echo "Cloning Repo ${repoclone} to ${outputPath}: ✅";`;
-	command += `git clone --branch ${branch} --depth 1 ${enableSubmodules ? "--recurse-submodules" : ""} ${cloneUrl} ${outputPath} --progress;`;
-
-	return command;
+	return prepareCredentialedGitClone({
+		repositoryUrl: `https://github.com/${owner}/${repository}.git`,
+		username: "x-access-token",
+		password: token,
+		branch: branch!,
+		outputPath,
+		enableSubmodules,
+		isRemote: !!targetServerId,
+	});
 };
 
 export const getGithubRepositories = async (githubId?: string) => {
@@ -293,7 +294,9 @@ function detectRepositoryFramework(packageJson: Record<string, any> | null) {
 	return null;
 }
 
-function hasRepositoryWorkspaceDependencies(packageJson: Record<string, any> | null) {
+function hasRepositoryWorkspaceDependencies(
+	packageJson: Record<string, any> | null,
+) {
 	const dependencies = {
 		...(packageJson?.dependencies ?? {}),
 		...(packageJson?.devDependencies ?? {}),
@@ -319,16 +322,22 @@ function hasRepositoryTurboBuildPipeline(
 	return "turbo" in dependencies;
 }
 
-function detectRepositoryPackageManager(paths: Set<string>, packageManager?: string) {
+function detectRepositoryPackageManager(
+	paths: Set<string>,
+	packageManager?: string,
+) {
 	if (packageManager) return packageManager.split("@")[0] || null;
-	if (paths.has("pnpm-workspace.yaml") || paths.has("pnpm-lock.yaml")) return "pnpm";
+	if (paths.has("pnpm-workspace.yaml") || paths.has("pnpm-lock.yaml"))
+		return "pnpm";
 	if (paths.has("bun.lock") || paths.has("bun.lockb")) return "bun";
 	if (paths.has("yarn.lock")) return "yarn";
 	if (paths.has("package-lock.json")) return "npm";
 	return null;
 }
 
-function installCommandForRepositoryPackageManager(packageManager: string | null) {
+function installCommandForRepositoryPackageManager(
+	packageManager: string | null,
+) {
 	switch (packageManager) {
 		case "bun":
 			return "bun install --frozen-lockfile";
@@ -343,8 +352,7 @@ function installCommandForRepositoryPackageManager(packageManager: string | null
 
 function isSafeRepositoryPackageName(packageName: string | null | undefined) {
 	return Boolean(
-		packageName &&
-			/^(@[A-Za-z0-9._~-]+\/)?[A-Za-z0-9._~-]+$/.test(packageName),
+		packageName && /^(@[A-Za-z0-9._~-]+\/)?[A-Za-z0-9._~-]+$/.test(packageName),
 	);
 }
 
@@ -432,7 +440,8 @@ function repositoryAppPriority(
 
 function sortRepositoryApps(apps: GithubRepositoryDetectedApp[]) {
 	return [...apps].sort((a, b) => {
-		const priority = repositoryAppPriority(a, apps) - repositoryAppPriority(b, apps);
+		const priority =
+			repositoryAppPriority(a, apps) - repositoryAppPriority(b, apps);
 		if (priority !== 0) return priority;
 		return a.path.localeCompare(b.path);
 	});
@@ -488,7 +497,8 @@ export const detectGithubRepositoryApps = async (input: {
 				file_sha: item.sha!,
 			});
 			const raw = Buffer.from(blob.data.content, "base64").toString("utf8");
-			const relativePath = item.path === "package.json" ? "." : pathPosix.dirname(item.path!);
+			const relativePath =
+				item.path === "package.json" ? "." : pathPosix.dirname(item.path!);
 			return {
 				relativePath,
 				packageJson: parseRepositoryPackageJson(raw),
@@ -509,7 +519,8 @@ export const detectGithubRepositoryApps = async (input: {
 		.map(({ relativePath, packageJson }) => {
 			const scripts = packageJson?.scripts ?? {};
 			const framework = detectRepositoryFramework(packageJson);
-			const hasWorkspaceDependencies = hasRepositoryWorkspaceDependencies(packageJson);
+			const hasWorkspaceDependencies =
+				hasRepositoryWorkspaceDependencies(packageJson);
 			const hasRunnableScripts = Boolean(scripts.build || scripts.start);
 			const packageName =
 				typeof packageJson?.name === "string" ? packageJson.name : null;
@@ -517,8 +528,10 @@ export const detectGithubRepositoryApps = async (input: {
 				return null;
 			}
 			const packageManager =
-				detectRepositoryPackageManager(repoPaths, packageJson?.packageManager) ??
-				rootPackageManager;
+				detectRepositoryPackageManager(
+					repoPaths,
+					packageJson?.packageManager,
+				) ?? rootPackageManager;
 			return {
 				path: relativePath === "." ? "/" : `/${relativePath}`,
 				packageName,

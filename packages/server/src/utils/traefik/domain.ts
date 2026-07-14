@@ -1,3 +1,8 @@
+import { domainToASCII } from "node:url";
+import {
+	isSafeTraefikRuleFragment,
+	isValidDomainHost,
+} from "@nearzero/server/db/validations/domain";
 import type { Domain } from "@nearzero/server/services/domain";
 import type { ApplicationNested } from "../builders";
 import {
@@ -6,13 +11,80 @@ import {
 	loadOrCreateConfigRemote,
 	removeTraefikConfig,
 	removeTraefikConfigRemote,
+	withTraefikMutationLock,
 	writeTraefikConfig,
 	writeTraefikConfigRemote,
 } from "./application";
 import type { FileConfig, HttpRouter } from "./file-types";
 import { createPathMiddlewares, removePathMiddlewares } from "./middleware";
 
-export const manageDomain = async (app: ApplicationNested, domain: Domain) => {
+const TRAEFIK_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const TRAEFIK_MIDDLEWARE_PATTERN =
+	/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:@[A-Za-z0-9][A-Za-z0-9_.-]*)?$/;
+
+const assertTraefikName = (value: string, field: string, maxLength = 128) => {
+	if (value.length > maxLength || !TRAEFIK_NAME_PATTERN.test(value)) {
+		throw new Error(
+			`${field} may only contain letters, numbers, periods, underscores, and hyphens`,
+		);
+	}
+};
+
+const assertSafePath = (value: string | null, field: string) => {
+	if (value === null) return;
+	if (
+		value.length === 0 ||
+		value.length > 2048 ||
+		!value.startsWith("/") ||
+		!isSafeTraefikRuleFragment(value)
+	) {
+		throw new Error(`${field} is not safe for a Traefik routing rule`);
+	}
+};
+
+const validateRouterInputs = (
+	appName: string,
+	domain: Domain,
+	entryPoint: string,
+) => {
+	assertTraefikName(appName, "Application name", 63);
+	assertTraefikName(entryPoint, "Traefik entrypoint");
+	if (
+		!Number.isSafeInteger(domain.uniqueConfigKey) ||
+		domain.uniqueConfigKey < 1
+	) {
+		throw new Error("Domain configuration key must be a positive integer");
+	}
+	if (!isValidDomainHost(domain.host)) {
+		throw new Error("Domain host is not safe for a Traefik routing rule");
+	}
+	assertSafePath(domain.path, "Domain path");
+	assertSafePath(domain.internalPath, "Internal path");
+	if (domain.customEntrypoint) {
+		assertTraefikName(domain.customEntrypoint, "Custom Traefik entrypoint");
+	}
+	if (domain.customCertResolver) {
+		assertTraefikName(domain.customCertResolver, "Custom certificate resolver");
+	}
+	if (domain.certificateType === "custom" && !domain.customCertResolver) {
+		throw new Error(
+			"A custom certificate resolver is required for custom certificates",
+		);
+	}
+	if ((domain.middlewares?.length ?? 0) > 64) {
+		throw new Error("A domain cannot use more than 64 Traefik middlewares");
+	}
+	for (const middleware of domain.middlewares ?? []) {
+		if (
+			middleware.length > 256 ||
+			!TRAEFIK_MIDDLEWARE_PATTERN.test(middleware)
+		) {
+			throw new Error("Invalid Traefik middleware name");
+		}
+	}
+};
+
+const manageDomainUnlocked = async (app: ApplicationNested, domain: Domain) => {
 	const { appName } = app;
 	let config: FileConfig;
 
@@ -56,7 +128,12 @@ export const manageDomain = async (app: ApplicationNested, domain: Domain) => {
 	}
 };
 
-export const removeDomain = async (
+export const manageDomain = async (app: ApplicationNested, domain: Domain) =>
+	withTraefikMutationLock(app.serverId, () =>
+		manageDomainUnlocked(app, domain),
+	);
+
+const removeDomainUnlocked = async (
 	application: ApplicationNested,
 	uniqueKey: number,
 ) => {
@@ -104,19 +181,20 @@ export const removeDomain = async (
 	}
 };
 
+export const removeDomain = async (
+	application: ApplicationNested,
+	uniqueKey: number,
+) =>
+	withTraefikMutationLock(application.serverId, () =>
+		removeDomainUnlocked(application, uniqueKey),
+	);
+
 /**
  * Converts an internationalized domain name (IDN) to ASCII punycode format.
  * Traefik requires domain names in ASCII format, so non-ASCII characters
  * must be converted (e.g., "тест.рф" → "xn--e1aybc.xn--p1ai").
  */
-const toPunycode = (host: string): string => {
-	try {
-		return new URL(`http://${host}`).hostname;
-	} catch {
-		// If URL parsing fails, return the original host
-		return host;
-	}
-};
+const toPunycode = (host: string): string => domainToASCII(host).toLowerCase();
 
 export const createRouterConfig = async (
 	app: ApplicationNested,
@@ -125,6 +203,7 @@ export const createRouterConfig = async (
 ) => {
 	const { appName, redirects, security } = app;
 	const { certificateType } = domain;
+	validateRouterInputs(appName, domain, entryPoint);
 
 	const {
 		host,
@@ -190,13 +269,17 @@ export const createRouterConfig = async (
 		}
 	}
 
-	if (entryPoint === "websecure" || (customEntrypoint && https)) {
+	const isTlsRouter =
+		https && (entryPoint === "websecure" || entryPoint === customEntrypoint);
+	if (isTlsRouter) {
 		if (certificateType === "letsencrypt") {
 			routerConfig.tls = { certResolver: "letsencrypt" };
 		} else if (certificateType === "custom" && domain.customCertResolver) {
 			routerConfig.tls = { certResolver: domain.customCertResolver };
 		} else if (certificateType === "none") {
-			routerConfig.tls = undefined;
+			// An empty TLS object enables HTTPS while relying on Traefik's default
+			// certificate instead of invoking an ACME certificate resolver.
+			routerConfig.tls = {};
 		}
 	}
 

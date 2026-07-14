@@ -7,12 +7,15 @@ import { findEnvironmentById } from "@nearzero/server/services/environment";
 import type { Libsql } from "@nearzero/server/services/libsql";
 import { findProjectById } from "@nearzero/server/services/project";
 import { sendDatabaseBackupNotifications } from "../notifications/database-backup";
-import { execAsync, execAsyncRemote } from "../process/execAsync";
+import { executeSensitiveShellScript } from "../process/execAsync";
 import {
 	getBackupCommand,
+	getBackupFailureMessage,
+	getBackupSensitiveValues,
 	getBackupTimestamp,
 	getS3Credentials,
 	normalizeS3Path,
+	quoteShellArgument,
 } from "./utils";
 
 export const runLibsqlBackup = async (
@@ -36,20 +39,18 @@ export const runLibsqlBackup = async (
 		const rcloneFlags = getS3Credentials(destination);
 		const rcloneDestination = `:s3:${destination.bucket}/${bucketDestination}`;
 
-		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} "${rcloneDestination}"`;
+		const rcloneCommand = `rclone rcat ${rcloneFlags.join(" ")} ${quoteShellArgument(rcloneDestination)}`;
 
 		const backupCommand = getBackupCommand(
 			backup,
 			rcloneCommand,
 			deployment.logPath,
 		);
-		if (libsql.serverId) {
-			await execAsyncRemote(libsql.serverId, backupCommand);
-		} else {
-			await execAsync(backupCommand, {
-				shell: "/bin/bash",
-			});
-		}
+		await executeSensitiveShellScript({
+			serverId: libsql.serverId,
+			script: backupCommand,
+			sensitiveValues: getBackupSensitiveValues(backup),
+		});
 
 		await sendDatabaseBackupNotifications({
 			applicationName: name,
@@ -67,8 +68,7 @@ export const runLibsqlBackup = async (
 			projectName: project.name,
 			databaseType: "libsql",
 			type: "error",
-			// @ts-ignore
-			errorMessage: error?.message || "Error message not provided",
+			errorMessage: getBackupFailureMessage(error),
 			organizationId: project.organizationId,
 			databaseName: backup.database,
 		});

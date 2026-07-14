@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync, rmSync } from "node:fs";
 import {
 	assertApplicationDeployCapabilities,
 	DeploymentPhaseError,
@@ -43,6 +45,9 @@ const isRunnerExecution = (command: string) =>
 const isCancellationCheck = (command: string) =>
 	command.startsWith("test -f ") && command.includes("/cancelled");
 
+const isBuildLogTail = (command: string) =>
+	command.startsWith("tail -c 131072 ");
+
 const healthyValidation = {
 	docker: { version: "28.5.0", enabled: true },
 	rclone: { version: "1.74.2", enabled: true },
@@ -72,9 +77,7 @@ describe("runDeploymentPhases", () => {
 			}
 			return successfulResult;
 		});
-		vi.mocked(processUtils.execAsyncRemote).mockResolvedValue(
-			successfulResult,
-		);
+		vi.mocked(processUtils.execAsyncRemote).mockResolvedValue(successfulResult);
 	});
 
 	it("validates generated phase scripts before executing them", async () => {
@@ -106,6 +109,116 @@ describe("runDeploymentPhases", () => {
 
 		expect(syntaxCheckIndex).toBeGreaterThan(-1);
 		expect(executionIndex).toBeGreaterThan(syntaxCheckIndex);
+	});
+
+	it("delivers sensitive phase input only to the active runner", async () => {
+		const secret = "phase-input-secret-never-in-command-metadata";
+		await runDeploymentPhases({
+			deploymentId: "deployment-sensitive-input",
+			logPath: "/tmp/deployment-sensitive-input.log",
+			executionMode: "community",
+			executionLocation: "local",
+			phases: [
+				{
+					id: "source",
+					label: "Fetch private source",
+					script: 'cat > "$HOME/.temporary-deploy-key"',
+					input: secret,
+					errorCode: "source_fetch_failed",
+				},
+			],
+		});
+
+		const calls = vi.mocked(processUtils.execAsync).mock.calls;
+		expect(calls.every(([command]) => !command.includes(secret))).toBe(true);
+		const runnerExecution = calls.find(([command]) =>
+			isRunnerExecution(command),
+		);
+		expect(runnerExecution?.[1]?.input).toBe(
+			`I|${Buffer.from(secret, "utf8").toString("base64")}|\n`,
+		);
+		expect(runnerExecution?.[1]?.input).not.toContain(secret);
+		const runnerProvision = calls.find(
+			([command]) =>
+				command.includes("envelope_file=") &&
+				command.includes(".runner.envelope"),
+		);
+		expect(runnerProvision?.[0]).toContain('chmod 600 "$envelope_file"');
+		expect(runnerProvision?.[0]).toContain('chmod 600 "$input_file"');
+		expect(runnerProvision?.[0]).toContain(
+			'rm -f "$pid_file" "$envelope_file" "$input_file"',
+		);
+	});
+
+	it("redacts raw and encoded protected values before durable log append", async () => {
+		const deploymentId = "deployment-output-redaction";
+		const logPath = "/tmp/deployment-output-redaction.log";
+		const secret = "phase-output-canary-'-$-3a17d94f";
+		const encodedSecret = Buffer.from(secret, "utf8").toString("base64");
+		const workDir = `/tmp/nearzero-deployments/${deploymentId}`;
+		rmSync(logPath, { force: true });
+		rmSync(workDir, { recursive: true, force: true });
+
+		try {
+			await runDeploymentPhases({
+				deploymentId,
+				logPath,
+				executionMode: "community",
+				executionLocation: "local",
+				phases: [
+					{
+						id: "redact",
+						label: "Redact build output",
+						script: [
+							"payload=$(cat)",
+							"printf '%s\\n' \"$payload\"",
+							"printf '%s' \"$payload\" | base64",
+						].join("\n"),
+						input: secret,
+						sensitiveValues: [secret],
+						errorCode: "app_build_failed",
+					},
+				],
+			});
+
+			const calls = vi.mocked(processUtils.execAsync).mock.calls;
+			const phaseProvision = calls.find(
+				([command]) =>
+					command.includes("01-redact.sh") &&
+					command.includes("NZ_HEREDOC_") &&
+					!command.includes(".runner"),
+			);
+			const runnerProvision = calls.find(
+				([command]) =>
+					command.includes("01-redact.sh.runner") &&
+					command.includes("NZ_HEREDOC_"),
+			);
+			const runnerExecution = calls.find(([command]) =>
+				isRunnerExecution(command),
+			);
+			expect(phaseProvision).toBeDefined();
+			expect(runnerProvision).toBeDefined();
+			expect(runnerExecution).toBeDefined();
+
+			execFileSync("bash", ["-Eeuo", "pipefail", "-c", phaseProvision![0]]);
+			execFileSync("bash", ["-Eeuo", "pipefail", "-c", runnerProvision![0]]);
+			execFileSync("bash", ["-Eeuo", "pipefail", "-c", runnerExecution![0]], {
+				input: runnerExecution![1]?.input,
+			});
+
+			const durableLog = readFileSync(logPath, "utf8");
+			expect(durableLog).toContain("[REDACTED]");
+			expect(durableLog).not.toContain(secret);
+			expect(durableLog).not.toContain(encodedSecret);
+			expect(
+				calls.every(([command]) =>
+					[secret, encodedSecret].every((value) => !command.includes(value)),
+				),
+			).toBe(true);
+		} finally {
+			rmSync(logPath, { force: true });
+			rmSync(workDir, { recursive: true, force: true });
+		}
 	});
 
 	it("returns build_script_invalid without executing an invalid phase", async () => {
@@ -214,6 +327,147 @@ describe("runDeploymentPhases", () => {
 		expect(executions).toBe(1);
 	});
 
+	it("classifies npm peer conflicts from the bounded deployment log tail", async () => {
+		vi.mocked(processUtils.execAsync).mockImplementation(async (command) => {
+			if (isCancellationCheck(command)) {
+				throw new Error("not cancelled");
+			}
+			if (isRunnerExecution(command)) {
+				throw new processUtils.ExecError("Command execution failed", {
+					command,
+					exitCode: 1,
+				});
+			}
+			if (isBuildLogTail(command)) {
+				return {
+					stdout: [
+						"#8 3.659 npm error code ERESOLVE",
+						"#8 3.659 npm error ERESOLVE could not resolve",
+						"#8 3.659 npm error While resolving: next-auth@4.24.11",
+						"#8 3.659 npm error Found: next@16.1.7",
+						"#8 3.659 npm error Could not resolve dependency:",
+						'#8 3.659 npm error peer next@"^12.2.5 || ^13 || ^14 || ^15" from next-auth@4.24.11',
+					].join("\n"),
+					stderr: "",
+				} as Awaited<ReturnType<typeof processUtils.execAsync>>;
+			}
+			return successfulResult;
+		});
+
+		await expect(
+			runDeploymentPhases({
+				deploymentId: "deployment-npm-peer-conflict",
+				logPath: "/tmp/deployment-npm-peer-conflict.log",
+				executionMode: "community",
+				executionLocation: "local",
+				phases: [
+					{
+						id: "build",
+						label: "Build image with dockerfile",
+						script: "docker build .",
+						errorCode: "app_build_failed",
+					},
+				],
+			}),
+		).rejects.toMatchObject({
+			code: "app_build_failed",
+			diagnostic: {
+				code: "npm_eresolve_peer_dependency_conflict",
+				packageManager: "npm",
+				resolving: "next-auth@4.24.11",
+				found: "next@16.1.7",
+				requiredBy: "next-auth@4.24.11",
+			},
+		});
+
+		expect(
+			vi
+				.mocked(processUtils.execAsync)
+				.mock.calls.some(([command]) => isBuildLogTail(command)),
+		).toBe(true);
+	});
+
+	it("does not mislabel a generic npm ERESOLVE as a peer conflict", async () => {
+		vi.mocked(processUtils.execAsync).mockImplementation(async (command) => {
+			if (isCancellationCheck(command)) {
+				throw new Error("not cancelled");
+			}
+			if (isRunnerExecution(command)) {
+				throw new processUtils.ExecError("Command execution failed", {
+					command,
+					exitCode: 1,
+				});
+			}
+			if (isBuildLogTail(command)) {
+				return {
+					stdout:
+						"npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve dependency tree\nnpm error Could not resolve dependency:\n",
+					stderr: "",
+				} as Awaited<ReturnType<typeof processUtils.execAsync>>;
+			}
+			return successfulResult;
+		});
+
+		const failure = await runDeploymentPhases({
+			deploymentId: "deployment-generic-eresolve",
+			logPath: "/tmp/deployment-generic-eresolve.log",
+			executionMode: "community",
+			executionLocation: "local",
+			phases: [
+				{
+					id: "build",
+					label: "Build application",
+					script: "npm run build",
+					errorCode: "app_build_failed",
+				},
+			],
+		}).catch((error: unknown) => error);
+
+		expect(failure).toMatchObject({ code: "app_build_failed" });
+		expect((failure as DeploymentPhaseError).diagnostic).toBeUndefined();
+	});
+
+	it("does not inspect a build log for a failed non-build phase", async () => {
+		vi.mocked(processUtils.execAsync).mockImplementation(async (command) => {
+			if (isCancellationCheck(command)) {
+				throw new Error("not cancelled");
+			}
+			if (isRunnerExecution(command)) {
+				throw new processUtils.ExecError("Command execution failed", {
+					command,
+					exitCode: 1,
+				});
+			}
+			if (isBuildLogTail(command)) {
+				throw new Error("a patch failure must not inspect the build log");
+			}
+			return successfulResult;
+		});
+
+		const failure = await runDeploymentPhases({
+			deploymentId: "deployment-patch-failure",
+			logPath: "/tmp/deployment-patch-failure.log",
+			executionMode: "community",
+			executionLocation: "local",
+			phases: [
+				{
+					id: "patches",
+					label: "Apply patches",
+					script: "false",
+					errorCode: "app_build_failed",
+				},
+			],
+		}).catch((error: unknown) => error);
+
+		expect(failure).toMatchObject({ code: "app_build_failed" });
+		expect((failure as DeploymentPhaseError).diagnostic).toBeUndefined();
+		expect(
+			vi
+				.mocked(processUtils.execAsync)
+				.mock.calls.some(([command]) => isBuildLogTail(command)),
+		).toBe(false);
+	});
+
 	it("reports phase timeouts without misclassifying them as app failures", async () => {
 		vi.mocked(processUtils.execAsync).mockImplementation(async (command) => {
 			if (isCancellationCheck(command)) {
@@ -248,6 +502,11 @@ describe("runDeploymentPhases", () => {
 			code: "phase_timeout",
 			phaseId: "build",
 		});
+		expect(
+			vi
+				.mocked(processUtils.execAsync)
+				.mock.calls.some(([command]) => isBuildLogTail(command)),
+		).toBe(false);
 	});
 
 	it("repairs safe remote capabilities once and revalidates before deploy", async () => {

@@ -13,10 +13,16 @@ export const setupDirectories = () => {
 		APPLICATIONS_PATH,
 		BASE_PATH,
 		CERTIFICATES_PATH,
+		COMPOSE_ENV_PATH,
+		COMPOSE_PATH,
+		DNS_PATH,
+		DNS_ZONES_PATH,
 		DYNAMIC_TRAEFIK_PATH,
 		LOGS_PATH,
 		MAIN_TRAEFIK_PATH,
 		MONITORING_PATH,
+		PATCH_REPOS_PATH,
+		REGISTRY_PATH,
 		SSH_PATH,
 		SCHEDULES_PATH,
 		VOLUME_BACKUPS_PATH,
@@ -27,19 +33,23 @@ export const setupDirectories = () => {
 		DYNAMIC_TRAEFIK_PATH,
 		LOGS_PATH,
 		APPLICATIONS_PATH,
+		COMPOSE_PATH,
+		COMPOSE_ENV_PATH,
 		SSH_PATH,
 		CERTIFICATES_PATH,
 		MONITORING_PATH,
+		REGISTRY_PATH,
 		SCHEDULES_PATH,
 		VOLUME_BACKUPS_PATH,
+		PATCH_REPOS_PATH,
+		DNS_PATH,
+		DNS_ZONES_PATH,
 	];
 
 	for (const dir of directories) {
 		try {
 			createDirectoryIfNotExist(dir);
-			if (dir === SSH_PATH) {
-				chmodSync(SSH_PATH, "700");
-			}
+			chmodSync(dir, "700");
 		} catch (error) {
 			console.log(error, " On path: ", dir);
 		}

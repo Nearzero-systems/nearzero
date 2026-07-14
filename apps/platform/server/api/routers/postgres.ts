@@ -1,10 +1,10 @@
 import {
+	buildPostgresPasswordChangeScript,
 	checkPortInUse,
 	createMount,
 	createPostgres,
 	deployPostgres,
-	execAsync,
-	execAsyncRemote,
+	executeSensitiveShellScript,
 	findBackupsByDbId,
 	findEnvironmentById,
 	findPostgresById,
@@ -12,7 +12,6 @@ import {
 	getAccessibleServerIds,
 	getContainerLogs,
 	getMountPath,
-	getServiceContainerCommand,
 	rebuildDatabase,
 	removePostgresById,
 	removeService,
@@ -21,6 +20,7 @@ import {
 	stopService,
 	stopServiceRemote,
 	swarmServiceExists,
+	toPublicServerRelation,
 	updatePostgresById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -144,7 +144,7 @@ export const postgresRouter = createTRPCRouter({
 					message: "You are not authorized to access this Postgres",
 				});
 			}
-			return postgres;
+			return toPublicServerRelation(postgres);
 		}),
 
 	start: protectedProcedure
@@ -189,7 +189,7 @@ export const postgresRouter = createTRPCRouter({
 				resourceId: service.postgresId,
 				resourceName: service.appName,
 			});
-			return service;
+			return toPublicServerRelation(service);
 		}),
 	stop: protectedProcedure
 		.input(apiFindOnePostgres)
@@ -223,7 +223,7 @@ export const postgresRouter = createTRPCRouter({
 				resourceId: postgres.postgresId,
 				resourceName: postgres.appName,
 			});
-			return postgres;
+			return toPublicServerRelation(postgres);
 		}),
 	saveExternalPort: protectedProcedure
 		.input(apiSaveExternalPortPostgres)
@@ -264,7 +264,7 @@ export const postgresRouter = createTRPCRouter({
 				resourceId: postgres.postgresId,
 				resourceName: postgres.appName,
 			});
-			return postgres;
+			return toPublicServerRelation(postgres);
 		}),
 	deploy: protectedProcedure
 		.input(apiDeployPostgres)
@@ -358,7 +358,7 @@ export const postgresRouter = createTRPCRouter({
 				resourceId: postgres.postgresId,
 				resourceName: postgres.appName,
 			});
-			return postgres;
+			return toPublicServerRelation(postgres);
 		}),
 	remove: protectedProcedure
 		.input(apiFindOnePostgres)
@@ -397,7 +397,7 @@ export const postgresRouter = createTRPCRouter({
 				} catch (_) {}
 			}
 
-			return postgres;
+			return toPublicServerRelation(postgres);
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesPostgres)
@@ -504,15 +504,11 @@ export const postgresRouter = createTRPCRouter({
 			const pg = await findPostgresById(postgresId);
 			const { appName, serverId, databaseUser } = pg;
 
-			const containerCmd = getServiceContainerCommand(appName);
-			const command = `
-				CONTAINER_ID=$(${containerCmd})
-				if [ -z "$CONTAINER_ID" ]; then
-					echo "No running container found for ${appName}" >&2
-					exit 1
-				fi
-				docker exec "$CONTAINER_ID" psql -U ${databaseUser} -c "ALTER USER \\"${databaseUser}\\" WITH PASSWORD '${password}';"
-			`;
+			const script = buildPostgresPasswordChangeScript({
+				appName,
+				databaseUser,
+				newPassword: password,
+			});
 
 			await db.transaction(async (tx) => {
 				await tx
@@ -520,11 +516,11 @@ export const postgresRouter = createTRPCRouter({
 					.set({ databasePassword: password })
 					.where(eq(postgresTable.postgresId, postgresId));
 
-				if (serverId) {
-					await execAsyncRemote(serverId, command);
-				} else {
-					await execAsync(command, { shell: "/bin/bash" });
-				}
+				await executeSensitiveShellScript({
+					serverId,
+					script,
+					sensitiveValues: [password],
+				});
 			});
 
 			await audit(ctx, {

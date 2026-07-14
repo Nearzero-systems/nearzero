@@ -17,6 +17,7 @@ import {
 	getEditionFeatureLabel,
 	isEditionFeatureEnabled,
 } from "@nearzero/server/services/edition-policy";
+import { sanitizePublicErrorMessage } from "@nearzero/server/services/operational-log";
 import { checkPermission } from "@nearzero/server/services/permission";
 import type { OpenApiMeta } from "@nearzero/trpc-openapi";
 import { initTRPC, TRPCError } from "@trpc/server";
@@ -123,8 +124,13 @@ const t = initTRPC
 	.create({
 		transformer: superjson,
 		errorFormatter({ shape, error }) {
+			const message =
+				error.code === "INTERNAL_SERVER_ERROR"
+					? "Internal server error"
+					: sanitizePublicErrorMessage(shape.message, "Request failed");
 			return {
 				...shape,
+				message,
 				data: {
 					...shape.data,
 					zodError:

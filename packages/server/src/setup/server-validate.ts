@@ -1,5 +1,6 @@
 import { Client } from "ssh2";
 import { findServerById } from "../services/server";
+import { createSshHostVerification } from "../utils/servers/ssh-host-verification";
 import {
 	BUILDPACKS_VERSION,
 	NIXPACKS_VERSION,
@@ -139,8 +140,16 @@ export const serverValidate = async (
 	}
 
 	return new Promise<ServerValidateResult>((resolve, reject) => {
+		const hostVerification = createSshHostVerification(server);
 		client
 			.once("ready", () => {
+				try {
+					hostVerification.commit();
+				} catch (error) {
+					client.end();
+					reject(error);
+					return;
+				}
 				const bashCommand = `
           command_exists() {
             command -v "$@" > /dev/null 2>&1
@@ -229,6 +238,8 @@ export const serverValidate = async (
 				port: server.port,
 				username: server.username,
 				privateKey: server.sshKey?.privateKey,
+				hostVerifier: hostVerification.hostVerifier,
+				readyTimeout: 30_000,
 			});
 	});
 };

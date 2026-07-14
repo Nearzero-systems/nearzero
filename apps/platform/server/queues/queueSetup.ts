@@ -31,6 +31,32 @@ export const getJobsByComposeId = async (composeId: string) => {
 	);
 };
 
+const removableDeploymentStates = new Set([
+	"waiting",
+	"delayed",
+	"paused",
+	"prioritized",
+	"waiting-children",
+]);
+
+/**
+ * Prevent a queued deployment from racing a service/parent deletion.
+ * Active jobs are never treated as cancelled merely because their abort signal
+ * was requested: deployment processors may still be unwinding remote work.
+ */
+export const prepareDeploymentJobsForServiceDeletion = async (
+	jobs: Job<ResolvedDeploymentJob>[],
+) => {
+	const states = await Promise.all(jobs.map((job) => job.getState()));
+	if (states.includes("active")) return false;
+	for (const [index, job] of jobs.entries()) {
+		if (removableDeploymentStates.has(states[index] ?? "")) {
+			await job.remove();
+		}
+	}
+	return true;
+};
+
 process.on("SIGTERM", () => {
 	myQueue.close();
 	process.exit(0);

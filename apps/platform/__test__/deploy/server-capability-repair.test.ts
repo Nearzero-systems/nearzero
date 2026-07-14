@@ -19,12 +19,7 @@ describe("server capability repair", () => {
 				"git",
 				"nearzero-network",
 			]),
-		).toEqual([
-			"docker-group",
-			"railpack",
-			"swarm",
-			"nearzero-network",
-		]);
+		).toEqual(["docker-group", "railpack", "swarm", "nearzero-network"]);
 	});
 
 	it("generates valid, non-destructive repair scripts", async () => {
@@ -55,7 +50,16 @@ describe("server capability repair", () => {
 		expect(script).toContain("NIXPACKS_VERSION");
 		expect(script).toContain("RAILPACK_VERSION");
 		expect(script).toContain("BUILDPACKS_VERSION");
-		expect(script).toContain("https://nixpacks.com/install.sh");
-		expect(script).toContain("https://railpack.com/install.sh");
+		expect(script).toContain(
+			"github.com/railwayapp/nixpacks/releases/download",
+		);
+		expect(script).toContain(
+			"github.com/railwayapp/railpack/releases/download",
+		);
+		expect(script).toContain("github.com/buildpacks/pack/releases/download");
+		expect(script).toContain("sha256sum -c -");
+		expect(script).not.toContain("nixpacks.com/install.sh");
+		expect(script).not.toContain("railpack.com/install.sh");
+		expect(script).not.toMatch(/(?:curl|wget)[^\n]*\|[^\n]*(?:bash|sh)\b/);
 	});
 });

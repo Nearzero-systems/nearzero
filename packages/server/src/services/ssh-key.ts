@@ -11,6 +11,14 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import type { z } from "zod";
 
+export const toPublicSshKey = <T extends object>(
+	sshKey: T,
+): Omit<T, "privateKey"> => {
+	const publicSshKey = { ...sshKey } as T & { privateKey?: unknown };
+	delete publicSshKey.privateKey;
+	return publicSshKey;
+};
+
 export const createSshKey = async (input: z.infer<typeof apiCreateSshKey>) => {
 	await db.transaction(async (tx) => {
 		const sshKey = await tx

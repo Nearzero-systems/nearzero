@@ -12,12 +12,11 @@ import {
 	redis,
 } from "@nearzero/server/db/schema";
 import { findProjectById } from "@nearzero/server/services/project";
-import {
-	execAsyncRemote,
-} from "@nearzero/server/utils/process/execAsync";
+import { execAsyncRemote } from "@nearzero/server/utils/process/execAsync";
 import { TRPCError } from "@trpc/server";
 import { format } from "date-fns";
 import { desc, eq, like } from "drizzle-orm";
+import { nanoid } from "nanoid";
 
 export const DB_DEPLOYMENT_PREFIX = "NZ_DB:";
 
@@ -61,10 +60,12 @@ export async function appendDatabaseDeploymentLog(
 ) {
 	const normalized = line.endsWith("\n") ? line : `${line}\n`;
 	if (serverId) {
-		const escaped = normalized.replace(/'/g, `'\\''`);
+		const quotedPath = `'${logPath.replace(/'/g, `'\\''`)}'`;
 		await execAsyncRemote(
 			serverId,
-			`printf '%s' '${escaped}' >> '${logPath.replace(/'/g, `'\\''`)}'`,
+			`umask 077; cat >> ${quotedPath}`,
+			undefined,
+			{ input: normalized },
 		);
 		return;
 	}
@@ -79,8 +80,8 @@ export async function createDatabaseServiceDeployment(input: {
 }) {
 	const { meta, appName, serverId, title } = input;
 	const { LOGS_PATH } = paths(!!serverId);
-	const formattedDateTime = format(new Date(), "yyyy-MM-dd:HH:mm:ss");
-	const fileName = `${appName}-${formattedDateTime}.log`;
+	const timestamp = format(new Date(), "yyyy-MM-dd-HH-mm-ss-SSS");
+	const fileName = `${appName}-${timestamp}-${nanoid(8)}.log`;
 	const logFilePath = path.join(LOGS_PATH, appName, fileName);
 
 	try {
@@ -116,13 +117,10 @@ printf '%s\\n' "Initializing deployment" >> '${logFilePath}';
 			});
 		}
 		return created[0];
-	} catch (error) {
+	} catch {
 		throw new TRPCError({
 			code: "BAD_REQUEST",
-			message:
-				error instanceof Error ?
-					error.message
-				:	"Error creating the deployment",
+			message: "Error creating the deployment",
 		});
 	}
 }
@@ -273,9 +271,13 @@ export async function findDatabaseDeploymentsCentralized(
 		limit: 300,
 	});
 
-	const projectCache = new Map<string, Awaited<ReturnType<typeof findProjectById>>>();
-	const result: Array<(typeof rows)[number] & { meta: DatabaseDeploymentMeta }> =
-		[];
+	const projectCache = new Map<
+		string,
+		Awaited<ReturnType<typeof findProjectById>>
+	>();
+	const result: Array<
+		(typeof rows)[number] & { meta: DatabaseDeploymentMeta }
+	> = [];
 
 	for (const row of rows) {
 		const meta = decodeDatabaseDeploymentDescription(row.description);

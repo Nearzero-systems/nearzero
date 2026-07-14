@@ -7,8 +7,6 @@ import {
 } from "@/lib/org-routes";
 
 interface Props {
-	organizationId: string;
-	userId: string;
 	gitProviderBaseUrl: string;
 	gitProviderBaseUrlIsLocal: boolean;
 	canConfigureDomain: boolean;
@@ -16,8 +14,6 @@ interface Props {
 }
 
 const {
-	organizationId,
-	userId,
 	gitProviderBaseUrl,
 	gitProviderBaseUrlIsLocal,
 	canConfigureDomain,
@@ -83,7 +79,7 @@ const domainSetupHref = scopeDashboardHref(
 		</label>
 		<form
 			id="nz-git-github-form"
-			action={`https://github.com/settings/apps/new?state=gh_init:${organizationId}:${userId}`}
+			action="https://github.com/settings/apps/new"
 			method="post"
 		>
 			<input type="text" name="manifest" id="nz-git-github-manifest" class="sr-only" tabindex="-1" aria-hidden="true" />

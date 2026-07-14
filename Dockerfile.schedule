@@ -1,13 +1,38 @@
-# syntax=docker/dockerfile:1
-FROM oven/bun:1.3.10 AS base
+# syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+FROM node:24.18.0-trixie-slim@sha256:ae91dcc111a68c9d2d81ff2a17bda61be126426176fde6fe7d08ab13b7f50573 AS node-runtime
+
+FROM oven/bun:1.3.10@sha256:b86c67b531d87b4db11470d9b2bd0c519b1976eee6fcd71634e73abfa6230d2e AS base
 
 FROM base AS build
-COPY . /usr/src/app
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y nodejs python3 make g++ git python3-pip pkg-config libsecret-1-dev && rm -rf /var/lib/apt/lists/*
+COPY package.json bun.lock ./
+COPY apps/console/package.json ./apps/console/package.json
+COPY apps/platform/package.json ./apps/platform/package.json
+COPY apps/schedules/package.json ./apps/schedules/package.json
+COPY packages/agent/package.json ./packages/agent/package.json
+COPY packages/edition-community/package.json ./packages/edition-community/package.json
+COPY packages/edition-contract/package.json ./packages/edition-contract/package.json
+COPY packages/server/package.json ./packages/server/package.json
+COPY packages/trpc-openapi/package.json ./packages/trpc-openapi/package.json
 
-RUN bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx || true)
+RUN apt-get update && apt-get install -y nodejs python3 make g++ git python3-pip pkg-config libsecret-1-dev node-gyp && rm -rf /var/lib/apt/lists/*
+
+# Compile native addons with the exact Node headers and binary used at runtime.
+COPY --from=node-runtime /usr/local /usr/local
+
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile --ignore-scripts && (bun pm trust esbuild tsx || true)
+
+COPY . /usr/src/app
+
+RUN set -eu; found=0; for dir in node_modules/.bun/bcrypt@*/node_modules/bcrypt; do \
+      [ -d "$dir" ] || continue; \
+      (cd "$dir" && npm_config_build_from_source=true npm_config_nodedir=/usr/local ../.bin/node-pre-gyp install --build-from-source); \
+      test -s "$dir/lib/binding/napi-v3/bcrypt_lib.node"; \
+      found=1; \
+    done; \
+    test "$found" -eq 1
 
 ENV NODE_ENV=production
 RUN bun run --filter @nearzero/server build
@@ -15,16 +40,46 @@ RUN bun run --filter @nearzero/schedules build
 
 RUN mkdir -p /prod/schedules && cp -R /usr/src/app/apps/schedules/dist /prod/schedules/dist && cp /usr/src/app/apps/schedules/package.json /prod/schedules/package.json
 
-FROM base AS nearzero
+FROM node-runtime AS nearzero
 WORKDIR /app
 
 # Set production
 ENV NODE_ENV=production
+ENV NODE_PATH=/app/apps/schedules/node_modules:/app/packages/server/node_modules:/app/node_modules
 
 # Copy only the necessary files
 COPY --from=build /prod/schedules/dist ./dist
 COPY --from=build /prod/schedules/package.json ./package.json
 COPY --from=build /usr/src/app/node_modules ./node_modules
+COPY --from=build /usr/src/app/apps/schedules/node_modules ./apps/schedules/node_modules
+COPY --from=build /usr/src/app/packages/server ./packages/server
+
+# Workspace links are relative to the repository root. Preserve the matching
+# runtime layout and expose direct package dependencies to the module loader.
+RUN set -eu; \
+    for modules in /app/apps/schedules/node_modules /app/packages/server/node_modules; do \
+      [ -d "$modules" ] || continue; \
+      for entry in "$modules"/*; do \
+        [ -e "$entry" ] || continue; \
+        name="$(basename "$entry")"; \
+        case "$name" in \
+          .*) continue ;; \
+          @*) \
+            mkdir -p "/app/node_modules/$name"; \
+            for scoped in "$entry"/*; do \
+              [ -e "$scoped" ] || continue; \
+              ln -sfn "$(readlink -f "$scoped")" "/app/node_modules/$name/$(basename "$scoped")"; \
+            done; \
+            ;; \
+          *) \
+            ln -sfn "$(readlink -f "$entry")" "/app/node_modules/$name"; \
+            ;; \
+        esac; \
+      done; \
+    done
+
+LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 ENV HOSTNAME=0.0.0.0
-CMD ["bun", "run", "start"]
+CMD ["node", "dist/index.js"]

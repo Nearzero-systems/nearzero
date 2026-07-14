@@ -1,4 +1,3 @@
-import dotenv, { type DotenvParseOutput } from "dotenv";
 import esbuild from "esbuild";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,24 +28,6 @@ const bundleEditionPackages: esbuild.Plugin = {
 	},
 };
 
-const result = dotenv.config({ path: ".env.production" });
-
-function prepareDefine(config: DotenvParseOutput | undefined) {
-	const define = {};
-	// @ts-ignore
-	for (const [key, value] of Object.entries(config)) {
-		// Keep runtime secrets on the server — do not bake into the bundle at build time.
-		if (key === "DATABASE_URL" || key === "REDIS_URL") {
-			continue;
-		}
-		// @ts-ignore
-		define[`process.env.${key}`] = JSON.stringify(value);
-	}
-	return define;
-}
-
-const define = prepareDefine(result.parsed);
-
 try {
 	esbuild
 		.build({
@@ -66,7 +47,6 @@ try {
 			sourcemap: true,
 			outdir: "dist",
 			tsconfig: "tsconfig.server.json",
-			define,
 			plugins: [bundleEditionPackages],
 			packages: "external",
 		})

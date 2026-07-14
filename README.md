@@ -19,19 +19,41 @@ This repository is the **Community (open-source) edition**: self-hosted, email a
 
 ### Self-hosted install
 
+The recommended path downloads a versioned installer, verifies its published
+SHA-256 digest, and only then executes it:
+
 ```bash
-curl -sSL https://nearzero.dev/install.sh | bash
+version="REPLACE_WITH_PUBLISHED_RELEASE_VERSION"
+base_url="https://nearzero.dev/releases/${version}"
+curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+  --output install.sh "${base_url}/install.sh"
+curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
+  --output install.sh.sha256 "${base_url}/install.sh.sha256"
+sha256sum --check install.sh.sha256
+sudo bash install.sh
+rm -f install.sh install.sh.sha256
 ```
 
 By default this installs a single-node Community stack with local Postgres,
-Redis, and host metrics. The installer expects the public Community images to be
-available from `ghcr.io/nearzero-systems/*`.
+Redis, host metrics, and an opt-out authoritative CoreDNS service on TCP/UDP 53.
+The installer expects the public Community images to be available from
+`ghcr.io/nearzero-systems/*`. A release is ready only when its matching
+`nearzero`, `monitoring`, and `schedule` image tags have all been published.
+Before delegating a production zone, read the
+[OSS DNS and remote-server setup](docs/OPEN_SOURCE_CONTROL_PLANE.md); the
+control-plane DNS host and remote application servers have different firewall
+and routing responsibilities.
 
-To use managed services instead:
+To use managed services with the verified installer without putting credentials
+in shell history or command arguments, read them without terminal echo and run
+the installer as your current user; it invokes `sudo` only for privileged steps:
 
 ```bash
-curl -sSL https://nearzero.dev/install.sh | \
-  DATABASE_URL="postgresql://..." REDIS_URL="rediss://..." bash
+IFS= read -r -s -p "Database URL: " DATABASE_URL; printf '\n'
+IFS= read -r -s -p "Redis URL: " REDIS_URL; printf '\n'
+export DATABASE_URL REDIS_URL
+bash install.sh
+unset DATABASE_URL REDIS_URL
 ```
 
 ### Local development

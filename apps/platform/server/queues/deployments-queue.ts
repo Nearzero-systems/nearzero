@@ -1,11 +1,12 @@
 import {
+	DeploymentPhaseError,
 	deployApplication,
 	deployCompose,
 	deployPreviewApplication,
 	rebuildApplication,
 	rebuildCompose,
 	rebuildPreviewApplication,
-	DeploymentPhaseError,
+	sanitizePublicErrorMessage,
 	updateApplicationStatus,
 	updateCompose,
 	updatePreviewDeployment,
@@ -119,10 +120,24 @@ const createDeploymentWorker = () =>
 				try {
 					await markDeploymentJobErrored(job, error);
 				} catch (statusError) {
-					console.error("Failed to mark deployment job as errored", statusError);
+					console.error(
+						"Failed to mark deployment job as errored:",
+						sanitizePublicErrorMessage(statusError, "status update failed"),
+					);
 				}
-				console.error("Deployment worker failed", error);
-				throw error;
+				const publicFailure = isDeploymentCancellation(error)
+					? "Deployment was cancelled"
+					: sanitizePublicErrorMessage(
+							error instanceof DeploymentPhaseError
+								? error.toUserMessage()
+								: error,
+							"Deployment failed. Check the deployment logs.",
+						);
+				console.error("Deployment worker failed:", publicFailure);
+				// BullMQ persists thrown messages as `failedReason`. Never attach the
+				// original error/cause because it can contain SQL parameters, commands,
+				// environment values, or provider credentials.
+				throw new Error(publicFailure);
 			}
 		},
 		{
@@ -130,6 +145,4 @@ const createDeploymentWorker = () =>
 			connection: redisConfig,
 		},
 	);
-
-
 export const deploymentWorker = createDeploymentWorker();

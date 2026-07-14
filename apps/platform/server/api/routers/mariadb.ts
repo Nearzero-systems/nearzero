@@ -1,17 +1,16 @@
 import {
+	buildMariaDbPasswordChangeScript,
 	checkPortInUse,
 	createMariadb,
 	createMount,
 	deployMariadb,
-	execAsync,
-	execAsyncRemote,
+	executeSensitiveShellScript,
 	findBackupsByDbId,
 	findEnvironmentById,
 	findMariadbById,
 	findProjectById,
 	getAccessibleServerIds,
 	getContainerLogs,
-	getServiceContainerCommand,
 	rebuildDatabase,
 	removeMariadbById,
 	removeService,
@@ -19,6 +18,7 @@ import {
 	startServiceRemote,
 	stopService,
 	stopServiceRemote,
+	toPublicServerRelation,
 	updateMariadbById,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
@@ -135,7 +135,7 @@ export const mariadbRouter = createTRPCRouter({
 					message: "You are not authorized to access this Mariadb",
 				});
 			}
-			return mariadb;
+			return toPublicServerRelation(mariadb);
 		}),
 
 	start: protectedProcedure
@@ -170,7 +170,7 @@ export const mariadbRouter = createTRPCRouter({
 				resourceId: service.mariadbId,
 				resourceName: service.appName,
 			});
-			return service;
+			return toPublicServerRelation(service);
 		}),
 	stop: protectedProcedure
 		.input(apiFindOneMariaDB)
@@ -204,7 +204,7 @@ export const mariadbRouter = createTRPCRouter({
 				resourceId: mariadb.mariadbId,
 				resourceName: mariadb.appName,
 			});
-			return mariadb;
+			return toPublicServerRelation(mariadb);
 		}),
 	saveExternalPort: protectedProcedure
 		.input(apiSaveExternalPortMariaDB)
@@ -245,7 +245,7 @@ export const mariadbRouter = createTRPCRouter({
 				resourceId: mariadb.mariadbId,
 				resourceName: mariadb.appName,
 			});
-			return mariadb;
+			return toPublicServerRelation(mariadb);
 		}),
 	deploy: protectedProcedure
 		.input(apiDeployMariaDB)
@@ -317,7 +317,7 @@ export const mariadbRouter = createTRPCRouter({
 				resourceId: mongo.mariadbId,
 				resourceName: mongo.appName,
 			});
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	remove: protectedProcedure
 		.input(apiFindOneMariaDB)
@@ -355,7 +355,7 @@ export const mariadbRouter = createTRPCRouter({
 				} catch (_) {}
 			}
 
-			return mongo;
+			return toPublicServerRelation(mongo);
 		}),
 	saveEnvironment: protectedProcedure
 		.input(apiSaveEnvironmentVariablesMariaDB)
@@ -462,17 +462,13 @@ export const mariadbRouter = createTRPCRouter({
 			const maria = await findMariadbById(mariadbId);
 			const { appName, serverId, databaseUser, databaseRootPassword } = maria;
 
-			const containerCmd = getServiceContainerCommand(appName);
 			const targetUser = type === "root" ? "root" : databaseUser;
-
-			const command = `
-				CONTAINER_ID=$(${containerCmd})
-				if [ -z "$CONTAINER_ID" ]; then
-					echo "No running container found for ${appName}" >&2
-					exit 1
-				fi
-				docker exec "$CONTAINER_ID" mariadb -u root -p'${databaseRootPassword}' -e "ALTER USER '${targetUser}'@'%' IDENTIFIED BY '${password}'; FLUSH PRIVILEGES;"
-			`;
+			const script = buildMariaDbPasswordChangeScript({
+				appName,
+				rootPassword: databaseRootPassword,
+				targetUser,
+				newPassword: password,
+			});
 
 			await db.transaction(async (tx) => {
 				const setData =
@@ -484,11 +480,11 @@ export const mariadbRouter = createTRPCRouter({
 					.set(setData)
 					.where(eq(mariadbTable.mariadbId, mariadbId));
 
-				if (serverId) {
-					await execAsyncRemote(serverId, command);
-				} else {
-					await execAsync(command, { shell: "/bin/bash" });
-				}
+				await executeSensitiveShellScript({
+					serverId,
+					script,
+					sensitiveValues: [databaseRootPassword, password],
+				});
 			});
 
 			await audit(ctx, {

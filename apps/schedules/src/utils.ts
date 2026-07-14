@@ -14,6 +14,7 @@ import {
 	runMySqlBackup,
 	runPostgresBackup,
 	runVolumeBackup,
+	sanitizePublicErrorMessage,
 } from "@nearzero/server";
 import {
 	and,
@@ -117,7 +118,10 @@ export const runJobs = async (job: QueueJob) => {
 			}
 		}
 	} catch (error) {
-		logger.error(error);
+		logger.error(
+			{ error: sanitizePublicErrorMessage(error, "Scheduled job failed") },
+			"Scheduled job failed",
+		);
 	}
 
 	return true;
@@ -143,7 +147,12 @@ export const initializeJobs = async () => {
 			});
 		} catch (error) {
 			logger.error(
-				error,
+				{
+					error: sanitizePublicErrorMessage(
+						error,
+						"Failed to schedule cleanup job",
+					),
+				},
 				`Failed to schedule cleanup job for server ${serverId}`,
 			);
 		}
@@ -171,7 +180,12 @@ export const initializeJobs = async () => {
 				cronSchedule: backup.schedule,
 			});
 		} catch (error) {
-			logger.error(error, `Failed to schedule backup ${backup.backupId}`);
+			logger.error(
+				{
+					error: sanitizePublicErrorMessage(error, "Failed to schedule backup"),
+				},
+				`Failed to schedule backup ${backup.backupId}`,
+			);
 		}
 	}
 	logger.info({ Quantity: backupsResult.length }, "Backups Initialized");
@@ -215,7 +229,15 @@ export const initializeJobs = async () => {
 				cronSchedule: schedule.cronExpression,
 			});
 		} catch (error) {
-			logger.error(error, `Failed to schedule ${schedule.scheduleId}`);
+			logger.error(
+				{
+					error: sanitizePublicErrorMessage(
+						error,
+						"Failed to schedule command",
+					),
+				},
+				`Failed to schedule ${schedule.scheduleId}`,
+			);
 		}
 	}
 	logger.info(
@@ -259,7 +281,12 @@ export const initializeJobs = async () => {
 			});
 		} catch (error) {
 			logger.error(
-				error,
+				{
+					error: sanitizePublicErrorMessage(
+						error,
+						"Failed to schedule volume backup",
+					),
+				},
 				`Failed to schedule volume backup ${volumeBackup.volumeBackupId}`,
 			);
 		}

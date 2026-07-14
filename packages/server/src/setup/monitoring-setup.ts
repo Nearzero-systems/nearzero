@@ -1,25 +1,77 @@
-import { findServerById } from "@nearzero/server/services/server";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { getNearzeroUrl } from "@nearzero/server/services/admin";
+import { sanitizePublicErrorMessage } from "@nearzero/server/services/operational-log";
+import { findServerById } from "@nearzero/server/services/server";
 import {
 	getWebServerSettings,
 	updateWebServerSettings,
 } from "@nearzero/server/services/web-server-settings";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import type { ContainerCreateOptions } from "dockerode";
 import { paths } from "../constants";
 import { getNearzeroImageTag } from "../services/settings";
 import { pullImage, pullRemoteImage } from "../utils/docker/utils";
 import { execAsyncRemote } from "../utils/process/execAsync";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
+import {
+	TRAEFIK_CONTROL_NETWORK,
+	TRAEFIK_DOCKER_ENDPOINT,
+} from "./traefik-setup";
 
 const MONITORING_CONTAINER_NAME = "nearzero-monitoring";
+
+export const monitoringLoopbackPortConfig = (port: number) => {
+	if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+		throw new Error("Monitoring port must be an integer from 1 to 65535");
+	}
+	return {
+		PortBindings: {
+			[`${port}/tcp`]: [
+				{
+					HostIp: "127.0.0.1",
+					HostPort: port.toString(),
+				},
+			],
+		},
+		ExposedPorts: {
+			[`${port}/tcp`]: {},
+		},
+	};
+};
+
+export const isMonitoringDockerMetadataAllowed = () =>
+	process.env.NEARZERO_ALLOW_MONITORING_DOCKER_METADATA?.trim().toLowerCase() ===
+	"true";
+
+export const monitoringDockerAccessConfig = (
+	includeServices: readonly string[] = [],
+) => {
+	const enabled = includeServices.length > 0;
+	if (enabled && !isMonitoringDockerMetadataAllowed()) {
+		throw new Error(
+			"Container monitoring is disabled because Docker's read-only CONTAINERS API can expose container metadata and environment variables. Set NEARZERO_ALLOW_MONITORING_DOCKER_METADATA=true only after accepting that exposure.",
+		);
+	}
+
+	return {
+		enabled,
+		dockerHost: enabled ? TRAEFIK_DOCKER_ENDPOINT : undefined,
+		networkingConfig: {
+			EndpointsConfig: {
+				"nearzero-network": {},
+				...(enabled ? { [TRAEFIK_CONTROL_NETWORK]: {} } : {}),
+			},
+		},
+	};
+};
 
 export const isExternallyManagedWebMonitoring = () =>
 	Boolean(process.env.NEARZERO_METRICS_URL?.trim());
 
 const monitoringErrorMessage = (error: unknown) => {
-	if (error instanceof Error) return error.message.trim();
-	return String(error ?? "").trim();
+	return sanitizePublicErrorMessage(
+		error instanceof Error ? error.message : error,
+		"Monitoring operation failed",
+	);
 };
 
 const warnMonitoringPullFailed = (imageName: string, error: unknown) => {
@@ -29,19 +81,14 @@ const warnMonitoringPullFailed = (imageName: string, error: unknown) => {
 	);
 };
 
-const getMonitoringImageTag = () => {
+export const getMonitoringImageTag = () => {
 	const explicitTag = process.env.NEARZERO_MONITORING_IMAGE_TAG?.trim();
 	if (explicitTag) return explicitTag;
-	if (
-		getNearzeroImageTag() !== "latest" ||
-		process.env.NODE_ENV === "development"
-	) {
-		return "nightly";
-	}
-	return "latest";
+	if (process.env.RELEASE_TAG?.trim()) return getNearzeroImageTag().trim();
+	return process.env.NODE_ENV === "development" ? "nightly" : "latest";
 };
 
-const getMonitoringImageCandidates = () => {
+export const getMonitoringImageCandidates = () => {
 	const explicitImage = process.env.NEARZERO_MONITORING_IMAGE?.trim();
 	if (explicitImage) return [explicitImage];
 
@@ -62,8 +109,10 @@ const positiveNumberFromEnv = (key: string) => {
 	return Number.isFinite(value) && value > 0 ? value : null;
 };
 
+// Deliberately leave HOST_PROC unset. Mounting the host's complete /proc tree
+// would expose other processes' environments (and therefore application
+// secrets) to the collector. gopsutil instead reads the container's /proc.
 const HOST_METRICS_ENV = [
-	"HOST_PROC=/host/proc",
 	"HOST_SYS=/host/sys",
 	"NEARZERO_HOST_ROOT=/host/root",
 ];
@@ -86,7 +135,7 @@ const getWebMonitoringContainerConfig = async () => {
 			entry.startsWith("METRICS_CONFIG="),
 		)?.slice("METRICS_CONFIG=".length);
 		if (!rawConfig) return null;
-		return JSON.parse(rawConfig) as {
+		const metricsConfig = JSON.parse(rawConfig) as {
 			server?: {
 				port?: number;
 				token?: string;
@@ -94,6 +143,15 @@ const getWebMonitoringContainerConfig = async () => {
 				cronJob?: string;
 			};
 			containers?: unknown;
+		};
+		return {
+			...metricsConfig,
+			dockerHost: info.Config?.Env?.find((entry) =>
+				entry.startsWith("DOCKER_HOST="),
+			)?.slice("DOCKER_HOST=".length),
+			binds: info.HostConfig?.Binds ?? [],
+			networkNames: Object.keys(info.NetworkSettings?.Networks ?? {}),
+			portBindings: info.HostConfig?.PortBindings ?? {},
 		};
 	} catch {
 		return null;
@@ -107,6 +165,12 @@ const monitoringContainerMatchesConfig = async (
 ) => {
 	const containerConfig = await getWebMonitoringContainerConfig();
 	if (!containerConfig) return false;
+	const dockerAccess = monitoringDockerAccessConfig(
+		metricsConfig.containers.services.include ?? [],
+	);
+	const portBindings = (containerConfig.portBindings?.[
+		`${metricsConfig.server.port}/tcp`
+	] ?? []) as Array<{ HostIp?: string; HostPort?: string }>;
 
 	return (
 		containerConfig.server?.token === metricsConfig.server.token &&
@@ -115,7 +179,19 @@ const monitoringContainerMatchesConfig = async (
 		containerConfig.server?.urlCallback === metricsConfig.server.urlCallback &&
 		containerConfig.server?.cronJob === metricsConfig.server.cronJob &&
 		JSON.stringify(containerConfig.containers ?? null) ===
-			JSON.stringify(metricsConfig.containers ?? null)
+			JSON.stringify(metricsConfig.containers ?? null) &&
+		containerConfig.dockerHost === dockerAccess.dockerHost &&
+		!containerConfig.binds?.some((bind) =>
+			bind.startsWith("/var/run/docker.sock:"),
+		) &&
+		!containerConfig.binds.some((bind) => bind.endsWith(":/host/proc:ro")) &&
+		!containerConfig.binds.some((bind) => bind.startsWith("/:")) &&
+		containerConfig.binds.some((bind) => bind.endsWith(":/host/root:ro")) &&
+		containerConfig.networkNames?.includes(TRAEFIK_CONTROL_NETWORK) ===
+			dockerAccess.enabled &&
+		containerConfig.networkNames.includes("nearzero-network") &&
+		portBindings.length > 0 &&
+		portBindings.every((binding) => binding.HostIp === "127.0.0.1")
 	);
 };
 
@@ -141,9 +217,9 @@ const pullFirstRemoteMonitoringImage = async (serverId: string) => {
 	}
 
 	throw new Error(
-		`Could not pull any monitoring image (${candidates.join(", ")}). ${
-			monitoringErrorMessage(lastError)
-		}`.trim(),
+		`Could not pull any monitoring image (${candidates.join(", ")}). ${monitoringErrorMessage(
+			lastError,
+		)}`.trim(),
 	);
 };
 
@@ -162,9 +238,9 @@ const pullFirstLocalMonitoringImage = async () => {
 	}
 
 	throw new Error(
-		`Could not pull any monitoring image (${candidates.join(", ")}). ${
-			monitoringErrorMessage(lastError)
-		}`.trim(),
+		`Could not pull any monitoring image (${candidates.join(", ")}). ${monitoringErrorMessage(
+			lastError,
+		)}`.trim(),
 	);
 };
 
@@ -192,9 +268,10 @@ export const ensureWebMonitoring = async () => {
 	let token = envToken || metricsConfig.server.token;
 	let urlCallback = envCallback || metricsConfig.server.urlCallback;
 	let cronJob = envCronJob || metricsConfig.server.cronJob;
-	let port = envPort || metricsConfig.server.port || 4500;
-	let refreshRate = envRefreshRate || metricsConfig.server.refreshRate || 60;
-	let retentionDays = envRetentionDays || metricsConfig.server.retentionDays || 2;
+	const port = envPort || metricsConfig.server.port || 4500;
+	const refreshRate = envRefreshRate || metricsConfig.server.refreshRate || 60;
+	const retentionDays =
+		envRetentionDays || metricsConfig.server.retentionDays || 2;
 	let needsConfigUpdate = false;
 
 	if (!token) {
@@ -293,15 +370,25 @@ export const setupMonitoring = async (serverId: string) => {
 		},
 	};
 
+	const dockerAccess = monitoringDockerAccessConfig(
+		safeMetricsConfig.containers.services.include ?? [],
+	);
 	const imageName = await pullFirstRemoteMonitoringImage(serverId);
+	const loopbackPort = monitoringLoopbackPortConfig(
+		safeMetricsConfig.server.port,
+	);
 
 	const settings: ContainerCreateOptions = {
 		name: containerName,
 		Env: [
 			`METRICS_CONFIG=${JSON.stringify(safeMetricsConfig)}`,
+			...(dockerAccess.dockerHost
+				? [`DOCKER_HOST=${dockerAccess.dockerHost}`]
+				: []),
 			...HOST_METRICS_ENV,
 		],
 		Image: imageName,
+		NetworkingConfig: dockerAccess.networkingConfig,
 		HostConfig: {
 			// Memory: 100 * 1024 * 1024, // 100MB en bytes
 			// PidMode: "host",
@@ -310,26 +397,15 @@ export const setupMonitoring = async (serverId: string) => {
 			RestartPolicy: {
 				Name: "always",
 			},
-			PortBindings: {
-				[`${safeMetricsConfig.server.port}/tcp`]: [
-					{
-						HostPort: safeMetricsConfig.server.port.toString(),
-					},
-				],
-			},
+			PortBindings: loopbackPort.PortBindings,
 			Binds: [
-				"/var/run/docker.sock:/var/run/docker.sock:ro",
-				"/:/host/root:ro",
+				"/etc/nearzero/monitoring:/host/root:ro",
 				"/sys:/host/sys:ro",
 				"/etc/os-release:/etc/os-release:ro",
-				"/proc:/host/proc:ro",
 				"/etc/nearzero/monitoring/monitoring.db:/app/monitoring.db",
 			],
-			NetworkMode: "host",
 		},
-		ExposedPorts: {
-			[`${safeMetricsConfig.server.port}/tcp`]: {},
-		},
+		ExposedPorts: loopbackPort.ExposedPorts,
 	};
 	const docker = await getRemoteDocker(serverId);
 	try {
@@ -355,9 +431,7 @@ export const setupMonitoring = async (serverId: string) => {
 		console.log("Monitoring Started ");
 	} catch (error) {
 		const message = monitoringErrorMessage(error);
-		console.error(
-			`Monitoring setup failed${message ? `: ${message}` : ""}`,
-		);
+		console.error(`Monitoring setup failed${message ? `: ${message}` : ""}`);
 		throw error;
 	}
 };
@@ -383,14 +457,23 @@ export const setupWebMonitoring = async () => {
 
 	const containerName = MONITORING_CONTAINER_NAME;
 	const imageName = await pullFirstLocalMonitoringImage();
+	const monitoringPort = webServerSettings?.metricsConfig?.server?.port ?? 4500;
+	const loopbackPort = monitoringLoopbackPortConfig(monitoringPort);
+	const dockerAccess = monitoringDockerAccessConfig(
+		webServerSettings?.metricsConfig.containers.services.include ?? [],
+	);
 
 	const settings: ContainerCreateOptions = {
 		name: containerName,
 		Env: [
 			`METRICS_CONFIG=${JSON.stringify(webServerSettings?.metricsConfig)}`,
+			...(dockerAccess.dockerHost
+				? [`DOCKER_HOST=${dockerAccess.dockerHost}`]
+				: []),
 			...HOST_METRICS_ENV,
 		],
 		Image: imageName,
+		NetworkingConfig: dockerAccess.networkingConfig,
 		HostConfig: {
 			// Memory: 100 * 1024 * 1024, // 100MB en bytes
 			// PidMode: "host",
@@ -399,26 +482,16 @@ export const setupWebMonitoring = async () => {
 			RestartPolicy: {
 				Name: "always",
 			},
-			PortBindings: {
-				[`${webServerSettings?.metricsConfig?.server?.port}/tcp`]: [
-					{
-						HostPort: webServerSettings?.metricsConfig?.server?.port.toString(),
-					},
-				],
-			},
+			PortBindings: loopbackPort.PortBindings,
 			Binds: [
-				"/var/run/docker.sock:/var/run/docker.sock:ro",
-				"/:/host/root:ro",
+				`${MONITORING_PATH}:/host/root:ro`,
 				"/sys:/host/sys:ro",
 				"/etc/os-release:/etc/os-release:ro",
-				"/proc:/host/proc:ro",
 				`${monitoringDbPath}:/app/monitoring.db`,
 			],
 			// NetworkMode: "host",
 		},
-		ExposedPorts: {
-			[`${webServerSettings?.metricsConfig?.server?.port}/tcp`]: {},
-		},
+		ExposedPorts: loopbackPort.ExposedPorts,
 	};
 	const docker = await getRemoteDocker();
 	try {

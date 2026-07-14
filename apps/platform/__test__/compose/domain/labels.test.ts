@@ -148,6 +148,62 @@ describe("createDomainLabels", () => {
 		);
 	});
 
+	it("should use only the explicitly selected custom certificate resolver", () => {
+		const labels = createDomainLabels(
+			appName,
+			{
+				...baseDomain,
+				https: true,
+				certificateType: "custom",
+				customCertResolver: "private-ca",
+			},
+			"websecure",
+		);
+
+		expect(labels).toContain(
+			"traefik.http.routers.test-app-1-websecure.tls.certresolver=private-ca",
+		);
+		expect(labels).not.toContain(
+			"traefik.http.routers.test-app-1-websecure.tls.certresolver=letsencrypt",
+		);
+	});
+
+	it("should reject unsafe rule fragments and Traefik label names", () => {
+		expect(() =>
+			createDomainLabels(
+				appName,
+				{
+					...baseDomain,
+					host: "example.com`) || Host(`attacker.test",
+				},
+				"web",
+			),
+		).toThrow("Domain host is not safe");
+
+		expect(() =>
+			createDomainLabels(
+				appName,
+				{
+					...baseDomain,
+					path: "/safe`) || PathPrefix(`/escaped",
+				},
+				"web",
+			),
+		).toThrow("Domain path is not safe");
+
+		expect(() =>
+			createDomainLabels(appName, baseDomain, "web\nmalicious"),
+		).toThrow("Traefik entrypoint");
+
+		expect(() =>
+			createDomainLabels(
+				appName,
+				{ ...baseDomain, middlewares: ["auth@file,attacker@file"] },
+				"web",
+			),
+		).toThrow("Invalid Traefik middleware name");
+	});
+
 	it("should handle different ports correctly", async () => {
 		const customPortDomain = { ...baseDomain, port: 3000 };
 		const labels = await createDomainLabels(appName, customPortDomain, "web");
