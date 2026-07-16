@@ -21,7 +21,11 @@ export function isMissingRelationOrColumnError(error: unknown): boolean {
 	return code === "42P01" || code === "42703";
 }
 
-/** Map schema-drift DB errors to a clear client-facing TRPC error. */
+export function isPostgresArgumentLimitError(error: unknown): boolean {
+	return postgresErrorCode(error) === "54023";
+}
+
+/** Map known DB failure modes to clear client-facing TRPC errors. */
 export function rethrowUnlessSchemaDrift(
 	error: unknown,
 	feature = "This feature",
@@ -30,6 +34,13 @@ export function rethrowUnlessSchemaDrift(
 		throw new TRPCError({
 			code: "PRECONDITION_FAILED",
 			message: `${feature} needs a database migration. Restart the Nearzero platform container so migrations can apply, then reload.`,
+			cause: error,
+		});
+	}
+	if (isPostgresArgumentLimitError(error)) {
+		throw new TRPCError({
+			code: "PRECONDITION_FAILED",
+			message: `${feature} query is too wide for Postgres. Update Nearzero and retry.`,
 			cause: error,
 		});
 	}

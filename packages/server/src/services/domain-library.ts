@@ -13,6 +13,7 @@ import {
 } from "@nearzero/server/utils/traefik/domain";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { normalizeDnsHostname } from "../utils/dns/zone-file";
 import { findApplicationById } from "./application";
 import {
@@ -117,38 +118,73 @@ export async function listCentralizedDomains(
 			userRole,
 		);
 
-		const rows = await db.query.domains.findMany({
-			where: and(isNull(domains.previewDeploymentId)),
-			with: {
-				application: {
-					with: {
-						environment: {
-							with: { project: true },
-						},
-					},
-				},
-				compose: {
-					with: {
-						environment: {
-							with: { project: true },
-						},
-					},
-				},
-			},
-			orderBy: [asc(domains.host)],
-		});
+		// Explicit joins with only the columns we need.
+		// Drizzle relational `with:` packs every application column into
+		// json_build_array(), which exceeds Postgres' 100-argument limit.
+		const appEnvironment = alias(environments, "domain_app_environment");
+		const appProject = alias(projects, "domain_app_project");
+		const composeEnvironment = alias(environments, "domain_compose_environment");
+		const composeProject = alias(projects, "domain_compose_project");
+
+		const rows = await db
+			.select({
+				domainId: domains.domainId,
+				host: domains.host,
+				https: domains.https,
+				dnsMode: domains.dnsMode,
+				managedByNearzero: domains.managedByNearzero,
+				dnsZoneId: domains.dnsZoneId,
+				dnsRecordId: domains.dnsRecordId,
+				domainType: domains.domainType,
+				serviceName: domains.serviceName,
+				applicationId: domains.applicationId,
+				composeId: domains.composeId,
+				previewDeploymentId: domains.previewDeploymentId,
+				organizationId: domains.organizationId,
+				appName: applications.name,
+				appEnvironmentId: appEnvironment.environmentId,
+				appEnvironmentName: appEnvironment.name,
+				appProjectId: appProject.projectId,
+				appProjectName: appProject.name,
+				appOrganizationId: appProject.organizationId,
+				composeName: compose.name,
+				composeEnvironmentId: composeEnvironment.environmentId,
+				composeEnvironmentName: composeEnvironment.name,
+				composeProjectId: composeProject.projectId,
+				composeProjectName: composeProject.name,
+				composeOrganizationId: composeProject.organizationId,
+			})
+			.from(domains)
+			.leftJoin(
+				applications,
+				eq(domains.applicationId, applications.applicationId),
+			)
+			.leftJoin(
+				appEnvironment,
+				eq(applications.environmentId, appEnvironment.environmentId),
+			)
+			.leftJoin(appProject, eq(appEnvironment.projectId, appProject.projectId))
+			.leftJoin(compose, eq(domains.composeId, compose.composeId))
+			.leftJoin(
+				composeEnvironment,
+				eq(compose.environmentId, composeEnvironment.environmentId),
+			)
+			.leftJoin(
+				composeProject,
+				eq(composeEnvironment.projectId, composeProject.projectId),
+			)
+			.where(isNull(domains.previewDeploymentId))
+			.orderBy(asc(domains.host));
 
 		const result: CentralizedDomainRow[] = [];
 
 		for (const row of rows) {
-			const app = row.application;
-			const comp = row.compose;
 			const serviceId = row.applicationId ?? row.composeId;
 
 			const rowOrgId =
 				row.organizationId ??
-				app?.environment?.project?.organizationId ??
-				comp?.environment?.project?.organizationId;
+				row.appOrganizationId ??
+				row.composeOrganizationId;
 			if (rowOrgId !== organizationId) continue;
 
 			if (accessedServices !== null) {
@@ -166,22 +202,22 @@ export async function listCentralizedDomains(
 			let serviceType: "application" | "compose" | null = null;
 			let href: string | null = null;
 
-			if (app?.environment?.project) {
-				projectId = app.environment.project.projectId;
-				projectName = app.environment.project.name;
-				environmentId = app.environment.environmentId;
-				environmentName = app.environment.name;
-				serviceLabel = app.name;
+			if (row.applicationId && row.appProjectId && row.appEnvironmentId) {
+				projectId = row.appProjectId;
+				projectName = row.appProjectName;
+				environmentId = row.appEnvironmentId;
+				environmentName = row.appEnvironmentName;
+				serviceLabel = row.appName;
 				serviceType = "application";
-				href = `/dashboard/project/${projectId}/environment/${environmentId}/services/application/${app.applicationId}`;
-			} else if (comp?.environment?.project) {
-				projectId = comp.environment.project.projectId;
-				projectName = comp.environment.project.name;
-				environmentId = comp.environment.environmentId;
-				environmentName = comp.environment.name;
-				serviceLabel = comp.name;
+				href = `/dashboard/project/${projectId}/environment/${environmentId}/services/application/${row.applicationId}`;
+			} else if (row.composeId && row.composeProjectId && row.composeEnvironmentId) {
+				projectId = row.composeProjectId;
+				projectName = row.composeProjectName;
+				environmentId = row.composeEnvironmentId;
+				environmentName = row.composeEnvironmentName;
+				serviceLabel = row.composeName;
 				serviceType = "compose";
-				href = `/dashboard/project/${projectId}/environment/${environmentId}/services/compose/${comp.composeId}`;
+				href = `/dashboard/project/${projectId}/environment/${environmentId}/services/compose/${row.composeId}`;
 			}
 
 			result.push({
@@ -204,7 +240,13 @@ export async function listCentralizedDomains(
 				serviceLabel,
 				serviceType,
 				href,
-				status: domainStatus(row),
+				status: domainStatus({
+					previewDeploymentId: row.previewDeploymentId,
+					applicationId: row.applicationId,
+					composeId: row.composeId,
+					managedByNearzero: row.managedByNearzero,
+					dnsRecordId: row.dnsRecordId,
+				} as Domain),
 			});
 		}
 
