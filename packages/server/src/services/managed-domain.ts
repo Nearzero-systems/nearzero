@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getPlatformDefaultDomain } from "@nearzero/server/constants";
 import type { environments } from "@nearzero/server/db/schema";
 import { isProductionEnvironment } from "@nearzero/server/services/environment";
@@ -47,6 +48,20 @@ export function buildManagedServiceHost(input: {
 		return `${slug}.${prefix}.${zone}`;
 	}
 	return `${slug}.${zone}`;
+}
+
+/** Stable short random label under an apex (e.g. a3f9c2b1.veritus.space). */
+export function buildRandomPlatformServiceHost(input: {
+	zoneName: string;
+	seed: string;
+}) {
+	const zone = normalizeDnsZoneName(input.zoneName);
+	const digest = createHash("sha256")
+		.update(input.seed.trim().toLowerCase() || "service")
+		.digest("hex")
+		.slice(0, 10);
+	const label = /^[a-z]/.test(digest) ? digest : `a${digest.slice(0, 9)}`;
+	return `${label}.${zone}`;
 }
 
 export function buildManagedPreviewHost(input: {

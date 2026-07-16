@@ -72,10 +72,11 @@ describe("previewServiceDomain platform apex", () => {
 		});
 
 		expect(result.mode).toBe("platform");
-		expect(result.host).toBe("backend.veritus.space");
+		expect(result.host).toBe("dcbf50a721.veritus.space");
+		expect(result.host).not.toContain("backend");
 		expect(result.platformApex).toBe("veritus.space");
 		expect(result.dnsSetup.join(" ")).toContain("*.veritus.space");
-		expect(result.dnsSetup.join(" ")).toContain("backend.veritus.space");
+		expect(result.dnsSetup.join(" ")).toContain("dcbf50a721.veritus.space");
 		expect(result.dnsSetup.join(" ")).toContain("Managed DNS (NS)");
 	});
 
@@ -90,7 +91,8 @@ describe("previewServiceDomain platform apex", () => {
 		});
 
 		expect(result.mode).toBe("platform");
-		expect(result.host).toBe("backend.env-apex.com");
+		expect(result.host).toBe("dcbf50a721.env-apex.com");
+		expect(result.host).not.toContain("backend");
 		expect(result.platformApex).toBe("env-apex.com");
 	});
 
@@ -104,7 +106,8 @@ describe("previewServiceDomain platform apex", () => {
 		});
 
 		expect(result.mode).toBe("preview");
-		expect(result.host).toBe("backend-13-51-16-1.sslip.io");
+		expect(result.host).toBe("dcbf50a721-13-51-16-1.sslip.io");
+		expect(result.host).not.toContain("backend");
 		expect(result.platformApex).toBeNull();
 	});
 });

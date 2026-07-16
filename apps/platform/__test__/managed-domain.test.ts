@@ -2,6 +2,7 @@ import { getPlatformDefaultDomain } from "@nearzero/server/constants";
 import {
 	buildManagedServiceHost,
 	buildPlatformDefaultServiceHost,
+	buildRandomPlatformServiceHost,
 	canUsePlatformDomainForServer,
 	isNearzeroAssignedDomain,
 	managedZoneDnsSetupHints,
@@ -162,6 +163,26 @@ describe("platform hostname helpers", () => {
 				},
 			}),
 		).toBe("backend.veritus.space");
+	});
+
+	it("builds stable random platform hostnames that omit the service name", () => {
+		expect(
+			buildRandomPlatformServiceHost({
+				zoneName: "veritus.space",
+				seed: "env-1:backend",
+			}),
+		).toBe("dcbf50a721.veritus.space");
+		expect(
+			buildRandomPlatformServiceHost({
+				zoneName: "veritus.space",
+				seed: "env-1:backend",
+			}),
+		).toBe(
+			buildRandomPlatformServiceHost({
+				zoneName: "veritus.space",
+				seed: "env-1:backend",
+			}),
+		);
 	});
 
 	it("documents DNS setup options for platform and managed zones", () => {

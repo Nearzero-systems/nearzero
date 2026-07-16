@@ -65,6 +65,12 @@ let permissions: {
 		update?: boolean;
 		delete?: boolean;
 	};
+	dns?: {
+		read?: boolean;
+		create?: boolean;
+		update?: boolean;
+		delete?: boolean;
+	};
 	certificate?: {
 		read?: boolean;
 		create?: boolean;
@@ -95,37 +101,54 @@ if (bootstrap.ok) {
 		const canCert = !!permissions?.certificate?.read;
 
 		if (canDomain) {
-			const [
-				zonesResult,
-				healthResult,
-				readinessResult,
-				hostnamesResult,
-				bindingsResult,
-				projectsResult,
-			] = await Promise.all([
-				api.dns.zones.list.query() as Promise<ZoneRow[]>,
-				api.dns.health.query() as Promise<typeof health>,
-				api.dns.readiness.query() as Promise<ReadinessInfo>,
+			const canDns = !!permissions?.dns?.read;
+			const settled = await Promise.allSettled([
+				canDns
+					? (api.dns.zones.list.query() as Promise<ZoneRow[]>)
+					: Promise.resolve([] as ZoneRow[]),
+				canDns
+					? (api.dns.health.query() as Promise<typeof health>)
+					: Promise.resolve([] as typeof health),
+				canDns
+					? (api.dns.readiness.query() as Promise<ReadinessInfo>)
+					: Promise.resolve(null as ReadinessInfo | null),
 				api.domain.listCentralized.query() as Promise<HostnameRow[]>,
 				api.environment.listDnsBindings.query() as Promise<BindingRow[]>,
 				api.project.all.query() as Promise<unknown[]>,
 			]);
-			zones = zonesResult;
-			health = healthResult;
-			dnsReadiness = readinessResult;
-			hostnames = hostnamesResult;
-			bindings = bindingsResult;
-			projects = projectsResult;
+
+			const errors: string[] = [];
+			const take = <T,>(index: number, fallback: T): T => {
+				const result = settled[index];
+				if (!result) return fallback;
+				if (result.status === "fulfilled") return result.value as T;
+				errors.push(
+					result.reason instanceof Error
+						? result.reason.message
+						: "Request failed",
+				);
+				return fallback;
+			};
+
+			zones = take(0, [] as ZoneRow[]);
+			health = take(1, [] as typeof health);
+			dnsReadiness = take(2, null as ReadinessInfo | null);
+			hostnames = take(3, [] as HostnameRow[]);
+			bindings = take(4, [] as BindingRow[]);
+			projects = take(5, [] as unknown[]);
+
+			if (errors.length > 0) {
+				domainsDataError = errors[0] ?? "Could not load domain data.";
+			}
 		}
 		if (canCert) {
-			servers = ((await api.server.withSSHKey.query()) as typeof servers) || [];
+			try {
+				servers = ((await api.server.withSSHKey.query()) as typeof servers) || [];
+			} catch {
+				servers = [];
+			}
 		}
 	} catch (error) {
-		zones = [];
-		health = [];
-		dnsReadiness = null;
-		hostnames = [];
-		bindings = [];
 		domainsDataError =
 			error instanceof Error ? error.message : "Could not load domain data.";
 	}
@@ -338,9 +361,6 @@ const showReadinessBanner =
 													href={tabUrl.pathname + tabUrl.search}
 													class={`nz-domains-tab ${tab.id === activeTab ? "nz-domains-tab--active" : ""}`}
 													data-domains-tab={tab.id}
-													data-nz-dashboard-nav="1"
-													data-route-id="dashboard:domains"
-													data-nav-key="domains"
 													role="tab"
 													aria-selected={tab.id === activeTab ? "true" : "false"}
 												>

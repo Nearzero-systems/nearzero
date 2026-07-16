@@ -781,7 +781,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	width: 100%;
 	min-width: 0;
 	flex-direction: row;
-	flex-wrap: nowrap;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
 	gap: 0.5rem;
@@ -789,21 +789,22 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 
 #nz-projects-root .nz-projects-toolbar-form .nz-projects-search,
 #nz-deployments-root .nz-deployments-toolbar-secondary .nz-deployments-search {
-	flex: 1 1 auto;
-	min-width: 8rem;
+	flex: 1 1 12rem;
+	min-width: 10rem;
 	max-width: none !important;
 }
 
 #nz-projects-root .nz-projects-toolbar-form .nz-select-chevron-wrap,
 #nz-deployments-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap {
 	flex: 0 0 auto;
+	width: max-content;
+	max-width: 14rem;
 }
 
-@media (max-width: 720px) {
-	#nz-projects-root .nz-projects-toolbar-form,
-	#nz-deployments-root .nz-deployments-toolbar-secondary {
-		flex-wrap: wrap;
-	}
+#nz-projects-root .nz-projects-toolbar-form .nz-select-chevron-wrap > select,
+#nz-deployments-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap > select {
+	width: auto;
+	max-width: 14rem;
 }
 
 #nz-domains-root .nz-deployments-toolbar-form,
@@ -827,16 +828,19 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 
 .nz-dashboard-content .nz-select-chevron-wrap {
 	position: relative;
-	display: inline-block;
+	display: inline-flex;
+	flex: 0 0 auto;
 	flex-shrink: 0;
-	max-width: 100%;
+	width: max-content;
+	max-width: 14rem;
 	vertical-align: middle;
 }
 
 .nz-dashboard-content .nz-select-chevron-wrap > select {
 	display: block !important;
-	width: 100%;
+	width: auto;
 	min-width: 0;
+	max-width: 14rem;
 	padding-right: 1.875rem !important;
 	box-sizing: border-box;
 }

@@ -33,6 +33,7 @@ import {
 	buildManagedPreviewHost,
 	buildManagedServiceHost,
 	buildPreviewServiceSlug,
+	buildRandomPlatformServiceHost,
 	canUsePlatformDomainForServer,
 	isNearzeroAssignedDomain,
 	managedZoneDnsSetupHints,
@@ -642,10 +643,9 @@ export async function previewServiceDomain(
 			);
 		}
 	} else if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
-		host = buildManagedServiceHost({
-			serviceName: input.serviceName,
+		host = buildRandomPlatformServiceHost({
 			zoneName: platformApex,
-			environment: env,
+			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
 		});
 		zoneName = platformApex;
 		mode = "platform";
@@ -659,8 +659,12 @@ export async function previewServiceDomain(
 			);
 		}
 	} else if (targetIp) {
+		const previewLabel = buildRandomPlatformServiceHost({
+			zoneName: "x",
+			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
+		}).split(".")[0] || "app";
 		host = buildManagedPreviewHost({
-			appName: input.serviceName,
+			appName: previewLabel,
 			zoneName: "sslip.io",
 			targetIp,
 		});
@@ -762,10 +766,9 @@ export async function provisionServiceDomain(
 	}
 
 	if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
-		const host = buildManagedServiceHost({
-			serviceName: input.serviceName,
+		const host = buildRandomPlatformServiceHost({
 			zoneName: platformApex,
-			environment: env,
+			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
 		});
 		const resolved = await resolveProvisionedHost({
 			baseHost: host,
