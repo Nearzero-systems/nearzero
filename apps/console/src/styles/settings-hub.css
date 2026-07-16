@@ -449,7 +449,11 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	font-weight: 500;
 	line-height: 1rem;
 	color: var(--nz-text-muted, #6b7280);
+	text-decoration: none;
 	cursor: pointer;
+	position: relative;
+	z-index: 2;
+	pointer-events: auto;
 	transition:
 		color 0.15s ease,
 		background-color 0.15s ease;
@@ -763,21 +767,43 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	background-color: var(--nz-surface, #ffffff);
 }
 
-#nz-projects-root .nz-projects-toolbar-form {
-	display: flex;
-	width: 100%;
-	min-width: 0;
-	flex-wrap: wrap;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 0.5rem;
-}
-
 #nz-deployments-root .nz-deployments-toolbar-form {
 	display: flex;
 	width: 100%;
 	min-width: 0;
 	flex-direction: column;
+}
+
+/* Keep search + filter dropdowns on one horizontal row */
+#nz-projects-root .nz-projects-toolbar-form,
+#nz-deployments-root .nz-deployments-toolbar-secondary {
+	display: flex;
+	width: 100%;
+	min-width: 0;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.5rem;
+}
+
+#nz-projects-root .nz-projects-toolbar-form .nz-projects-search,
+#nz-deployments-root .nz-deployments-toolbar-secondary .nz-deployments-search {
+	flex: 1 1 auto;
+	min-width: 8rem;
+	max-width: none !important;
+}
+
+#nz-projects-root .nz-projects-toolbar-form .nz-select-chevron-wrap,
+#nz-deployments-root .nz-deployments-toolbar-secondary .nz-select-chevron-wrap {
+	flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+	#nz-projects-root .nz-projects-toolbar-form,
+	#nz-deployments-root .nz-deployments-toolbar-secondary {
+		flex-wrap: wrap;
+	}
 }
 
 #nz-domains-root .nz-deployments-toolbar-form,

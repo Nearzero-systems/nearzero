@@ -10,14 +10,19 @@ function parseBootstrap(root: HTMLElement): Array<Record<string, unknown>> {
 	}
 }
 
-export function mountAnalyticsDashboard() {
-	const run = () => {
-		const root = document.getElementById("nz-analytics-root");
-		if (!(root instanceof HTMLElement)) return;
-		const pageLogs = parseBootstrap(root);
-		bindAnalyticsDashboardActions(root, pageLogs);
-	};
+function runAnalyticsMount() {
+	const root = document.getElementById("nz-analytics-root");
+	if (!(root instanceof HTMLElement)) return;
+	const pageLogs = parseBootstrap(root);
+	bindAnalyticsDashboardActions(root, pageLogs);
+}
 
-	run();
-	document.addEventListener("astro:page-load", run);
+let pageLoadBound = false;
+
+export function mountAnalyticsDashboard() {
+	runAnalyticsMount();
+	if (pageLoadBound) return;
+	pageLoadBound = true;
+	document.addEventListener("astro:page-load", runAnalyticsMount);
+	document.addEventListener("astro:after-swap", runAnalyticsMount);
 }

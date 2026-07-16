@@ -342,6 +342,33 @@ dialog.nz-modal.nz-modal--closing .nz-modal__panel {
 	padding: 0.25rem 0.5rem;
 }
 
+/* Hide native number spinners (service port, TTL, etc.) */
+input[type="number"].nz-modal__input,
+input[type="number"].nz-app-import-input,
+#nz-app-import-managed-port,
+#nz-env-domain-port,
+#nz-add-hostname-port,
+#nz-connect-service-port {
+	-moz-appearance: textfield;
+	appearance: textfield;
+}
+
+input[type="number"].nz-modal__input::-webkit-outer-spin-button,
+input[type="number"].nz-modal__input::-webkit-inner-spin-button,
+input[type="number"].nz-app-import-input::-webkit-outer-spin-button,
+input[type="number"].nz-app-import-input::-webkit-inner-spin-button,
+#nz-app-import-managed-port::-webkit-outer-spin-button,
+#nz-app-import-managed-port::-webkit-inner-spin-button,
+#nz-env-domain-port::-webkit-outer-spin-button,
+#nz-env-domain-port::-webkit-inner-spin-button,
+#nz-add-hostname-port::-webkit-outer-spin-button,
+#nz-add-hostname-port::-webkit-inner-spin-button,
+#nz-connect-service-port::-webkit-outer-spin-button,
+#nz-connect-service-port::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
 .nz-modal__textarea {
 	min-height: 4.5rem;
 	max-height: 8rem;

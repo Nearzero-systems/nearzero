@@ -458,10 +458,4 @@ const pageLogsBootstrap = encodeURIComponent(JSON.stringify(pageLogs));
 <script>
 	import { mountAnalyticsDashboard } from "@/scripts/mount-analytics-dashboard";
 	mountAnalyticsDashboard();
-
-	document.getElementById("nz-analytics-root")?.addEventListener("click", (event) => {
-		const target = event.target instanceof Element ? event.target : null;
-		if (!target?.closest("[data-analytics-activate]")) return;
-		document.getElementById("nz-req-toggle-open")?.click();
-	});
 </script>

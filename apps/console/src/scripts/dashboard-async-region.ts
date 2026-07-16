@@ -1,3 +1,6 @@
+import { bootDomainsHub } from "@/scripts/domains-hub";
+import { mountAnalyticsDashboard } from "@/scripts/mount-analytics-dashboard";
+
 type PageDataResponse =
 	| { ok: true; shell: unknown; page: { html: string } }
 	| { ok: false; code?: string; message?: string };
@@ -193,6 +196,9 @@ function swapContent(root: HTMLElement, html: string) {
 	root.innerHTML = html;
 	rerunScripts(root);
 	root.dataset.state = LOADED;
+	// Persistently-loaded module hooks (ES modules may not re-run after inject).
+	bootDomainsHub();
+	mountAnalyticsDashboard();
 	document.dispatchEvent(new Event("astro:after-swap"));
 	document.dispatchEvent(new Event("astro:page-load"));
 }

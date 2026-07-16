@@ -767,24 +767,37 @@ export const settingsRouter = createTRPCRouter({
 			}),
 		)
 		.mutation(async ({ input, ctx }) => {
-			const mainConfig = readMainConfig();
-			if (!mainConfig) return false;
+			let mainConfig = readMainConfig();
+			if (!mainConfig) {
+				try {
+					await ensureTraefikSetup();
+				} catch {
+					// Fall through to a clear API error below.
+				}
+				mainConfig = readMainConfig();
+			}
+			if (!mainConfig) {
+				throw new TRPCError({
+					code: "PRECONDITION_FAILED",
+					message:
+						"Traefik is not configured yet. Finish web-server setup, then activate analytics again.",
+				});
+			}
 
 			const currentConfig = parse(mainConfig) as {
 				accessLog?: {
 					filePath: string;
+					format?: string;
+					bufferingSize?: number;
 				};
 			};
 
 			if (input.enable) {
-				const config = {
-					accessLog: {
-						filePath: "/etc/nearzero/traefik/dynamic/access.log",
-						format: "json",
-						bufferingSize: 100,
-					},
+				currentConfig.accessLog = {
+					filePath: "/etc/nearzero/traefik/dynamic/access.log",
+					format: "json",
+					bufferingSize: 100,
 				};
-				currentConfig.accessLog = config.accessLog;
 			} else {
 				currentConfig.accessLog = undefined;
 			}

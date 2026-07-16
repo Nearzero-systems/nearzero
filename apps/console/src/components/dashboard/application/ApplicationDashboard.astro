@@ -170,9 +170,15 @@ const githubTriggerIsPush = !githubTriggerIsTag;
 // Header data: back link to the services list, a Visit URL from the first
 // domain (https), and whether a rollback is available.
 const servicesHref = `/dashboard/project/${projId}/environment/${envId}/services`;
-const firstDomainHost = appRow?.domains?.find(
-	(d: { host?: string }) => d?.host,
-)?.host;
+const serviceDomains: Array<{
+	domainId?: string;
+	host?: string;
+	https?: boolean;
+	port?: number | null;
+	dnsMode?: string;
+	path?: string | null;
+}> = Array.isArray(appRow?.domains) ? appRow.domains : [];
+const firstDomainHost = serviceDomains.find((d) => d?.host)?.host;
 const visitUrl = firstDomainHost ? `https://${firstDomainHost}` : "";
 const firstConfiguredPort = appRow?.ports?.find(
 	(port: { targetPort?: number | null }) =>
@@ -180,7 +186,7 @@ const firstConfiguredPort = appRow?.ports?.find(
 )?.targetPort;
 const defaultDomainPort = Number(firstConfiguredPort ?? appRow?.previewPort ?? 3000);
 let defaultDomainPreview: any = null;
-if (appRow && !firstDomainHost) {
+if (appRow) {
 	try {
 		defaultDomainPreview = await api.domain.previewServiceDomain.query({
 			environmentId: envId,
@@ -191,6 +197,7 @@ if (appRow && !firstDomainHost) {
 		defaultDomainPreview = null;
 	}
 }
+const domainsHubHref = "/dashboard/domains";
 const defaultDomainPreviewHost =
 	defaultDomainPreview?.enabled && defaultDomainPreview?.host
 		? defaultDomainPreview.host
@@ -837,6 +844,97 @@ const deleteServiceDescription =
 							</section>
 						) : null
 					}
+					<section class="nz-app-setting-panel nz-app-collapse nz-app-settings-group" data-app-collapse data-collapsed="false">
+						<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="true">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+							<span class="nz-app-setting-panel__title-wrap">
+								<span class="nz-app-setting-panel__title">Domains</span>
+								<SettingPanelHint label="Hostnames, HTTPS, and DNS for this service" />
+							</span>
+						</button>
+						<div class="nz-app-setting-panel__body nz-app-collapse__body nz-app-settings-list" data-app-collapse-body>
+							<div class="nz-app-setting-row">
+								<div class="nz-app-setting-row__text">
+									<p class="nz-app-setting-row__title">Service port</p>
+									<p class="nz-app-setting-row__desc">Traffic is routed to container port {defaultDomainPort}.</p>
+								</div>
+								<span class="font-mono text-xs text-[var(--nz-text-muted)]">{defaultDomainPort}</span>
+							</div>
+							{
+								serviceDomains.length > 0 ? (
+									serviceDomains.map((domain) => (
+										<div class="nz-app-setting-row">
+											<div class="nz-app-setting-row__text min-w-0">
+												<p class="nz-app-setting-row__title truncate font-mono">
+													<a
+														href={`${domain.https === false ? "http" : "https"}://${domain.host}`}
+														target="_blank"
+														rel="noopener noreferrer"
+														class="hover:underline"
+													>
+														{domain.host}
+													</a>
+												</p>
+												<p class="nz-app-setting-row__desc">
+													{(domain.dnsMode || "external").replace("_", " ")}
+													{domain.port ? ` · port ${domain.port}` : ""}
+													{domain.path && domain.path !== "/" ? ` · ${domain.path}` : ""}
+												</p>
+											</div>
+											<a href={domainsHubHref} class="nz-app-btn">Manage</a>
+										</div>
+									))
+								) : (
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">No hostname yet</p>
+											<p class="nz-app-setting-row__desc">
+												{
+													defaultDomainPreviewHost
+														? `Suggested: ${defaultDomainPreviewHost}`
+														: "Create a platform hostname or add a custom domain."
+												}
+											</p>
+										</div>
+										{
+											defaultDomainPreviewHost && canCreateDomain ? (
+												<button
+													type="button"
+													id="nz-app-default-domain-create-settings"
+													class="nz-app-btn nz-app-btn--primary nz-app-default-domain-create"
+												>
+													Create URL
+												</button>
+											) : (
+												<a href={domainsHubHref} class="nz-app-btn">Open Domains</a>
+											)
+										}
+									</div>
+								)
+							}
+							{
+								Array.isArray(defaultDomainPreview?.dnsSetup) && defaultDomainPreview.dnsSetup.length > 0 ? (
+									<div class="nz-app-setting-row">
+										<div class="nz-app-setting-row__text">
+											<p class="nz-app-setting-row__title">DNS setup</p>
+											<ul class="mt-1 list-disc space-y-1 pl-4 text-[11px] text-[var(--nz-text-muted)]">
+												{defaultDomainPreview.dnsSetup.map((hint: string) => (
+													<li>{hint}</li>
+												))}
+											</ul>
+										</div>
+									</div>
+								) : null
+							}
+							<div class="nz-app-setting-row">
+								<div class="nz-app-setting-row__text">
+									<p class="nz-app-setting-row__title">Organization domains</p>
+									<p class="nz-app-setting-row__desc">Hostnames, DNS zones, environment bindings, and certificates.</p>
+								</div>
+								<a href={domainsHubHref} class="nz-app-btn">Open Domains hub</a>
+							</div>
+						</div>
+					</section>
 					<section class="nz-app-setting-panel nz-app-setting-panel--danger nz-app-collapse nz-app-settings-group" data-app-collapse data-collapsed="true">
 						<button type="button" class="nz-app-setting-panel__trigger" data-app-collapse-toggle aria-expanded="false">
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="nz-app-setting-panel__chevron" data-app-collapse-chevron aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>

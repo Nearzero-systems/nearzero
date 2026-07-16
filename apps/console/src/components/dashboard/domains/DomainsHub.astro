@@ -85,6 +85,7 @@ let hostnames: HostnameRow[] = [];
 let bindings: BindingRow[] = [];
 let projects: unknown[] = [];
 let servers: Array<{ serverId: string; name: string; ipAddress: string }> = [];
+let domainsDataError: string | null = null;
 
 if (bootstrap.ok) {
 	const api = createServerTrpcClient(Astro.request) as any;
@@ -119,12 +120,14 @@ if (bootstrap.ok) {
 		if (canCert) {
 			servers = ((await api.server.withSSHKey.query()) as typeof servers) || [];
 		}
-	} catch {
+	} catch (error) {
 		zones = [];
 		health = [];
 		dnsReadiness = null;
 		hostnames = [];
 		bindings = [];
+		domainsDataError =
+			error instanceof Error ? error.message : "Could not load domain data.";
 	}
 }
 
@@ -268,6 +271,13 @@ const showReadinessBanner =
 		>
 			<div class="nz-deployments-surface text-xs">
 				{
+					domainsDataError ? (
+						<div class="mb-3 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-[11px] text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+							Could not load domains: {domainsDataError}
+						</div>
+					) : null
+				}
+				{
 					showReadinessBanner ? (
 					<div class="nz-domains-readiness mb-3 rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] px-4 py-3 text-[11px] text-[var(--nz-text-muted)]">
 						<p>
@@ -316,17 +326,28 @@ const showReadinessBanner =
 							tabs.length > 1 ? (
 								<div class="nz-domains-tablist" role="tablist" aria-label="Domain sections">
 									{
-										tabs.map((tab) => (
-											<button
-												type="button"
-												class={`nz-domains-tab ${tab.id === activeTab ? "nz-domains-tab--active" : ""}`}
-												data-domains-tab={tab.id}
-												role="tab"
-												aria-selected={tab.id === activeTab ? "true" : "false"}
-											>
-												{tab.label}
-											</button>
-										))
+										tabs.map((tab) => {
+											const tabUrl = new URL(Astro.url);
+											tabUrl.searchParams.set("tab", tab.id);
+											if (tab.id === "certificates") {
+												tabUrl.searchParams.delete("q");
+												tabUrl.searchParams.delete("status");
+											}
+											return (
+												<a
+													href={tabUrl.pathname + tabUrl.search}
+													class={`nz-domains-tab ${tab.id === activeTab ? "nz-domains-tab--active" : ""}`}
+													data-domains-tab={tab.id}
+													data-nz-dashboard-nav="1"
+													data-route-id="dashboard:domains"
+													data-nav-key="domains"
+													role="tab"
+													aria-selected={tab.id === activeTab ? "true" : "false"}
+												>
+													{tab.label}
+												</a>
+											);
+										})
 									}
 								</div>
 							) : (
@@ -443,16 +464,25 @@ const showReadinessBanner =
 											</tr>
 										) : (
 											filteredHostnames.map((row) => (
-												<tr class={`${ST.tr} nz-data-table-row`}>
+												<tr class={`${ST.tr} nz-data-table-row`} data-domain-id={row.domainId}>
 													<td class={ST.td}>
-														<a
-															href={`${row.https ? "https" : "http"}://${row.host}`}
-															target="_blank"
-															rel="noopener noreferrer"
-															class="font-medium underline-offset-2 hover:underline"
-														>
-															{row.host}
-														</a>
+														<div class="flex min-w-0 flex-col gap-0.5">
+															<a
+																href={`${row.https ? "https" : "http"}://${row.host}`}
+																target="_blank"
+																rel="noopener noreferrer"
+																class="font-medium underline-offset-2 hover:underline"
+															>
+																{row.host}
+															</a>
+															{
+																row.href ? (
+																	<a href={row.href} class="text-[10px] text-[var(--nz-text-muted)] hover:text-[var(--nz-text)] hover:underline">
+																		Open service settings
+																	</a>
+																) : null
+															}
+														</div>
 													</td>
 													<td class={ST.tdMuted}>{dnsModeLabel[row.dnsMode] ?? row.dnsMode}</td>
 													<td class={ST.td}>{row.serviceLabel ?? "—"}</td>
@@ -467,15 +497,17 @@ const showReadinessBanner =
 														</span>
 													</td>
 													<td class={ST.tdRight}>
-														<div class="flex items-center justify-end gap-1">
+														<div class="flex flex-wrap items-center justify-end gap-1">
 															{
 																row.status === "unassigned" && canDomainUpdate ? (
-																	<button type="button" class={ST.actionBtn} data-connect-domain={row.domainId}>Connect service</button>
+																	<button type="button" class={ST.actionBtn} data-connect-domain={row.domainId}>Connect</button>
 																) : null
 															}
 															{
 																row.href ? (
-																	<a href={row.href} class={ST.actionBtn}>Manage</a>
+																	<a href={row.href} class={ST.actionBtn}>Configure</a>
+																) : canDomainUpdate ? (
+																	<button type="button" class={ST.actionBtn} data-connect-domain={row.domainId}>Attach service</button>
 																) : null
 															}
 															{
@@ -822,12 +854,12 @@ const showReadinessBanner =
 }
 
 <script>
-	import { initDomainsHub } from "@/scripts/domains-hub";
+	import { bootDomainsHub } from "@/scripts/domains-hub";
 	import { refreshNzModalListeners } from "@/scripts/modal-animations";
 
 	function boot() {
 		refreshNzModalListeners();
-		initDomainsHub();
+		bootDomainsHub();
 	}
 	boot();
 	document.addEventListener("astro:page-load", boot);

@@ -113,46 +113,58 @@ function parseServiceSelectValue(value: string) {
 	};
 }
 
-function bindAddNewMenu(root: HTMLElement) {
+function bindAddNewMenu(root: HTMLElement, signal?: AbortSignal) {
 	const toggle = root.querySelector<HTMLButtonElement>(
 		"[data-domains-add-toggle]",
 	);
 	const menu = root.querySelector<HTMLElement>("[data-domains-add-menu]");
 	if (!toggle || !menu) return;
+	const opts = signal ? { signal } : undefined;
 
-	toggle.addEventListener("click", (e) => {
-		e.stopPropagation();
-		const open = !menu.classList.contains("hidden");
-		menu.classList.toggle("hidden", open);
-		toggle.setAttribute("aria-expanded", open ? "false" : "true");
-	});
+	toggle.addEventListener(
+		"click",
+		(e) => {
+			e.stopPropagation();
+			const open = !menu.classList.contains("hidden");
+			menu.classList.toggle("hidden", open);
+			toggle.setAttribute("aria-expanded", open ? "false" : "true");
+		},
+		opts,
+	);
 
-	document.addEventListener("click", (e) => {
-		if (!root.contains(e.target as Node)) {
-			menu.classList.add("hidden");
-			toggle.setAttribute("aria-expanded", "false");
-		}
-	});
+	document.addEventListener(
+		"click",
+		(e) => {
+			if (!root.contains(e.target as Node)) {
+				menu.classList.add("hidden");
+				toggle.setAttribute("aria-expanded", "false");
+			}
+		},
+		opts,
+	);
 
 	for (const item of root.querySelectorAll<HTMLButtonElement>(
 		"[data-domains-add-action]",
 	)) {
-		item.addEventListener("click", () => {
-			menu.classList.add("hidden");
-			toggle.setAttribute("aria-expanded", "false");
-			const action = item.getAttribute("data-domains-add-action");
-			if (action === "hostname") openDialog("nz-add-hostname-dialog");
-			else if (action === "bind-env") openDialog("nz-bind-env-dialog");
-			else if (action === "dns-zone") openDialog("nz-dns-create-dialog");
-			else if (action === "certificate") openCertificateCreateDialog();
-		});
+		item.addEventListener(
+			"click",
+			() => {
+				menu.classList.add("hidden");
+				toggle.setAttribute("aria-expanded", "false");
+				const action = item.getAttribute("data-domains-add-action");
+				if (action === "hostname") openDialog("nz-add-hostname-dialog");
+				else if (action === "bind-env") openDialog("nz-bind-env-dialog");
+				else if (action === "dns-zone") openDialog("nz-dns-create-dialog");
+				else if (action === "certificate") openCertificateCreateDialog();
+			},
+			opts,
+		);
 	}
 }
 
-function bindDomainsSearch() {
+function bindDomainsSearch(signal?: AbortSignal) {
 	const wrap = document.getElementById("nz-domains-search-root");
-	if (!wrap || wrap.dataset.bound === "1") return;
-	wrap.dataset.bound = "1";
+	if (!wrap) return;
 
 	const toggle = document.getElementById("nz-domains-search-toggle");
 	const panel = document.getElementById("nz-domains-search-panel");
@@ -166,6 +178,7 @@ function bindDomainsSearch() {
 	) {
 		return;
 	}
+	const opts = signal ? { signal } : undefined;
 
 	const openClasses = [
 		"w-44",
@@ -197,41 +210,59 @@ function bindDomainsSearch() {
 		input.blur();
 	};
 
-	toggle.addEventListener("click", (event) => {
-		event.stopPropagation();
-		const expanded = toggle.getAttribute("aria-expanded") === "true";
-		if (expanded) closeSearch();
-		else openSearch();
-	});
+	toggle.addEventListener(
+		"click",
+		(event) => {
+			event.stopPropagation();
+			const expanded = toggle.getAttribute("aria-expanded") === "true";
+			if (expanded) closeSearch();
+			else openSearch();
+		},
+		opts,
+	);
 
-	document.addEventListener("click", (event) => {
-		if (!(event.target instanceof Node)) return;
-		if (!wrap.contains(event.target)) closeSearch();
-	});
+	document.addEventListener(
+		"click",
+		(event) => {
+			if (!(event.target instanceof Node)) return;
+			if (!wrap.contains(event.target)) closeSearch();
+		},
+		opts,
+	);
 
-	input.addEventListener("keydown", (event) => {
-		if (event.key === "Enter" && form instanceof HTMLFormElement) {
-			event.preventDefault();
-			form.submit();
-		}
-		if (event.key === "Escape") closeSearch();
-	});
+	input.addEventListener(
+		"keydown",
+		(event) => {
+			if (event.key === "Enter" && form instanceof HTMLFormElement) {
+				event.preventDefault();
+				form.submit();
+			}
+			if (event.key === "Escape") closeSearch();
+		},
+		opts,
+	);
 
 	if (input.value.trim()) openSearch();
 }
 
-function bindTabs(root: HTMLElement) {
-	const tabs = root.querySelectorAll<HTMLButtonElement>("[data-domains-tab]");
+function bindTabs(root: HTMLElement, signal?: AbortSignal) {
+	const tabs = root.querySelectorAll<HTMLElement>("[data-domains-tab]");
 	const panels = root.querySelectorAll<HTMLElement>("[data-domains-panel]");
 	const tabInput = document.getElementById(
 		"nz-domains-tab-input",
 	) as HTMLInputElement | null;
 	const filterForm = document.getElementById("nz-domains-filter-form");
 
-	const setActiveTab = (id: string) => {
-		const url = new URL(window.location.href);
-		url.searchParams.set("tab", id);
-		window.history.replaceState({}, "", url.pathname + url.search);
+	const setActiveTab = (id: string, pushUrl = true) => {
+		if (pushUrl) {
+			const url = new URL(window.location.href);
+			url.searchParams.set("tab", id);
+			if (id === "certificates") {
+				url.searchParams.delete("q");
+				url.searchParams.delete("status");
+			}
+			window.history.replaceState({}, "", url.pathname + url.search);
+		}
 		if (tabInput) tabInput.value = id;
 
 		for (const tab of tabs) {
@@ -261,12 +292,31 @@ function bindTabs(root: HTMLElement) {
 	};
 
 	for (const tab of tabs) {
-		tab.addEventListener("click", () => {
-			const id = tab.getAttribute("data-domains-tab");
-			if (!id) return;
-			setActiveTab(id);
-		});
+		tab.addEventListener(
+			"click",
+			(event) => {
+				const id = tab.getAttribute("data-domains-tab");
+				if (!id) return;
+				// Instant panel switch when panels are already in the DOM.
+				// Soft-nav links still work if JS is late; preventDefault avoids a double load.
+				if (panels.length > 0 && !tab.hasAttribute("data-nz-dashboard-nav")) {
+					event.preventDefault();
+					setActiveTab(id);
+				} else if (panels.length > 0) {
+					event.preventDefault();
+					event.stopPropagation();
+					setActiveTab(id);
+				}
+			},
+			signal ? { signal, capture: true } : { capture: true },
+		);
 	}
+
+	const current =
+		new URL(window.location.href).searchParams.get("tab") ||
+		tabInput?.value ||
+		"hostnames";
+	setActiveTab(current, false);
 }
 
 function bindDnsZones(root: HTMLElement) {
@@ -932,8 +982,13 @@ function bindValidateDns() {
 
 export function initDomainsHub() {
 	const root = document.getElementById("nz-domains-root");
-	if (!root || root.dataset.bound === "1") return;
-	root.dataset.bound = "1";
+	if (!root) return;
+
+	type RootEx = HTMLElement & { __nzDomainsTeardown?: () => void };
+	const r = root as RootEx;
+	r.__nzDomainsTeardown?.();
+	const ac = new AbortController();
+	r.__nzDomainsTeardown = () => ac.abort();
 
 	const projects = readJson<ProjectOption[]>("nz-domains-projects-json", []);
 	const zones = readJson<Array<{ dnsZoneId: string; name: string }>>(
@@ -941,9 +996,9 @@ export function initDomainsHub() {
 		[],
 	);
 
-	bindAddNewMenu(root);
-	bindTabs(root);
-	bindDomainsSearch();
+	bindAddNewMenu(root, ac.signal);
+	bindTabs(root, ac.signal);
+	bindDomainsSearch(ac.signal);
 	bindDnsZones(root);
 	bindHostnameModal(projects);
 	bindConnectServiceModal(projects);
@@ -951,6 +1006,10 @@ export function initDomainsHub() {
 	bindUnassignActions();
 	bindValidateDns();
 	initCertificatesPanel();
+}
+
+export function bootDomainsHub() {
+	initDomainsHub();
 }
 
 /** Shared opener for environment launcher */

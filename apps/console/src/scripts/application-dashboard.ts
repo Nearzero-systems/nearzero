@@ -410,45 +410,47 @@ function bindRollbackButton(root: HTMLElement) {
 }
 
 function bindDefaultDomainProvision(root: HTMLElement, bootstrap: AppBootstrap) {
-	const btn = root.querySelector<HTMLButtonElement>(
-		"#nz-app-default-domain-create",
+	const buttons = root.querySelectorAll<HTMLButtonElement>(
+		"#nz-app-default-domain-create, #nz-app-default-domain-create-settings, .nz-app-default-domain-create",
 	);
-	if (!btn || btn.dataset.bound === "1") return;
-	btn.dataset.bound = "1";
-	btn.addEventListener("click", async () => {
-		if (!bootstrap.canCreateDomain || btn.disabled) return;
-		btn.disabled = true;
-		btn.setAttribute("aria-busy", "true");
-		try {
-			const domain = await trpcMutate<{ host?: string }>(
-				"domain.provisionServiceDomain",
-				{
-					environmentId: bootstrap.environmentId,
-					serviceName: bootstrap.serviceName,
-					port: bootstrap.domainPort,
-					serverId: bootstrap.serverId || null,
-					applicationId: bootstrap.applicationId,
-					domainType: "application",
-				},
-			);
-			const host = domain?.host || bootstrap.defaultDomainHost;
-			showToast("Default URL created", "success");
-			if (host) {
-				const next = new URL(window.location.href);
-				next.searchParams.set("liveUrl", `https://${host}`);
-				window.location.href = next.toString();
-				return;
+	for (const btn of buttons) {
+		if (btn.dataset.bound === "1") continue;
+		btn.dataset.bound = "1";
+		btn.addEventListener("click", async () => {
+			if (!bootstrap.canCreateDomain || btn.disabled) return;
+			btn.disabled = true;
+			btn.setAttribute("aria-busy", "true");
+			try {
+				const domain = await trpcMutate<{ host?: string }>(
+					"domain.provisionServiceDomain",
+					{
+						environmentId: bootstrap.environmentId,
+						serviceName: bootstrap.serviceName,
+						port: bootstrap.domainPort,
+						serverId: bootstrap.serverId || null,
+						applicationId: bootstrap.applicationId,
+						domainType: "application",
+					},
+				);
+				const host = domain?.host || bootstrap.defaultDomainHost;
+				showToast("Default URL created", "success");
+				if (host) {
+					const next = new URL(window.location.href);
+					next.searchParams.set("liveUrl", `https://${host}`);
+					window.location.href = next.toString();
+					return;
+				}
+				window.location.reload();
+			} catch (err) {
+				showToast(
+					err instanceof Error ? err.message : "Could not create the default URL",
+					"error",
+				);
+				btn.disabled = false;
+				btn.setAttribute("aria-busy", "false");
 			}
-			window.location.reload();
-		} catch (err) {
-			showToast(
-				err instanceof Error ? err.message : "Could not create the default URL",
-				"error",
-			);
-			btn.disabled = false;
-			btn.setAttribute("aria-busy", "false");
-		}
-	});
+		});
+	}
 }
 
 function bindDeploymentHistory(root: HTMLElement) {

@@ -59,12 +59,12 @@ export function bindAnalyticsDashboardActions(root: HTMLElement, pageLogs: ReqLo
 	type RootEx = HTMLElement & { __nzReqTeardown?: () => void };
 	const r = root as RootEx;
 
-	const sig = `${pageLogs.length}:${pageSig(pageLogs)}`;
-	if (root.dataset.nzReqSig === sig) return;
-	root.dataset.nzReqSig = sig;
-
+	const activeFlag = root.dataset.isActive === "true" ? "1" : "0";
+	const sig = `${activeFlag}:${pageLogs.length}:${pageSig(pageLogs)}`;
+	// Always rebind after DOM swaps even when the inactive empty-state signature repeats.
 	const prev = r.__nzReqTeardown;
 	if (typeof prev === "function") prev();
+	root.dataset.nzReqSig = sig;
 
 	const ac = new AbortController();
 	const opts = { signal: ac.signal };
@@ -151,19 +151,52 @@ export function bindAnalyticsDashboardActions(root: HTMLElement, pageLogs: ReqLo
 	const toggleConfirm = root.querySelector<HTMLButtonElement>("#nz-req-toggle-confirm");
 	const active = root.dataset.isActive === "true";
 
-	toggleBtn?.addEventListener("click", () => toggleDlg?.showModal(), opts);
+	const runToggleRequests = async (enable: boolean) => {
+		try {
+			const ok = await trpcMutate<boolean>("settings.toggleRequests", { enable });
+			if (!ok) {
+				showToast(
+					"Could not update Traefik access logging. Finish web-server / Traefik setup, then try again.",
+					"error",
+				);
+				return false;
+			}
+			showToast(`Analytics ${enable ? "activated" : "deactivated"}`, "success");
+			window.location.reload();
+			return true;
+		} catch (e) {
+			showToast(e instanceof Error ? e.message : "Request failed", "error");
+			return false;
+		}
+	};
+
+	const openToggleDialog = () => {
+		if (toggleDlg) {
+			toggleDlg.showModal();
+			return;
+		}
+		void runToggleRequests(!active);
+	};
+
+	root.addEventListener(
+		"click",
+		(e) => {
+			const t = e.target;
+			if (!(t instanceof Element)) return;
+			if (!t.closest("[data-analytics-activate]")) return;
+			e.preventDefault();
+			openToggleDialog();
+		},
+		opts,
+	);
+
+	toggleBtn?.addEventListener("click", () => openToggleDialog(), opts);
 	toggleConfirm?.addEventListener(
 		"click",
 		async () => {
 			toggleConfirm.disabled = true;
-			try {
-				await trpcMutate("settings.toggleRequests", { enable: !active });
-				showToast(`Analytics ${active ? "deactivated" : "activated"}`, "success");
-				window.location.reload();
-			} catch (e) {
-				showToast(e instanceof Error ? e.message : "Request failed", "error");
-				toggleConfirm.disabled = false;
-			}
+			const ok = await runToggleRequests(!active);
+			if (!ok) toggleConfirm.disabled = false;
 		},
 		opts,
 	);
