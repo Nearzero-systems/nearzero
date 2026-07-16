@@ -35,7 +35,8 @@ import {
 	buildPreviewServiceSlug,
 	canUsePlatformDomainForServer,
 	isNearzeroAssignedDomain,
-	platformDomainWildcardDnsHint,
+	managedZoneDnsSetupHints,
+	platformDomainDnsSetupHints,
 	resolvePlatformDefaultDomain,
 	slugifyServiceName,
 } from "./managed-domain";
@@ -64,6 +65,7 @@ export type PreviewServiceDomainResult = {
 	platformApex: string | null;
 	visitUrl: string | null;
 	warnings: string[];
+	dnsSetup: string[];
 };
 
 export type ProvisionServiceDomainInput = {
@@ -593,6 +595,7 @@ export async function previewServiceDomain(
 	input: PreviewServiceDomainInput,
 ): Promise<PreviewServiceDomainResult> {
 	const warnings: string[] = [];
+	const dnsSetup: string[] = [];
 	const env = await findEnvironmentForDomain(input.environmentId);
 	const platformApex = await resolvePlatformDefaultDomain();
 
@@ -618,17 +621,25 @@ export async function previewServiceDomain(
 		});
 		if (zone) {
 			zoneName = zone.name;
-			if (zone.status !== "active") {
-				warnings.push(
-					`DNS zone "${zone.name}" needs setup before managed hostnames will resolve reliably.`,
-				);
-			}
 			host = buildManagedServiceHost({
 				serviceName: input.serviceName,
 				zoneName: zone.name,
 				environment: env,
 			});
 			mode = "org-zone";
+			if (zone.status !== "active") {
+				warnings.push(
+					`DNS zone "${zone.name}" needs setup before managed hostnames will resolve reliably.`,
+				);
+			}
+			dnsSetup.push(
+				...managedZoneDnsSetupHints({
+					host,
+					zoneName: zone.name,
+					targetIp,
+					zoneActive: zone.status === "active",
+				}),
+			);
 		}
 	} else if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
 		host = buildManagedServiceHost({
@@ -638,8 +649,14 @@ export async function previewServiceDomain(
 		});
 		zoneName = platformApex;
 		mode = "platform";
-		if (input.serverId && targetIp) {
-			warnings.push(platformDomainWildcardDnsHint(platformApex, targetIp));
+		if (targetIp) {
+			dnsSetup.push(
+				...platformDomainDnsSetupHints({
+					host,
+					platformApex,
+					targetIp,
+				}),
+			);
 		}
 	} else if (targetIp) {
 		host = buildManagedPreviewHost({
@@ -665,6 +682,7 @@ export async function previewServiceDomain(
 		platformApex,
 		visitUrl,
 		warnings,
+		dnsSetup,
 	};
 }
 

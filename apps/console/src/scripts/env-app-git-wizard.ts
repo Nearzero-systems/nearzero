@@ -1507,13 +1507,13 @@ export function mountApplicationImportPage(root: HTMLElement) {
 			preview.warnings.length > 0 ?
 				`<br /><span class="text-amber-700">${preview.warnings.map((w) => escapeAttr(w)).join(" ")}</span>`
 			:	"";
-		const setupHint =
-			preview.mode === "preview"
+		const dnsSetup =
+			preview.dnsSetup?.length ?
+				`<ul class="mt-1 list-disc pl-5 text-amber-700">${preview.dnsSetup.map((hint) => `<li>${escapeAttr(hint)}</li>`).join("")}</ul>`
+			: preview.mode === "preview"
 				? '<br /><span class="text-amber-700">No default application domain is configured, so this points directly to the selected server.</span>'
-				: preview.mode === "platform" && preview.platformApex && preview.targetIp
-					? `<br /><span class="text-amber-700">Point *.${escapeAttr(preview.platformApex)} at ${escapeAttr(preview.targetIp)} so app hostnames resolve and HTTPS can be issued. Keep ${escapeAttr(preview.platformApex)} on the Nearzero host.</span>`
-					: "";
-		domainPreviewEl.innerHTML = `<strong>${escapeAttr(preview.host ?? "")}</strong><br />${escapeAttr(modeLabel)}${warn}${setupHint}`;
+				: "";
+		domainPreviewEl.innerHTML = `<strong>${escapeAttr(preview.host ?? "")}</strong><br />${escapeAttr(modeLabel)}${warn}${dnsSetup}`;
 
 		if (preview.mode === "org-zone") {
 			managedDomainWrap?.classList.remove("hidden");

@@ -31,12 +31,19 @@ describe("agent production safety", () => {
 });
 
 describe("managed domain helpers", () => {
-	it("builds staging host with environment label", () => {
+	it("builds short hostnames and uses domainPrefix for disambiguation", () => {
 		expect(
 			buildManagedServiceHost({
 				serviceName: "API",
 				zoneName: "example.com",
 				environment: { name: "staging", isDefault: false, domainPrefix: null },
+			}),
+		).toBe("api.example.com");
+		expect(
+			buildManagedServiceHost({
+				serviceName: "API",
+				zoneName: "example.com",
+				environment: { name: "staging", isDefault: false, domainPrefix: "staging" },
 			}),
 		).toBe("api.staging.example.com");
 	});

@@ -17,6 +17,7 @@ export type PreviewServiceDomainResult = {
 	platformApex: string | null;
 	visitUrl: string | null;
 	warnings: string[];
+	dnsSetup: string[];
 };
 
 export type ProvisionedDomain = {

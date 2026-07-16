@@ -72,9 +72,11 @@ describe("previewServiceDomain platform apex", () => {
 		});
 
 		expect(result.mode).toBe("platform");
-		expect(result.host).toBe("backend.development.veritus.space");
+		expect(result.host).toBe("backend.veritus.space");
 		expect(result.platformApex).toBe("veritus.space");
-		expect(result.warnings.join(" ")).toContain("*.veritus.space");
+		expect(result.dnsSetup.join(" ")).toContain("*.veritus.space");
+		expect(result.dnsSetup.join(" ")).toContain("backend.veritus.space");
+		expect(result.dnsSetup.join(" ")).toContain("Managed DNS (NS)");
 	});
 
 	it("prefers NEARZERO_PLATFORM_DOMAIN over the settings host", async () => {
@@ -88,7 +90,7 @@ describe("previewServiceDomain platform apex", () => {
 		});
 
 		expect(result.mode).toBe("platform");
-		expect(result.host).toBe("backend.development.env-apex.com");
+		expect(result.host).toBe("backend.env-apex.com");
 		expect(result.platformApex).toBe("env-apex.com");
 	});
 

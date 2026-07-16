@@ -4,7 +4,9 @@ import {
 	buildPlatformDefaultServiceHost,
 	canUsePlatformDomainForServer,
 	isNearzeroAssignedDomain,
+	managedZoneDnsSetupHints,
 	normalizeConfiguredPlatformApex,
+	platformDomainDnsSetupHints,
 	platformDomainWildcardDnsHint,
 	resolvePlatformDefaultDomain,
 	slugifyServiceName,
@@ -159,16 +161,34 @@ describe("platform hostname helpers", () => {
 					domainPrefix: null,
 				},
 			}),
-		).toBe("backend.development.veritus.space");
+		).toBe("backend.veritus.space");
 	});
 
-	it("documents the wildcard DNS requirement for remote app servers", () => {
+	it("documents DNS setup options for platform and managed zones", () => {
 		expect(platformDomainWildcardDnsHint("veritus.space", "13.51.16.1")).toContain(
 			"*.veritus.space",
 		);
-		expect(platformDomainWildcardDnsHint("veritus.space", "13.51.16.1")).toContain(
-			"13.51.16.1",
+		expect(
+			platformDomainDnsSetupHints({
+				host: "backend.veritus.space",
+				platformApex: "veritus.space",
+				targetIp: "13.51.16.1",
+			}),
+		).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("Wildcard A"),
+				expect.stringContaining("backend.veritus.space A 13.51.16.1"),
+				expect.stringContaining("Managed DNS (NS)"),
+			]),
 		);
+		expect(
+			managedZoneDnsSetupHints({
+				host: "backend.veritus.space",
+				zoneName: "veritus.space",
+				targetIp: "13.51.16.1",
+				zoneActive: true,
+			})[0],
+		).toContain("Nearzero will publish");
 	});
 });
 

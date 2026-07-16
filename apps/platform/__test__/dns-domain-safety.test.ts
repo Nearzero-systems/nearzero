@@ -178,7 +178,7 @@ describe("managed DNS target safety", () => {
 });
 
 describe("managed hostname plans", () => {
-	it("uses the zone apex for production and an environment label otherwise", () => {
+	it("uses the zone apex directly and only adds a domain prefix when configured", () => {
 		expect(
 			buildManagedServiceHost({
 				serviceName: "Web App",
@@ -197,7 +197,7 @@ describe("managed hostname plans", () => {
 				environment: {
 					name: "staging",
 					isDefault: false,
-					domainPrefix: null,
+					domainPrefix: "staging",
 				},
 			}),
 		).toBe("web-app.staging.veritus.space");

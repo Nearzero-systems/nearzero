@@ -46,11 +46,7 @@ export function buildManagedServiceHost(input: {
 	if (prefix) {
 		return `${slug}.${prefix}.${zone}`;
 	}
-	if (isProductionEnvironment(input.environment)) {
-		return `${slug}.${zone}`;
-	}
-	const envLabel = slugifyServiceName(input.environment.name) || "env";
-	return `${slug}.${envLabel}.${zone}`;
+	return `${slug}.${zone}`;
 }
 
 export function buildManagedPreviewHost(input: {
@@ -149,6 +145,42 @@ export function platformDomainWildcardDnsHint(
 	targetIp: string,
 ) {
 	return `Point *.${platformApex} at ${targetIp} so app hostnames resolve and HTTPS can be issued. Keep ${platformApex} on the Nearzero host.`;
+}
+
+export function platformDomainDnsSetupHints(input: {
+	host: string;
+	platformApex: string;
+	targetIp: string;
+}) {
+	const apex = normalizeDnsZoneName(input.platformApex);
+	const host = normalizeDnsHostname(input.host);
+	return [
+		`Wildcard A: *.${apex} → ${input.targetIp} (recommended for many services). Keep ${apex} on the Nearzero host.`,
+		`Per-host A or CNAME: ${host} A ${input.targetIp}, or ${host} CNAME → a hostname that already resolves to ${input.targetIp}.`,
+		`Managed DNS (NS): create a zone for ${apex} in Nearzero, delegate NS at your registrar, bind it to this environment, and Nearzero publishes A records after deploy.`,
+	];
+}
+
+export function managedZoneDnsSetupHints(input: {
+	host: string;
+	zoneName: string;
+	targetIp: string | null;
+	zoneActive: boolean;
+}) {
+	const host = normalizeDnsHostname(input.host);
+	const zone = normalizeDnsZoneName(input.zoneName);
+	if (input.zoneActive && input.targetIp) {
+		return [
+			`Nearzero will publish ${host} A ${input.targetIp} after deploy.`,
+			`If the zone is not delegated yet, update NS records at your registrar to the Nearzero nameservers shown in Settings → DNS.`,
+		];
+	}
+	return [
+		`Delegate ${zone} to Nearzero nameservers in Settings → DNS, publish the zone, then deploy.`,
+		input.targetIp
+			? `After delegation, Nearzero will publish ${host} A ${input.targetIp}.`
+			: `After delegation, Nearzero will publish an A record for ${host}.`,
+	];
 }
 
 export function buildPlatformDefaultServiceHost(input: {
