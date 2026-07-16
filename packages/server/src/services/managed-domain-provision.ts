@@ -1,9 +1,9 @@
-import { getPlatformDefaultDomain } from "@nearzero/server/constants";
 import { db } from "@nearzero/server/db";
 import { dnsZones, previewDeployments } from "@nearzero/server/db/schema";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { normalizeDnsHostname } from "../utils/dns/zone-file";
+import { serviceSpecReferencesNetwork } from "../utils/docker/utils";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
 import {
 	loadOrCreateConfig,
@@ -32,11 +32,11 @@ import { findEnvironmentById, findEnvironmentForDomain } from "./environment";
 import {
 	buildManagedPreviewHost,
 	buildManagedServiceHost,
-	buildPlatformDefaultPreviewHost,
-	buildPlatformDefaultServiceHost,
 	buildPreviewServiceSlug,
 	canUsePlatformDomainForServer,
 	isNearzeroAssignedDomain,
+	platformDomainWildcardDnsHint,
+	resolvePlatformDefaultDomain,
 	slugifyServiceName,
 } from "./managed-domain";
 import { getWebServerSettings } from "./web-server-settings";
@@ -329,7 +329,7 @@ export async function resolvePreviewDomainPlan(input: {
 		serviceName: input.serviceName,
 		applicationId: input.applicationId,
 	});
-	const platformApex = getPlatformDefaultDomain();
+	const platformApex = await resolvePlatformDefaultDomain();
 	const targetIp = await resolveDomainTargetIp(input.serverId).catch(
 		() => null,
 	);
@@ -359,13 +359,13 @@ export async function resolvePreviewDomainPlan(input: {
 		};
 	}
 
-	if (platformApex && canUsePlatformDomainForServer(input.serverId)) {
+	if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
 		return {
 			mode: "platform",
-			host: buildPlatformDefaultPreviewHost({
-				previewSlug,
-				projectName: input.projectName,
-				organizationId: env.project.organizationId,
+			host: buildManagedPreviewHost({
+				appName: previewSlug,
+				zoneName: platformApex,
+				targetIp: targetIp ?? "",
 			}),
 			targetIp,
 			managedByNearzero: false,
@@ -567,11 +567,11 @@ export async function verifyApplicationDomainRoute(input: {
 	let networkOk = false;
 	try {
 		const docker = await getRemoteDocker(input.serverId);
-		const service = await docker.getService(input.appName).inspect();
-		const networks = service.Spec?.TaskTemplate?.Networks ?? [];
-		networkOk = networks.some(
-			(network: { Target?: string }) => network.Target === "nearzero-network",
-		);
+		const [service, nearzeroNetwork] = await Promise.all([
+			docker.getService(input.appName).inspect(),
+			docker.getNetwork("nearzero-network").inspect(),
+		]);
+		networkOk = serviceSpecReferencesNetwork(service, nearzeroNetwork);
 		messages.push(
 			networkOk
 				? "Network verified: service is attached to nearzero-network"
@@ -594,7 +594,7 @@ export async function previewServiceDomain(
 ): Promise<PreviewServiceDomainResult> {
 	const warnings: string[] = [];
 	const env = await findEnvironmentForDomain(input.environmentId);
-	const platformApex = getPlatformDefaultDomain();
+	const platformApex = await resolvePlatformDefaultDomain();
 
 	let targetIp: string | null = null;
 	let ipSource: "webServer" | "remoteServer" | null = null;
@@ -630,21 +630,18 @@ export async function previewServiceDomain(
 			});
 			mode = "org-zone";
 		}
-	} else if (platformApex && canUsePlatformDomainForServer(input.serverId)) {
-		host = buildPlatformDefaultServiceHost({
+	} else if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
+		host = buildManagedServiceHost({
 			serviceName: input.serviceName,
-			projectName: env.project.name,
-			organizationId: env.project.organizationId,
+			zoneName: platformApex,
 			environment: env,
 		});
 		zoneName = platformApex;
 		mode = "platform";
-	} else if (targetIp) {
-		if (platformApex && input.serverId) {
-			warnings.push(
-				"The platform apex is not a per-server DNS service. Bind a Nearzero-managed zone to use that domain on this remote server.",
-			);
+		if (input.serverId && targetIp) {
+			warnings.push(platformDomainWildcardDnsHint(platformApex, targetIp));
 		}
+	} else if (targetIp) {
 		host = buildManagedPreviewHost({
 			appName: input.serviceName,
 			zoneName: "sslip.io",
@@ -680,7 +677,7 @@ export async function provisionServiceDomain(
 		);
 	}
 	const env = await findEnvironmentForDomain(input.environmentId);
-	const platformApex = getPlatformDefaultDomain();
+	const platformApex = await resolvePlatformDefaultDomain();
 	const path = input.path ?? "/";
 	const attachedDomains =
 		input.domainType === "application"
@@ -746,11 +743,10 @@ export async function provisionServiceDomain(
 		return domain;
 	}
 
-	if (platformApex && canUsePlatformDomainForServer(input.serverId)) {
-		const host = buildPlatformDefaultServiceHost({
+	if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
+		const host = buildManagedServiceHost({
 			serviceName: input.serviceName,
-			projectName: env.project.name,
-			organizationId: env.project.organizationId,
+			zoneName: platformApex,
 			environment: env,
 		});
 		const resolved = await resolveProvisionedHost({
@@ -1021,7 +1017,7 @@ export async function reconcileEnvironmentDefaultDomains(
 export async function getManagedDnsReadiness(organizationId: string) {
 	const settings = await getWebServerSettings();
 	const zones = await checkDnsHealth(organizationId);
-	const platformApex = getPlatformDefaultDomain();
+	const platformApex = await resolvePlatformDefaultDomain();
 	return {
 		platformApex,
 		platformDefaultEnabled: Boolean(platformApex),

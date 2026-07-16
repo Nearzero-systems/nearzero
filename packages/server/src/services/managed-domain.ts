@@ -5,6 +5,7 @@ import {
 	normalizeDnsHostname,
 	normalizeDnsZoneName,
 } from "@nearzero/server/utils/dns/zone-file";
+import { getWebServerSettings } from "./web-server-settings";
 
 type EnvironmentDns = Pick<
 	typeof environments.$inferSelect,
@@ -116,12 +117,38 @@ export function isManagedWildcardZone(zoneName: string) {
 	}
 }
 
-export function canUsePlatformDomainForServer(serverId?: string | null) {
+export function normalizeConfiguredPlatformApex(
+	value: string | null | undefined,
+): string | null {
+	const raw = value?.trim().toLowerCase().replace(/\.$/, "");
+	if (!raw) return null;
+	const withoutScheme = raw.replace(/^https?:\/\//, "").split("/")[0] ?? "";
+	const host = withoutScheme.split(":")[0]?.trim();
+	return host || null;
+}
+
+/** Env apex first, then the configured public web-server host. */
+export async function resolvePlatformDefaultDomain(): Promise<string | null> {
+	const fromEnv = getPlatformDefaultDomain();
+	if (fromEnv) return fromEnv;
+	const settings = await getWebServerSettings();
+	return normalizeConfiguredPlatformApex(settings?.host ?? null);
+}
+
+export function canUsePlatformDomainForServer(
+	serverId?: string | null,
+	platformApex?: string | null,
+) {
+	if (!platformApex) return false;
 	if (!serverId) return true;
-	return (
-		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE?.trim().toLowerCase() ===
-		"true"
-	);
+	return true;
+}
+
+export function platformDomainWildcardDnsHint(
+	platformApex: string,
+	targetIp: string,
+) {
+	return `Point *.${platformApex} at ${targetIp} so app hostnames resolve and HTTPS can be issued. Keep ${platformApex} on the Nearzero host.`;
 }
 
 export function buildPlatformDefaultServiceHost(input: {
@@ -150,5 +177,3 @@ export function buildPlatformDefaultServiceHost(input: {
 	const envLabel = slugifyServiceName(input.environment.name) || "env";
 	return `${service}.${envLabel}.${project}.${zone}`;
 }
-
-export { getPlatformDefaultDomain };

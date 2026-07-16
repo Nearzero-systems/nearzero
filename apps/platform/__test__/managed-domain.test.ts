@@ -4,9 +4,19 @@ import {
 	buildPlatformDefaultServiceHost,
 	canUsePlatformDomainForServer,
 	isNearzeroAssignedDomain,
+	normalizeConfiguredPlatformApex,
+	platformDomainWildcardDnsHint,
+	resolvePlatformDefaultDomain,
 	slugifyServiceName,
 } from "@nearzero/server/services/managed-domain";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mockGetWebServerSettings = vi.fn();
+
+vi.mock("@nearzero/server/services/web-server-settings", () => ({
+	getWebServerSettings: (...args: unknown[]) =>
+		mockGetWebServerSettings(...args),
+}));
 
 describe("slugifyServiceName", () => {
 	it("normalizes service labels", () => {
@@ -89,25 +99,76 @@ describe("buildManagedServiceHost", () => {
 });
 
 describe("platform domain routing scope", () => {
-	const original = process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
-
-	afterEach(() => {
-		if (original === undefined) {
-			delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
-		} else {
-			process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = original;
-		}
-	});
-
-	it("uses a platform wildcard locally but not for a direct remote server", () => {
-		delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
-		expect(canUsePlatformDomainForServer(null)).toBe(true);
+	it("requires a configured platform apex", () => {
+		expect(canUsePlatformDomainForServer(null)).toBe(false);
 		expect(canUsePlatformDomainForServer("remote-server-id")).toBe(false);
 	});
 
-	it("allows remote use only when a shared edge is explicitly configured", () => {
-		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = "true";
-		expect(canUsePlatformDomainForServer("remote-server-id")).toBe(true);
+	it("allows platform hostnames locally and on remote servers when an apex exists", () => {
+		expect(canUsePlatformDomainForServer(null, "veritus.space")).toBe(true);
+		expect(canUsePlatformDomainForServer("remote-server-id", "veritus.space")).toBe(
+			true,
+		);
+	});
+});
+
+describe("resolvePlatformDefaultDomain", () => {
+	const original = process.env.NEARZERO_PLATFORM_DOMAIN;
+
+	beforeEach(() => {
+		mockGetWebServerSettings.mockReset();
+	});
+
+	afterEach(() => {
+		if (original === undefined) {
+			delete process.env.NEARZERO_PLATFORM_DOMAIN;
+		} else {
+			process.env.NEARZERO_PLATFORM_DOMAIN = original;
+		}
+	});
+
+	it("returns the env apex when configured", async () => {
+		process.env.NEARZERO_PLATFORM_DOMAIN = "Example.COM.";
+		mockGetWebServerSettings.mockResolvedValue({ host: "veritus.space" });
+		await expect(resolvePlatformDefaultDomain()).resolves.toBe("example.com");
+	});
+
+	it("falls back to the configured web-server host", async () => {
+		delete process.env.NEARZERO_PLATFORM_DOMAIN;
+		mockGetWebServerSettings.mockResolvedValue({ host: "https://Veritus.Space/" });
+		await expect(resolvePlatformDefaultDomain()).resolves.toBe("veritus.space");
+	});
+});
+
+describe("platform hostname helpers", () => {
+	it("normalizes configured apex values", () => {
+		expect(normalizeConfiguredPlatformApex("https://Veritus.Space/console")).toBe(
+			"veritus.space",
+		);
+		expect(normalizeConfiguredPlatformApex("")).toBeNull();
+	});
+
+	it("builds short managed hostnames under the platform apex", () => {
+		expect(
+			buildManagedServiceHost({
+				serviceName: "backend",
+				zoneName: "veritus.space",
+				environment: {
+					name: "development",
+					isDefault: false,
+					domainPrefix: null,
+				},
+			}),
+		).toBe("backend.development.veritus.space");
+	});
+
+	it("documents the wildcard DNS requirement for remote app servers", () => {
+		expect(platformDomainWildcardDnsHint("veritus.space", "13.51.16.1")).toContain(
+			"*.veritus.space",
+		);
+		expect(platformDomainWildcardDnsHint("veritus.space", "13.51.16.1")).toContain(
+			"13.51.16.1",
+		);
 	});
 });
 

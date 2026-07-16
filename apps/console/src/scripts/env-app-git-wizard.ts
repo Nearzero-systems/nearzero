@@ -1499,7 +1499,7 @@ export function mountApplicationImportPage(root: HTMLElement) {
 			preview.mode === "org-zone"
 				? "Managed DNS hostname"
 				: preview.mode === "platform"
-					? "Nearzero platform hostname"
+					? "Platform hostname"
 					: preview.mode === "preview"
 						? "Temporary IP-based hostname"
 						: "Suggested hostname";
@@ -1510,7 +1510,9 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		const setupHint =
 			preview.mode === "preview"
 				? '<br /><span class="text-amber-700">No default application domain is configured, so this points directly to the selected server.</span>'
-				: "";
+				: preview.mode === "platform" && preview.platformApex && preview.targetIp
+					? `<br /><span class="text-amber-700">Point *.${escapeAttr(preview.platformApex)} at ${escapeAttr(preview.targetIp)} so app hostnames resolve and HTTPS can be issued. Keep ${escapeAttr(preview.platformApex)} on the Nearzero host.</span>`
+					: "";
 		domainPreviewEl.innerHTML = `<strong>${escapeAttr(preview.host ?? "")}</strong><br />${escapeAttr(modeLabel)}${warn}${setupHint}`;
 
 		if (preview.mode === "org-zone") {

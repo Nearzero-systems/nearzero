@@ -1270,6 +1270,50 @@ export const calculateResources = ({
 	};
 };
 
+/**
+ * After create/update, Swarm rewrites TaskTemplate.Networks[].Target from the
+ * network name to the network ID. Match either form (and Endpoint VirtualIPs)
+ * so Traefik-reachability checks are not false negatives.
+ */
+export function serviceSpecReferencesNetwork(
+	service: {
+		Spec?: {
+			Networks?: Array<{ Target?: string }>;
+			TaskTemplate?: { Networks?: Array<{ Target?: string }> };
+		};
+		Endpoint?: { VirtualIPs?: Array<{ NetworkID?: string }> };
+	},
+	network: { Id?: string; Name?: string },
+	networkName = "nearzero-network",
+) {
+	const accepted = new Set<string>();
+	if (networkName) accepted.add(networkName);
+	if (network.Name) accepted.add(network.Name);
+	if (network.Id) {
+		accepted.add(network.Id);
+		if (network.Id.length >= 12) accepted.add(network.Id.slice(0, 12));
+	}
+
+	const targets = new Set<string>();
+	for (const attachment of [
+		...(service.Spec?.TaskTemplate?.Networks ?? []),
+		...(service.Spec?.Networks ?? []),
+	]) {
+		if (attachment?.Target) targets.add(attachment.Target);
+	}
+	for (const vip of service.Endpoint?.VirtualIPs ?? []) {
+		if (vip?.NetworkID) targets.add(vip.NetworkID);
+	}
+
+	for (const target of targets) {
+		if (accepted.has(target)) return true;
+		if (network.Id && (network.Id.startsWith(target) || target.startsWith(network.Id))) {
+			return true;
+		}
+	}
+	return false;
+}
+
 export const generateConfigContainer = (
 	application: Partial<ApplicationNested>,
 ) => {

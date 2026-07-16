@@ -1,4 +1,7 @@
-import { generateConfigContainer } from "@nearzero/server/utils/docker/utils";
+import {
+	generateConfigContainer,
+	serviceSpecReferencesNetwork,
+} from "@nearzero/server/utils/docker/utils";
 import { describe, expect, it } from "vitest";
 
 describe("application routing service spec", () => {
@@ -27,5 +30,43 @@ describe("application routing service spec", () => {
 		});
 
 		expect(config.Networks).toEqual([{ Target: "nearzero-network" }]);
+	});
+
+	it("treats Swarm network IDs as attached to nearzero-network", () => {
+		const networkId = "fsf1dmx3i9q75an49z36jycxd";
+		expect(
+			serviceSpecReferencesNetwork(
+				{
+					Spec: {
+						TaskTemplate: {
+							Networks: [{ Target: networkId }],
+						},
+					},
+				},
+				{ Id: networkId, Name: "nearzero-network" },
+			),
+		).toBe(true);
+		expect(
+			serviceSpecReferencesNetwork(
+				{
+					Endpoint: {
+						VirtualIPs: [{ NetworkID: networkId }],
+					},
+				},
+				{ Id: `${networkId}deadbeef`, Name: "nearzero-network" },
+			),
+		).toBe(true);
+		expect(
+			serviceSpecReferencesNetwork(
+				{
+					Spec: {
+						TaskTemplate: {
+							Networks: [{ Target: "other-network-id" }],
+						},
+					},
+				},
+				{ Id: networkId, Name: "nearzero-network" },
+			),
+		).toBe(false);
 	});
 });

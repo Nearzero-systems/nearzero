@@ -43,7 +43,7 @@ export const DOCKER_COMPOSE_BOOTSTRAP_VERSION = "5.1.4";
 export const BUN_BOOTSTRAP_VERSION = "1.3.10";
 export const PNPM_BOOTSTRAP_VERSION = "10.34.0";
 export const MONITORING_BOOTSTRAP_IMAGE =
-	"ghcr.io/nearzero-systems/monitoring:0.1.31";
+	"ghcr.io/nearzero-systems/monitoring:0.1.32";
 
 const generateToken = () => {
 	const array = new Uint8Array(64);

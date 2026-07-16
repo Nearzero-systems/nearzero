@@ -43,7 +43,7 @@ test("uses an explicit monitoring image without rewriting it", () => {
 	process.env.NEARZERO_MONITORING_IMAGE =
 		"registry.example/monitoring@sha256:0123456789abcdef";
 	process.env.NEARZERO_MONITORING_IMAGE_TAG = "nightly";
-	process.env.RELEASE_TAG = "0.1.31";
+	process.env.RELEASE_TAG = "0.1.32";
 
 	expect(getMonitoringImageCandidates()).toEqual([
 		"registry.example/monitoring@sha256:0123456789abcdef",
@@ -55,7 +55,7 @@ test("propagates versioned and channel release tags to monitoring", () => {
 	delete process.env.NEARZERO_MONITORING_IMAGE_TAG;
 	process.env.NODE_ENV = "production";
 
-	for (const releaseTag of ["0.1.31", "latest", "nightly"]) {
+	for (const releaseTag of ["0.1.32", "latest", "nightly"]) {
 		process.env.RELEASE_TAG = releaseTag;
 		expect(getMonitoringImageCandidates()).toEqual([
 			`ghcr.io/nearzero-systems/monitoring:${releaseTag}`,
