@@ -20,6 +20,7 @@ import {
 	reconcileComposeDomainRoutes,
 	withDomainRoutingMutationLock,
 } from "./compose";
+import { rethrowUnlessSchemaDrift } from "./db-schema-error";
 import { deleteManagedDnsRecordForDomain } from "./dns";
 import {
 	assertExternalDomainPointsToServer,
@@ -109,104 +110,108 @@ export async function listCentralizedDomains(
 	userId: string,
 	userRole: string,
 ): Promise<CentralizedDomainRow[]> {
-	const accessedServices = await getAccessedServices(
-		userId,
-		organizationId,
-		userRole,
-	);
+	try {
+		const accessedServices = await getAccessedServices(
+			userId,
+			organizationId,
+			userRole,
+		);
 
-	const rows = await db.query.domains.findMany({
-		where: and(isNull(domains.previewDeploymentId)),
-		with: {
-			application: {
-				with: {
-					environment: {
-						with: { project: true },
+		const rows = await db.query.domains.findMany({
+			where: and(isNull(domains.previewDeploymentId)),
+			with: {
+				application: {
+					with: {
+						environment: {
+							with: { project: true },
+						},
+					},
+				},
+				compose: {
+					with: {
+						environment: {
+							with: { project: true },
+						},
 					},
 				},
 			},
-			compose: {
-				with: {
-					environment: {
-						with: { project: true },
-					},
-				},
-			},
-		},
-		orderBy: [asc(domains.host)],
-	});
-
-	const result: CentralizedDomainRow[] = [];
-
-	for (const row of rows) {
-		const app = row.application;
-		const comp = row.compose;
-		const serviceId = row.applicationId ?? row.composeId;
-
-		const rowOrgId =
-			row.organizationId ??
-			app?.environment?.project?.organizationId ??
-			comp?.environment?.project?.organizationId;
-		if (rowOrgId !== organizationId) continue;
-
-		if (accessedServices !== null) {
-			const isLibrary = !serviceId;
-			if (!isLibrary && serviceId && !accessedServices.includes(serviceId)) {
-				continue;
-			}
-		}
-
-		let projectId: string | null = null;
-		let projectName: string | null = null;
-		let environmentId: string | null = null;
-		let environmentName: string | null = null;
-		let serviceLabel: string | null = null;
-		let serviceType: "application" | "compose" | null = null;
-		let href: string | null = null;
-
-		if (app?.environment?.project) {
-			projectId = app.environment.project.projectId;
-			projectName = app.environment.project.name;
-			environmentId = app.environment.environmentId;
-			environmentName = app.environment.name;
-			serviceLabel = app.name;
-			serviceType = "application";
-			href = `/dashboard/project/${projectId}/environment/${environmentId}/services/application/${app.applicationId}`;
-		} else if (comp?.environment?.project) {
-			projectId = comp.environment.project.projectId;
-			projectName = comp.environment.project.name;
-			environmentId = comp.environment.environmentId;
-			environmentName = comp.environment.name;
-			serviceLabel = comp.name;
-			serviceType = "compose";
-			href = `/dashboard/project/${projectId}/environment/${environmentId}/services/compose/${comp.composeId}`;
-		}
-
-		result.push({
-			domainId: row.domainId,
-			host: row.host,
-			https: row.https,
-			dnsMode: row.dnsMode ?? "external",
-			managedByNearzero: row.managedByNearzero,
-			dnsZoneId: row.dnsZoneId,
-			dnsRecordId: row.dnsRecordId,
-			domainType: row.domainType,
-			serviceName: row.serviceName,
-			applicationId: row.applicationId,
-			composeId: row.composeId,
-			previewDeploymentId: row.previewDeploymentId,
-			projectId,
-			projectName,
-			environmentId,
-			environmentName,
-			serviceLabel,
-			serviceType,
-			href,
-			status: domainStatus(row),
+			orderBy: [asc(domains.host)],
 		});
-	}
 
-	return result;
+		const result: CentralizedDomainRow[] = [];
+
+		for (const row of rows) {
+			const app = row.application;
+			const comp = row.compose;
+			const serviceId = row.applicationId ?? row.composeId;
+
+			const rowOrgId =
+				row.organizationId ??
+				app?.environment?.project?.organizationId ??
+				comp?.environment?.project?.organizationId;
+			if (rowOrgId !== organizationId) continue;
+
+			if (accessedServices !== null) {
+				const isLibrary = !serviceId;
+				if (!isLibrary && serviceId && !accessedServices.includes(serviceId)) {
+					continue;
+				}
+			}
+
+			let projectId: string | null = null;
+			let projectName: string | null = null;
+			let environmentId: string | null = null;
+			let environmentName: string | null = null;
+			let serviceLabel: string | null = null;
+			let serviceType: "application" | "compose" | null = null;
+			let href: string | null = null;
+
+			if (app?.environment?.project) {
+				projectId = app.environment.project.projectId;
+				projectName = app.environment.project.name;
+				environmentId = app.environment.environmentId;
+				environmentName = app.environment.name;
+				serviceLabel = app.name;
+				serviceType = "application";
+				href = `/dashboard/project/${projectId}/environment/${environmentId}/services/application/${app.applicationId}`;
+			} else if (comp?.environment?.project) {
+				projectId = comp.environment.project.projectId;
+				projectName = comp.environment.project.name;
+				environmentId = comp.environment.environmentId;
+				environmentName = comp.environment.name;
+				serviceLabel = comp.name;
+				serviceType = "compose";
+				href = `/dashboard/project/${projectId}/environment/${environmentId}/services/compose/${comp.composeId}`;
+			}
+
+			result.push({
+				domainId: row.domainId,
+				host: row.host,
+				https: row.https,
+				dnsMode: row.dnsMode ?? "external",
+				managedByNearzero: row.managedByNearzero,
+				dnsZoneId: row.dnsZoneId,
+				dnsRecordId: row.dnsRecordId,
+				domainType: row.domainType,
+				serviceName: row.serviceName,
+				applicationId: row.applicationId,
+				composeId: row.composeId,
+				previewDeploymentId: row.previewDeploymentId,
+				projectId,
+				projectName,
+				environmentId,
+				environmentName,
+				serviceLabel,
+				serviceType,
+				href,
+				status: domainStatus(row),
+			});
+		}
+
+		return result;
+	} catch (error) {
+		rethrowUnlessSchemaDrift(error, "Domain hostnames");
+	}
 }
 
 export async function registerDomain(
@@ -632,65 +637,69 @@ export async function listEnvironmentDnsBindings(
 	userId: string,
 	userRole: string,
 ): Promise<EnvironmentDnsBindingRow[]> {
-	const accessedServices = await getAccessedServices(
-		userId,
-		organizationId,
-		userRole,
-	);
-
-	const envFilter = eq(projects.organizationId, organizationId);
-
-	const rows = await db
-		.select({
-			environmentId: environments.environmentId,
-			environmentName: environments.name,
-			projectId: projects.projectId,
-			projectName: projects.name,
-			dnsZoneId: environments.dnsZoneId,
-			domainPrefix: environments.domainPrefix,
-			zoneName: dnsZones.name,
-		})
-		.from(environments)
-		.innerJoin(projects, eq(environments.projectId, projects.projectId))
-		.leftJoin(dnsZones, eq(environments.dnsZoneId, dnsZones.dnsZoneId))
-		.where(envFilter)
-		.orderBy(asc(projects.name), asc(environments.name));
-
-	if (accessedServices !== null) {
-		if (accessedServices.length === 0) return [];
-		const [appEnvIds, composeEnvIds] = await Promise.all([
-			db
-				.selectDistinct({ environmentId: applications.environmentId })
-				.from(applications)
-				.where(inArray(applications.applicationId, accessedServices)),
-			db
-				.selectDistinct({ environmentId: compose.environmentId })
-				.from(compose)
-				.where(inArray(compose.composeId, accessedServices)),
-		]);
-		const allowed = new Set(
-			[...appEnvIds, ...composeEnvIds].map((r) => r.environmentId),
+	try {
+		const accessedServices = await getAccessedServices(
+			userId,
+			organizationId,
+			userRole,
 		);
-		return rows
-			.filter((row) => allowed.has(row.environmentId))
-			.map((row) => ({
-				environmentId: row.environmentId,
-				environmentName: row.environmentName,
-				projectId: row.projectId,
-				projectName: row.projectName,
-				dnsZoneId: row.dnsZoneId,
-				zoneName: row.zoneName,
-				domainPrefix: row.domainPrefix,
-			}));
-	}
 
-	return rows.map((row) => ({
-		environmentId: row.environmentId,
-		environmentName: row.environmentName,
-		projectId: row.projectId,
-		projectName: row.projectName,
-		dnsZoneId: row.dnsZoneId,
-		zoneName: row.zoneName,
-		domainPrefix: row.domainPrefix,
-	}));
+		const envFilter = eq(projects.organizationId, organizationId);
+
+		const rows = await db
+			.select({
+				environmentId: environments.environmentId,
+				environmentName: environments.name,
+				projectId: projects.projectId,
+				projectName: projects.name,
+				dnsZoneId: environments.dnsZoneId,
+				domainPrefix: environments.domainPrefix,
+				zoneName: dnsZones.name,
+			})
+			.from(environments)
+			.innerJoin(projects, eq(environments.projectId, projects.projectId))
+			.leftJoin(dnsZones, eq(environments.dnsZoneId, dnsZones.dnsZoneId))
+			.where(envFilter)
+			.orderBy(asc(projects.name), asc(environments.name));
+
+		if (accessedServices !== null) {
+			if (accessedServices.length === 0) return [];
+			const [appEnvIds, composeEnvIds] = await Promise.all([
+				db
+					.selectDistinct({ environmentId: applications.environmentId })
+					.from(applications)
+					.where(inArray(applications.applicationId, accessedServices)),
+				db
+					.selectDistinct({ environmentId: compose.environmentId })
+					.from(compose)
+					.where(inArray(compose.composeId, accessedServices)),
+			]);
+			const allowed = new Set(
+				[...appEnvIds, ...composeEnvIds].map((r) => r.environmentId),
+			);
+			return rows
+				.filter((row) => allowed.has(row.environmentId))
+				.map((row) => ({
+					environmentId: row.environmentId,
+					environmentName: row.environmentName,
+					projectId: row.projectId,
+					projectName: row.projectName,
+					dnsZoneId: row.dnsZoneId,
+					zoneName: row.zoneName,
+					domainPrefix: row.domainPrefix,
+				}));
+		}
+
+		return rows.map((row) => ({
+			environmentId: row.environmentId,
+			environmentName: row.environmentName,
+			projectId: row.projectId,
+			projectName: row.projectName,
+			dnsZoneId: row.dnsZoneId,
+			zoneName: row.zoneName,
+			domainPrefix: row.domainPrefix,
+		}));
+	} catch (error) {
+		rethrowUnlessSchemaDrift(error, "Environment DNS bindings");
+	}
 }

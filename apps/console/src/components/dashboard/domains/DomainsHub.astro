@@ -102,6 +102,13 @@ if (bootstrap.ok) {
 
 		if (canDomain) {
 			const canDns = !!permissions?.dns?.read;
+			const errorMessage = (reason: unknown) => {
+				if (reason instanceof Error && reason.message.trim()) {
+					return reason.message.trim();
+				}
+				return "Request failed";
+			};
+
 			const settled = await Promise.allSettled([
 				canDns
 					? (api.dns.zones.list.query() as Promise<ZoneRow[]>)
@@ -117,16 +124,10 @@ if (bootstrap.ok) {
 				api.project.all.query() as Promise<unknown[]>,
 			]);
 
-			const errors: string[] = [];
 			const take = <T,>(index: number, fallback: T): T => {
 				const result = settled[index];
 				if (!result) return fallback;
 				if (result.status === "fulfilled") return result.value as T;
-				errors.push(
-					result.reason instanceof Error
-						? result.reason.message
-						: "Request failed",
-				);
 				return fallback;
 			};
 
@@ -137,8 +138,11 @@ if (bootstrap.ok) {
 			bindings = take(4, [] as BindingRow[]);
 			projects = take(5, [] as unknown[]);
 
-			if (errors.length > 0) {
-				domainsDataError = errors[0] ?? "Could not load domain data.";
+			// Hostnames are the primary Domains view — only that failure is a hard error.
+			// DNS/bindings/projects failures must not wipe or block the hostname list.
+			const hostnamesResult = settled[3];
+			if (hostnamesResult?.status === "rejected") {
+				domainsDataError = errorMessage(hostnamesResult.reason);
 			}
 		}
 		if (canCert) {

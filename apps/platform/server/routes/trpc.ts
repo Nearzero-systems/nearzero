@@ -16,20 +16,26 @@ export async function handleTrpc(req: IncomingMessage, res: ServerResponse) {
 		router: appRouter,
 		createContext: createTRPCContext,
 		maxBodySize: ONE_GB,
-		onError:
-			process.env.NODE_ENV === "development"
-				? ({ path: trpcPath, error }) => {
-						const cause = error.cause;
-						if (cause instanceof ExecError) {
-							console.error(
-								`❌ tRPC failed on ${trpcPath ?? "<no-path>"}: ${cause.toUserMessage()}`,
-							);
-							return;
-						}
-						console.error(
-							`❌ tRPC failed on ${trpcPath ?? "<no-path>"}: ${error.message}`,
-						);
-					}
-				: undefined,
+		onError: ({ path: trpcPath, error }) => {
+			const cause = error.cause;
+			if (cause instanceof ExecError) {
+				console.error(
+					`❌ tRPC failed on ${trpcPath ?? "<no-path>"}: ${cause.toUserMessage()}`,
+				);
+				return;
+			}
+			// Always log opaque INTERNAL errors in production so schema/auth
+			// failures are visible in `docker logs nearzero-platform-1`.
+			if (
+				process.env.NODE_ENV === "development" ||
+				error.code === "INTERNAL_SERVER_ERROR" ||
+				error.code === "PRECONDITION_FAILED"
+			) {
+				console.error(
+					`❌ tRPC failed on ${trpcPath ?? "<no-path>"}: ${error.message}`,
+					cause ?? "",
+				);
+			}
+		},
 	});
 }

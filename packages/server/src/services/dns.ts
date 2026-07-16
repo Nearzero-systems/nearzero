@@ -34,6 +34,7 @@ import {
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
+import { rethrowUnlessSchemaDrift } from "./db-schema-error";
 import {
 	MANAGED_DNS_SETUP_ERROR_CODE,
 	ManagedDnsSetupError,
@@ -277,11 +278,15 @@ export async function createDnsZone(
 }
 
 export async function listDnsZones(organizationId: string) {
-	return db.query.dnsZones.findMany({
-		where: eq(dnsZones.organizationId, organizationId),
-		with: { records: true },
-		orderBy: [asc(dnsZones.name)],
-	});
+	try {
+		return await db.query.dnsZones.findMany({
+			where: eq(dnsZones.organizationId, organizationId),
+			with: { records: true },
+			orderBy: [asc(dnsZones.name)],
+		});
+	} catch (error) {
+		rethrowUnlessSchemaDrift(error, "DNS zones");
+	}
 }
 
 export async function findDnsZoneById(
