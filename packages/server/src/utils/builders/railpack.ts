@@ -5,6 +5,7 @@ import type { ApplicationNested } from ".";
 import {
 	getBuildRuntimePreamble,
 	PROTECTED_BUILD_CONTEXT_PATHS,
+	PROTECTED_BUILD_MATERIAL_JQ_FILTER,
 	resolveImmutableBuilderImage,
 } from "./utils";
 
@@ -127,7 +128,7 @@ for NZ_RAILPACK_ARTIFACT in ${quote([planPath])} ${quote([infoPath])}; do
 	while IFS= read -r NZ_BUILD_KEY; do
 		[ -n "$NZ_BUILD_KEY" ] || continue
 		if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
-			'[recurse | strings | select(($nearzeroSecret | length) > 0 and contains($nearzeroSecret))] | length == 0' \
+			${quote([PROTECTED_BUILD_MATERIAL_JQ_FILTER])} \
 			"$NZ_RAILPACK_ARTIFACT" >/dev/null; then
 			echo "Railpack generated an artifact containing protected build material" >&2
 			exit 66
@@ -166,7 +167,7 @@ for NZ_RAILPACK_ARTIFACT in ${quote([planPath])} ${quote([infoPath])}; do
 	while IFS= read -r NZ_BUILD_KEY; do
 		[ -n "$NZ_BUILD_KEY" ] || continue
 		if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
-			'[recurse | strings | select(($nearzeroSecret | length) > 0 and contains($nearzeroSecret))] | length == 0' \
+			${quote([PROTECTED_BUILD_MATERIAL_JQ_FILTER])} \
 			"$NZ_RAILPACK_ARTIFACT" >/dev/null; then
 			echo "Railpack artifact failed the protected-material check" >&2
 			exit 66

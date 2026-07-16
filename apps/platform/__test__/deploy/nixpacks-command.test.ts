@@ -12,9 +12,11 @@ import path from "node:path";
 import { paths } from "@nearzero/server/constants";
 import {
 	getNixpacksCommand,
+	NIXPACKS_DOCKER_WRAPPER_SCRIPT,
 	NIXPACKS_PLAN_NORMALIZATION_FILTER,
 	NIXPACKS_VERSIONED_PACKAGE_MANAGER_NIX_PATTERN,
 } from "@nearzero/server/utils/builders/nixpacks";
+import { NEARZERO_BUILD_ENV_SECRET_ID } from "@nearzero/server/utils/builders/utils";
 import { describe, expect, it } from "vitest";
 
 const createApplication = (overrides = {}) =>
@@ -515,6 +517,80 @@ describe("getNixpacksCommand", () => {
 			expect(normalized.phases.install.cmds[0]).toContain(expectedBootstrap);
 		},
 	);
+
+	it("preserves nixpacks-style docker build context before -f/-t options", () => {
+		const tempDirectory = mkdtempSync(
+			path.join(os.tmpdir(), "nearzero-nixpacks-docker-wrapper-"),
+		);
+		const fakeBin = path.join(tempDirectory, "bin");
+		const patchDir = path.join(tempDirectory, "patch");
+		const capturePath = path.join(tempDirectory, "docker-argv.json");
+		const dockerfilePath = path.join(tempDirectory, "Dockerfile");
+		const contextPath = path.join(tempDirectory, "context");
+		const secretFile = path.join(tempDirectory, "secrets.env");
+		const secretKeysFile = path.join(tempDirectory, "secret.keys");
+		const wrapperPath = path.join(tempDirectory, "docker");
+		const fakeDockerPath = path.join(fakeBin, "real-docker");
+
+		mkdirSync(fakeBin, { recursive: true });
+		mkdirSync(patchDir, { recursive: true });
+		mkdirSync(contextPath, { recursive: true });
+		writeFileSync(dockerfilePath, "FROM scratch\nRUN echo hi\n");
+		writeFileSync(secretFile, "export TOKEN='value'\n");
+		writeFileSync(secretKeysFile, "TOKEN\n");
+		writeFileSync(wrapperPath, NIXPACKS_DOCKER_WRAPPER_SCRIPT, {
+			mode: 0o700,
+		});
+		writeFileSync(
+			fakeDockerPath,
+			`#!/usr/bin/env bash
+set -Eeuo pipefail
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)))' ${JSON.stringify(capturePath)} "$@"
+`,
+			{ mode: 0o755 },
+		);
+
+		try {
+			execFileSync(
+				"bash",
+				[
+					wrapperPath,
+					"build",
+					contextPath,
+					"-f",
+					dockerfilePath,
+					"-t",
+					"app:test",
+				],
+				{
+					env: {
+						...process.env,
+						NZ_NIXPACKS_REAL_DOCKER: fakeDockerPath,
+						NZ_NIXPACKS_SECRET_FILE: secretFile,
+						NZ_NIXPACKS_SECRET_KEYS_FILE: secretKeysFile,
+						NZ_NIXPACKS_PATCH_DIR: patchDir,
+					},
+					stdio: ["ignore", "pipe", "pipe"],
+				},
+			);
+
+			const argv = JSON.parse(readFileSync(capturePath, "utf8")) as string[];
+			expect(argv[0]).toBe("build");
+			expect(argv).toContain("--no-cache");
+			expect(argv).toContain(
+				`type=file,id=${NEARZERO_BUILD_ENV_SECRET_ID},src=${secretFile}`,
+			);
+			expect(argv).toContain(contextPath);
+			expect(argv.indexOf(contextPath)).toBeLessThan(argv.indexOf("-f"));
+			expect(argv[argv.indexOf("-t") + 1]).toBe("app:test");
+			// Regression: previous wrapper stole the trailing tag as "context",
+			// producing \`docker buildx build ... -t --no-cache\` with no PATH.
+			expect(argv[argv.indexOf("-t") + 1]).not.toBe("--no-cache");
+			expect(argv).not.toContain(dockerfilePath);
+		} finally {
+			rmSync(tempDirectory, { recursive: true, force: true });
+		}
+	});
 
 	it("discovers secondary package managers from the generated plan and bootstraps them once", () => {
 		const { normalized } = executeWithFakeNixpacks({

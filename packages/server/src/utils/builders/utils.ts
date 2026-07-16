@@ -39,6 +39,38 @@ export const PROTECTED_BUILD_CONTEXT_PATHS = [
 	"**/id_ed25519*",
 ] as const;
 
+/**
+ * Substring scans of builder artifacts against every runtime/build secret are
+ * prone to false positives for short, common values (for example "true",
+ * "node", "production"). Skip low-entropy values entirely, require exact
+ * equality for medium-length secrets, and only use substring matching once a
+ * value is long enough to be a credential rather than a framework token.
+ */
+export const PROTECTED_BUILD_MATERIAL_MIN_LENGTH = 8;
+export const PROTECTED_BUILD_MATERIAL_SUBSTRING_MIN_LENGTH = 16;
+
+/** jq program: exits 0 when `$nearzeroSecret` is absent from the input JSON. */
+export const PROTECTED_BUILD_MATERIAL_JQ_FILTER = `
+	($nearzeroSecret | rtrimstr("\\n") | rtrimstr("\\r")) as $secret
+	| ($secret | length) as $len
+	| if $len < ${PROTECTED_BUILD_MATERIAL_MIN_LENGTH} then
+		true
+	else
+		[
+			recurse
+			| strings
+			| select(
+				. == $secret
+				or (
+					$len >= ${PROTECTED_BUILD_MATERIAL_SUBSTRING_MIN_LENGTH}
+					and contains($secret)
+				)
+			)
+		]
+		| length == 0
+	end
+`.trim();
+
 export function resolveImmutableBuilderImage(
 	environmentVariable: string,
 	fallback: string,

@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getBuildCommand } from "@nearzero/server/utils/builders";
@@ -9,10 +15,33 @@ import {
 } from "@nearzero/server/utils/builders/railpack";
 import {
 	prepareBuildInput,
+	PROTECTED_BUILD_MATERIAL_JQ_FILTER,
 	resolveImmutableBuilderImage,
 	wrapBuildCommand,
 } from "@nearzero/server/utils/builders/utils";
 import { describe, expect, it } from "vitest";
+
+const jqProtectedMaterialAbsent = (artifact: unknown, secret: string) => {
+	const tempDirectory = mkdtempSync(
+		path.join(os.tmpdir(), "nearzero-protected-material-"),
+	);
+	const artifactPath = path.join(tempDirectory, "artifact.json");
+	const secretPath = path.join(tempDirectory, "secret");
+	try {
+		writeFileSync(artifactPath, JSON.stringify(artifact));
+		writeFileSync(secretPath, secret);
+		execFileSync(
+			"jq",
+			["-e", "--rawfile", "nearzeroSecret", secretPath, PROTECTED_BUILD_MATERIAL_JQ_FILTER, artifactPath],
+			{ stdio: ["ignore", "pipe", "pipe"] },
+		);
+		return true;
+	} catch {
+		return false;
+	} finally {
+		rmSync(tempDirectory, { recursive: true, force: true });
+	}
+};
 
 const runtimeSecret = "runtime-canary-'-$-7f0d3f41";
 const dockerSecret = 'docker-canary-"-e2ab85d0';
@@ -85,6 +114,34 @@ describe("application build secret boundary", () => {
 			expect(prepared.script).not.toMatch(/export\s+\w+=runtime-canary/);
 		});
 	}
+
+	it("ignores short common env values in protected-material scans", () => {
+		const artifact = {
+			providers: ["node"],
+			phases: {
+				setup: { nixPkgs: ["nodejs_22", "bun"] },
+				install: { cmds: ["bun install --frozen-lockfile"] },
+			},
+		};
+		expect(jqProtectedMaterialAbsent(artifact, "node")).toBe(true);
+		expect(jqProtectedMaterialAbsent(artifact, "production")).toBe(true);
+		expect(jqProtectedMaterialAbsent(artifact, "true")).toBe(true);
+		expect(
+			jqProtectedMaterialAbsent(artifact, "super-secret-token-value"),
+		).toBe(true);
+		expect(
+			jqProtectedMaterialAbsent(
+				{ cmd: "echo super-secret-token-value" },
+				"super-secret-token-value",
+			),
+		).toBe(false);
+		expect(
+			jqProtectedMaterialAbsent(
+				{ cmd: "DATABASE_URL=postgres://u:embedded-credential-abc123@db/app" },
+				"embedded-credential-abc123",
+			),
+		).toBe(false);
+	});
 
 	it("uses builder-native non-argv secret channels", async () => {
 		const docker = await getBuildCommand(createApplication("dockerfile"), {

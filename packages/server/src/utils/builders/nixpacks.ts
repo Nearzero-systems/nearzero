@@ -11,6 +11,7 @@ import {
 	getBuildRuntimePreamble,
 	NEARZERO_BUILD_ENV_SECRET_ID,
 	PROTECTED_BUILD_CONTEXT_PATHS,
+	PROTECTED_BUILD_MATERIAL_JQ_FILTER,
 } from "./utils";
 
 // Modern nixpkgs archive used only when the Nixpacks default archive cannot
@@ -21,6 +22,123 @@ const MODERN_NIXPKGS_ARCHIVE = "331800de5053fcebacf6813adb5db9c9dca22a0c";
 
 export const NIXPACKS_VERSIONED_PACKAGE_MANAGER_NIX_PATTERN =
 	"^(npm|yarn|pnpm)([-_].*)?$";
+
+/**
+ * Intercepts `docker build` / `docker buildx build` from Nixpacks so RUN steps
+ * mount Nearzero build secrets. Context must be resolved as the first
+ * positional path — Nixpacks places it before `-f`/`-t`, not last.
+ */
+export const NIXPACKS_DOCKER_WRAPPER_SCRIPT = `#!/usr/bin/env bash
+set -Eeuo pipefail
+NZ_REAL_DOCKER="\${NZ_NIXPACKS_REAL_DOCKER:?}"
+NZ_SECRET_FILE="\${NZ_NIXPACKS_SECRET_FILE:?}"
+NZ_SECRET_KEYS_FILE="\${NZ_NIXPACKS_SECRET_KEYS_FILE:?}"
+NZ_PATCH_DIR="\${NZ_NIXPACKS_PATCH_DIR:?}"
+NZ_DOCKER_ARGS=("$@")
+
+if [ ! -s "$NZ_SECRET_KEYS_FILE" ]; then
+	exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}"
+fi
+if [ "\${NZ_DOCKER_ARGS[0]:-}" != "build" ] &&
+	! { [ "\${NZ_DOCKER_ARGS[0]:-}" = "buildx" ] && [ "\${NZ_DOCKER_ARGS[1]:-}" = "build" ]; }; then
+	exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}"
+fi
+
+NZ_DOCKERFILE=""
+NZ_DOCKERFILE_INDEX=""
+NZ_DOCKERFILE_STYLE="pair"
+for ((NZ_INDEX=0; NZ_INDEX<\${#NZ_DOCKER_ARGS[@]}; NZ_INDEX+=1)); do
+	case "\${NZ_DOCKER_ARGS[$NZ_INDEX]}" in
+		-f|--file)
+			NZ_DOCKERFILE_INDEX=$((NZ_INDEX + 1))
+			NZ_DOCKERFILE="\${NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]:-}"
+			break
+			;;
+		--file=*)
+			NZ_DOCKERFILE_INDEX=$NZ_INDEX
+			NZ_DOCKERFILE_STYLE="equals"
+			NZ_DOCKERFILE="\${NZ_DOCKER_ARGS[$NZ_INDEX]#--file=}"
+			break
+			;;
+	esac
+done
+[ -n "$NZ_DOCKERFILE" ] && [ -f "$NZ_DOCKERFILE" ] || {
+	echo "Nixpacks did not provide a patchable generated Dockerfile" >&2
+	exit 66
+}
+
+NZ_PATCHED_DOCKERFILE="$NZ_PATCH_DIR/nixpacks.Dockerfile.$$.secure"
+NZ_PATCH_COUNT_FILE="$NZ_PATCH_DIR/nixpacks.Dockerfile.$$.count"
+awk -v count_file="$NZ_PATCH_COUNT_FILE" '
+/^[[:space:]]*[Rr][Uu][Nn][[:space:]]+/ {
+	line=$0
+	sub(/^[[:space:]]*[Rr][Uu][Nn][[:space:]]+/, "", line)
+	mounts=""
+	while (match(line, /^--mount=[^[:space:]]+[[:space:]]+/)) {
+		mounts=mounts substr(line, RSTART, RLENGTH)
+		line=substr(line, RLENGTH + 1)
+	}
+	print "RUN --mount=type=secret,id=${NEARZERO_BUILD_ENV_SECRET_ID},target=/run/secrets/${NEARZERO_BUILD_ENV_SECRET_ID} " mounts ". /run/secrets/${NEARZERO_BUILD_ENV_SECRET_ID} && " line
+	patched_count++
+	next
+}
+{ print }
+END { print patched_count + 0 > count_file }
+' "$NZ_DOCKERFILE" > "$NZ_PATCHED_DOCKERFILE"
+NZ_PATCHED_RUN_COUNT="$(cat "$NZ_PATCH_COUNT_FILE")"
+rm -f "$NZ_PATCH_COUNT_FILE"
+if [ "\${NZ_PATCHED_RUN_COUNT:-0}" -lt 1 ]; then
+	echo "Nixpacks generated a Dockerfile with no protected RUN instruction" >&2
+	exit 66
+fi
+chmod 600 "$NZ_PATCHED_DOCKERFILE"
+if [ "$NZ_DOCKERFILE_STYLE" = "equals" ]; then
+	NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]="--file=$NZ_PATCHED_DOCKERFILE"
+else
+	NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]="$NZ_PATCHED_DOCKERFILE"
+fi
+
+# Nixpacks emits: docker build <context> -f Dockerfile -t name ...
+# Never assume the context is the final argv entry; stealing a trailing option
+# value (commonly the image tag) leaves docker buildx build with no PATH.
+NZ_ARG_INDEX=1
+if [ "\${NZ_DOCKER_ARGS[0]:-}" = "buildx" ]; then
+	NZ_ARG_INDEX=2
+fi
+NZ_CONTEXT_INDEX=""
+while [ "$NZ_ARG_INDEX" -lt "\${#NZ_DOCKER_ARGS[@]}" ]; do
+	NZ_ARG="\${NZ_DOCKER_ARGS[$NZ_ARG_INDEX]}"
+	case "$NZ_ARG" in
+		-f|--file|-t|--tag|--build-arg|--secret|--output|-o|--target|--platform|--builder|--progress|--iidfile|--cache-from|--cache-to|--network|--add-host|--build-context|--label|-c|--cpu-shares|--memory|-m|--ulimit|--shm-size|--cgroup-parent|--security-opt|--ssh|--attest|--provenance|--sbom|--metadata-file|--annotation|--call|--allow|--opt)
+			NZ_ARG_INDEX=$((NZ_ARG_INDEX + 2))
+			continue
+			;;
+		--file=*|--tag=*|--build-arg=*|--secret=*|--output=*|--target=*|--platform=*|--builder=*|--progress=*|--iidfile=*|--cache-from=*|--cache-to=*|--network=*|--add-host=*|--build-context=*|--label=*|--ulimit=*|--shm-size=*|--ssh=*|--attest=*|--provenance=*|--sbom=*|--metadata-file=*|--annotation=*|--call=*|--allow=*|--opt=*)
+			NZ_ARG_INDEX=$((NZ_ARG_INDEX + 1))
+			continue
+			;;
+		-*)
+			NZ_ARG_INDEX=$((NZ_ARG_INDEX + 1))
+			continue
+			;;
+		*)
+			NZ_CONTEXT_INDEX=$NZ_ARG_INDEX
+			break
+			;;
+	esac
+done
+[ -n "$NZ_CONTEXT_INDEX" ] || {
+	echo "Nixpacks did not provide a docker build context path" >&2
+	exit 66
+}
+NZ_PREFIX_ARGS=("\${NZ_DOCKER_ARGS[@]:0:$NZ_CONTEXT_INDEX}")
+NZ_SUFFIX_ARGS=("\${NZ_DOCKER_ARGS[@]:$NZ_CONTEXT_INDEX}")
+: > "$NZ_PATCH_DIR/nixpacks-docker-used"
+exec "$NZ_REAL_DOCKER" "\${NZ_PREFIX_ARGS[@]}" \\
+	--no-cache \\
+	--secret "type=file,id=${NEARZERO_BUILD_ENV_SECRET_ID},src=$NZ_SECRET_FILE" \\
+	"\${NZ_SUFFIX_ARGS[@]}"
+`;
 
 export const NIXPACKS_PLAN_NORMALIZATION_FILTER = `
 .providers = []
@@ -692,7 +810,7 @@ export const getNixpacksCommand = (
 			while IFS= read -r NZ_BUILD_KEY; do
 				[ -n "$NZ_BUILD_KEY" ] || continue
 				if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
-					'[recurse | strings | select(($nearzeroSecret | length) > 0 and contains($nearzeroSecret))] | length == 0' \
+					${quote([PROTECTED_BUILD_MATERIAL_JQ_FILTER])} \
 					"$NZ_FROZEN_PLAN" >/dev/null; then
 					echo "Nixpacks generated a plan containing protected build material" >&2
 					return 66
@@ -715,84 +833,7 @@ export const getNixpacksCommand = (
 			NZ_NIXPACKS_DOCKER_WRAPPER_DIR="$NZ_BUILD_MATERIAL_DIR/nixpacks-docker-bin"
 			mkdir -m 700 "$NZ_NIXPACKS_DOCKER_WRAPPER_DIR"
 			cat > "$NZ_NIXPACKS_DOCKER_WRAPPER_DIR/docker" <<'NZ_NIXPACKS_DOCKER_WRAPPER'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-NZ_REAL_DOCKER="\${NZ_NIXPACKS_REAL_DOCKER:?}"
-NZ_SECRET_FILE="\${NZ_NIXPACKS_SECRET_FILE:?}"
-NZ_SECRET_KEYS_FILE="\${NZ_NIXPACKS_SECRET_KEYS_FILE:?}"
-NZ_PATCH_DIR="\${NZ_NIXPACKS_PATCH_DIR:?}"
-NZ_DOCKER_ARGS=("$@")
-
-if [ ! -s "$NZ_SECRET_KEYS_FILE" ]; then
-	exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}"
-fi
-if [ "\${NZ_DOCKER_ARGS[0]:-}" != "build" ] &&
-	! { [ "\${NZ_DOCKER_ARGS[0]:-}" = "buildx" ] && [ "\${NZ_DOCKER_ARGS[1]:-}" = "build" ]; }; then
-	exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}"
-fi
-
-NZ_DOCKERFILE=""
-NZ_DOCKERFILE_INDEX=""
-NZ_DOCKERFILE_STYLE="pair"
-for ((NZ_INDEX=0; NZ_INDEX<\${#NZ_DOCKER_ARGS[@]}; NZ_INDEX+=1)); do
-	case "\${NZ_DOCKER_ARGS[$NZ_INDEX]}" in
-		-f|--file)
-			NZ_DOCKERFILE_INDEX=$((NZ_INDEX + 1))
-			NZ_DOCKERFILE="\${NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]:-}"
-			break
-			;;
-		--file=*)
-			NZ_DOCKERFILE_INDEX=$NZ_INDEX
-			NZ_DOCKERFILE_STYLE="equals"
-			NZ_DOCKERFILE="\${NZ_DOCKER_ARGS[$NZ_INDEX]#--file=}"
-			break
-			;;
-	esac
-done
-[ -n "$NZ_DOCKERFILE" ] && [ -f "$NZ_DOCKERFILE" ] || {
-	echo "Nixpacks did not provide a patchable generated Dockerfile" >&2
-	exit 66
-}
-
-NZ_PATCHED_DOCKERFILE="$NZ_PATCH_DIR/nixpacks.Dockerfile.$$.secure"
-NZ_PATCH_COUNT_FILE="$NZ_PATCH_DIR/nixpacks.Dockerfile.$$.count"
-awk -v count_file="$NZ_PATCH_COUNT_FILE" '
-/^[[:space:]]*[Rr][Uu][Nn][[:space:]]+/ {
-	line=$0
-	sub(/^[[:space:]]*[Rr][Uu][Nn][[:space:]]+/, "", line)
-	mounts=""
-	while (match(line, /^--mount=[^[:space:]]+[[:space:]]+/)) {
-		mounts=mounts substr(line, RSTART, RLENGTH)
-		line=substr(line, RLENGTH + 1)
-	}
-	print "RUN --mount=type=secret,id=${NEARZERO_BUILD_ENV_SECRET_ID},target=/run/secrets/${NEARZERO_BUILD_ENV_SECRET_ID} " mounts ". /run/secrets/${NEARZERO_BUILD_ENV_SECRET_ID} && " line
-	patched_count++
-	next
-}
-{ print }
-END { print patched_count + 0 > count_file }
-' "$NZ_DOCKERFILE" > "$NZ_PATCHED_DOCKERFILE"
-NZ_PATCHED_RUN_COUNT="$(cat "$NZ_PATCH_COUNT_FILE")"
-rm -f "$NZ_PATCH_COUNT_FILE"
-if [ "\${NZ_PATCHED_RUN_COUNT:-0}" -lt 1 ]; then
-	echo "Nixpacks generated a Dockerfile with no protected RUN instruction" >&2
-	exit 66
-fi
-chmod 600 "$NZ_PATCHED_DOCKERFILE"
-if [ "$NZ_DOCKERFILE_STYLE" = "equals" ]; then
-	NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]="--file=$NZ_PATCHED_DOCKERFILE"
-else
-	NZ_DOCKER_ARGS[$NZ_DOCKERFILE_INDEX]="$NZ_PATCHED_DOCKERFILE"
-fi
-
-NZ_CONTEXT_INDEX=$((\${#NZ_DOCKER_ARGS[@]} - 1))
-NZ_CONTEXT="\${NZ_DOCKER_ARGS[$NZ_CONTEXT_INDEX]}"
-unset 'NZ_DOCKER_ARGS[$NZ_CONTEXT_INDEX]'
-: > "$NZ_PATCH_DIR/nixpacks-docker-used"
-exec "$NZ_REAL_DOCKER" "\${NZ_DOCKER_ARGS[@]}" \
-	--no-cache \
-	--secret "type=file,id=${NEARZERO_BUILD_ENV_SECRET_ID},src=$NZ_SECRET_FILE" \
-	"$NZ_CONTEXT"
+${NIXPACKS_DOCKER_WRAPPER_SCRIPT}
 NZ_NIXPACKS_DOCKER_WRAPPER
 			chmod 700 "$NZ_NIXPACKS_DOCKER_WRAPPER_DIR/docker"
 		}
