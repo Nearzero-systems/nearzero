@@ -575,7 +575,15 @@ export function bindDeploymentLogs() {
 		const renderLogs = () => {
 			const query = search?.value.trim().toLowerCase() || "";
 			const normalized = normalizeLogs(rawLogs);
-			const failure = findFailureLine(normalized);
+			const deploymentStatus = (
+				panel.dataset.deploymentStatus || ""
+			).toLowerCase();
+			// Only declare failure once the deployment itself has failed. Recoverable
+			// builder fallbacks (for example Railpack -> Nixpacks) write phase
+			// diagnostics that must not look like a terminal error mid-build.
+			const failure = isTerminalDeploymentFailure(deploymentStatus)
+				? findFailureLine(normalized)
+				: null;
 			if (summary) {
 				if (failure) {
 					summary.textContent = `Failure detected on line ${failure.line}: ${failure.text}`;
@@ -730,7 +738,18 @@ export function bindDeploymentLogs() {
 	}
 }
 
+function isTerminalDeploymentFailure(status: string) {
+	return status === "error" || status === "failed";
+}
+
+function isRecoverableOrchestrationLine(line: string) {
+	return /\b(continuing with|handing control back|recoverable:|builder-selection phase)\b/i.test(
+		line,
+	);
+}
+
 function isFailureLine(line: string) {
+	if (isRecoverableOrchestrationLine(line)) return false;
 	return /\b(error|failed|failure|unsupported|exit code|eunsupportedprotocol)\b/i.test(
 		line,
 	);

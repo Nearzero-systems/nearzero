@@ -54,6 +54,11 @@ export interface BuildPhase {
 	retryPolicy?: "none" | "transient";
 	requiredCapabilities?: string[];
 	timeoutSeconds?: number;
+	/**
+	 * When true, exhausting this phase's attempts is not a terminal deployment
+	 * failure. The orchestrator may continue with another builder or path.
+	 */
+	recoverable?: boolean;
 }
 
 export interface DeploymentPhaseContext {
@@ -1026,11 +1031,14 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 						: (phase.errorCode ?? "app_build_failed");
 					const retryable =
 						attempt < attempts && (timedOut || isTransientFailure(cause));
+					const recoverable = Boolean(phase.recoverable) && !retryable;
 					await appendDeploymentLog({
 						logPath: context.logPath,
 						serverId: getLogServerId(context),
 						message: [
-							`Attempt ${attempt}/${attempts} failed after ${Date.now() - startedAt}ms.`,
+							recoverable
+								? `Attempt ${attempt}/${attempts} did not succeed after ${Date.now() - startedAt}ms.`
+								: `Attempt ${attempt}/${attempts} failed after ${Date.now() - startedAt}ms.`,
 							`Code: ${code}`,
 							timedOut && phase.timeoutSeconds
 								? `Timeout: ${phase.timeoutSeconds}s`
@@ -1038,7 +1046,9 @@ export async function runDeploymentPhases(context: DeploymentPhaseContext) {
 							`Retryable: ${retryable ? "yes" : "no"}`,
 							retryable
 								? `Retrying in ${attempt}s.`
-								: "No further attempts will be made.",
+								: recoverable
+									? "Handing control back to the deployment orchestrator."
+									: "No further attempts will be made.",
 							"",
 						]
 							.filter(Boolean)

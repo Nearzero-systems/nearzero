@@ -42,18 +42,52 @@ export const PROTECTED_BUILD_CONTEXT_PATHS = [
 /**
  * Substring scans of builder artifacts against every runtime/build secret are
  * prone to false positives for short, common values (for example "true",
- * "node", "production"). Skip low-entropy values entirely, require exact
+ * "node", "production"). Skip public keys and low-entropy values, require exact
  * equality for medium-length secrets, and only use substring matching once a
  * value is long enough to be a credential rather than a framework token.
  */
 export const PROTECTED_BUILD_MATERIAL_MIN_LENGTH = 8;
 export const PROTECTED_BUILD_MATERIAL_SUBSTRING_MIN_LENGTH = 16;
 
+/** Values that routinely appear in generated builder plans without being leaks. */
+export const PROTECTED_BUILD_MATERIAL_IGNORED_VALUES = [
+	"development",
+	"production",
+	"test",
+	"testing",
+	"staging",
+	"localhost",
+	"127.0.0.1",
+	"0.0.0.0",
+	"http",
+	"https",
+	"true",
+	"false",
+	"null",
+	"undefined",
+	"latest",
+	"stable",
+	"main",
+	"master",
+	"node",
+	"nodejs",
+	"bun",
+	"npm",
+	"yarn",
+	"pnpm",
+	"next",
+	"react",
+] as const;
+
 /** jq program: exits 0 when `$nearzeroSecret` is absent from the input JSON. */
 export const PROTECTED_BUILD_MATERIAL_JQ_FILTER = `
-	($nearzeroSecret | rtrimstr("\\n") | rtrimstr("\\r")) as $secret
+	(${JSON.stringify([...PROTECTED_BUILD_MATERIAL_IGNORED_VALUES])}) as $ignored
+	| ($nearzeroSecret | rtrimstr("\\n") | rtrimstr("\\r")) as $secret
 	| ($secret | length) as $len
-	| if $len < ${PROTECTED_BUILD_MATERIAL_MIN_LENGTH} then
+	| ($secret | ascii_downcase) as $lower
+	| if $len < ${PROTECTED_BUILD_MATERIAL_MIN_LENGTH}
+		or (($ignored | index($lower)) != null)
+	  then
 		true
 	else
 		[
@@ -70,6 +104,35 @@ export const PROTECTED_BUILD_MATERIAL_JQ_FILTER = `
 		| length == 0
 	end
 `.trim();
+
+/**
+ * Bash helpers shared by Railpack/Nixpacks protected-material scans. Public
+ * framework env keys are never credentials even when their values collide with
+ * generated plan strings.
+ */
+export const PROTECTED_BUILD_MATERIAL_SHELL_HELPERS = String.raw`
+nz_is_public_build_env_key() {
+	case "$1" in
+		NODE_ENV|PORT|HOST|HOSTNAME|CI|DEBUG|TZ|LANG|HOME|PATH|PWD|USER|SHELL|TERM|SHLVL|_|NEXT_TELEMETRY_DISABLED|NEXT_RUNTIME)
+			return 0
+			;;
+	esac
+	case "$1" in
+		NEXT_PUBLIC_*|PUBLIC_*|VITE_*|NUXT_PUBLIC_*|REACT_APP_*|EXPO_PUBLIC_*)
+			return 0
+			;;
+	esac
+	return 1
+}
+
+nz_should_scan_protected_build_material() {
+	[ -n "$1" ] || return 1
+	if nz_is_public_build_env_key "$1"; then
+		return 1
+	fi
+	return 0
+}
+`;
 
 export function resolveImmutableBuilderImage(
 	environmentVariable: string,
@@ -256,6 +319,8 @@ nz_load_build_kind() {
 nz_load_runtime_environment() { nz_load_build_kind runtime; }
 nz_load_secret_environment() { nz_load_build_kind secret; }
 nz_load_argument_environment() { nz_load_build_kind argument; }
+
+${PROTECTED_BUILD_MATERIAL_SHELL_HELPERS}
 `;
 }
 
@@ -274,6 +339,9 @@ if ! declare -F nz_load_runtime_environment >/dev/null 2>&1; then
 	nz_load_runtime_environment() { :; }
 	nz_load_secret_environment() { :; }
 	nz_load_argument_environment() { :; }
+fi
+if ! declare -F nz_should_scan_protected_build_material >/dev/null 2>&1; then
+${PROTECTED_BUILD_MATERIAL_SHELL_HELPERS}
 fi
 `;
 }

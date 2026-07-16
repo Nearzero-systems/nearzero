@@ -318,6 +318,7 @@ const runApplicationBuildPipeline = async (input: {
 						errorCode: "build_plan_failed",
 						timeoutSeconds: 300,
 						requiredCapabilities: ["railpack", "docker"],
+						recoverable: true,
 					},
 					...(plan.selectionMode === "automatic" && plannedPackageManager
 						? [
@@ -332,6 +333,7 @@ const runApplicationBuildPipeline = async (input: {
 									),
 									errorCode: "build_plan_failed" as const,
 									timeoutSeconds: 60,
+									recoverable: true,
 								},
 							]
 						: []),
@@ -353,7 +355,7 @@ const runApplicationBuildPipeline = async (input: {
 				logPath: input.logPath,
 				serverId: input.placement.buildServerId,
 				message:
-					"Railpack planning failed before compilation. Retrying with Nixpacks.\n",
+					"Railpack plan was not usable before compilation. Continuing with Nixpacks.\n",
 			});
 		}
 	}

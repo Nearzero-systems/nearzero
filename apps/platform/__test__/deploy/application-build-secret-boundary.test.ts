@@ -125,6 +125,8 @@ describe("application build secret boundary", () => {
 		};
 		expect(jqProtectedMaterialAbsent(artifact, "node")).toBe(true);
 		expect(jqProtectedMaterialAbsent(artifact, "production")).toBe(true);
+		expect(jqProtectedMaterialAbsent(artifact, "development")).toBe(true);
+		expect(jqProtectedMaterialAbsent(artifact, "localhost")).toBe(true);
 		expect(jqProtectedMaterialAbsent(artifact, "true")).toBe(true);
 		expect(
 			jqProtectedMaterialAbsent(artifact, "super-secret-token-value"),
@@ -141,6 +143,25 @@ describe("application build secret boundary", () => {
 				"embedded-credential-abc123",
 			),
 		).toBe(false);
+	});
+
+	it("skips public framework env keys during protected-material scans", () => {
+		const application = createApplication("railpack");
+		application.env = [
+			"NODE_ENV=development",
+			"NEXT_PUBLIC_APP_URL=http://localhost:3000",
+			"DATABASE_URL=postgres://u:super-secret-db-token@db/app",
+		].join("\n");
+		const buildInput = prepareBuildInput(application);
+		const script = wrapBuildCommand(`
+nz_should_scan_protected_build_material NODE_ENV && exit 11
+nz_should_scan_protected_build_material NEXT_PUBLIC_APP_URL && exit 12
+nz_should_scan_protected_build_material DATABASE_URL || exit 13
+`);
+		execFileSync("bash", ["-Eeuo", "pipefail", "-c", script], {
+			input: buildInput.input,
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 	});
 
 	it("uses builder-native non-argv secret channels", async () => {

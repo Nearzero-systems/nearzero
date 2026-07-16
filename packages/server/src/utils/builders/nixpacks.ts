@@ -809,10 +809,11 @@ export const getNixpacksCommand = (
 			chmod 600 "$NZ_RAW_PLAN" "$NZ_FROZEN_PLAN"
 			while IFS= read -r NZ_BUILD_KEY; do
 				[ -n "$NZ_BUILD_KEY" ] || continue
+				nz_should_scan_protected_build_material "$NZ_BUILD_KEY" || continue
 				if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
 					${quote([PROTECTED_BUILD_MATERIAL_JQ_FILTER])} \
 					"$NZ_FROZEN_PLAN" >/dev/null; then
-					echo "Nixpacks generated a plan containing protected build material" >&2
+					echo "Nixpacks generated a plan containing protected build material (key=$NZ_BUILD_KEY)" >&2
 					return 66
 				fi
 			done < "$NZ_BUILD_ENV_KEYS_FILE"

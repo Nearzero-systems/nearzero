@@ -127,10 +127,11 @@ fi
 for NZ_RAILPACK_ARTIFACT in ${quote([planPath])} ${quote([infoPath])}; do
 	while IFS= read -r NZ_BUILD_KEY; do
 		[ -n "$NZ_BUILD_KEY" ] || continue
+		nz_should_scan_protected_build_material "$NZ_BUILD_KEY" || continue
 		if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
 			${quote([PROTECTED_BUILD_MATERIAL_JQ_FILTER])} \
 			"$NZ_RAILPACK_ARTIFACT" >/dev/null; then
-			echo "Railpack generated an artifact containing protected build material" >&2
+			echo "Railpack generated an artifact containing protected build material (key=$NZ_BUILD_KEY)" >&2
 			exit 66
 		fi
 	done < "$NZ_BUILD_ENV_KEYS_FILE"
@@ -166,10 +167,11 @@ echo "Building with Railpack frontend..." ;
 for NZ_RAILPACK_ARTIFACT in ${quote([planPath])} ${quote([infoPath])}; do
 	while IFS= read -r NZ_BUILD_KEY; do
 		[ -n "$NZ_BUILD_KEY" ] || continue
+		nz_should_scan_protected_build_material "$NZ_BUILD_KEY" || continue
 		if ! jq -e --rawfile nearzeroSecret "$NZ_BUILD_ENV_DIR/$NZ_BUILD_KEY" \
 			${quote([PROTECTED_BUILD_MATERIAL_JQ_FILTER])} \
 			"$NZ_RAILPACK_ARTIFACT" >/dev/null; then
-			echo "Railpack artifact failed the protected-material check" >&2
+			echo "Railpack artifact failed the protected-material check (key=$NZ_BUILD_KEY)" >&2
 			exit 66
 		fi
 	done < "$NZ_BUILD_ENV_KEYS_FILE"
