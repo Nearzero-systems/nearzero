@@ -201,16 +201,8 @@ function openManageDomainDialog(kind: "application" | "compose", serviceId: stri
 	const pathInput = document.getElementById(
 		"nz-env-domain-path",
 	) as HTMLInputElement | null;
-	const httpsInput = document.getElementById(
-		"nz-env-domain-https",
-	) as HTMLInputElement | null;
-	const certSelect = document.getElementById(
-		"nz-env-domain-certificate",
-	) as HTMLSelectElement | null;
 	if (portInput) portInput.value = "3000";
 	if (pathInput) pathInput.value = "/";
-	if (httpsInput) httpsInput.checked = true;
-	if (certSelect) certSelect.value = "letsencrypt";
 	const errEl = document.getElementById("nz-env-domain-error");
 	if (errEl instanceof HTMLElement) {
 		errEl.textContent = "";

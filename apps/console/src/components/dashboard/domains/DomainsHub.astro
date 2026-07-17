@@ -871,11 +871,7 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 					<input id="nz-add-hostname-port" type="number" value="3000" min="1" max="65535" class="nz-modal__input" placeholder="Port" />
 					<input id="nz-add-hostname-path" type="text" value="/" class="nz-modal__input" placeholder="Path prefix, e.g. / or /api" />
 				</div>
-				<label class="flex items-center gap-2 text-xs"><input id="nz-add-hostname-https" type="checkbox" /> Enable HTTPS</label>
-				<select id="nz-add-hostname-cert" class="nz-modal__input">
-					<option value="letsencrypt">Let's Encrypt</option>
-					<option value="none">None</option>
-				</select>
+				<p class="text-[11px] text-muted-foreground">HTTPS with Let's Encrypt is enabled automatically once DNS points at Nearzero.</p>
 				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
 				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Add hostname</button>
 			</NzModal>

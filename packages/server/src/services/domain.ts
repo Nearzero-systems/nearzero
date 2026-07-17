@@ -30,6 +30,7 @@ import {
 	withDomainRoutingMutationLock,
 } from "./compose";
 import { deleteManagedDnsRecordForDomain, publishDnsZone } from "./dns";
+import { resolveAutomaticDomainSsl } from "../utils/domain-ssl";
 import { resolveDomainTargetIp } from "./domain-target";
 import { findServerById } from "./server";
 
@@ -398,13 +399,10 @@ export const createDomain = async (
 				)
 			: input.serviceName;
 
-	const managedDefaults =
-		input.managedByNearzero && input.dnsZoneId
-			? {
-					https: input.https ?? true,
-					certificateType: input.certificateType ?? "letsencrypt",
-				}
-			: {};
+	const sslDefaults = resolveAutomaticDomainSsl({
+		https: input.https,
+		certificateType: input.certificateType,
+	});
 
 	let environmentId: string | undefined;
 	let routeServerId: string | null | undefined;
@@ -485,7 +483,7 @@ export const createDomain = async (
 			.insert(domains)
 			.values({
 				...domainInput,
-				...managedDefaults,
+				...sslDefaults,
 				serviceName,
 				host,
 				organizationId,
@@ -776,11 +774,25 @@ export const updateDomainById = async (
 		}
 		await assertExternalDomainPointsToServer(normalizedHost, routeServerId);
 	}
+	const sslTouched =
+		safeDomainData.https !== undefined ||
+		safeDomainData.certificateType !== undefined;
+	const ssl = sslTouched
+		? resolveAutomaticDomainSsl({
+				https: safeDomainData.https ?? current.https,
+				certificateType:
+					safeDomainData.certificateType ?? current.certificateType,
+			})
+		: null;
 	const domain = await db
 		.update(domains)
 		.set({
 			...safeDomainData,
 			...(normalizedHost && { host: normalizedHost }),
+			...(ssl && {
+				https: ssl.https,
+				certificateType: ssl.certificateType,
+			}),
 		})
 		.where(eq(domains.domainId, domainId))
 		.returning();

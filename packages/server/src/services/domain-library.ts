@@ -15,6 +15,7 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { normalizeDnsHostname } from "../utils/dns/zone-file";
+import { resolveAutomaticDomainSsl } from "../utils/domain-ssl";
 import { findApplicationById } from "./application";
 import {
 	findComposeById,
@@ -332,6 +333,10 @@ export async function registerDomain(
 		});
 	}
 
+	const ssl = resolveAutomaticDomainSsl({
+		https: input.https,
+		certificateType: input.certificateType,
+	});
 	const [created] = await db
 		.insert(domains)
 		.values({
@@ -340,10 +345,8 @@ export async function registerDomain(
 			dnsMode,
 			managedByNearzero,
 			dnsZoneId: input.dnsZoneId ?? null,
-			https: input.https ?? dnsMode !== "external",
-			certificateType:
-				input.certificateType ??
-				(dnsMode === "external" ? "none" : "letsencrypt"),
+			https: ssl.https,
+			certificateType: ssl.certificateType,
 			customCertResolver: input.customCertResolver,
 		})
 		.returning();
@@ -392,7 +395,10 @@ async function assignDomainToServiceUnlocked(
 
 	const port = input.port ?? domain.port ?? 3000;
 	const path = input.path ?? domain.path ?? "/";
-	const https = input.https ?? domain.https;
+	const ssl = resolveAutomaticDomainSsl({
+		https: input.https ?? domain.https,
+		certificateType: input.certificateType ?? domain.certificateType,
+	});
 	const oldApplication = domain.applicationId
 		? await findApplicationById(domain.applicationId)
 		: null;
@@ -429,8 +435,8 @@ async function assignDomainToServiceUnlocked(
 		serviceName,
 		port,
 		path,
-		https,
-		certificateType: input.certificateType ?? domain.certificateType,
+		https: ssl.https,
+		certificateType: ssl.certificateType,
 	};
 	const candidate = { ...domain, ...update };
 	let newRouteWritten = false;

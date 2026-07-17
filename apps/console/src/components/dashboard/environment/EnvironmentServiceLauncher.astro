@@ -235,18 +235,7 @@ const dialogShellClass =
 			<input id="nz-env-domain-path" class="nz-modal__input" value="/" />
 		</label>
 	</div>
-	<label class="nz-modal__field flex-row items-center gap-2">
-		<input id="nz-env-domain-https" type="checkbox" class="size-4" checked />
-		<span class="text-sm">Enable HTTPS</span>
-	</label>
-	<label class="nz-modal__field">
-		<span class="nz-modal__label">Certificate</span>
-		<select id="nz-env-domain-certificate" class="nz-modal__input">
-			<option value="letsencrypt">Let's Encrypt</option>
-			<option value="none">None</option>
-			<option value="custom">Custom resolver</option>
-		</select>
-	</label>
+	<p class="text-xs text-[var(--nz-text-muted)]">HTTPS with Let's Encrypt is enabled automatically.</p>
 	<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">
 		Add Domain
 	</button>

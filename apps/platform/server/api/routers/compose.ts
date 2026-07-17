@@ -722,7 +722,8 @@ export const composeRouter = createTRPCRouter({
 					await createDomain({
 						...domain,
 						domainType: "compose",
-						certificateType: "none",
+						https: true,
+						certificateType: "letsencrypt",
 						composeId: compose.composeId,
 						host: domain.host || "",
 					});
@@ -1078,7 +1079,8 @@ export const composeRouter = createTRPCRouter({
 						await createDomain({
 							...domain,
 							domainType: "compose",
-							certificateType: "none",
+							https: true,
+							certificateType: "letsencrypt",
 							composeId: compose.composeId,
 							host: domain.host || "",
 						});

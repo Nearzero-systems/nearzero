@@ -679,12 +679,6 @@ function bindHostnameModal(projects: ProjectOption[]) {
 		const dnsMode =
 			form.querySelector<HTMLInputElement>('input[name="dnsMode"]:checked')
 				?.value ?? "external";
-		const https = (
-			document.getElementById("nz-add-hostname-https") as HTMLInputElement
-		)?.checked;
-		const certType = (
-			document.getElementById("nz-add-hostname-cert") as HTMLSelectElement
-		)?.value as "letsencrypt" | "none" | "custom";
 		const dnsZoneId = zoneSelect?.value || undefined;
 		if (dnsMode === "nearzero_managed" && !dnsZoneId) {
 			toast("Select an org DNS zone for Nearzero DNS", "error");
@@ -706,8 +700,8 @@ function bindHostnameModal(projects: ProjectOption[]) {
 				if (type === "application") {
 					await trpcMutate("domain.create", {
 						host,
-						https: https ?? false,
-						certificateType: certType,
+						https: true,
+						certificateType: "letsencrypt",
 						port,
 						applicationId: id,
 						domainType: "application",
@@ -718,8 +712,8 @@ function bindHostnameModal(projects: ProjectOption[]) {
 				} else {
 					await trpcMutate("domain.create", {
 						host,
-						https: https ?? false,
-						certificateType: certType,
+						https: true,
+						certificateType: "letsencrypt",
 						port,
 						composeId: id,
 						domainType: "compose",
@@ -733,8 +727,8 @@ function bindHostnameModal(projects: ProjectOption[]) {
 				await trpcMutate("domain.register", {
 					host,
 					dnsMode: dnsMode as "external" | "nearzero_managed",
-					https: https ?? false,
-					certificateType: certType,
+					https: true,
+					certificateType: "letsencrypt",
 					dnsZoneId: dnsMode === "nearzero_managed" ? dnsZoneId : undefined,
 					serverId:
 						dnsMode === "external"

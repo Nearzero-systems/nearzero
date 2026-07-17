@@ -808,16 +808,8 @@ function openDomainDialog(ctx: LauncherContext) {
 	const pathInput = document.getElementById(
 		"nz-env-domain-path",
 	) as HTMLInputElement | null;
-	const httpsInput = document.getElementById(
-		"nz-env-domain-https",
-	) as HTMLInputElement | null;
-	const certSelect = document.getElementById(
-		"nz-env-domain-certificate",
-	) as HTMLSelectElement | null;
 	if (portInput) portInput.value = "3000";
 	if (pathInput) pathInput.value = "/";
-	if (httpsInput) httpsInput.checked = true;
-	if (certSelect) certSelect.value = "letsencrypt";
 	setDialogError(
 		errEl,
 		ctx.services.length === 0
@@ -845,12 +837,6 @@ function bindDomainDialog(
 	const pathInput = document.getElementById(
 		"nz-env-domain-path",
 	) as HTMLInputElement | null;
-	const httpsInput = document.getElementById(
-		"nz-env-domain-https",
-	) as HTMLInputElement | null;
-	const certificateSelect = document.getElementById(
-		"nz-env-domain-certificate",
-	) as HTMLSelectElement | null;
 	const autoWrap = document.getElementById("nz-env-domain-auto-wrap");
 	const autoInput = document.getElementById(
 		"nz-env-domain-auto",
@@ -1021,8 +1007,8 @@ function bindDomainDialog(
 					host,
 					port,
 					path,
-					https: httpsInput?.checked ?? true,
-					certificateType: certificateSelect?.value ?? "letsencrypt",
+					https: true,
+					certificateType: "letsencrypt",
 					domainType,
 					...(domainType === "application"
 						? { applicationId: serviceId }

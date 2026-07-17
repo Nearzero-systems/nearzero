@@ -3,6 +3,7 @@ import { dnsZones, previewDeployments } from "@nearzero/server/db/schema";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { normalizeDnsHostname } from "../utils/dns/zone-file";
+import { resolveAutomaticDomainSsl } from "../utils/domain-ssl";
 import { serviceSpecReferencesNetwork } from "../utils/docker/utils";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
 import {
@@ -217,7 +218,7 @@ async function syncProvisionedDomain(
 		if (!domain.isSystemAssigned && managed.isSystemAssigned !== false) {
 			update.isSystemAssigned = true;
 		}
-		if (managed.managedByNearzero) {
+		if (domain.certificateType !== "custom") {
 			if (!domain.https) update.https = true;
 			if (domain.certificateType !== "letsencrypt") {
 				update.certificateType = "letsencrypt";
@@ -383,8 +384,10 @@ export async function resolvePreviewDomainPlan(input: {
 			host: replaceWildcardHost(input.previewWildcard, previewSlug),
 			targetIp,
 			managedByNearzero: false,
-			https: input.previewHttps ?? true,
-			certificateType: input.previewCertificateType ?? "letsencrypt",
+			...resolveAutomaticDomainSsl({
+				https: input.previewHttps,
+				certificateType: input.previewCertificateType,
+			}),
 		};
 	}
 
@@ -404,8 +407,10 @@ export async function resolvePreviewDomainPlan(input: {
 		}),
 		targetIp,
 		managedByNearzero: false,
-		https: input.previewHttps ?? true,
-		certificateType: input.previewCertificateType ?? "letsencrypt",
+		...resolveAutomaticDomainSsl({
+			https: input.previewHttps,
+			certificateType: input.previewCertificateType,
+		}),
 	};
 }
 
