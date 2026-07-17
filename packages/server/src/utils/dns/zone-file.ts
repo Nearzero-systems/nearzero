@@ -3,6 +3,7 @@ import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { isIP } from "node:net";
 import path from "node:path";
 import { domainToASCII } from "node:url";
+import { getDefaultManagedNameservers } from "./default-nameservers";
 
 export type ZoneRecord = {
 	name: string;
@@ -321,7 +322,7 @@ export function renderZoneFile(input: ZoneFileInput): string {
 	const normalizedNameservers = (
 		input.nameservers.length > 0
 			? input.nameservers
-			: [`ns1.${zone}`, `ns2.${zone}`]
+			: getDefaultManagedNameservers(zone)
 	).map((ns) => normalizeDnsNameserver(ns, zone));
 	const sorted = input.records.map((record) => normalizeZoneRecord(record, zone)).sort((a, b) => {
 		const nameCmp = a.name.localeCompare(b.name);

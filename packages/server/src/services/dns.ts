@@ -21,6 +21,10 @@ import {
 	domains,
 } from "@nearzero/server/db/schema";
 import {
+	getDefaultManagedNameservers,
+	resolveDefaultManagedNameservers,
+} from "@nearzero/server/utils/dns/default-nameservers";
+import {
 	createSoaSerial,
 	normalizeDnsNameserver,
 	normalizeDnsRecordName,
@@ -41,6 +45,7 @@ import {
 	reloadNearzeroDns,
 } from "../setup/dns-setup";
 import { resolveDomainTargetIp } from "./domain-target";
+import { resolvePlatformDefaultDomain } from "./managed-domain";
 
 function toDnsPublishMessage(error: unknown) {
 	const raw = error instanceof Error ? error.message : String(error);
@@ -198,7 +203,7 @@ async function recordsWithNameserverGlue(
 	const effectiveNameservers =
 		nameservers.length > 0
 			? nameservers
-			: [`ns1.${zoneName}`, `ns2.${zoneName}`];
+			: getDefaultManagedNameservers(zoneName);
 	const records = zone.records.map((record) =>
 		normalizeZoneRecord(
 			{
@@ -254,6 +259,16 @@ export async function createDnsZone(
 		});
 	}
 
+	const requestedNameservers = normalizeNameservers(input.nameservers, name);
+	const platformApex = await resolvePlatformDefaultDomain();
+	const nameservers =
+		requestedNameservers.length > 0
+			? requestedNameservers
+			: resolveDefaultManagedNameservers({
+					zoneName: name,
+					platformApex,
+				});
+
 	const [zone] = await db
 		.insert(dnsZones)
 		.values({
@@ -261,7 +276,7 @@ export async function createDnsZone(
 			name,
 			soaEmail: input.soaEmail.trim(),
 			ttl: input.ttl ?? 300,
-			nameservers: normalizeNameservers(input.nameservers, name),
+			nameservers,
 			status: "pending",
 		})
 		.returning();
@@ -582,10 +597,14 @@ export async function getDnsZoneInstructions(
 	},
 ) {
 	const zoneName = normalizeDnsZoneName(zone.name);
+	const platformApex = await resolvePlatformDefaultDomain();
 	const ns =
 		zone.nameservers.length > 0
 			? normalizeNameservers(zone.nameservers, zoneName)
-			: [`ns1.${zoneName}`, `ns2.${zoneName}`];
+			: resolveDefaultManagedNameservers({
+					zoneName,
+					platformApex,
+				});
 	const inBailiwick = ns.filter((name) => isNameInsideZone(name, zoneName));
 	let authoritativeServerIp: string | null = null;
 	try {

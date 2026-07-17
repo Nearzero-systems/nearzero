@@ -427,9 +427,15 @@ function bindDnsZones(root: HTMLElement) {
 			const zone = zones.find((row) => row.dnsZoneId === zoneId);
 			if (!zone) return;
 			if (recordZoneInput) recordZoneInput.value = zone.dnsZoneId;
+			const platformNs = readJson<string[]>(
+				"nz-domains-platform-nameservers-json",
+				[],
+			);
 			const ns = zone.nameservers?.length
 				? zone.nameservers
-				: [`ns1.${zone.name}`, `ns2.${zone.name}`];
+				: platformNs.length > 0
+					? platformNs
+					: [`ns1.${zone.name}`, `ns2.${zone.name}`];
 			if (recordsMeta) {
 				recordsMeta.textContent = `${zone.name} · ${zone.records.length} record${
 					zone.records.length === 1 ? "" : "s"

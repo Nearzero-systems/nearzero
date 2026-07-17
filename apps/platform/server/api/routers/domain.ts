@@ -647,12 +647,22 @@ export const domainRouter = createTRPCRouter({
 		const { getWebServerSettings } = await import(
 			"@nearzero/server/services/web-server-settings"
 		);
+		const { resolveDefaultManagedNameservers } = await import(
+			"@nearzero/server/utils/dns/default-nameservers"
+		);
 		const platformApex = await resolvePlatformDefaultDomain();
 		const settings = await getWebServerSettings();
+		const defaultNameservers = platformApex
+			? resolveDefaultManagedNameservers({
+					zoneName: platformApex,
+					platformApex,
+				})
+			: [];
 		return {
 			platformApex,
 			enabled: Boolean(platformApex),
 			webServerIp: settings?.serverIp ?? null,
+			defaultNameservers,
 		};
 	}),
 

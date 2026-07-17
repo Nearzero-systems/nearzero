@@ -97,6 +97,28 @@ describe("DNS input safety", () => {
 		).toThrow(/CNAME conflict/);
 	});
 
+	it("defaults empty nameservers to the platform apex NS hosts", () => {
+		const previous = process.env.NEARZERO_PLATFORM_DOMAIN;
+		process.env.NEARZERO_PLATFORM_DOMAIN = "veritus.space";
+		try {
+			const rendered = renderZoneFile({
+				zoneName: "customer.app",
+				soaEmail: "hostmaster@customer.app",
+				defaultTtl: 300,
+				nameservers: [],
+				serial: "125",
+				records: [{ name: "www", type: "A", value: "1.2.3.4" }],
+			});
+			expect(rendered).toContain("@ IN SOA ns1.veritus.space.");
+			expect(rendered).toContain("@ IN NS ns1.veritus.space.");
+			expect(rendered).toContain("@ IN NS ns2.veritus.space.");
+			expect(rendered).not.toContain("ns1.customer.app");
+		} finally {
+			if (previous === undefined) delete process.env.NEARZERO_PLATFORM_DOMAIN;
+			else process.env.NEARZERO_PLATFORM_DOMAIN = previous;
+		}
+	});
+
 	it("increments an SOA serial for every write in the same millisecond", () => {
 		const first = Number(createSoaSerial(1_700_000_000_000));
 		const second = Number(createSoaSerial(1_700_000_000_000));

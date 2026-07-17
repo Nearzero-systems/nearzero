@@ -91,6 +91,7 @@ let platformInfo: {
 	platformApex: string | null;
 	enabled: boolean;
 	webServerIp: string | null;
+	defaultNameservers?: string[];
 } | null = null;
 let hostnames: HostnameRow[] = [];
 let bindings: BindingRow[] = [];
@@ -131,6 +132,7 @@ if (bootstrap.ok) {
 					platformApex: string | null;
 					enabled: boolean;
 					webServerIp: string | null;
+					defaultNameservers?: string[];
 				}>,
 			]);
 
@@ -153,6 +155,7 @@ if (bootstrap.ok) {
 					platformApex: string | null;
 					enabled: boolean;
 					webServerIp: string | null;
+					defaultNameservers?: string[];
 				} | null,
 			);
 
@@ -261,6 +264,12 @@ const platformEnabled =
 	platformInfo?.enabled ?? dnsReadiness?.platformDefaultEnabled ?? false;
 const platformApexDomain =
 	platformInfo?.platformApex ?? dnsReadiness?.platformApex ?? null;
+const platformDefaultNameservers =
+	platformInfo?.defaultNameservers?.length
+		? platformInfo.defaultNameservers
+		: platformApexDomain
+			? [`ns1.${platformApexDomain}`, `ns2.${platformApexDomain}`]
+			: [];
 const platformEdgeIp =
 	platformInfo?.webServerIp ?? dnsReadiness?.webServerIp ?? null;
 const platformHostnames = hostnames.filter((row) => row.dnsMode === "platform");
@@ -663,7 +672,12 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 															<td class={ST.td}>
 																<span class="block truncate font-medium">{zone.name}</span>
 																<span class="mt-0.5 block truncate text-[10px] text-[var(--nz-text-muted)]">
-																	NS {(zone.nameservers?.length ? zone.nameservers : [`ns1.${zone.name}`, `ns2.${zone.name}`]).join(", ")}
+																	NS {(zone.nameservers?.length
+																		? zone.nameservers
+																		: platformDefaultNameservers.length
+																			? platformDefaultNameservers
+																			: [`ns1.${zone.name}`, `ns2.${zone.name}`]
+																	).join(", ")}
 																</span>
 															</td>
 															<td class={ST.td}><span class={`${badgeClass} ${rowBadge}`}>{zone.status}</span></td>
@@ -775,8 +789,18 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 				</label>
 				<label class="nz-modal__field">
 					<span class="nz-modal__label">Nameservers</span>
-					<span class="text-[10px] text-muted-foreground">Optional. Separate values with commas or spaces. Defaults to ns1/ns2 for this zone.</span>
-					<input name="nameservers" placeholder="ns1.example.com, ns2.example.com" class="nz-modal__input" />
+					<span class="text-[10px] text-muted-foreground">
+						{platformDefaultNameservers.length > 0
+							? `Leave blank to use Nearzero’s platform nameservers (${platformDefaultNameservers.join(", ")}). Override only if you run custom NS hosts.`
+							: "Optional. Separate values with commas or spaces. Defaults to ns1/ns2 for this zone when no platform domain is configured."}
+					</span>
+					<input
+						name="nameservers"
+						placeholder={platformDefaultNameservers.length > 0
+							? platformDefaultNameservers.join(", ")
+							: "ns1.example.com, ns2.example.com"}
+						class="nz-modal__input"
+					/>
 				</label>
 				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
 				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Connect domain</button>
@@ -933,6 +957,7 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 			<script is:inline type="application/json" id="nz-dns-zones-json" set:html={JSON.stringify(zones)} />
 			<script is:inline type="application/json" id="nz-domains-projects-json" set:html={JSON.stringify(projects)} />
 			<script is:inline type="application/json" id="nz-domains-zones-options-json" set:html={JSON.stringify(zones.map((z) => ({ dnsZoneId: z.dnsZoneId, name: z.name })))} />
+			<script is:inline type="application/json" id="nz-domains-platform-nameservers-json" set:html={JSON.stringify(platformDefaultNameservers)} />
 		</div>
 	)
 }
