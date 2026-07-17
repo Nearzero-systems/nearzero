@@ -152,10 +152,20 @@ function bindAddNewMenu(root: HTMLElement, signal?: AbortSignal) {
 				menu.classList.add("hidden");
 				toggle.setAttribute("aria-expanded", "false");
 				const action = item.getAttribute("data-domains-add-action");
-				if (action === "hostname") openDialog("nz-add-hostname-dialog");
-				else if (action === "bind-env") openDialog("nz-bind-env-dialog");
-				else if (action === "dns-zone") openDialog("nz-dns-create-dialog");
-				else if (action === "certificate") openCertificateCreateDialog();
+				if (action === "hostname") {
+					const external = document.querySelector<HTMLInputElement>(
+						'#nz-add-hostname-form input[name="dnsMode"][value="external"]',
+					);
+					if (external) external.checked = true;
+					external?.dispatchEvent(new Event("change", { bubbles: true }));
+					openDialog("nz-add-hostname-dialog");
+				} else if (action === "connect-domain" || action === "dns-zone") {
+					openDialog("nz-dns-create-dialog");
+				} else if (action === "bind-env") {
+					openDialog("nz-bind-env-dialog");
+				} else if (action === "certificate") {
+					openCertificateCreateDialog();
+				}
 			},
 			opts,
 		);

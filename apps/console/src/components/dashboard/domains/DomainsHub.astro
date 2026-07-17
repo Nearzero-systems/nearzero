@@ -87,6 +87,11 @@ let health: Array<{
 	lastError?: string | null;
 }> = [];
 let dnsReadiness: ReadinessInfo | null = null;
+let platformInfo: {
+	platformApex: string | null;
+	enabled: boolean;
+	webServerIp: string | null;
+} | null = null;
 let hostnames: HostnameRow[] = [];
 let bindings: BindingRow[] = [];
 let projects: unknown[] = [];
@@ -122,6 +127,11 @@ if (bootstrap.ok) {
 				api.domain.listCentralized.query() as Promise<HostnameRow[]>,
 				api.environment.listDnsBindings.query() as Promise<BindingRow[]>,
 				api.project.all.query() as Promise<unknown[]>,
+				api.domain.platformInfo.query() as Promise<{
+					platformApex: string | null;
+					enabled: boolean;
+					webServerIp: string | null;
+				}>,
 			]);
 
 			const take = <T,>(index: number, fallback: T): T => {
@@ -137,6 +147,7 @@ if (bootstrap.ok) {
 			hostnames = take(3, [] as HostnameRow[]);
 			bindings = take(4, [] as BindingRow[]);
 			projects = take(5, [] as unknown[]);
+			platformInfo = take(6, null);
 
 			// Hostnames are the primary Domains view — only that failure is a hard error.
 			// DNS/bindings/projects failures must not wipe or block the hostname list.
@@ -145,7 +156,7 @@ if (bootstrap.ok) {
 				domainsDataError = errorMessage(hostnamesResult.reason);
 			}
 		}
-		if (canCert) {
+		if (canDomain || canCert) {
 			try {
 				servers = ((await api.server.withSSHKey.query()) as typeof servers) || [];
 			} catch {
@@ -171,7 +182,7 @@ const canCertCreate = !!permissions?.certificate?.create;
 
 const tabs = [
 	...(canDomainRead ? [{ id: "hostnames", label: "Hostnames" }] : []),
-	...(canDomainRead ? [{ id: "zones", label: "DNS zones" }] : []),
+	...(canDomainRead ? [{ id: "zones", label: "Connected domains" }] : []),
 	...(canDomainRead ? [{ id: "bindings", label: "Environment bindings" }] : []),
 	...(canCertRead ? [{ id: "certificates", label: "Certificates" }] : []),
 ];
@@ -239,8 +250,13 @@ const zoneStatusOptions = [
 const statusOptions =
 	activeTab === "zones" ? zoneStatusOptions : hostnameStatusOptions;
 
-const platformEnabled = dnsReadiness?.platformDefaultEnabled ?? false;
-const platformApexDomain = dnsReadiness?.platformApex ?? null;
+const platformEnabled =
+	platformInfo?.enabled ?? dnsReadiness?.platformDefaultEnabled ?? false;
+const platformApexDomain =
+	platformInfo?.platformApex ?? dnsReadiness?.platformApex ?? null;
+const platformEdgeIp =
+	platformInfo?.webServerIp ?? dnsReadiness?.webServerIp ?? null;
+const platformHostnames = hostnames.filter((row) => row.dnsMode === "platform");
 
 function domainHealthMessage(row: {
 	status: string;
@@ -272,10 +288,7 @@ function collectParentDomains(
 }
 
 const parentDomains = collectParentDomains(hostnames, zones);
-const showReadinessBanner =
-	(platformEnabled && !!platformApexDomain) ||
-	zones.length > 0 ||
-	health.some((row) => row.status === "error");
+const showDnsHealthBanner = health.some((row) => row.status === "error");
 ---
 
 {
@@ -305,41 +318,73 @@ const showReadinessBanner =
 					) : null
 				}
 				{
-					showReadinessBanner ? (
-					<div class="nz-domains-readiness mb-3 rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] px-4 py-3 text-[11px] text-[var(--nz-text-muted)]">
-						<p>
-							<strong class="text-[var(--nz-text)]">Domain routing</strong>{" "}
-							{zones.length > 0
-								? "has managed DNS configuration for this organization."
-								: platformEnabled
-									? "has a platform hostname template, but still requires external wildcard DNS and a shared edge."
-									: "is ready to be configured."}
-						</p>
-						{
-							platformEnabled && platformApexDomain ? (
-								<p class="mt-1">
-									Platform domain: <code>{platformApexDomain}</code>. For apps routed directly to different remote servers, bind a Nearzero-managed zone to each environment instead.
-								</p>
-							) : null
-						}
-						{
-							zones.length > 0 ? (
-								<p class="mt-1">
-									{zones.length} managed DNS zone{zones.length === 1 ? "" : "s"} added.
-								</p>
-							) : null
-						}
-						{
-							health.some((h) => h.status === "error") ? (
-								<p class="mt-1 text-destructive">
-									{health
-										.filter((h) => h.status === "error")
-										.map((h) => `${h.name}: ${domainHealthMessage(h)}`)
-										.join(" · ")}
-								</p>
-							) : null
-					}
-				</div>
+					platformEnabled && platformApexDomain ? (
+						<section class="nz-domains-platform-card mb-3" aria-label="Platform domain">
+							<div class="nz-domains-platform-card__header">
+								<div>
+									<p class="nz-domains-platform-card__eyebrow">Platform domain</p>
+									<p class="nz-domains-platform-card__apex">
+										<code>{platformApexDomain}</code>
+									</p>
+								</div>
+								<span class="nz-domains-platform-card__badge">Automatic</span>
+							</div>
+							<p class="nz-domains-platform-card__copy">
+								Deployed apps get a random preview URL like{" "}
+								<code>a3f9c2b1.{platformApexDomain}</code>
+								{" "}— no custom DNS setup per app. Point{" "}
+								<code>*.{platformApexDomain}</code>
+								{platformEdgeIp ? (
+									<>
+										{" "}A/AAAA to <code>{platformEdgeIp}</code>
+									</>
+								) : (
+									" to your Nearzero edge IP"
+								)}
+								{" "}once at your registrar.
+							</p>
+							{
+								platformHostnames.length > 0 ? (
+									<ul class="nz-domains-platform-card__list">
+										{platformHostnames.slice(0, 6).map((row) => (
+											<li>
+												<code>{row.host}</code>
+												{row.serviceLabel ? (
+													<span class="text-[var(--nz-text-muted)]"> · {row.serviceLabel}</span>
+												) : null}
+											</li>
+										))}
+										{platformHostnames.length > 6 ? (
+											<li class="text-[var(--nz-text-muted)]">
+												+{platformHostnames.length - 6} more in Hostnames
+											</li>
+										) : null}
+									</ul>
+								) : (
+									<p class="nz-domains-platform-card__empty">
+										No preview URLs yet. Deploy a service and Nearzero will assign one automatically.
+									</p>
+								)
+							}
+						</section>
+					) : canDomainRead ? (
+						<section class="nz-domains-platform-card nz-domains-platform-card--muted mb-3" aria-label="Platform domain">
+							<p class="nz-domains-platform-card__eyebrow">Platform domain</p>
+							<p class="nz-domains-platform-card__copy">
+								Set <code>NEARZERO_PLATFORM_DOMAIN</code> or the web-server host (e.g.{" "}
+								<code>veritus.space</code>) so apps receive random preview URLs on deploy.
+							</p>
+						</section>
+					) : null
+				}
+				{
+					showDnsHealthBanner ? (
+						<div class="nz-domains-readiness mb-3 rounded-md border border-[var(--nz-border)] bg-[var(--nz-bg-muted)] px-4 py-3 text-[11px] text-destructive">
+							{health
+								.filter((h) => h.status === "error")
+								.map((h) => `${h.name}: ${domainHealthMessage(h)}`)
+								.join(" · ")}
+						</div>
 					) : null
 				}
 
@@ -441,9 +486,18 @@ const showReadinessBanner =
 									{
 										canDomainCreate ? (
 											<>
-												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="hostname" role="menuitem">Add domain or subdomain</button>
-												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="bind-env" role="menuitem">Bind zone to environment</button>
-												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="dns-zone" role="menuitem">Add DNS zone (advanced)</button>
+												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="hostname" role="menuitem">
+													<span class="flex flex-col gap-0.5">
+														<span>Add a hostname</span>
+														<span class="text-[10px] font-normal text-[var(--nz-text-muted)]">api.example.com via external DNS</span>
+													</span>
+												</button>
+												<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--nz-bg-hover)]" data-domains-add-action="connect-domain" role="menuitem">
+													<span class="flex flex-col gap-0.5">
+														<span>Connect a domain</span>
+														<span class="text-[10px] font-normal text-[var(--nz-text-muted)]">Delegate NS to Nearzero DNS</span>
+													</span>
+												</button>
 											</>
 										) : null
 									}
@@ -481,7 +535,9 @@ const showReadinessBanner =
 													<div class={ST.empty}>
 														<p class="font-medium text-[var(--nz-text)]">No hostnames yet</p>
 														<p class={ST.emptyText}>
-															Add a domain like example.com, then add subdomains under it when needed.
+															{platformEnabled && platformApexDomain
+																? `Deploy an app for a random *.${platformApexDomain} URL, or use Add New → Add a hostname for something like api.example.com.`
+																: "Use Add New → Add a hostname for api.example.com, or Connect a domain to delegate DNS to Nearzero."}
 														</p>
 													</div>
 												</td>
@@ -586,8 +642,8 @@ const showReadinessBanner =
 											<tr class="nz-deployments-empty-row">
 												<td colspan="5" class="p-0">
 													<div class={ST.empty}>
-														<p class="font-medium text-[var(--nz-text)]">No DNS zones</p>
-														<p class={ST.emptyText}>Use Add New if Nearzero should host DNS for your domain.</p>
+														<p class="font-medium text-[var(--nz-text)]">No connected domains</p>
+														<p class={ST.emptyText}>Use Add New → Connect a domain to delegate nameservers to Nearzero DNS (CoreDNS).</p>
 													</div>
 												</td>
 											</tr>
@@ -656,7 +712,7 @@ const showReadinessBanner =
 											<td colspan="5" class="p-0">
 												<div class={ST.empty}>
 													<p class="font-medium text-[var(--nz-text)]">No environment bindings</p>
-													<p class={ST.emptyText}>Bind a DNS zone to an environment from Add New.</p>
+													<p class={ST.emptyText}>After connecting a domain, open Edit on an environment to attach that DNS zone (optional).</p>
 												</div>
 											</td>
 										</tr>
@@ -700,7 +756,7 @@ const showReadinessBanner =
 			</div>
 
 			<!-- Modals -->
-			<NzModal id="nz-dns-create-dialog" title="Add DNS zone" description="Optional — only if Nearzero hosts authoritative DNS. Not required for Cloudflare users." size="sm" form formId="nz-dns-create-form" showClose={false}>
+			<NzModal id="nz-dns-create-dialog" title="Connect a domain" description="Delegate your domain’s nameservers to Nearzero DNS. Nearzero becomes authoritative for the zone (Vercel-style NS migration)." size="sm" form formId="nz-dns-create-form" showClose={false}>
 				<label class="nz-modal__field">
 					<span class="nz-modal__label">Zone name</span>
 					<input name="name" required placeholder="example.com" class="nz-modal__input" />
@@ -716,7 +772,7 @@ const showReadinessBanner =
 					<input name="nameservers" placeholder="ns1.example.com, ns2.example.com" class="nz-modal__input" />
 				</label>
 				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
-				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Create DNS zone</button>
+				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Connect domain</button>
 			</NzModal>
 
 			<NzModal id="nz-dns-records-dialog" title="Zone records" size="lg" showClose={false}>
@@ -746,15 +802,15 @@ const showReadinessBanner =
 				</div>
 			</NzModal>
 
-			<NzModal id="nz-add-hostname-dialog" title="Add domain or subdomain" description="Add example.com first, then add subdomains like api.example.com under it." size="md" form formId="nz-add-hostname-form" showClose={false}>
+			<NzModal id="nz-add-hostname-dialog" title="Add a hostname" description="Point a specific hostname (like api.example.com) at Nearzero with an A/CNAME at your DNS provider — you keep your existing nameservers." size="md" form formId="nz-add-hostname-form" showClose={false}>
 				<label class="flex items-center gap-2 text-xs">
 					<input id="nz-add-hostname-subdomain-mode" type="checkbox" />
 					Add as subdomain of an existing domain
 				</label>
 				<div id="nz-add-hostname-full-row" class="nz-modal__field">
 					<label class="nz-modal__field">
-						<span class="nz-modal__label">Domain or hostname</span>
-						<input id="nz-add-hostname-host" name="host" placeholder="example.com or app.example.com" class="nz-modal__input" />
+						<span class="nz-modal__label">Hostname</span>
+						<input id="nz-add-hostname-host" name="host" placeholder="api.example.com" class="nz-modal__input" />
 					</label>
 				</div>
 				<div id="nz-add-hostname-subdomain-row" class="hidden space-y-2">
@@ -772,10 +828,11 @@ const showReadinessBanner =
 					</label>
 					<p id="nz-add-hostname-subdomain-preview" class="text-[11px] text-muted-foreground" />
 				</div>
-				<fieldset class="nz-modal__field">
+				{/* Hostname path defaults to external DNS; Connect a domain handles NS delegation. */}
+				<fieldset class="nz-modal__field hidden" data-domains-advanced-dns-mode>
 					<span class="nz-modal__label">DNS mode</span>
 					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="external" checked /> External DNS (Cloudflare, registrar)</label>
-					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="nearzero_managed" /> Nearzero DNS (org zone)</label>
+					<label class="flex items-center gap-2 text-xs"><input type="radio" name="dnsMode" value="nearzero_managed" /> Nearzero DNS (connected domain zone)</label>
 				</fieldset>
 				<div id="nz-add-hostname-zone-row" class="nz-modal__field hidden">
 					<label class="nz-modal__field">
@@ -813,7 +870,7 @@ const showReadinessBanner =
 					<option value="none">None</option>
 				</select>
 				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
-				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Add domain</button>
+				<button slot="footer" type="submit" class="nz-modal__btn nz-modal__btn--primary">Add hostname</button>
 			</NzModal>
 
 			<NzModal id="nz-connect-service-dialog" title="Connect service" size="md" form formId="nz-connect-service-form" showClose={false}>

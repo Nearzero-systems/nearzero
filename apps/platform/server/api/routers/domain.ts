@@ -639,6 +639,23 @@ export const domainRouter = createTRPCRouter({
 		);
 	}),
 
+	/** Platform apex for Domains hub (does not require dns.read). */
+	platformInfo: withPermission("domain", "read").query(async () => {
+		const { resolvePlatformDefaultDomain } = await import(
+			"@nearzero/server/services/managed-domain"
+		);
+		const { getWebServerSettings } = await import(
+			"@nearzero/server/services/web-server-settings"
+		);
+		const platformApex = await resolvePlatformDefaultDomain();
+		const settings = await getWebServerSettings();
+		return {
+			platformApex,
+			enabled: Boolean(platformApex),
+			webServerIp: settings?.serverIp ?? null,
+		};
+	}),
+
 	register: withPermission("domain", "create")
 		.input(
 			z.object({
