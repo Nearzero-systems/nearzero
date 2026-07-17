@@ -147,7 +147,14 @@ if (bootstrap.ok) {
 			hostnames = take(3, [] as HostnameRow[]);
 			bindings = take(4, [] as BindingRow[]);
 			projects = take(5, [] as unknown[]);
-			platformInfo = take(6, null);
+			platformInfo = take(
+				6,
+				null as {
+					platformApex: string | null;
+					enabled: boolean;
+					webServerIp: string | null;
+				} | null,
+			);
 
 			// Hostnames are the primary Domains view — only that failure is a hard error.
 			// DNS/bindings/projects failures must not wipe or block the hostname list.
