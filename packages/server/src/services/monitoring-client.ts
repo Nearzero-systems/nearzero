@@ -230,18 +230,73 @@ const requestRemoteLoopback = async (
 	});
 };
 
+/**
+ * Resolve the local monitoring base URL.
+ * Repairs invalid URLs that often appear after a naive image-tag `sed` replaces
+ * `monitoring:4500` with `monitoring:0.1.x` inside NEARZERO_METRICS_URL.
+ */
+export const resolveLocalMonitoringBaseUrl = (
+	configuredUrl: string | undefined,
+	port: number,
+): URL => {
+	const safePort = monitoringPort(port);
+	if (!configuredUrl) {
+		return new URL(`http://127.0.0.1:${safePort}/metrics`);
+	}
+
+	try {
+		const url = new URL(configuredUrl);
+		if (url.protocol !== "http:" && url.protocol !== "https:") {
+			throw new Error("NEARZERO_METRICS_URL must use HTTP or HTTPS");
+		}
+		if (url.port) {
+			const parsedPort = Number(url.port);
+			if (
+				!Number.isInteger(parsedPort) ||
+				parsedPort < 1 ||
+				parsedPort > 65_535
+			) {
+				url.port = String(safePort);
+			}
+		}
+		if (!url.pathname || url.pathname === "/") {
+			url.pathname = "/metrics";
+		}
+		return url;
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message === "NEARZERO_METRICS_URL must use HTTP or HTTPS"
+		) {
+			throw error;
+		}
+		const hostMatch = /^https?:\/\/([^/:]+)/i.exec(configuredUrl);
+		const host = hostMatch?.[1]?.trim() || "monitoring";
+		const repaired = new URL(`http://${host}:${safePort}/metrics`);
+		console.warn(
+			`[monitoring] NEARZERO_METRICS_URL is invalid (${configuredUrl}); repaired to ${repaired.toString()}`,
+		);
+		return repaired;
+	}
+};
+
 const getLocalMonitoringUrl = async (endpoint: MonitoringEndpoint) => {
 	const settings = await getWebServerSettings();
 	const port = monitoringPort(
 		settings?.metricsConfig.server.port ?? DEFAULT_MONITORING_PORT,
 	);
-	const configuredUrl = process.env.NEARZERO_METRICS_URL?.trim();
-	const url = configuredUrl
-		? new URL(configuredUrl)
-		: new URL(`http://127.0.0.1:${port}/metrics`);
-	if (url.protocol !== "http:" && url.protocol !== "https:") {
-		throw new Error("NEARZERO_METRICS_URL must use HTTP or HTTPS");
-	}
+	const envPort = Number.parseInt(
+		process.env.NEARZERO_METRICS_PORT?.trim() || "",
+		10,
+	);
+	const effectivePort =
+		Number.isInteger(envPort) && envPort >= 1 && envPort <= 65_535
+			? envPort
+			: port;
+	const url = resolveLocalMonitoringBaseUrl(
+		process.env.NEARZERO_METRICS_URL?.trim(),
+		effectivePort,
+	);
 	if (endpoint.kind === "container") {
 		url.pathname = `${url.pathname.replace(/\/+$/, "")}/containers`;
 	}

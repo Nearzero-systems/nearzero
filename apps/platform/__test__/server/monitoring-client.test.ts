@@ -181,4 +181,21 @@ describe("monitoring transport", () => {
 		);
 		expect(response).toEqual({ status: 200, statusText: "OK", body: "test" });
 	});
+
+	it("repairs NEARZERO_METRICS_URL values corrupted by image-tag sed", async () => {
+		const { resolveLocalMonitoringBaseUrl } = await import(
+			"@nearzero/server/services/monitoring-client"
+		);
+		const repaired = resolveLocalMonitoringBaseUrl(
+			"http://monitoring:0.1.35/metrics",
+			4500,
+		);
+		expect(repaired.toString()).toBe("http://monitoring:4500/metrics");
+
+		const healthy = resolveLocalMonitoringBaseUrl(
+			"http://monitoring:4500/metrics",
+			4500,
+		);
+		expect(healthy.toString()).toBe("http://monitoring:4500/metrics");
+	});
 });

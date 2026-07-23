@@ -200,7 +200,10 @@ export function bindUpdateServerIpDialog() {
 	});
 }
 
-export function bindPublicDomainDialog(root: HTMLElement) {
+export function bindPublicDomainDialog(
+	root: HTMLElement,
+	signal?: AbortSignal,
+) {
 	const open = document.getElementById("nz-ws-domain-open");
 	const form = document.getElementById("nz-ws-domain-form");
 	const hostInput = document.getElementById("nz-ws-domain-host");
@@ -227,6 +230,7 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 		return;
 	}
 
+	const opts = signal ? { signal } : undefined;
 	const resetDialog = () => {
 		setupFields.classList.remove("hidden");
 		success.classList.add("hidden");
@@ -237,18 +241,30 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 		acknowledge.checked = false;
 	};
 
-	open?.addEventListener("click", () => {
-		resetDialog();
-		hostInput.value = root.dataset.publicHost ?? "";
-		emailInput.value = root.dataset.letsencryptEmail ?? "";
-		openDialog("nz-ws-domain-dialog");
-	});
-	acknowledge.addEventListener("change", () => {
-		done.disabled = !acknowledge.checked;
-	});
-	done.addEventListener("click", () => {
-		window.setTimeout(() => window.location.reload(), 200);
-	});
+	open?.addEventListener(
+		"click",
+		() => {
+			resetDialog();
+			hostInput.value = root.dataset.publicHost ?? "";
+			emailInput.value = root.dataset.letsencryptEmail ?? "";
+			openDialog("nz-ws-domain-dialog");
+		},
+		opts,
+	);
+	acknowledge.addEventListener(
+		"change",
+		() => {
+			done.disabled = !acknowledge.checked;
+		},
+		opts,
+	);
+	done.addEventListener(
+		"click",
+		() => {
+			window.setTimeout(() => window.location.reload(), 200);
+		},
+		opts,
+	);
 	if (
 		new URL(window.location.href).searchParams.get("setup") === "domain" &&
 		open instanceof HTMLElement
@@ -256,38 +272,44 @@ export function bindPublicDomainDialog(root: HTMLElement) {
 		open.click();
 	}
 
-	form.addEventListener("submit", async (event) => {
-		event.preventDefault();
-		if (!form.reportValidity()) return;
-		submit.disabled = true;
-		submit.setAttribute("aria-busy", "true");
-		rememberDefaultLabel(submit);
-		setButtonLoadingVisuals(submit, true);
-		try {
-			await trpcMutate("settings.assignDomainServer", {
-				host: hostInput.value.trim().toLowerCase(),
-				certificateType: "letsencrypt",
-				letsEncryptEmail: emailInput.value.trim(),
-				https: true,
-			});
-			successUrl.textContent = `https://${hostInput.value.trim().toLowerCase()}`;
-			setupFields.classList.add("hidden");
-			success.classList.remove("hidden");
-			cancel.classList.add("hidden");
-			submit.classList.add("hidden");
-			done.classList.remove("hidden");
-			acknowledge.focus();
-		} catch (error) {
-			showToast(
-				error instanceof Error ? error.message : "Could not configure the domain",
-				"error",
-			);
-		} finally {
-			submit.disabled = false;
-			submit.removeAttribute("aria-busy");
-			setButtonLoadingVisuals(submit, false);
-		}
-	});
+	form.addEventListener(
+		"submit",
+		async (event) => {
+			event.preventDefault();
+			if (!form.reportValidity()) return;
+			submit.disabled = true;
+			submit.setAttribute("aria-busy", "true");
+			rememberDefaultLabel(submit);
+			setButtonLoadingVisuals(submit, true);
+			try {
+				await trpcMutate("settings.assignDomainServer", {
+					host: hostInput.value.trim().toLowerCase(),
+					certificateType: "letsencrypt",
+					letsEncryptEmail: emailInput.value.trim(),
+					https: true,
+				});
+				successUrl.textContent = `https://${hostInput.value.trim().toLowerCase()}`;
+				setupFields.classList.add("hidden");
+				success.classList.remove("hidden");
+				cancel.classList.add("hidden");
+				submit.classList.add("hidden");
+				done.classList.remove("hidden");
+				acknowledge.focus();
+			} catch (error) {
+				showToast(
+					error instanceof Error
+						? error.message
+						: "Could not configure the domain",
+					"error",
+				);
+			} finally {
+				submit.disabled = false;
+				submit.removeAttribute("aria-busy");
+				setButtonLoadingVisuals(submit, false);
+			}
+		},
+		opts,
+	);
 }
 
 let traefikEnvLocked = true;
@@ -566,10 +588,16 @@ export function bindSharedDialogCloseButtons() {
 	});
 }
 
-export function bindCopyServerIp() {
-	document.getElementById("nz-ws-copy-ip")?.addEventListener("click", () => {
-		const ip = document.getElementById("nz-ws-server-ip")?.textContent?.trim();
-		if (!ip) return;
-		void navigator.clipboard.writeText(ip).then(() => showToast("Copied to clipboard", "success"));
-	});
+export function bindCopyServerIp(signal?: AbortSignal) {
+	document.getElementById("nz-ws-copy-ip")?.addEventListener(
+		"click",
+		() => {
+			const ip = document.getElementById("nz-ws-server-ip")?.textContent?.trim();
+			if (!ip) return;
+			void navigator.clipboard
+				.writeText(ip)
+				.then(() => showToast("Copied to clipboard", "success"));
+		},
+		signal ? { signal } : undefined,
+	);
 }

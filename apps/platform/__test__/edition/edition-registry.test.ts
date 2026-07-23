@@ -5,10 +5,8 @@ describe("edition registry", () => {
 		const community = await import("@nearzero/edition-community");
 		const firstContract = await import("@nearzero/edition-contract");
 		firstContract.setEdition(community.communityEdition);
-
 		vi.resetModules();
 		const secondContract = await import("@nearzero/edition-contract");
-
 		expect(secondContract.getEdition().edition).toBe("community");
 		expect(secondContract.getEdition()).toBe(community.communityEdition);
 	});

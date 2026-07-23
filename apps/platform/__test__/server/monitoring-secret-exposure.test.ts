@@ -11,8 +11,15 @@ test("monitoring credentials stay out of browser-rendered markup", () => {
 	expect(dashboard).not.toContain("data-metrics-token");
 	expect(dashboard).not.toContain("PUBLIC_METRICS_TOKEN");
 	expect(dashboard).not.toContain("getMetricsToken.query");
-	expect(dashboard).toContain(
-		'trpcQuery<MetricPoint[]>("server.getServerMetrics", { dataPoints })',
+
+	const mountScript = readRepositoryFile(
+		"apps/console/src/scripts/mount-monitoring-dashboard.ts",
+	);
+	expect(mountScript).not.toContain("data-metrics-token");
+	expect(mountScript).not.toContain("PUBLIC_METRICS_TOKEN");
+	expect(mountScript).not.toContain("getMetricsToken.query");
+	expect(mountScript).toContain(
+		'trpcQuery<MetricPoint[]>("server.getServerMetrics", {',
 	);
 });
 

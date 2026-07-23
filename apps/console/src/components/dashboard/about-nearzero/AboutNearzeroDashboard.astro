@@ -127,15 +127,8 @@ const versionLabel =
 {canConfigureDomain ? <PublicDomainDialog serverIp={serverIp} /> : null}
 
 <script>
-	import {
-		bindCopyServerIp,
-		bindPublicDomainDialog,
-	} from "@/scripts/web-server-shared";
-	if (document.getElementById("nz-ws-copy-ip")) {
-		bindCopyServerIp();
-	}
-	const root = document.getElementById("nz-about-nearzero-root");
-	if (root) {
-		bindPublicDomainDialog(root);
-	}
+	import { mountAboutNearzeroDashboard } from "@/scripts/mount-about-nearzero";
+	import { mountMonitoringDashboard } from "@/scripts/mount-monitoring-dashboard";
+	mountAboutNearzeroDashboard();
+	mountMonitoringDashboard();
 </script>

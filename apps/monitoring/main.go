@@ -65,7 +65,8 @@ func main() {
 	app.Get("/metrics", func(c *fiber.Ctx) error {
 		limit := c.Query("limit", "50")
 
-		var metrics []monitoring.SystemMetrics
+		// Allocate an empty slice so JSON encodes as [] instead of null.
+		metrics := make([]monitoring.SystemMetrics, 0)
 		if limit == "all" {
 			dbMetrics, err := db.GetAllMetrics()
 			if err != nil {

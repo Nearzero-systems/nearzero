@@ -1022,6 +1022,19 @@ export const serverRouter = createTRPCRouter({
 			}),
 		)
 		.query(async ({ input, ctx }) => {
+			const toMetricsError = (error: unknown): TRPCError => {
+				if (error instanceof TRPCError) return error;
+				const message =
+					error instanceof Error && error.message.trim()
+						? error.message.trim()
+						: "Failed to fetch monitoring metrics";
+				return new TRPCError({
+					code: "PRECONDITION_FAILED",
+					message,
+					cause: error,
+				});
+			};
+
 			try {
 				if (input.serverId) {
 					const target = await findServerById(input.serverId);
@@ -1050,30 +1063,48 @@ export const serverRouter = createTRPCRouter({
 				try {
 					response = await fetchMetrics();
 				} catch (error) {
-					if (input.serverId) throw error;
+					if (input.serverId) throw toMetricsError(error);
 					await ensureWebMonitoring();
-					response = await fetchMetrics();
+					try {
+						response = await fetchMetrics();
+					} catch (retryError) {
+						throw toMetricsError(retryError);
+					}
 				}
 				if (!input.serverId && response.status === 401) {
 					await ensureWebMonitoring();
 					response = await fetchMetrics();
 				}
 				if (response.status < 200 || response.status >= 300) {
-					throw new Error(
-						`Error ${response.status}: ${response.statusText}. Ensure the container is running and this service is included in the monitoring configuration.`,
-					);
+					throw new TRPCError({
+						code:
+							response.status === 401 || response.status === 403
+								? "UNAUTHORIZED"
+								: "BAD_GATEWAY",
+						message: `Error ${response.status}: ${response.statusText || "monitoring request failed"}. Ensure the monitoring container is running and NEARZERO_METRICS_URL/TOKEN match its config.`,
+					});
 				}
 
-				const data = JSON.parse(response.body) as unknown;
+				let data: unknown;
+				try {
+					data = JSON.parse(response.body) as unknown;
+				} catch {
+					throw new TRPCError({
+						code: "BAD_GATEWAY",
+						message:
+							"Monitoring returned invalid JSON. Check the nearzero-monitoring container logs.",
+					});
+				}
 				if (!Array.isArray(data) || data.length === 0) {
-					throw new Error(
-						[
-							"No monitoring data available. This could be because:",
-							"",
-							"1. You don't have setup the monitoring service, you can do in web server section.",
-							"2. If you already have setup the monitoring service, wait a few minutes and refresh the page.",
-						].join("\n"),
-					);
+					throw new TRPCError({
+						code: "PRECONDITION_FAILED",
+						message: [
+							"No monitoring data available yet.",
+							"1. Confirm the nearzero-monitoring container is healthy.",
+							"2. Wait a few seconds for the first sample, then refresh.",
+							"3. Verify NEARZERO_METRICS_URL points at http://monitoring:<port>/metrics (not an image tag).",
+						].join(" "),
+					});
 				}
 				return data as {
 					cpu: string;
@@ -1101,7 +1132,7 @@ export const serverRouter = createTRPCRouter({
 					console.error(`[getServerMetrics] Error message: ${error.message}`);
 					console.error("[getServerMetrics] Error cause:", error.cause);
 				}
-				throw error;
+				throw toMetricsError(error);
 			}
 		}),
 });

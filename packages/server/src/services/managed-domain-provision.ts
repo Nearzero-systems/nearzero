@@ -665,7 +665,7 @@ export async function previewServiceDomain(
 		}
 	} else if (targetIp) {
 		const previewLabel = buildRandomPlatformServiceHost({
-			zoneName: "x",
+			zoneName: "sslip.io",
 			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
 		}).split(".")[0] || "app";
 		host = buildManagedPreviewHost({

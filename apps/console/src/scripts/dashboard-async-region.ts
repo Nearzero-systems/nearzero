@@ -1,5 +1,7 @@
 import { bootDomainsHub } from "@/scripts/domains-hub";
+import { mountAboutNearzeroDashboard } from "@/scripts/mount-about-nearzero";
 import { mountAnalyticsDashboard } from "@/scripts/mount-analytics-dashboard";
+import { mountMonitoringDashboard } from "@/scripts/mount-monitoring-dashboard";
 
 type PageDataResponse =
 	| { ok: true; shell: unknown; page: { html: string } }
@@ -199,6 +201,8 @@ function swapContent(root: HTMLElement, html: string) {
 	// Persistently-loaded module hooks (ES modules may not re-run after inject).
 	bootDomainsHub();
 	mountAnalyticsDashboard();
+	mountAboutNearzeroDashboard();
+	mountMonitoringDashboard();
 	document.dispatchEvent(new Event("astro:after-swap"));
 	document.dispatchEvent(new Event("astro:page-load"));
 }
