@@ -1,0 +1,16 @@
+---
+interface Props {
+	code: string;
+	label?: string;
+}
+
+const { code, label = "shell" } = Astro.props;
+---
+
+<div class="nz-doc-code">
+	<div class="nz-doc-code__bar">
+		<span><i></i><i></i><i></i></span>
+		<strong>{label}</strong>
+	</div>
+	<pre tabindex="0"><code>{code}</code></pre>
+</div>

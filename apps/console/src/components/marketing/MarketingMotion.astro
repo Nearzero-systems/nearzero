@@ -1,0 +1,149 @@
+<script>
+	import { animate, inView, stagger } from "framer-motion/dom";
+
+	const body = document.body;
+
+	if (
+		body.dataset.nzMotionBound !== "true" &&
+		!window.matchMedia("(prefers-reduced-motion: reduce)").matches
+	) {
+		body.dataset.nzMotionBound = "true";
+
+		const easing = [0.22, 1, 0.36, 1] as const;
+		const pending = new Set<HTMLElement>();
+
+		const uniqueElements = (selectors: string[]): HTMLElement[] => [
+			...new Set(
+				selectors.flatMap((selector) => [
+					...document.querySelectorAll<HTMLElement>(selector),
+				]),
+			),
+		];
+
+		const prepare = (elements: HTMLElement[], distance = 14) => {
+			for (const element of elements) {
+				element.style.opacity = "0";
+				element.style.transform = `translateY(${distance}px)`;
+				element.style.willChange = "opacity, transform";
+				element.dataset.nzMotionPending = "true";
+				pending.add(element);
+			}
+		};
+
+		const finish = (elements: HTMLElement[]) => {
+			for (const element of elements) {
+				element.style.removeProperty("opacity");
+				element.style.removeProperty("transform");
+				element.style.removeProperty("will-change");
+				delete element.dataset.nzMotionPending;
+				pending.delete(element);
+			}
+		};
+
+		const reveal = (
+			elements: HTMLElement[],
+			options: { delay?: number | ReturnType<typeof stagger>; duration?: number } = {},
+		) => {
+			if (elements.length === 0) return;
+
+			animate(
+				elements,
+				{ opacity: 1, transform: "translateY(0px)" },
+				{
+					delay: options.delay ?? 0,
+					duration: options.duration ?? 0.52,
+					ease: easing,
+					onComplete: () => finish(elements),
+				},
+			);
+		};
+
+		const entrance = uniqueElements([
+			".nz-hero__copy",
+			".nz-system-map",
+			".nz-docs-hero > .nz-container",
+			".nz-compare-hero__grid > div",
+			".nz-compare-answer",
+			".nz-compare-hub-hero > .nz-container",
+		]);
+
+		prepare(entrance, 12);
+		reveal(entrance, { delay: stagger(0.055), duration: 0.48 });
+
+		const singleReveals = uniqueElements([
+			".nz-section-heading",
+			".nz-journey__decision",
+			".nz-before-after",
+			".nz-agent-console",
+			".nz-policy-callout",
+			".nz-domains__copy",
+			".nz-route-diagram",
+			".nz-faq__intro",
+			".nz-faq__items",
+			".nz-final-cta__copy",
+			".nz-install-card",
+			".nz-doc-section",
+			".nz-doc-pager",
+			".nz-compare-section__heading",
+			".nz-compare-table-wrap",
+			".nz-compare-method",
+			".nz-compare-faq",
+			".nz-compare-group > header",
+			".nz-compare-related__heading",
+			".nz-compare-cta > .nz-container",
+		]);
+
+		for (const element of singleReveals) {
+			prepare([element]);
+			let hasRevealed = false;
+			inView(
+				element,
+				() => {
+					if (hasRevealed) return;
+					hasRevealed = true;
+					reveal([element]);
+				},
+				{ amount: 0.16, margin: "0px 0px -7% 0px" },
+			);
+		}
+
+		const staggerGroups = [
+			[".nz-proof__grid", ".nz-proof__item"],
+			[".nz-journey__grid", ":scope > li"],
+			[".nz-problem-grid", ":scope > article"],
+			[".nz-agent-workflow", ":scope > article"],
+			[".nz-use-case-grid", ":scope > article"],
+			[".nz-capability-grid", ":scope > article"],
+			[".nz-comparison-card-grid", ":scope > a"],
+			[".nz-compare-choice-grid", ":scope > article"],
+			[".nz-compare-path", ":scope > li"],
+			[".nz-compare-implications", ":scope > article"],
+			[".nz-compare-limits", ":scope > article"],
+			[".nz-compare-related__grid", ":scope > a"],
+			[".nz-compare-group__grid", ":scope > a"],
+			[".nz-compare-methodology-grid", ":scope > article"],
+			[".nz-compare-honesty", ":scope > div"],
+		] as const;
+
+		for (const [groupSelector, childSelector] of staggerGroups) {
+			for (const group of document.querySelectorAll<HTMLElement>(groupSelector)) {
+				const children = [
+					...group.querySelectorAll<HTMLElement>(childSelector),
+				];
+				prepare(children, 12);
+				let hasRevealed = false;
+				inView(
+					group,
+					() => {
+						if (hasRevealed) return;
+						hasRevealed = true;
+						reveal(children, { delay: stagger(0.06), duration: 0.46 });
+					},
+					{ amount: 0.12, margin: "0px 0px -5% 0px" },
+				);
+			}
+		}
+
+		window.addEventListener("beforeprint", () => finish([...pending]));
+	}
+</script>

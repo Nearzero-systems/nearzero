@@ -54,54 +54,81 @@ export function listFrameworkPresetOptions(): FrameworkPresetOption[] {
 	return FRAMEWORK_PRESETS;
 }
 
-export function getFrameworkPresetDefaults(preset: string) {
+function resolveFrameworkPresetLabel(preset: string): string {
 	const match = FRAMEWORK_PRESETS.find(
-		(p) => p.id === preset || p.label === preset,
+		(option) => option.id === preset || option.label === preset,
 	);
-	const label = match?.label ?? (preset || "Other");
+	return match?.label ?? (preset || "Other");
+}
+
+const SERVICE_PRESETS = new Set([
+	"Next.js",
+	"Nuxt",
+	"Remix",
+	"SvelteKit",
+	"SolidStart",
+	"Node.js",
+	"NestJS",
+	"Express",
+	"Fastify",
+	"Hono",
+	"Python",
+	"Django",
+	"FastAPI",
+	"Flask",
+	"Go",
+	"Rust",
+	"PHP",
+	"Laravel",
+	"Ruby on Rails",
+	"Java",
+	".NET",
+]);
+
+export function getFrameworkPresetDefaults(preset: string) {
+	const label = resolveFrameworkPresetLabel(preset);
 	const suggestedType: DeployType =
 		label === "Docker" || label === "Worker"
 			? "container"
-			: label === "Node.js" ||
-				  label === "NestJS" ||
-				  label === "Express" ||
-				  label === "Fastify" ||
-				  label === "Hono" ||
-				  label === "Python" ||
-				  label === "Django" ||
-				  label === "FastAPI" ||
-				  label === "Flask" ||
-				  label === "Go" ||
-				  label === "Rust" ||
-				  label === "PHP" ||
-				  label === "Laravel" ||
-				  label === "Ruby on Rails" ||
-				  label === "Java" ||
-				  label === ".NET"
+			: SERVICE_PRESETS.has(label)
 				? "service"
 				: "static";
 	return {
 		label,
 		suggestedType,
-		buildCommand: "bun run build",
-		startCommand: "bun run start",
-		outputDirectory: "dist",
+		buildCommand: defaultBuildCommandForPreset(label),
+		startCommand: defaultStartCommandForPreset(label),
+		outputDirectory: defaultOutputDirForPreset(label),
 	};
 }
 
-export function suggestDeployTypeFromPreset(_preset: string): DeployType {
-	return "static";
+export function suggestDeployTypeFromPreset(preset: string): DeployType {
+	return getFrameworkPresetDefaults(preset).suggestedType;
 }
 
 export function defaultOutputDirForPreset(_preset: string) {
 	return "dist";
 }
 
-export function defaultBuildCommandForPreset(_preset: string) {
+export function defaultBuildCommandForPreset(preset: string) {
+	const label = resolveFrameworkPresetLabel(preset);
+	if (label === "FastAPI" || label === "Django" || label === "Flask") {
+		return "";
+	}
+	if (label === "Next.js") {
+		return "npm run build";
+	}
 	return "bun run build";
 }
 
-export function defaultStartCommandForPreset(_preset: string) {
+export function defaultStartCommandForPreset(preset: string) {
+	const label = resolveFrameworkPresetLabel(preset);
+	if (label === "FastAPI") {
+		return "python -m uvicorn main:app --host 0.0.0.0 --port 3000";
+	}
+	if (label === "Next.js") {
+		return "npm run start";
+	}
 	return "bun run start";
 }
 

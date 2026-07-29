@@ -1,0 +1,42 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import { publicFooterGroups, publicSiteLinks } from "@/lib/public-site";
+import GitHubMark from "./GitHubMark.astro";
+---
+
+<footer class="nz-footer">
+	<div class="nz-container">
+		<div class="nz-footer__top">
+			<div class="nz-footer__brand">
+				<a class="nz-brand" href={publicSiteLinks.home} aria-label="Nearzero home">
+					<span class="nz-brand-mark" aria-hidden="true">
+						<span class="is-on"></span><span></span><span class="is-on"></span>
+						<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span>
+						<span class="is-on"></span><span></span><span class="is-on"></span>
+					</span>
+					<span>Nearzero</span>
+				</a>
+				<p>Self-hosted deployment on infrastructure you own.</p>
+			</div>
+			<div class="nz-footer__links">
+				{
+					publicFooterGroups.map((group) => (
+						<div>
+							<strong>{group.title}</strong>
+							{group.links.map((link) => (
+								<a href={link.href}>
+									{link.label === "GitHub" && <GitHubMark size={13} />}
+									{link.label}
+								</a>
+							))}
+						</div>
+					))
+				}
+			</div>
+		</div>
+		<div class="nz-footer__bottom">
+			<span>© {new Date().getFullYear()} Nearzero</span>
+			<span>Built for infrastructure you control.</span>
+		</div>
+	</div>
+</footer>

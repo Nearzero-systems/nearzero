@@ -1,0 +1,7 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import ComparisonShell from "@/components/marketing/ComparisonShell.astro";
+import { comparisonBySlug } from "@/lib/comparisons";
+---
+
+<ComparisonShell comparison={comparisonBySlug.netlify} />

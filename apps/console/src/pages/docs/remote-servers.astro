@@ -1,0 +1,114 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import DocCallout from "@/components/marketing/DocCallout.astro";
+import DocCode from "@/components/marketing/DocCode.astro";
+import DocsShell from "@/components/marketing/DocsShell.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { publicSiteLinks } from "@/lib/public-site";
+
+const verifyCode = `# Run from a trusted network after server setup
+curl --fail --show-error --head https://app.example.com
+
+# Confirm that management-only ports are not public
+nc -vz <server-ip> 8080
+nc -vz <server-ip> 2375
+nc -vz <server-ip> 2376`;
+---
+
+<MarketingLayout
+	kind="article"
+	title="Connect remote servers to Nearzero"
+	description="Prepare secure remote application servers, verify SSH identity, configure Traefik ingress, and keep management and Swarm ports private."
+>
+	<DocsShell
+		title="Connect and secure remote servers"
+		summary="Give Nearzero a stable workload host without turning its management plane, Docker API, or internal routing components into public services."
+		activePath={publicSiteLinks.remoteServers}
+		toc={[
+			{ href: "#prepare", label: "Prepare the host" },
+			{ href: "#connect", label: "Connect it" },
+			{ href: "#network", label: "Network policy" },
+			{ href: "#trust", label: "Trust boundaries" },
+			{ href: "#verify", label: "Verify externally" },
+		]}
+		previous={{ href: publicSiteLinks.selfHosting, label: "Self-host Nearzero" }}
+		next={{ href: publicSiteLinks.domainsAndHttps, label: "Domains and HTTPS" }}
+	>
+		<section id="prepare" class="nz-doc-section">
+			<span class="nz-doc-section__index">01</span>
+			<h2>Prepare the workload host</h2>
+			<p>
+				Use a dedicated Linux server with a stable public IPv4 address. Create a
+				dedicated SSH account for Nearzero setup, restrict its inbound SSH source,
+				and treat its Docker and passwordless privilege access as root-equivalent.
+			</p>
+			<div class="nz-doc-feature-list">
+				<div><strong>Stable address</strong><p>Managed A records target the server selected for each service. Avoid an address that changes without coordinated DNS updates.</p></div>
+				<div><strong>Dedicated SSH identity</strong><p>Use Nearzero’s generated public key and protect or rotate the corresponding private key.</p></div>
+				<div><strong>Provider firewall</strong><p>Host rules cannot override a cloud security group, router, or NAT. Configure both layers deliberately.</p></div>
+				<div><strong>Unoccupied web ports</strong><p>Traefik needs TCP 80 and 443. Remove conflicting listeners before setup.</p></div>
+			</div>
+		</section>
+
+		<section id="connect" class="nz-doc-section">
+			<span class="nz-doc-section__index">02</span>
+			<h2>Connect the server through Nearzero</h2>
+			<ol class="nz-doc-steps">
+				<li><span>01</span><div><strong>Create or select an SSH key</strong><p>Open Settings → Servers → SSH keys and place the displayed public key in the remote account’s <code>authorized_keys</code>.</p></div></li>
+				<li><span>02</span><div><strong>Add the server</strong><p>Provide its stable public IP or hostname, SSH port, dedicated user, and the correct key.</p></div></li>
+				<li><span>03</span><div><strong>Verify the first host key</strong><p>Compare the recorded OpenSSH SHA-256 fingerprint with a trusted provider console or another independent channel.</p></div></li>
+				<li><span>04</span><div><strong>Run setup intentionally</strong><p>Nearzero installs and validates Docker, Swarm, Traefik, build tools, paths, and monitoring only after you request setup.</p></div></li>
+				<li><span>05</span><div><strong>Deploy a non-production service first</strong><p>Confirm logs, routing, certificate issuance, and the effective firewall before assigning production.</p></div></li>
+			</ol>
+			<DocCallout title="Strict host-key mode is available for pre-provisioned trust" tone="note">
+				<p>Set <code>NEARZERO_SSH_STRICT_HOST_KEY_CHECKING=true</code> and seed the protected host-key store before the first connection. Strict mode rejects an unseeded server.</p>
+			</DocCallout>
+		</section>
+
+		<section id="network" class="nz-doc-section">
+			<span class="nz-doc-section__index">03</span>
+			<h2>Apply a narrow network policy</h2>
+			<div class="nz-doc-table-wrap">
+				<table>
+					<thead><tr><th>Traffic</th><th>Scope</th><th>Why</th></tr></thead>
+					<tbody>
+						<tr><td>80/TCP</td><td>Public</td><td>Traefik redirects and Let’s Encrypt HTTP-01 validation.</td></tr>
+						<tr><td>443/TCP</td><td>Public</td><td>HTTPS application traffic.</td></tr>
+						<tr><td>443/UDP</td><td>Optional public</td><td>HTTP/3 only; not required for certificate validation.</td></tr>
+						<tr><td>22/TCP or custom SSH</td><td>Control plane and admin ranges</td><td>Setup and maintenance.</td></tr>
+						<tr><td>2375–2376/TCP</td><td>Never public</td><td>Docker API/proxy access is host-privileged.</td></tr>
+						<tr><td>8080/TCP</td><td>Never public</td><td>Traefik dashboard must remain private.</td></tr>
+						<tr><td>4500/TCP</td><td>Never public</td><td>Monitoring is an internal service.</td></tr>
+						<tr><td>2377/TCP, 7946/TCP+UDP, 4789/UDP</td><td>Trusted Swarm peers only</td><td>Cluster control, gossip, and overlay networking.</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<p>Single-node servers do not need public Swarm ports. Never expose the peer network at the public perimeter.</p>
+		</section>
+
+		<section id="trust" class="nz-doc-section">
+			<span class="nz-doc-section__index">04</span>
+			<h2>Understand the Traefik and Docker boundary</h2>
+			<DocCallout title="Docker access is a host-administrator capability" tone="critical">
+				<p>The generated Traefik stack uses an internal socket proxy with write operations denied, but access to Docker discovery metadata can still expose container and service details. A compromised socket-proxy process remains host-root-equivalent.</p>
+			</DocCallout>
+			<ul>
+				<li>Never publish the socket proxy, its network, or the Traefik dashboard.</li>
+				<li>Do not attach application workloads to <code>nearzero-traefik-control</code>.</li>
+				<li>Put only mutually trusted deployers on one Docker host.</li>
+				<li>Treat arbitrary privileged Compose deployments as full host-administrator access.</li>
+				<li>Rotate the SSH key and investigate the host after any unexplained fingerprint change.</li>
+			</ul>
+		</section>
+
+		<section id="verify" class="nz-doc-section">
+			<span class="nz-doc-section__index">05</span>
+			<h2>Verify from outside the server</h2>
+			<p>Test through the same public path your users will take. Re-run these checks after setup, firewall changes, cloud-network changes, and every reboot.</p>
+			<DocCode code={verifyCode} label="external verification" />
+			<DocCallout title="A failed connection to a private port is the expected result" tone="note">
+				<p>Use an approved network scanner or provider tool in production. The sample commands illustrate the desired boundary; they do not replace a complete infrastructure review.</p>
+			</DocCallout>
+		</section>
+	</DocsShell>
+</MarketingLayout>

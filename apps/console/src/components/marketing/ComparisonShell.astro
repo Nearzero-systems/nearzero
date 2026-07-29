@@ -1,0 +1,254 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import type { ComparisonPage } from "@/lib/comparisons";
+import { comparisonReviewDate, comparisons } from "@/lib/comparisons";
+import { publicSiteLinks } from "@/lib/public-site";
+import "@/styles/public-comparisons.css";
+import GitHubMark from "./GitHubMark.astro";
+import MarketingFooter from "./MarketingFooter.astro";
+import MarketingHeader from "./MarketingHeader.astro";
+
+interface Props {
+	comparison: ComparisonPage;
+}
+
+const { comparison } = Astro.props;
+const otherComparisons = comparisons.filter(
+	(item) => item.slug !== comparison.slug,
+);
+
+const seoTitles: Record<ComparisonPage["slug"], string> = {
+	vercel: "Nearzero vs Vercel: Self-hosting and infrastructure control",
+	netlify: "Nearzero vs Netlify: Managed edge or your own servers?",
+	coolify: "Nearzero vs Coolify: Servers, DNS, and operations",
+	dokploy: "Nearzero vs Dokploy: Self-hosted PaaS compared",
+};
+
+const socialAlts: Record<ComparisonPage["slug"], string> = {
+	vercel:
+		"Nearzero versus Vercel comparison focused on managed infrastructure and self-hosted server control.",
+	netlify:
+		"Nearzero versus Netlify comparison focused on managed web delivery and self-hosted Docker workloads.",
+	coolify:
+		"Nearzero versus Coolify comparison focused on self-hosting, Docker workloads, remote servers, domains, and operations.",
+	dokploy:
+		"Nearzero versus Dokploy comparison focused on self-hosting, Docker workloads, remote servers, domains, and operations.",
+};
+
+const faqSchema = {
+	"@type": "FAQPage",
+	mainEntity: comparison.faqs.map((faq) => ({
+		"@type": "Question",
+		name: faq.question,
+		acceptedAnswer: { "@type": "Answer", text: faq.answer },
+	})),
+};
+
+const deploymentPath = [
+	{
+		number: "01",
+		title: "Host Nearzero",
+		copy: "Run the Community control plane on a dedicated Linux host and secure its management surface.",
+	},
+	{
+		number: "02",
+		title: "Attach capacity",
+		copy: "Use the local host or connect remote servers, then choose where each workload should run.",
+	},
+	{
+		number: "03",
+		title: "Describe the service",
+		copy: "Connect Git, review build commands, add environment values, and define the runtime port or Compose stack.",
+	},
+	{
+		number: "04",
+		title: "Deploy",
+		copy: "Build and start the application or database on the selected Docker host while Nearzero records deployment state.",
+	},
+	{
+		number: "05",
+		title: "Route traffic",
+		copy: "Point a custom record or delegated managed zone to the selected server and let Traefik terminate HTTPS when prerequisites pass.",
+	},
+	{
+		number: "06",
+		title: "Operate",
+		copy: "Use logs and metrics directly, or ask the Agent to inspect and act within the requesting user's RBAC, administrator-controlled per-action policy, and the separate production gate.",
+	},
+];
+---
+
+<MarketingLayout
+	kind="webpage"
+	title={seoTitles[comparison.slug]}
+	description={comparison.description}
+	canonical={`/compare/${comparison.slug}`}
+	breadcrumbLabel={comparison.title}
+	socialImageAlt={socialAlts[comparison.slug]}
+	schemaGraph={[faqSchema]}
+>
+	<div class="nz-marketing nz-compare-site">
+		<MarketingHeader active="compare" />
+
+		<main id="main-content" class="nz-compare-main">
+			<header class="nz-compare-hero">
+				<div class="nz-container">
+					<nav class="nz-compare-breadcrumbs" aria-label="Breadcrumb">
+						<a href={publicSiteLinks.home}>Home</a><span aria-hidden="true">/</span>
+						<a href={publicSiteLinks.compare}>Compare</a><span aria-hidden="true">/</span>
+						<span>{comparison.competitor}</span>
+					</nav>
+
+					<div class="nz-compare-hero__grid">
+						<div>
+							<span class="nz-kicker">{comparison.categoryLabel}</span>
+							<h1>Nearzero <span>vs</span> {comparison.competitor}</h1>
+							<p>{comparison.summary}</p>
+							<div class="nz-compare-actions">
+								<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
+									Read the self-hosting guide <span aria-hidden="true">→</span>
+								</a>
+								<a
+									class="nz-button nz-button--secondary"
+									href={publicSiteLinks.github}
+									target="_blank"
+									rel="noreferrer"
+								>
+									<GitHubMark size={16} /> View Nearzero source
+								</a>
+							</div>
+						</div>
+
+						<aside class="nz-compare-answer" aria-label="Quick answer">
+							<div><span>Quick answer</span><small>Reviewed {comparisonReviewDate}</small></div>
+							<p>{comparison.quickAnswer}</p>
+						</aside>
+					</div>
+				</div>
+			</header>
+
+			<section class="nz-compare-section" id="decision">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-section__heading">
+						<span class="nz-compare-index">01</span>
+						<div><span class="nz-kicker">Start with the operating model</span><h2>Which platform fits the job?</h2></div>
+					</div>
+
+					<div class="nz-compare-choice-grid">
+						<article>
+							<span class="nz-compare-choice__label">Choose Nearzero when</span>
+							<h3>You want the platform on infrastructure you operate.</h3>
+							<ul>{comparison.chooseNearzero.map((item) => <li><span aria-hidden="true">✓</span>{item}</li>)}</ul>
+						</article>
+						<article>
+							<span class="nz-compare-choice__label">Choose {comparison.competitor} when</span>
+							<h3>Its product model better matches what you want to outsource.</h3>
+							<ul>{comparison.chooseCompetitor.map((item) => <li><span aria-hidden="true">→</span>{item}</li>)}</ul>
+						</article>
+					</div>
+				</div>
+			</section>
+
+			<section class="nz-compare-section" id="capabilities">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-section__heading">
+						<span class="nz-compare-index">02</span>
+						<div><span class="nz-kicker">Capability by capability</span><h2>Same outcome, different responsibility.</h2></div>
+					</div>
+
+					<div class="nz-compare-table-wrap">
+						<table class="nz-compare-table">
+							<caption>Nearzero and {comparison.competitor} capability comparison</caption>
+							<thead><tr><th scope="col">Area</th><th scope="col">Nearzero</th><th scope="col">{comparison.competitor}</th><th scope="col">What it means</th></tr></thead>
+							<tbody>
+								{comparison.rows.map((row) => (
+									<tr>
+										<th scope="row">{row.capability}</th>
+										<td data-label="Nearzero"><span class:list={["nz-compare-status", `is-${row.nearzero.tone}`]}>{row.nearzero.value}</span></td>
+										<td data-label={comparison.competitor}><span class:list={["nz-compare-status", `is-${row.competitor.tone}`]}>{row.competitor.value}</span></td>
+										<td data-label="What it means">{row.implication}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</section>
+
+			<section class="nz-compare-section" id="workflow">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-section__heading">
+						<span class="nz-compare-index">03</span>
+						<div><span class="nz-kicker">Nearzero end to end</span><h2>What the self-hosted workflow actually includes.</h2></div>
+					</div>
+
+					<ol class="nz-compare-path">
+						{deploymentPath.map((step) => <li><span>{step.number}</span><h3>{step.title}</h3><p>{step.copy}</p></li>)}
+					</ol>
+
+					<div class="nz-compare-implications">
+						{comparison.implications.map((item) => <article><span aria-hidden="true">↳</span><div><h3>{item.title}</h3><p>{item.copy}</p></div></article>)}
+					</div>
+				</div>
+			</section>
+
+			<section class="nz-compare-section" id="tradeoffs">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-section__heading">
+						<span class="nz-compare-index">04</span>
+						<div><span class="nz-kicker">Tradeoffs, not slogans</span><h2>What each choice asks from your team.</h2></div>
+					</div>
+
+					<div class="nz-compare-limits">
+						<article><h3>Nearzero limitations</h3><ul>{comparison.nearzeroLimitations.map((item) => <li>{item}</li>)}</ul></article>
+						<article><h3>{comparison.competitor} considerations</h3><ul>{comparison.competitorLimitations.map((item) => <li>{item}</li>)}</ul></article>
+					</div>
+					<p class="nz-compare-safety-link">
+						Before production, review host security, DNS and HTTPS prerequisites, backups, access controls, and <a href={publicSiteLinks.agentSafety}>Agent policy if automation is enabled</a>.
+					</p>
+				</div>
+			</section>
+
+			<section class="nz-compare-section" id="methodology">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-section__heading">
+						<span class="nz-compare-index">05</span>
+						<div><span class="nz-kicker">Evidence and review method</span><h2>Read the sources behind the comparison.</h2></div>
+					</div>
+					<div class="nz-compare-method">
+						<div><span>Last reviewed</span><strong>{comparisonReviewDate}</strong><p>{comparison.methodology}</p></div>
+						<ul>{comparison.sources.map((source) => <li><a href={source.url} target="_blank" rel="noreferrer">{source.label}<span aria-hidden="true">↗</span></a></li>)}</ul>
+					</div>
+				</div>
+			</section>
+
+			<section class="nz-compare-section" id="faq">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-section__heading">
+						<span class="nz-compare-index">06</span>
+						<div><span class="nz-kicker">Common questions</span><h2>Nearzero vs {comparison.competitor} FAQ</h2></div>
+					</div>
+					<div class="nz-compare-faq">
+						{comparison.faqs.map((faq, index) => <details open={index === 0}><summary><span>{faq.question}</span><i aria-hidden="true"></i></summary><p>{faq.answer}</p></details>)}
+					</div>
+				</div>
+			</section>
+
+			<section class="nz-compare-related">
+				<div class="nz-container nz-compare-reading">
+					<div class="nz-compare-related__heading"><div><span class="nz-kicker">Keep comparing</span><h2>Choose the model before the product.</h2></div><a href={publicSiteLinks.compare}>All comparisons <span aria-hidden="true">→</span></a></div>
+					<div class="nz-compare-related__grid">
+						{otherComparisons.map((item) => <a href={`/compare/${item.slug}`}><span>{item.categoryLabel}</span><strong>Nearzero vs {item.competitor}</strong><i aria-hidden="true">→</i></a>)}
+					</div>
+				</div>
+			</section>
+
+			<section class="nz-compare-cta">
+				<div class="nz-container nz-compare-reading"><div><span class="nz-kicker">See the real operating model</span><h2>Follow the secure self-hosting path.</h2><p>Install the control plane, connect a workload server, and verify DNS, ingress, backups, and access policy before production.</p></div><a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>Open the install guide <span aria-hidden="true">→</span></a></div>
+			</section>
+		</main>
+
+		<MarketingFooter />
+	</div>
+</MarketingLayout>

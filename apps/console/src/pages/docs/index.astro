@@ -1,0 +1,97 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import DocCallout from "@/components/marketing/DocCallout.astro";
+import DocsShell from "@/components/marketing/DocsShell.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { docsNavigation, publicSiteLinks } from "@/lib/public-site";
+
+const guideCards = docsNavigation.slice(1);
+---
+
+<MarketingLayout
+	kind="article"
+	title="Nearzero documentation — Self-host and deploy"
+	description="Learn how to install Nearzero Community, connect remote servers, deploy applications and data services, and configure DNS, HTTPS, and secure operations."
+>
+	<DocsShell
+		title="Operate Nearzero on infrastructure you control"
+		summary="Practical, security-conscious guides for installing the Community edition and taking applications from Git to HTTPS across local and remote servers."
+		activePath={publicSiteLinks.docs}
+		toc={[
+			{ href: "#choose-a-path", label: "Choose a path" },
+			{ href: "#deployment-model", label: "Deployment model" },
+			{ href: "#security-baseline", label: "Security baseline" },
+		]}
+		next={{ href: publicSiteLinks.selfHosting, label: "Self-host Nearzero" }}
+	>
+		<section id="choose-a-path" class="nz-doc-section">
+			<span class="nz-doc-section__index">01</span>
+			<h2>Choose the guide that matches your next step</h2>
+			<p class="nz-doc-lede">
+				Start with the control plane, then connect workload servers and
+				configure public routing. Use the security guides before exposing
+				management services or enabling automation.
+			</p>
+
+			<div class="nz-doc-card-grid">
+				{
+					guideCards.map((guide, index) => (
+						<a class="nz-doc-card" href={guide.href}>
+							<span>{String(index + 1).padStart(2, "0")}</span>
+							<h3>{guide.label}</h3>
+							<p>{guide.description}</p>
+							<strong>Open guide →</strong>
+						</a>
+					))
+				}
+			</div>
+		</section>
+
+		<section id="deployment-model" class="nz-doc-section">
+			<span class="nz-doc-section__index">02</span>
+			<h2>Understand the deployment model</h2>
+			<p>
+				Nearzero separates the control plane from the servers that run your
+				applications. A single-server installation can host both roles. As you
+				grow, remote servers receive workloads while the control plane keeps
+				project, deployment, DNS, and policy context together.
+			</p>
+
+			<figure class="nz-doc-flow">
+				<figcaption class="nz-visually-hidden">Nearzero deployment model from control plane to runtime hosts and public routing.</figcaption>
+				<div><small>Control plane</small><strong>Console + API</strong><span>Projects, policy, DNS</span></div>
+				<i aria-hidden="true">→</i>
+				<div><small>Runtime hosts</small><strong>Local or remote</strong><span>Apps, data, Compose</span></div>
+				<i aria-hidden="true">→</i>
+				<div><small>Public edge</small><strong>DNS + Traefik</strong><span>Hostnames and HTTPS</span></div>
+			</figure>
+
+			<div class="nz-doc-feature-list">
+				<div><strong>Control-plane host</strong><p>Runs the Nearzero platform, console, monitoring, and optional authoritative CoreDNS service.</p></div>
+				<div><strong>Remote application servers</strong><p>Run Traefik and the workloads assigned to them. They do not run Nearzero authoritative DNS.</p></div>
+				<div><strong>Managed zones</strong><p>Turn an environment and service selection into an A record targeting the selected server.</p></div>
+				<div><strong>Infrastructure Agent</strong><p>Works through scoped Nearzero tools, user RBAC, and administrator-controlled per-action policy; production mutations start disabled.</p></div>
+			</div>
+		</section>
+
+		<section id="security-baseline" class="nz-doc-section">
+			<span class="nz-doc-section__index">03</span>
+			<h2>Use a secure baseline before exposing anything</h2>
+			<DocCallout title="The installer does not terminate TLS for the control-plane ports" tone="critical">
+				<p>
+					Ports 3000 and 4321 are plain HTTP. Keep them on a management network,
+					behind a VPN or firewall, or publish them only through an authenticated
+					HTTPS reverse proxy. Do not send login credentials over a public
+					plaintext listener.
+				</p>
+			</DocCallout>
+
+			<ul class="nz-doc-checklist">
+				<li><span>1</span><div><strong>Use a dedicated control-plane host.</strong><p>Its Docker socket and stored credentials are privileged infrastructure.</p></div></li>
+				<li><span>2</span><div><strong>Verify the installer checksum.</strong><p>Download the versioned script and published SHA-256 file before execution.</p></div></li>
+				<li><span>3</span><div><strong>Restrict SSH and management access.</strong><p>Allow only administrative source ranges and protect the dedicated server key.</p></div></li>
+				<li><span>4</span><div><strong>Back up Postgres and privileged configuration.</strong><p>Encrypt off-host backups and test restoration before production use.</p></div></li>
+			</ul>
+		</section>
+	</DocsShell>
+</MarketingLayout>

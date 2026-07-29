@@ -1,0 +1,1272 @@
+/* biome-ignore-all lint/style/noDescendingSpecificity: Documentation component selectors are intentionally scoped and non-overlapping. */
+
+.nz-docs-site {
+	background: var(--nz-m-dark-raised);
+	max-width: 100%;
+	min-width: 0;
+	width: 100%;
+}
+
+.nz-nav__links [aria-current="page"],
+.nz-mobile-nav__panel [aria-current="page"] {
+	color: var(--nz-m-accent-hover);
+	font-weight: 700;
+}
+
+.nz-docs-main {
+	max-width: 100%;
+	min-height: 70vh;
+	min-width: 0;
+	width: 100%;
+}
+
+.nz-docs-hero {
+	background:
+		linear-gradient(to right, rgba(17, 24, 39, 0.035) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(17, 24, 39, 0.035) 1px, transparent 1px),
+		#050506;
+	background-size:
+		44px 44px,
+		44px 44px,
+		auto;
+	border-bottom: 1px solid var(--nz-m-line);
+	padding: 44px 0 52px;
+}
+
+.nz-docs-hero .nz-container {
+	max-width: 1120px;
+}
+
+.nz-breadcrumbs {
+	align-items: center;
+	color: var(--nz-m-muted);
+	display: flex;
+	flex-wrap: wrap;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	gap: 8px;
+	margin-bottom: 26px;
+}
+
+.nz-breadcrumbs a {
+	text-decoration: underline;
+	text-decoration-color: transparent;
+	text-underline-offset: 4px;
+	transition:
+		color 160ms ease,
+		text-decoration-color 160ms ease;
+}
+
+.nz-breadcrumbs a:hover {
+	color: var(--nz-m-accent-hover);
+	text-decoration-color: currentColor;
+}
+
+.nz-docs-hero h1 {
+	font-size: clamp(38px, 4.5vw, 54px);
+	font-weight: 560;
+	letter-spacing: -0.065em;
+	line-height: 1.04;
+	margin-top: 18px;
+	max-width: 920px;
+}
+
+.nz-docs-hero h1::after {
+	background: var(--nz-m-brand-gradient);
+	border-radius: 999px;
+	content: "";
+	display: inline-block;
+	height: 0.18em;
+	margin-left: 0.12em;
+	width: 0.18em;
+}
+
+.nz-docs-hero p {
+	color: var(--nz-m-muted);
+	font-size: clamp(16px, 1.6vw, 18px);
+	line-height: 1.65;
+	margin-top: 18px;
+	max-width: 800px;
+}
+
+.nz-docs-layout {
+	display: grid;
+	gap: 44px;
+	grid-template-columns: 230px minmax(0, 1fr) 170px;
+	min-width: 0;
+	max-width: 1240px;
+	padding-bottom: 88px;
+	padding-top: 48px;
+}
+
+.nz-docs-sidebar,
+.nz-docs-toc {
+	align-self: start;
+	max-height: calc(100dvh - 136px);
+	min-width: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	position: sticky;
+	scrollbar-gutter: stable;
+	top: 108px;
+}
+
+.nz-docs-sidebar > strong,
+.nz-docs-toc > strong {
+	color: var(--nz-m-ink);
+	display: block;
+	font-size: 11px;
+	font-weight: 750;
+	letter-spacing: 0.1em;
+	margin-bottom: 14px;
+	text-transform: uppercase;
+}
+
+.nz-docs-sidebar nav {
+	display: grid;
+	gap: 4px;
+}
+
+.nz-docs-sidebar a {
+	border-left: 2px solid transparent;
+	border-radius: 0 8px 8px 0;
+	display: grid;
+	gap: 3px;
+	padding: 10px 10px 10px 14px;
+	transition:
+		background 160ms ease,
+		border-color 160ms ease,
+		color 160ms ease;
+}
+
+.nz-docs-sidebar a:hover {
+	background: var(--nz-m-surface);
+}
+
+.nz-docs-sidebar a.is-active {
+	background: var(--nz-m-accent-soft);
+	border-color: var(--nz-m-brand-end);
+	color: var(--nz-m-accent-hover);
+}
+
+.nz-docs-sidebar a span {
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.nz-docs-sidebar a small {
+	color: var(--nz-m-muted);
+	font-size: 10px;
+	line-height: 1.4;
+}
+
+.nz-docs-toc nav {
+	border-left: 1px solid var(--nz-m-line);
+	display: grid;
+	gap: 2px;
+	padding-left: 14px;
+}
+
+.nz-docs-toc a {
+	color: var(--nz-m-muted);
+	font-size: 11px;
+	line-height: 1.4;
+	padding: 5px 0;
+	transition: color 160ms ease;
+}
+
+.nz-docs-toc a:hover {
+	color: var(--nz-m-accent-hover);
+}
+
+.nz-doc-article {
+	justify-self: center;
+	max-width: 780px;
+	min-width: 0;
+	width: 100%;
+}
+
+.nz-docs-layout > *,
+.nz-doc-section,
+.nz-doc-callout,
+.nz-doc-callout__body,
+.nz-doc-checklist li,
+.nz-doc-steps li,
+.nz-doc-checklist li > div,
+.nz-doc-steps li > div,
+.nz-doc-feature-list > div,
+.nz-doc-option-grid > div,
+.nz-doc-flow > div {
+	min-width: 0;
+}
+
+.nz-doc-article :where(p, li, td, th) {
+	overflow-wrap: anywhere;
+}
+
+.nz-doc-section {
+	border-bottom: 1px solid var(--nz-m-line);
+	padding-bottom: 54px;
+	padding-top: 12px;
+}
+
+.nz-doc-section + .nz-doc-section {
+	padding-top: 56px;
+}
+
+.nz-doc-section:last-of-type {
+	border-bottom: 0;
+}
+
+.nz-doc-section[id] {
+	scroll-margin-top: 112px;
+}
+
+.nz-doc-section__index {
+	background: var(--nz-m-brand-gradient);
+	background-clip: text;
+	color: transparent;
+	display: block;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 0.12em;
+	margin-bottom: 13px;
+}
+
+.nz-doc-section h2 {
+	font-size: clamp(28px, 3.2vw, 36px);
+	font-weight: 560;
+	letter-spacing: -0.045em;
+	line-height: 1.08;
+	margin-bottom: 21px;
+}
+
+.nz-doc-section h3 {
+	font-size: 19px;
+	font-weight: 600;
+	letter-spacing: -0.025em;
+	line-height: 1.2;
+	margin: 30px 0 12px;
+}
+
+.nz-doc-section > p,
+.nz-doc-section > ul,
+.nz-doc-section > ol,
+.nz-doc-callout__body {
+	color: var(--nz-m-muted);
+	font-size: 16px;
+	line-height: 1.75;
+}
+
+.nz-doc-section > p + p,
+.nz-doc-section > ul + p,
+.nz-doc-section > p + ul,
+.nz-doc-section > p + ol {
+	margin-top: 17px;
+}
+
+.nz-doc-lede {
+	font-size: 17px !important;
+	max-width: 760px;
+}
+
+.nz-doc-section > ul,
+.nz-doc-section > ol {
+	padding-left: 23px;
+}
+
+.nz-doc-section > ul li + li,
+.nz-doc-section > ol li + li {
+	margin-top: 9px;
+}
+
+.nz-doc-section a:not(.nz-doc-card) {
+	color: var(--nz-m-accent-hover);
+	font-weight: 650;
+	text-decoration: underline;
+	text-decoration-thickness: 1px;
+	text-underline-offset: 4px;
+}
+
+.nz-doc-section :not(pre) > code,
+.nz-doc-callout code,
+.nz-doc-option-grid code {
+	background: var(--nz-m-accent-soft);
+	border: 1px solid rgba(var(--nz-m-accent-rgb), 0.22);
+	border-radius: 5px;
+	color: #111827;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.86em;
+	overflow-wrap: anywhere;
+	padding: 2px 5px;
+	word-break: break-word;
+}
+
+.nz-doc-card-grid {
+	display: grid;
+	gap: 14px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin-top: 26px;
+}
+
+.nz-doc-card-grid--three {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.nz-doc-card {
+	background: var(--nz-m-white);
+	border: 1px solid var(--nz-m-line);
+	border-radius: 14px;
+	box-shadow: 0 16px 40px rgba(17, 24, 39, 0.04);
+	display: block;
+	min-height: 170px;
+	padding: 20px;
+	position: relative;
+	transition:
+		border-color 180ms ease,
+		box-shadow 180ms ease,
+		transform 180ms ease;
+}
+
+a.nz-doc-card:hover {
+	border-color: var(--nz-m-brand-end);
+	box-shadow: 0 20px 52px rgba(var(--nz-m-accent-rgb), 0.11);
+	transform: translateY(-3px);
+}
+
+.nz-doc-card.is-recommended {
+	background: var(--nz-m-accent-soft);
+	border-color: rgba(var(--nz-m-accent-rgb), 0.52);
+}
+
+.nz-doc-card > span {
+	color: var(--nz-m-accent-hover);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.nz-doc-card h3 {
+	font-size: 19px;
+	margin: 22px 0 9px;
+}
+
+.nz-doc-card p {
+	color: var(--nz-m-muted);
+	font-size: 13px;
+	line-height: 1.65;
+}
+
+.nz-doc-card > strong {
+	color: var(--nz-m-accent-hover);
+	display: block;
+	font-size: 11px;
+	margin-top: 22px;
+}
+
+.nz-doc-flow {
+	align-items: stretch;
+	background: var(--nz-m-dark);
+	border-radius: 16px;
+	display: grid;
+	gap: 10px;
+	grid-template-columns: 1fr auto 1fr auto 1fr;
+	margin: 34px 0;
+	padding: 24px;
+}
+
+.nz-doc-flow > div {
+	background: var(--nz-m-dark-raised);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	border-radius: 10px;
+	display: grid;
+	gap: 6px;
+	padding: 17px;
+}
+
+.nz-doc-flow small {
+	color: var(--nz-m-accent-on-dark);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 9px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.nz-doc-flow strong {
+	color: var(--nz-m-on-dark);
+	font-size: 13px;
+}
+
+.nz-doc-flow div span {
+	color: var(--nz-m-on-dark-muted);
+	font-size: 10px;
+}
+
+.nz-doc-flow > i {
+	align-self: center;
+	color: var(--nz-m-accent-on-dark);
+	font-style: normal;
+}
+
+.nz-doc-feature-list,
+.nz-doc-option-grid {
+	display: grid;
+	gap: 1px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin: 32px 0;
+	overflow: hidden;
+	border: 1px solid var(--nz-m-line);
+	border-radius: 14px;
+	background: var(--nz-m-line);
+}
+
+.nz-doc-feature-list > div,
+.nz-doc-option-grid > div {
+	background: var(--nz-m-white);
+	padding: 22px;
+}
+
+.nz-doc-feature-list strong,
+.nz-doc-option-grid code {
+	display: inline-block;
+	font-size: 13px;
+	margin-bottom: 8px;
+}
+
+.nz-doc-feature-list p,
+.nz-doc-option-grid p {
+	color: var(--nz-m-muted);
+	font-size: 12px;
+	line-height: 1.65;
+}
+
+.nz-doc-callout {
+	align-items: flex-start;
+	background: var(--nz-m-accent-soft);
+	border: 1px solid rgba(var(--nz-m-accent-rgb), 0.35);
+	border-radius: 12px;
+	display: grid;
+	gap: 15px;
+	grid-template-columns: 30px minmax(0, 1fr);
+	margin: 30px 0;
+	padding: 20px;
+}
+
+.nz-doc-callout--critical {
+	background: #f3f4f6;
+	border-color: #9ca3af;
+}
+
+.nz-doc-callout__mark {
+	align-items: center;
+	background: var(--nz-m-brand-gradient);
+	border-radius: 8px;
+	color: var(--nz-m-on-accent);
+	display: flex;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 12px;
+	font-weight: 900;
+	height: 30px;
+	justify-content: center;
+	width: 30px;
+}
+
+.nz-doc-callout--critical .nz-doc-callout__mark {
+	background: #111827;
+	color: #fff;
+}
+
+.nz-doc-callout strong {
+	color: var(--nz-m-ink);
+	display: block;
+	font-size: 14px;
+	margin: 3px 0 6px;
+}
+
+.nz-doc-callout__body,
+.nz-doc-callout__body p {
+	font-size: 13px;
+	line-height: 1.65;
+}
+
+.nz-doc-code {
+	background: var(--nz-m-dark);
+	border: 1px solid rgba(var(--nz-m-accent-rgb), 0.28);
+	border-radius: 13px;
+	box-shadow: 0 24px 60px rgba(17, 24, 39, 0.13);
+	margin: 28px 0;
+	overflow: hidden;
+	max-width: 100%;
+}
+
+.nz-doc-code__bar {
+	align-items: center;
+	background: var(--nz-m-dark-raised);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	display: flex;
+	justify-content: space-between;
+	padding: 11px 15px;
+}
+
+.nz-doc-code__bar > span {
+	display: flex;
+	gap: 5px;
+}
+
+.nz-doc-code__bar i {
+	background: #52525b;
+	border-radius: 999px;
+	display: block;
+	height: 6px;
+	width: 6px;
+}
+
+.nz-doc-code__bar i:first-child {
+	background: var(--nz-m-brand-start);
+}
+
+.nz-doc-code__bar strong {
+	color: var(--nz-m-on-dark-subtle);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 9px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.nz-doc-code pre {
+	color: var(--nz-m-on-dark);
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.75;
+	margin: 0;
+	overflow-x: auto;
+	overscroll-behavior-inline: contain;
+	padding: 21px;
+	tab-size: 2;
+	white-space: pre;
+	-webkit-overflow-scrolling: touch;
+}
+
+.nz-doc-code pre:focus-visible {
+	outline-offset: -4px;
+}
+
+.nz-doc-table-wrap {
+	border: 1px solid var(--nz-m-line);
+	border-radius: 12px;
+	margin: 28px 0;
+	overflow-x: auto;
+	max-width: 100%;
+	overscroll-behavior-inline: contain;
+	-webkit-overflow-scrolling: touch;
+}
+
+.nz-doc-table-wrap table {
+	border-collapse: collapse;
+	font-size: 12px;
+	line-height: 1.55;
+	min-width: 620px;
+	width: 100%;
+}
+
+.nz-doc-table-wrap th,
+.nz-doc-table-wrap td {
+	border-bottom: 1px solid var(--nz-m-line);
+	padding: 14px 16px;
+	text-align: left;
+	vertical-align: top;
+}
+
+.nz-doc-table-wrap th {
+	background: var(--nz-m-surface);
+	color: var(--nz-m-ink);
+	font-size: 10px;
+	letter-spacing: 0.07em;
+	text-transform: uppercase;
+}
+
+.nz-doc-table-wrap td {
+	background: var(--nz-m-white);
+	color: var(--nz-m-muted);
+}
+
+.nz-doc-table-wrap td:first-child {
+	color: var(--nz-m-ink);
+	font-weight: 700;
+}
+
+.nz-doc-table-wrap tr:last-child td {
+	border-bottom: 0;
+}
+
+.nz-doc-checklist,
+.nz-doc-steps {
+	display: grid;
+	gap: 10px;
+	list-style: none;
+	margin: 29px 0 !important;
+	padding: 0 !important;
+}
+
+.nz-doc-checklist li,
+.nz-doc-steps li {
+	align-items: flex-start;
+	background: var(--nz-m-white);
+	border: 1px solid var(--nz-m-line);
+	border-radius: 10px;
+	display: grid;
+	gap: 14px;
+	grid-template-columns: 32px minmax(0, 1fr);
+	padding: 16px;
+}
+
+.nz-doc-checklist li > span,
+.nz-doc-steps li > span {
+	align-items: center;
+	background: var(--nz-m-brand-gradient);
+	border-radius: 7px;
+	color: var(--nz-m-on-accent);
+	display: flex;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 10px;
+	font-weight: 800;
+	height: 32px;
+	justify-content: center;
+	width: 32px;
+}
+
+.nz-doc-checklist strong,
+.nz-doc-steps strong {
+	color: var(--nz-m-ink);
+	display: block;
+	font-size: 13px;
+	margin-bottom: 4px;
+}
+
+.nz-doc-checklist p,
+.nz-doc-steps p {
+	color: var(--nz-m-muted);
+	font-size: 13px;
+	line-height: 1.65;
+}
+
+.nz-doc-pager {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: 1fr 1fr;
+	margin-top: 50px;
+}
+
+.nz-doc-pager a {
+	background: var(--nz-m-white);
+	border: 1px solid var(--nz-m-line);
+	border-radius: 12px;
+	display: grid;
+	gap: 7px;
+	padding: 18px;
+	transition:
+		border-color 160ms ease,
+		transform 160ms ease;
+}
+
+.nz-doc-pager a:hover {
+	border-color: var(--nz-m-brand-end);
+	transform: translateY(-2px);
+}
+
+.nz-doc-pager a.is-next {
+	text-align: right;
+}
+
+.nz-doc-pager small {
+	color: var(--nz-m-muted);
+	font-size: 9px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.nz-doc-pager strong {
+	color: var(--nz-m-accent-hover);
+	font-size: 12px;
+}
+
+.nz-visually-hidden {
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	height: 1px;
+	overflow: hidden;
+	position: absolute;
+	white-space: nowrap;
+	width: 1px;
+}
+
+@media (max-width: 1120px) {
+	.nz-docs-layout {
+		gap: 42px;
+		grid-template-columns: 220px minmax(0, 1fr);
+	}
+
+	.nz-docs-toc {
+		display: none;
+	}
+
+	.nz-doc-card-grid--three {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 980px) {
+	.nz-docs-hero {
+		padding: 36px 0 42px;
+	}
+
+	.nz-breadcrumbs {
+		margin-bottom: 28px;
+	}
+
+	.nz-docs-layout {
+		gap: 38px;
+		grid-template-columns: minmax(0, 1fr);
+		max-width: 100%;
+		padding-top: 32px;
+	}
+
+	.nz-docs-sidebar,
+	.nz-docs-toc {
+		max-height: none;
+		overflow: visible;
+		position: static;
+		scrollbar-gutter: auto;
+		width: 100%;
+	}
+
+	.nz-docs-sidebar nav {
+		display: grid;
+		gap: 8px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		max-width: 100%;
+		overflow: visible;
+	}
+
+	.nz-docs-sidebar a {
+		border: 1px solid var(--nz-m-line);
+		border-left: 3px solid transparent;
+		border-radius: 10px;
+		min-width: 0;
+		padding: 13px 14px;
+	}
+
+	.nz-docs-sidebar a.is-active {
+		border-color: rgba(var(--nz-m-accent-rgb), 0.48);
+		border-left-color: var(--nz-m-brand-end);
+	}
+
+	.nz-doc-card-grid,
+	.nz-doc-feature-list,
+	.nz-doc-option-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.nz-doc-flow {
+		grid-template-columns: 1fr;
+	}
+
+	.nz-doc-flow > i {
+		justify-self: center;
+		transform: rotate(90deg);
+	}
+}
+
+@media (max-width: 640px) {
+	.nz-docs-hero h1 {
+		font-size: 36px;
+	}
+
+	.nz-docs-layout {
+		gap: 32px;
+		padding-bottom: 82px;
+	}
+
+	.nz-docs-sidebar nav {
+		grid-template-columns: 1fr;
+	}
+
+	.nz-docs-sidebar a small {
+		font-size: 11px;
+	}
+
+	.nz-doc-section {
+		padding-bottom: 44px;
+	}
+
+	.nz-doc-section + .nz-doc-section {
+		padding-top: 46px;
+	}
+
+	.nz-doc-code pre {
+		font-size: 10px;
+		padding: 17px;
+	}
+
+	.nz-doc-pager {
+		grid-template-columns: 1fr;
+	}
+
+	.nz-doc-pager > span {
+		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nz-doc-card,
+	.nz-doc-pager a {
+		transition: none;
+	}
+}
+
+/* Public docs inherit the dashboard's black canvas and compact cell geometry. */
+.nz-docs-site,
+.nz-docs-main {
+	background: var(--nz-m-dark);
+	color: var(--nz-m-on-dark);
+}
+
+.nz-nav__links [aria-current="page"],
+.nz-mobile-nav__panel [aria-current="page"] {
+	color: var(--nz-m-on-dark);
+}
+
+.nz-docs-hero {
+	background:
+		linear-gradient(to right, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+		var(--nz-m-dark);
+	border-color: var(--nz-m-line);
+}
+
+.nz-breadcrumbs,
+.nz-docs-hero p,
+.nz-docs-sidebar a small,
+.nz-docs-toc a {
+	color: var(--nz-m-on-dark-muted);
+}
+
+.nz-docs-hero h1 {
+	color: var(--nz-m-on-dark);
+	font-size: clamp(38px, 4.2vw, 52px);
+}
+
+.nz-docs-hero h1::after {
+	background: var(--nz-m-on-dark);
+}
+
+.nz-docs-sidebar,
+.nz-docs-toc {
+	color: var(--nz-m-on-dark);
+}
+
+.nz-docs-sidebar a {
+	border-radius: 0 6px 6px 0;
+}
+
+.nz-docs-sidebar a:hover,
+.nz-docs-sidebar a.is-active {
+	background: var(--nz-m-surface-strong);
+}
+
+.nz-docs-sidebar a.is-active {
+	border-color: var(--nz-m-on-dark);
+	color: var(--nz-m-on-dark);
+}
+
+.nz-docs-toc nav,
+.nz-doc-section {
+	border-color: var(--nz-m-line-strong);
+}
+
+.nz-doc-section h2,
+.nz-doc-section h3,
+.nz-doc-callout strong,
+.nz-doc-checklist strong,
+.nz-doc-steps strong,
+.nz-doc-table-wrap th,
+.nz-doc-table-wrap td:first-child,
+.nz-doc-flow strong {
+	color: var(--nz-m-on-dark);
+}
+
+.nz-doc-section > p,
+.nz-doc-section > ul,
+.nz-doc-section > ol,
+.nz-doc-callout__body,
+.nz-doc-card p,
+.nz-doc-feature-list p,
+.nz-doc-option-grid p,
+.nz-doc-checklist p,
+.nz-doc-steps p,
+.nz-doc-table-wrap td {
+	color: var(--nz-m-on-dark-muted);
+}
+
+.nz-doc-section a:not(.nz-doc-card),
+.nz-doc-card > span,
+.nz-doc-card > strong,
+.nz-doc-pager strong,
+.nz-doc-flow small {
+	color: var(--nz-m-on-dark);
+}
+
+.nz-doc-section :not(pre) > code,
+.nz-doc-callout code,
+.nz-doc-option-grid code {
+	background: var(--nz-m-surface-strong);
+	border-color: var(--nz-m-line-strong);
+	color: var(--nz-m-on-dark);
+}
+
+.nz-doc-card-grid,
+.nz-doc-checklist,
+.nz-doc-steps,
+.nz-doc-pager {
+	background: var(--nz-m-line);
+	border: 1px solid var(--nz-m-line);
+	border-radius: 6px;
+	gap: 1px;
+}
+
+.nz-doc-card,
+.nz-doc-checklist li,
+.nz-doc-steps li,
+.nz-doc-pager a {
+	background: var(--nz-m-dark-raised);
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	color: var(--nz-m-on-dark);
+}
+
+a.nz-doc-card:hover,
+.nz-doc-pager a:hover {
+	background: var(--nz-m-surface-strong);
+	border-color: transparent;
+	box-shadow: none;
+	transform: none;
+}
+
+.nz-doc-card.is-recommended {
+	background: var(--nz-m-surface-strong);
+	border-color: var(--nz-m-line-strong);
+}
+
+.nz-doc-flow,
+.nz-doc-feature-list,
+.nz-doc-option-grid,
+.nz-doc-callout,
+.nz-doc-code,
+.nz-doc-table-wrap {
+	border-color: var(--nz-m-line-strong);
+	border-radius: 6px;
+	box-shadow: none;
+}
+
+.nz-doc-flow,
+.nz-doc-code {
+	background: #000000;
+}
+
+.nz-doc-flow > div,
+.nz-doc-feature-list > div,
+.nz-doc-option-grid > div,
+.nz-doc-table-wrap td {
+	background: var(--nz-m-dark-raised);
+	border-color: var(--nz-m-line);
+}
+
+.nz-doc-flow > div {
+	border-radius: 6px;
+}
+
+.nz-doc-callout {
+	background: var(--nz-m-surface-strong);
+}
+
+.nz-doc-callout--critical {
+	background: #141416;
+	border-color: #71717a;
+}
+
+.nz-doc-callout__mark,
+.nz-doc-callout--critical .nz-doc-callout__mark,
+.nz-doc-checklist li > span,
+.nz-doc-steps li > span {
+	background: var(--nz-m-on-dark);
+	border-radius: 6px;
+	color: var(--nz-m-on-accent);
+}
+
+.nz-doc-code__bar,
+.nz-doc-table-wrap th {
+	background: var(--nz-m-surface-strong);
+	border-color: var(--nz-m-line);
+}
+
+.nz-doc-code pre {
+	color: var(--nz-m-on-dark);
+}
+
+@media (max-width: 980px) {
+	.nz-docs-sidebar a {
+		background: var(--nz-m-dark-raised);
+		border-color: var(--nz-m-line-strong);
+		border-radius: 6px;
+	}
+
+	.nz-docs-sidebar a.is-active {
+		border-color: var(--nz-m-on-dark);
+	}
+}
+
+/* Documentation is a light, reading-first product surface. */
+.nz-docs-site,
+.nz-docs-main {
+	background: var(--nz-m-paper);
+	color: var(--nz-m-on-paper);
+}
+
+.nz-nav__links [aria-current="page"],
+.nz-mobile-nav__panel [aria-current="page"] {
+	color: var(--nz-m-on-paper);
+}
+
+.nz-docs-hero {
+	background:
+		linear-gradient(to right, rgba(17, 24, 39, 0.04) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(17, 24, 39, 0.04) 1px, transparent 1px),
+		var(--nz-m-paper);
+	border-color: var(--nz-m-paper-line);
+}
+
+.nz-breadcrumbs,
+.nz-docs-hero p,
+.nz-docs-sidebar a small,
+.nz-docs-toc a {
+	color: var(--nz-m-on-paper-muted);
+}
+
+.nz-docs-hero h1,
+.nz-docs-sidebar,
+.nz-docs-toc,
+.nz-doc-section h2,
+.nz-doc-section h3,
+.nz-doc-callout strong,
+.nz-doc-checklist strong,
+.nz-doc-steps strong,
+.nz-doc-table-wrap th,
+.nz-doc-table-wrap td:first-child,
+.nz-doc-flow strong {
+	color: var(--nz-m-on-paper);
+}
+
+.nz-docs-hero h1::after {
+	background: var(--nz-m-on-paper);
+}
+
+.nz-docs-sidebar a:hover,
+.nz-docs-sidebar a.is-active {
+	background: var(--nz-m-paper-muted);
+}
+
+.nz-docs-sidebar a.is-active {
+	border-color: var(--nz-m-on-paper);
+	color: var(--nz-m-on-paper);
+}
+
+.nz-docs-toc nav,
+.nz-doc-section {
+	border-color: var(--nz-m-paper-line-strong);
+}
+
+.nz-doc-section__index {
+	background: none;
+	background-clip: border-box;
+	color: var(--nz-m-on-paper);
+	-webkit-background-clip: border-box;
+	-webkit-text-fill-color: currentColor;
+}
+
+.nz-doc-section > p,
+.nz-doc-section > ul,
+.nz-doc-section > ol,
+.nz-doc-callout__body,
+.nz-doc-card p,
+.nz-doc-feature-list p,
+.nz-doc-option-grid p,
+.nz-doc-checklist p,
+.nz-doc-steps p,
+.nz-doc-table-wrap td {
+	color: var(--nz-m-on-paper-muted);
+}
+
+.nz-doc-section a:not(.nz-doc-card),
+.nz-doc-card > span,
+.nz-doc-card > strong,
+.nz-doc-pager strong {
+	color: var(--nz-m-on-paper);
+}
+
+.nz-doc-section :not(pre) > code,
+.nz-doc-callout code,
+.nz-doc-option-grid code {
+	background: var(--nz-m-paper-muted);
+	border-color: var(--nz-m-paper-line-strong);
+	color: var(--nz-m-on-paper);
+}
+
+.nz-doc-card-grid,
+.nz-doc-checklist,
+.nz-doc-steps,
+.nz-doc-pager {
+	background: var(--nz-m-paper-line);
+	border-color: var(--nz-m-paper-line);
+}
+
+.nz-doc-card,
+.nz-doc-checklist li,
+.nz-doc-steps li,
+.nz-doc-pager a {
+	background: var(--nz-m-paper);
+	color: var(--nz-m-on-paper);
+}
+
+a.nz-doc-card:hover,
+.nz-doc-pager a:hover,
+.nz-doc-card.is-recommended {
+	background: var(--nz-m-paper-muted);
+}
+
+.nz-doc-flow,
+.nz-doc-code {
+	background: var(--nz-m-canvas);
+	border-color: var(--nz-m-canvas-line);
+	color: var(--nz-m-on-canvas);
+}
+
+.nz-doc-flow > div {
+	background: var(--nz-m-canvas-raised);
+	border-color: var(--nz-m-canvas-line);
+	color: var(--nz-m-on-canvas);
+}
+
+.nz-doc-flow strong,
+.nz-doc-flow small,
+.nz-doc-code pre {
+	color: var(--nz-m-on-canvas);
+}
+
+.nz-doc-feature-list,
+.nz-doc-option-grid,
+.nz-doc-callout,
+.nz-doc-table-wrap {
+	border-color: var(--nz-m-paper-line-strong);
+}
+
+.nz-doc-feature-list > div,
+.nz-doc-option-grid > div,
+.nz-doc-table-wrap td {
+	background: var(--nz-m-paper);
+	border-color: var(--nz-m-paper-line);
+}
+
+.nz-doc-callout,
+.nz-doc-callout--critical,
+.nz-doc-code__bar,
+.nz-doc-table-wrap th {
+	background: var(--nz-m-paper-muted);
+	border-color: var(--nz-m-paper-line-strong);
+}
+
+.nz-doc-callout--critical {
+	border-color: var(--nz-m-on-paper);
+}
+
+.nz-doc-callout__mark,
+.nz-doc-callout--critical .nz-doc-callout__mark,
+.nz-doc-checklist li > span,
+.nz-doc-steps li > span {
+	background: var(--nz-m-on-paper);
+	color: var(--nz-m-paper);
+}
+
+@media (max-width: 980px) {
+	.nz-docs-sidebar a {
+		background: var(--nz-m-paper);
+		border-color: var(--nz-m-paper-line-strong);
+	}
+
+	.nz-docs-sidebar a.is-active {
+		border-color: var(--nz-m-on-paper);
+	}
+}
+
+/* Documentation stays on a white reading surface without a page-wide matrix. */
+.nz-docs-site,
+.nz-docs-main,
+.nz-docs-hero,
+.nz-docs-layout {
+	background: var(--nz-m-paper);
+}
+
+.nz-docs-hero {
+	background-image: none;
+}
+
+.nz-docs-hero::before {
+	display: none;
+}
+
+.nz-docs-layout {
+	border-radius: 0;
+	gap: 44px;
+}
+
+.nz-docs-layout > .nz-docs-sidebar,
+.nz-docs-layout > .nz-doc-article,
+.nz-docs-layout > .nz-docs-toc {
+	background: transparent;
+	border-radius: 0;
+	padding: 0;
+}
+
+.nz-doc-card-grid,
+.nz-doc-checklist,
+.nz-doc-steps,
+.nz-doc-pager,
+.nz-doc-feature-list,
+.nz-doc-option-grid {
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+	gap: 12px;
+	overflow: visible;
+}
+
+.nz-doc-card,
+.nz-doc-checklist li,
+.nz-doc-steps li,
+.nz-doc-pager a,
+.nz-doc-feature-list > div,
+.nz-doc-option-grid > div {
+	background: var(--nz-m-paper);
+	border: 1px solid var(--nz-m-paper-line-strong);
+	border-radius: 6px;
+}
+
+@media (max-width: 980px) {
+	.nz-docs-layout {
+		gap: 32px;
+	}
+}

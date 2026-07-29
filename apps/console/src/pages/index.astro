@@ -1,3 +1,18 @@
 ---
-return Astro.redirect("/login");
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import NearzeroLanding from "../components/marketing/NearzeroLanding.astro";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+import { isMarketingHomeEnabled } from "../lib/marketing-home";
+
+if (!isMarketingHomeEnabled()) {
+	return Astro.redirect("/login");
+}
 ---
+
+<MarketingLayout
+	title="Nearzero: Open-source deployment platform for your servers"
+	description="Deploy applications, databases, and Docker Compose to local or remote servers with Git builds, routing, DNS, HTTPS, and built-in operations."
+	socialImageAlt="Nearzero connects Git repositories and operator intent to applications, databases, remote servers, DNS, and HTTPS on infrastructure you control."
+>
+	<NearzeroLanding />
+</MarketingLayout>

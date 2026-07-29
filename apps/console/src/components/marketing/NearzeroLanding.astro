@@ -1,0 +1,829 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import { NEARZERO_GITHUB_URL } from "@/lib/branding";
+import { publicSiteLinks } from "@/lib/public-site";
+import GitHubMark from "./GitHubMark.astro";
+import MarketingFooter from "./MarketingFooter.astro";
+import MarketingHeader from "./MarketingHeader.astro";
+
+const githubUrl = NEARZERO_GITHUB_URL;
+const docsUrl = publicSiteLinks.docs;
+const gettingStartedUrl = publicSiteLinks.selfHosting;
+const domainsGuideUrl = publicSiteLinks.domainsAndHttps;
+const agentSafetyUrl = publicSiteLinks.agentSafety;
+const compareUrl = publicSiteLinks.compare;
+
+const proofPoints = [
+	{
+		value: "Open source",
+		label: "A self-hosted control plane you can inspect and operate",
+	},
+	{
+		value: "Apps + data",
+		label: "Applications, databases, Compose, and Docker Swarm",
+	},
+	{
+		value: "Git to HTTPS",
+		label:
+			"Builds, routing, managed DNS, and Traefik TLS when ingress is ready",
+	},
+	{
+		value: "Remote ready",
+		label: "Place workloads on local or connected Linux servers",
+	},
+];
+
+const deploymentJourney = [
+	{
+		number: "01",
+		title: "Run the control plane",
+		copy: "Self-host Nearzero Community on a dedicated Linux host, then keep the console behind a trusted management boundary.",
+		result: "Projects, policy, DNS, and deployment state have one home.",
+	},
+	{
+		number: "02",
+		title: "Connect your servers",
+		copy: "Use the local host or add remote Linux servers over SSH. Nearzero prepares Docker, Traefik, builds, and monitoring for the workload host.",
+		result: "You choose where each application and database runs.",
+	},
+	{
+		number: "03",
+		title: "Bring a repository",
+		copy: "Connect GitHub, GitLab, Bitbucket, or Gitea, select a branch, and review the detected or explicit install, build, and start commands.",
+		result: "Source and deployment settings stay attached to the service.",
+	},
+	{
+		number: "04",
+		title: "Configure the runtime",
+		copy: "Add environment values, choose an application port, attach storage, or deploy a database or Docker Compose stack beside the application.",
+		result: "The runtime is described before a build is started.",
+	},
+	{
+		number: "05",
+		title: "Deploy and publish",
+		copy: "Build on the selected server, create the Traefik route, and connect a custom or managed hostname after DNS resolves to that server.",
+		result:
+			"The application moves from Git to HTTPS when DNS and ingress prerequisites are ready.",
+	},
+	{
+		number: "06",
+		title: "Operate with context",
+		copy: "Inspect logs, deployment state, domains, servers, and metrics directly—or ask the Agent to investigate using only actions your role allows and administrator-controlled policy permits.",
+		result: "Operations keep the same context as the original deployment.",
+	},
+];
+
+const comparisonCards = [
+	{
+		name: "Vercel",
+		href: publicSiteLinks.compareVercel,
+		category: "Managed infrastructure",
+		copy: "Compare a globally managed application platform with a self-hosted Docker control plane for infrastructure you operate.",
+	},
+	{
+		name: "Netlify",
+		href: publicSiteLinks.compareNetlify,
+		category: "Managed web platform",
+		copy: "Compare managed edge delivery, functions, and deploy previews with long-running workloads on your own servers.",
+	},
+	{
+		name: "Coolify",
+		href: publicSiteLinks.compareCoolify,
+		category: "Self-hosted PaaS",
+		copy: "Compare Git, Compose, previews, remote servers, DNS ownership, and day-two operations across two self-hosted platforms.",
+	},
+	{
+		name: "Dokploy",
+		href: publicSiteLinks.compareDokploy,
+		category: "Self-hosted PaaS",
+		copy: "Compare Docker and Swarm, remote and build servers, domains, monitoring, and governance across two self-hosted platforms.",
+	},
+];
+
+const problems = [
+	{
+		number: "01",
+		title: "Context lives everywhere",
+		copy: "The repository is in Git. Runtime state is on a server. Deployment output, DNS records, and routing rules live in different tools.",
+	},
+	{
+		number: "02",
+		title: "Every server becomes a snowflake",
+		copy: "SSH scripts and one-off configuration make the next environment harder to understand, reproduce, and operate.",
+	},
+	{
+		number: "03",
+		title: "Day-two work stays manual",
+		copy: "A failed deployment means moving between containers, logs, routes, DNS, and host metrics before the real issue becomes clear.",
+	},
+];
+
+const workflowSteps = [
+	{
+		number: "01",
+		title: "Inspect",
+		copy: "The Agent reads the Nearzero context it needs: projects, deployments, logs, domains, and servers.",
+		tag: "Read the live picture",
+	},
+	{
+		number: "02",
+		title: "Clarify",
+		copy: "When an operation is underspecified, it asks for the missing repository, environment, server, domain, or deployment input.",
+		tag: "No invented inputs",
+	},
+	{
+		number: "03",
+		title: "Prepare",
+		copy: "It chooses bounded Nearzero tools, uses each result to select the next step, and turns intent into a concrete operation.",
+		tag: "Observe → act → verify",
+	},
+	{
+		number: "04",
+		title: "Act within policy",
+		copy: "It performs only actions allowed for the requesting user and permitted by administrator-controlled per-action policy. Production mutations also require the separate production gate.",
+		tag: "Authority stays explicit",
+	},
+];
+
+const useCases = [
+	{
+		kicker: "Ship",
+		title: "Git to a running application",
+		copy: "Connect a repository, detect the build path, choose a server, configure environment values, and deploy.",
+		rail: ["Git", "Build", "Deploy"],
+	},
+	{
+		kicker: "Operate",
+		title: "Understand a failed deployment",
+		copy: "Inspect deployment context, follow the relevant logs, and narrow the next step without rebuilding the system picture.",
+		rail: ["Context", "Logs", "Next step"],
+	},
+	{
+		kicker: "Extend",
+		title: "Add infrastructure without changing workflows",
+		copy: "Connect remote servers, place workloads deliberately, and keep applications, databases, and Compose services in one control plane.",
+		rail: ["Server", "Workload", "Route"],
+	},
+];
+
+const capabilities = [
+	{
+		title: "Application runtimes",
+		copy: "Deploy Node.js, PHP, Python, Go, Ruby, and other container-ready applications.",
+	},
+	{
+		title: "Six database engines",
+		copy: "Run PostgreSQL, MySQL, MariaDB, MongoDB, Redis, and libSQL services.",
+	},
+	{
+		title: "Compose and Swarm",
+		copy: "Deploy multi-service Docker Compose stacks and expand across Docker Swarm nodes.",
+	},
+	{
+		title: "Backups and monitoring",
+		copy: "Back up Nearzero-managed application database services to external storage and view CPU, memory, storage, and network metrics.",
+	},
+	{
+		title: "Routing and certificates",
+		copy: "Use built-in Traefik routing with managed service domains and HTTPS certificate assignment.",
+	},
+	{
+		title: "API and notifications",
+		copy: "Manage deployments programmatically and connect Slack, Discord, Telegram, email, and other notification channels.",
+	},
+];
+
+const faqs = [
+	{
+		question: "Where does Nearzero run?",
+		answer:
+			"Nearzero Community is self-hosted. The control plane runs on infrastructure you choose and can manage workloads on its local host and connected remote servers.",
+	},
+	{
+		question: "How is Agent access controlled?",
+		answer:
+			"The Agent can work with Nearzero context such as projects, deployments, logs, domains, and servers. Every mutation still requires the requesting user's authorization and administrator-controlled permission for that action. Production mutations also require a separate gate and are disabled by default in the Community edition.",
+	},
+	{
+		question: "How do domains work across remote servers?",
+		answer:
+			"Bind an environment to a Nearzero-managed DNS zone and each service record can target its selected server. Public traffic reaches Traefik on that server, which routes the hostname to the service.",
+	},
+	{
+		question: "Does Nearzero provide HTTPS?",
+		answer:
+			"Managed service domains use Let's Encrypt through Traefik after the public A record resolves to the selected server, TCP 80 is reachable for HTTP-01 validation, TCP 443 is reachable for HTTPS, and any CAA records permit letsencrypt.org.",
+	},
+	{
+		question: "What can I deploy?",
+		answer:
+			"Applications, PostgreSQL, MySQL, MariaDB, MongoDB, Redis, libSQL, and Docker Compose stacks are supported. Docker Swarm is available for multi-node operation.",
+	},
+	{
+		question:
+			"Is Nearzero an alternative to Vercel, Netlify, Coolify, or Dokploy?",
+		answer:
+			"It can be, when your priority is running applications, databases, and Compose workloads on servers you control. Vercel and Netlify remove more infrastructure work through managed platforms, while Coolify and Dokploy already provide capable self-hosted PaaS workflows. Nearzero connects workload placement, domains, HTTPS, monitoring, and optional policy-bounded Agent assistance in one self-hosted control plane.",
+	},
+	{
+		question: "How should I install the Community edition?",
+		answer:
+			"Choose a published Nearzero release, download its installer and SHA-256 file, verify the checksum, review the script, and only then run it. The self-hosting guide keeps the release version explicit and covers the security boundary.",
+	},
+];
+---
+
+<div class="nz-marketing">
+	<MarketingHeader />
+
+	<main id="main-content">
+		<section class="nz-hero">
+			<div class="nz-container">
+				<div class="nz-hero__copy">
+					<div class="nz-eyebrow">
+						<span class="nz-eyebrow__spark" aria-hidden="true">✦</span>
+						Open-source deployment platform
+					</div>
+					<h1>
+						Deploy applications on
+						<span>your own servers.</span>
+					</h1>
+					<p class="nz-hero__lede">
+						Nearzero brings Git builds, applications, databases, Compose, remote
+						servers, domains, logs, and metrics into one self-hosted control plane.
+						When configured, its Agent can assist within explicit policy.
+					</p>
+					<div class="nz-hero__actions">
+						<a class="nz-button nz-button--primary" href={gettingStartedUrl}>
+							Start self-hosting
+							<span aria-hidden="true">→</span>
+						</a>
+						<a
+							class="nz-button nz-button--secondary"
+							href={githubUrl}
+							target="_blank"
+							rel="noreferrer"
+						>
+							<span class="nz-github-mark" aria-hidden="true"><GitHubMark /></span>
+							View on GitHub
+						</a>
+					</div>
+					<p class="nz-hero__note">
+						Community edition · Bring your own servers and Git providers
+					</p>
+				</div>
+
+				<div class="nz-system-map" aria-label="Nearzero system architecture">
+					<div class="nz-system-map__wash" aria-hidden="true"></div>
+					<div class="nz-system-map__header">
+						<div>
+							<span class="nz-kicker">Deployment control plane</span>
+							<strong>Source to running service</strong>
+						</div>
+						<span class="nz-live-pill">
+							<span aria-hidden="true"></span>
+							System ready
+						</span>
+					</div>
+
+					<div class="nz-system-map__body">
+						<div class="nz-map-column nz-map-column--sources">
+							<span class="nz-map-label">Inputs</span>
+							<div class="nz-map-node">
+								<span class="nz-map-node__icon">GIT</span>
+								<span class="nz-map-node__copy"><strong>Repository</strong><small>main</small></span>
+							</div>
+							<div class="nz-map-node">
+								<span class="nz-map-node__icon">CFG</span>
+								<span class="nz-map-node__copy"><strong>Service config</strong><small>port + environment</small></span>
+							</div>
+							<div class="nz-map-node">
+								<span class="nz-map-node__icon">CTX</span>
+								<span class="nz-map-node__copy"><strong>Runtime state</strong><small>logs + domains</small></span>
+							</div>
+						</div>
+
+						<div class="nz-map-flow nz-map-flow--left" aria-hidden="true">
+							<span></span>
+						</div>
+
+						<div class="nz-map-core">
+							<div class="nz-agent-orbit" aria-hidden="true">
+								<span class="nz-agent-orbit__dot"></span>
+								<span class="nz-agent-orbit__ring"></span>
+							</div>
+							<div class="nz-agent-core">
+								<span class="nz-agent-core__mark" aria-hidden="true">N</span>
+								<strong>Nearzero</strong>
+								<small>Build · deploy · route · observe</small>
+							</div>
+							<div class="nz-policy-chip">
+								<span aria-hidden="true">✓</span>
+						Agent available within policy
+							</div>
+						</div>
+
+						<div class="nz-map-flow nz-map-flow--right" aria-hidden="true">
+							<span></span>
+						</div>
+
+						<div class="nz-map-column nz-map-column--targets">
+							<span class="nz-map-label">Your infrastructure</span>
+							<div class="nz-map-node">
+							<span class="nz-map-status is-active" aria-hidden="true"></span>
+								<span class="nz-map-node__copy"><strong>Remote server</strong><small>apps + Compose</small></span>
+							</div>
+							<div class="nz-map-node">
+								<span class="nz-map-status" aria-hidden="true"></span>
+								<span class="nz-map-node__copy"><strong>Data services</strong><small>Postgres + Redis</small></span>
+							</div>
+							<div class="nz-map-node">
+								<span class="nz-map-status" aria-hidden="true"></span>
+								<span class="nz-map-node__copy"><strong>DNS + Traefik</strong><small>domain → HTTPS</small></span>
+							</div>
+						</div>
+					</div>
+
+					<div class="nz-system-map__footer">
+						<span class="nz-system-map__ready"><i aria-hidden="true"></i> Deployment ready</span>
+						<code>api.production.example.com</code>
+						<span class="nz-system-map__https">HTTPS</span>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-proof" aria-label="Platform characteristics">
+			<div class="nz-container nz-proof__grid">
+				{
+					proofPoints.map((point) => (
+						<div class="nz-proof__item">
+							<strong>{point.value}</strong>
+							<span>{point.label}</span>
+						</div>
+					))
+				}
+			</div>
+		</section>
+
+		<section class="nz-section nz-journey" id="how-it-works">
+			<div class="nz-container">
+				<div class="nz-section-heading nz-section-heading--split">
+					<div>
+						<span class="nz-kicker">How Nearzero works</span>
+						<h2>
+							From an empty server to
+							<span>a deployed application.</span>
+						</h2>
+					</div>
+					<p>
+						Nearzero does not hide the infrastructure. It turns the pieces you
+						already own—Git repositories, Linux servers, Docker workloads, DNS,
+						and routing configuration—into one understandable deployment path.
+					</p>
+				</div>
+
+				<ol class="nz-journey__grid">
+					{
+						deploymentJourney.map((step) => (
+							<li>
+								<span class="nz-journey__number">{step.number}</span>
+								<h3>{step.title}</h3>
+								<p>{step.copy}</p>
+								<strong><span aria-hidden="true">✓</span>{step.result}</strong>
+							</li>
+						))
+					}
+				</ol>
+
+				<div class="nz-journey__decision">
+					<div>
+						<span class="nz-kicker">The practical difference</span>
+						<h3>Nearzero owns the workflow. You keep the infrastructure.</h3>
+						<p>
+							That trade gives you control over workload placement and the storage
+							infrastructure you choose, but it also leaves your team responsible
+							for host security, capacity, backups, and control-plane availability.
+						</p>
+					</div>
+					<a class="nz-text-link" href={gettingStartedUrl}>
+						Read the self-hosting guide <span aria-hidden="true">→</span>
+					</a>
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-problem" id="platform">
+			<div class="nz-container">
+				<div class="nz-section-heading nz-section-heading--split">
+					<div>
+						<span class="nz-kicker">The infrastructure gap</span>
+						<h2>
+							Owning your infrastructure shouldn’t mean
+							<span>rebuilding a platform.</span>
+						</h2>
+					</div>
+					<p>
+						Git, builds, SSH, DNS, TLS, databases, and logs tend to fragment
+						the moment a team leaves a managed cloud. Nearzero reconnects them
+						around the application you are trying to ship.
+					</p>
+				</div>
+
+				<div class="nz-problem-grid">
+					{
+						problems.map((problem) => (
+							<article class="nz-problem-card">
+								<span class="nz-problem-card__number">{problem.number}</span>
+								<div class="nz-problem-card__visual" aria-hidden="true">
+									<span></span><span></span><span></span>
+									<i></i>
+								</div>
+								<h3>{problem.title}</h3>
+								<p>{problem.copy}</p>
+							</article>
+						))
+					}
+				</div>
+
+				<div class="nz-before-after">
+					<div class="nz-before-after__panel nz-before-after__panel--before">
+						<span class="nz-kicker">Without a control plane</span>
+						<div class="nz-tool-cloud" aria-label="Disconnected infrastructure tools">
+							<span>Git</span>
+							<span>SSH</span>
+							<span>Builds</span>
+							<span>DNS</span>
+							<span>TLS</span>
+							<span>Logs</span>
+						</div>
+						<p>Each operation starts by rebuilding context.</p>
+					</div>
+					<div class="nz-before-after__transition" aria-hidden="true">
+						<span>→</span>
+					</div>
+					<div class="nz-before-after__panel nz-before-after__panel--after">
+						<span class="nz-kicker">With Nearzero</span>
+						<div class="nz-control-stack">
+							<div>
+								<span class="nz-agent-mini">N</span>
+								<strong>Nearzero control plane</strong>
+							</div>
+							<ul>
+								<li><span></span>Application state</li>
+								<li><span></span>Server and deployment state</li>
+								<li><span></span>Domains and routing</li>
+							</ul>
+						</div>
+						<p>One operational picture follows every workload.</p>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-agent-section" id="agent">
+			<div class="nz-agent-section__grid" aria-hidden="true"></div>
+			<div class="nz-container">
+				<div class="nz-section-heading nz-section-heading--dark">
+					<span class="nz-kicker">Optional infrastructure copilot</span>
+					<h2>
+						An Agent that understands the system.
+						<span>You decide its authority.</span>
+					</h2>
+					<p>
+						Ask in the language of the outcome. The Agent assembles the
+						relevant Nearzero context, requests what is missing, sequences
+						bounded platform tools, and stays inside both the requesting user’s
+						authorization and administrator-controlled per-action policy.
+					</p>
+				</div>
+
+				<div class="nz-agent-console">
+					<div class="nz-agent-console__topbar">
+						<div class="nz-agent-console__identity">
+							<span class="nz-agent-mini">N</span>
+							<span class="nz-agent-console__name"><strong>Agent</strong><small>Infrastructure workspace</small></span>
+						</div>
+						<span class="nz-agent-console__scope">production writes: disabled</span>
+					</div>
+					<div class="nz-agent-console__conversation">
+						<div class="nz-chat nz-chat--user">
+							<span>You</span>
+							<p>
+								Deploy the API to the production server and put it on our
+								managed domain.
+							</p>
+						</div>
+						<div class="nz-chat nz-chat--agent">
+							<span>Nearzero Agent</span>
+							<div class="nz-agent-activity">
+								<p><i class="is-done"></i> Inspected project and recent deployments</p>
+								<p><i class="is-done"></i> Checked available servers and domain zones</p>
+								<p><i></i> Missing the target production environment</p>
+							</div>
+							<div class="nz-agent-question">
+								<strong>Which environment should receive this deployment?</strong>
+								<div aria-label="Example environment choices">
+									<span>production</span>
+									<span>staging</span>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="nz-agent-console__composer">
+						<span>Ask Nearzero about your infrastructure…</span>
+						<i aria-hidden="true">↑</i>
+					</div>
+				</div>
+
+				<div class="nz-agent-workflow">
+					{
+						workflowSteps.map((step) => (
+							<article>
+								<span class="nz-agent-workflow__number">{step.number}</span>
+								<h3>{step.title}</h3>
+								<p>{step.copy}</p>
+								<small>{step.tag}</small>
+							</article>
+						))
+					}
+				</div>
+
+				<div class="nz-policy-callout">
+					<div class="nz-policy-callout__icon" aria-hidden="true">
+						<span>✓</span>
+					</div>
+					<div>
+						<span class="nz-kicker">Built-in boundary</span>
+						<h3>Production mutations start disabled.</h3>
+						<p>
+							The requesting user still needs the underlying role access, and
+							administrators choose which Agent capabilities are available for the
+							organization. Enabling production actions is a separate, deliberate
+							workspace setting—not an assumption hidden in a prompt.
+						</p>
+					</div>
+					<a href={agentSafetyUrl}>Read the Agent safety model <span>→</span></a>
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-use-cases">
+			<div class="nz-container">
+				<div class="nz-section-heading nz-section-heading--split">
+					<div>
+						<span class="nz-kicker">One operational loop</span>
+						<h2>
+							From first deploy to
+							<span>everyday operations.</span>
+						</h2>
+					</div>
+					<p>
+						Start with a single server. Add remote capacity and services when
+						you need them. The application-centered workflow stays familiar.
+					</p>
+				</div>
+
+				<div class="nz-use-case-grid">
+					{
+						useCases.map((useCase) => (
+							<article class="nz-use-case-card">
+								<span class="nz-kicker">{useCase.kicker}</span>
+								<h3>{useCase.title}</h3>
+								<p>{useCase.copy}</p>
+								<div class="nz-use-case-card__rail" aria-label={`${useCase.title} flow`}>
+									{useCase.rail.map((item, index) => (
+										<>
+											<span>{item}</span>
+											{index < useCase.rail.length - 1 && <i aria-hidden="true">→</i>}
+										</>
+									))}
+								</div>
+							</article>
+						))
+					}
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-domains" id="domains">
+			<div class="nz-container nz-domains__layout">
+				<div class="nz-domains__copy">
+					<span class="nz-kicker">Domains that follow the workload</span>
+					<h2>
+						From delegated DNS to HTTPS,
+						<span>connected to the right server.</span>
+					</h2>
+					<p>
+						Nearzero can serve an authoritative managed zone from the control
+						plane. Bind that zone to an environment and service records target
+						the selected local or remote server.
+					</p>
+					<ul class="nz-check-list">
+						<li>
+							<span aria-hidden="true">✓</span>
+							CoreDNS answers managed authoritative zones
+						</li>
+						<li>
+							<span aria-hidden="true">✓</span>
+							Each service record points to its selected server
+						</li>
+						<li>
+							<span aria-hidden="true">✓</span>
+							Traefik routes the hostname and manages HTTPS
+						</li>
+					</ul>
+					<a class="nz-text-link" href={domainsGuideUrl}>
+						Read the remote-server DNS guide
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
+
+				<div class="nz-route-diagram" aria-label="DNS and HTTPS request route">
+					<div class="nz-route-diagram__row">
+						<div class="nz-route-node">
+							<span class="nz-route-node__label">01 · Resolve</span>
+							<strong>Public resolver</strong>
+							<code>api.example.com?</code>
+						</div>
+						<span class="nz-route-arrow" aria-hidden="true">→</span>
+						<div class="nz-route-node nz-route-node--accent">
+							<span class="nz-route-node__label">02 · Answer</span>
+							<strong>Nearzero CoreDNS</strong>
+							<code>A 203.0.113.20</code>
+						</div>
+					</div>
+					<div class="nz-route-diagram__drop" aria-hidden="true">
+						<span></span>
+						<i>DNS directs traffic</i>
+					</div>
+					<div class="nz-route-diagram__row">
+						<div class="nz-route-node">
+							<span class="nz-route-node__label">03 · Connect</span>
+							<strong>Remote server</strong>
+							<code>203.0.113.20:443</code>
+						</div>
+						<span class="nz-route-arrow" aria-hidden="true">→</span>
+						<div class="nz-route-node nz-route-node--dark">
+							<span class="nz-route-node__label">04 · Route</span>
+							<strong>Traefik → API</strong>
+							<code>TLS · service:3000</code>
+						</div>
+					</div>
+					<div class="nz-route-diagram__status">
+						<span><i aria-hidden="true"></i> DNS authoritative</span>
+						<span><i aria-hidden="true"></i> HTTPS active</span>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-capabilities">
+			<div class="nz-container">
+				<div class="nz-section-heading nz-section-heading--center">
+					<span class="nz-kicker">A complete deployment control plane</span>
+					<h2>
+						Applications, data, routing, and operations.
+						<span>Connected in one place.</span>
+					</h2>
+					<p>
+						Run common application infrastructure without giving up control of
+						the servers underneath it.
+					</p>
+				</div>
+
+				<div class="nz-capability-grid">
+					{
+						capabilities.map((capability, index) => (
+							<article>
+								<span class="nz-capability-grid__index">
+									{String(index + 1).padStart(2, "0")}
+								</span>
+								<h3>{capability.title}</h3>
+								<p>{capability.copy}</p>
+							</article>
+						))
+					}
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-comparisons" id="compare">
+			<div class="nz-container">
+				<div class="nz-section-heading nz-section-heading--split">
+					<div>
+						<span class="nz-kicker">Choose by operating model</span>
+						<h2>
+							Nearzero compared with
+							<span>other deployment platforms.</span>
+						</h2>
+					</div>
+					<div class="nz-comparisons__intro">
+						<p>
+							The right platform depends on what you want to outsource. These
+							comparisons explain where workloads run, what your team operates,
+							and when another platform is the better choice.
+						</p>
+						<a class="nz-text-link" href={compareUrl}>
+							See every platform comparison <span aria-hidden="true">→</span>
+						</a>
+					</div>
+				</div>
+
+				<div class="nz-comparison-card-grid">
+					{
+						comparisonCards.map((comparison) => (
+							<a class="nz-comparison-card" href={comparison.href}>
+								<span>{comparison.category}</span>
+								<h3>Nearzero vs {comparison.name}</h3>
+								<p>{comparison.copy}</p>
+								<strong>Compare operating models <i aria-hidden="true">→</i></strong>
+							</a>
+						))
+					}
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-section nz-faq" id="faq">
+			<div class="nz-container nz-faq__layout">
+				<div class="nz-faq__intro">
+					<span class="nz-kicker">Questions, answered</span>
+					<h2>Know what runs where—and who can change it.</h2>
+					<p>
+						Nearzero is built for teams that want a modern deployment
+						experience on infrastructure they control.
+					</p>
+					<a class="nz-text-link" href={docsUrl}>
+						Explore the documentation
+						<span aria-hidden="true">→</span>
+					</a>
+				</div>
+				<div class="nz-faq__items">
+					{
+						faqs.map((faq, index) => (
+							<details open={index === 0}>
+								<summary>
+									<span>{faq.question}</span>
+									<i aria-hidden="true"></i>
+								</summary>
+								<p>{faq.answer}</p>
+							</details>
+						))
+					}
+				</div>
+			</div>
+		</section>
+
+		<section class="nz-final-cta">
+			<div class="nz-final-cta__grid" aria-hidden="true"></div>
+			<div class="nz-container nz-final-cta__inner">
+				<div class="nz-final-cta__copy">
+					<span class="nz-kicker">Start with one server</span>
+					<h2>
+						Run the platform on your infrastructure.
+						<span>Ship the first application.</span>
+					</h2>
+					<p>
+						Self-host Nearzero Community, connect a server, and take your first
+						application from Git to HTTPS once DNS and ingress are ready.
+					</p>
+					<div class="nz-final-cta__actions">
+						<a class="nz-button nz-button--primary" href={gettingStartedUrl}>
+							Start self-hosting
+							<span aria-hidden="true">→</span>
+						</a>
+						<a class="nz-button nz-button--dark-outline" href={githubUrl}>
+							<GitHubMark />
+							View source on GitHub
+						</a>
+					</div>
+				</div>
+
+				<div class="nz-install-card">
+					<div class="nz-install-card__topbar">
+						<span>
+							<i></i><i></i><i></i>
+						</span>
+						<strong>checksum-checked install flow</strong>
+					</div>
+					<div class="nz-install-card__body">
+						<p><span>1</span> Download the versioned installer</p>
+						<p><span>2</span> Download its published SHA-256 file</p>
+						<p><span>3</span> Verify with <code>sha256sum --check</code></p>
+						<p><span>4</span> Run only after verification succeeds</p>
+					</div>
+					<div class="nz-install-card__footer">
+						<span class="nz-live-pill">
+							<span aria-hidden="true"></span>
+							Checksum first
+						</span>
+						<a href={gettingStartedUrl}>Open install guide <span>↗</span></a>
+					</div>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<MarketingFooter />
+</div>

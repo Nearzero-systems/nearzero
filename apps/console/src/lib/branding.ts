@@ -21,7 +21,7 @@ export const NEARZERO_DOCS_URL = normalizeExternalUrl(
 );
 export const NEARZERO_GITHUB_URL = normalizeExternalUrl(
 	import.meta.env.PUBLIC_NEARZERO_GITHUB_URL,
-	"#",
+	"https://github.com/Nearzero-systems/nearzero",
 );
 export const NEARZERO_SUPPORT_URL = normalizeExternalUrl(
 	import.meta.env.PUBLIC_NEARZERO_SUPPORT_URL,
@@ -29,7 +29,7 @@ export const NEARZERO_SUPPORT_URL = normalizeExternalUrl(
 );
 export const NEARZERO_ISSUES_URL = normalizeExternalUrl(
 	import.meta.env.PUBLIC_NEARZERO_ISSUES_URL,
-	"#",
+	"https://github.com/Nearzero-systems/nearzero/issues",
 );
 
 export const BACKEND_URL =

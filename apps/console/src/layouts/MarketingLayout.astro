@@ -1,0 +1,192 @@
+---
+// biome-ignore lint/correctness/noUnusedImports: Astro resolves this component in the template.
+import Favicon from "../components/Favicon.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro resolves this component in the template.
+import MarketingMotion from "../components/marketing/MarketingMotion.astro";
+import { isMarketingHomeEnabled } from "../lib/marketing-home";
+import { PUBLIC_SITE_DESCRIPTION, publicSiteUrl } from "../lib/public-site";
+import "../styles/marketing.css";
+
+type SchemaNode = Record<string, unknown>;
+
+interface Props {
+	title?: string;
+	description?: string;
+	canonical?: string;
+	kind?: "software" | "article" | "collection" | "webpage";
+	breadcrumbLabel?: string;
+	socialImage?: string;
+	socialImageAlt?: string;
+	schemaGraph?: readonly SchemaNode[];
+	robots?: "index, follow" | "noindex, nofollow";
+}
+
+const {
+	title = "Nearzero — Open-source deployment on your servers",
+	description = PUBLIC_SITE_DESCRIPTION,
+	canonical,
+	kind = "software",
+	breadcrumbLabel,
+	socialImage: socialImagePath = "/og.png",
+	socialImageAlt = "Nearzero connects Git to applications, databases, remote servers, delegated DNS, HTTPS, logs, and metrics through a self-hosted deployment control plane.",
+	schemaGraph = [],
+	robots = "index, follow",
+} = Astro.props;
+
+const siteUrl = publicSiteUrl();
+const canonicalUrl = new URL(canonical || Astro.url.pathname, siteUrl);
+const canonicalHref = canonicalUrl.toString();
+const socialImage = new URL(socialImagePath, siteUrl).toString();
+const websiteId = new URL("/#website", siteUrl).toString();
+const pageId = `${canonicalHref}#webpage`;
+const robotsContent = isMarketingHomeEnabled() ? robots : "noindex, nofollow";
+
+const breadcrumbSegments = canonicalUrl.pathname
+	.split("/")
+	.filter(Boolean)
+	.map((segment, index, segments) => ({
+		"@type": "ListItem",
+		position: index + 2,
+		name:
+			index === segments.length - 1
+				? breadcrumbLabel || title
+				: segment === "docs"
+					? "Documentation"
+					: segment === "compare"
+						? "Compare"
+						: segment.replaceAll("-", " "),
+		item: new URL(
+			`/${segments.slice(0, index + 1).join("/")}`,
+			siteUrl,
+		).toString(),
+	}));
+
+const commonPageSchema = {
+	"@id": pageId,
+	url: canonicalHref,
+	description,
+	isPartOf: { "@id": websiteId },
+};
+
+const pageSchema: SchemaNode =
+	kind === "article"
+		? {
+				"@id": `${canonicalHref}#article`,
+				"@type": "TechArticle",
+				headline: title,
+				name: title,
+				description,
+				url: canonicalHref,
+				isPartOf: { "@id": websiteId },
+				mainEntityOfPage: { "@id": pageId },
+				publisher: { "@type": "Organization", name: "Nearzero" },
+			}
+		: kind === "collection"
+			? {
+					...commonPageSchema,
+					"@type": "CollectionPage",
+					name: title,
+				}
+			: kind === "webpage"
+				? {
+						...commonPageSchema,
+						"@type": "WebPage",
+						name: title,
+					}
+				: {
+						"@id": new URL("/#software", siteUrl).toString(),
+						"@type": "SoftwareApplication",
+						name: "Nearzero",
+						url: siteUrl.toString(),
+						description: PUBLIC_SITE_DESCRIPTION,
+						applicationCategory: "DeveloperApplication",
+						applicationSubCategory: "Self-hosted deployment platform",
+						operatingSystem: "Linux",
+						codeRepository: "https://github.com/Nearzero-systems/nearzero",
+					};
+
+const hasBreadcrumbs = kind !== "software" && breadcrumbSegments.length > 0;
+
+const structuredData = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@id": websiteId,
+			"@type": "WebSite",
+			name: "Nearzero",
+			url: siteUrl.toString(),
+			description: PUBLIC_SITE_DESCRIPTION,
+		},
+		pageSchema,
+		...(hasBreadcrumbs
+			? [
+					{
+						"@type": "BreadcrumbList",
+						itemListElement: [
+							{
+								"@type": "ListItem",
+								position: 1,
+								name: "Home",
+								item: siteUrl.toString(),
+							},
+							...breadcrumbSegments,
+						],
+					},
+				]
+			: []),
+		...schemaGraph,
+	],
+};
+const structuredDataJson = JSON.stringify(structuredData).replaceAll(
+	"<",
+	"\\u003c",
+);
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light" />
+		<meta name="theme-color" content="#ffffff" />
+		<meta name="description" content={description} />
+		<meta name="robots" content={robotsContent} />
+		<link rel="canonical" href={canonicalHref} />
+
+		<meta property="og:type" content={kind === "article" ? "article" : "website"} />
+		<meta property="og:site_name" content="Nearzero" />
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonicalHref} />
+		<meta property="og:image" content={socialImage} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta
+			property="og:image:alt"
+			content={socialImageAlt}
+		/>
+
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={socialImage} />
+		<meta
+			name="twitter:image:alt"
+			content={socialImageAlt}
+		/>
+
+		<Favicon />
+		<title>{title}</title>
+		<script
+			is:inline
+			type="application/ld+json"
+			set:html={structuredDataJson}
+		/>
+	</head>
+	<body class="nz-marketing-page">
+		<a class="nz-skip-link" href="#main-content">Skip to content</a>
+		<slot />
+		<MarketingMotion />
+	</body>
+</html>

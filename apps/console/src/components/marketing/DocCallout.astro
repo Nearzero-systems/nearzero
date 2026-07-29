@@ -1,0 +1,18 @@
+---
+interface Props {
+	title: string;
+	tone?: "note" | "warning" | "critical";
+}
+
+const { title, tone = "note" } = Astro.props;
+---
+
+<aside class:list={["nz-doc-callout", `nz-doc-callout--${tone}`]}>
+	<span class="nz-doc-callout__mark" aria-hidden="true">
+		{tone === "critical" ? "!" : tone === "warning" ? "△" : "i"}
+	</span>
+	<div>
+		<strong>{title}</strong>
+		<div class="nz-doc-callout__body"><slot /></div>
+	</div>
+</aside>

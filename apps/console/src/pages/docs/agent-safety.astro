@@ -1,0 +1,122 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import DocCallout from "@/components/marketing/DocCallout.astro";
+import DocsShell from "@/components/marketing/DocsShell.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { publicSiteLinks } from "@/lib/public-site";
+---
+
+<MarketingLayout
+	kind="article"
+	title="Nearzero Agent safety and permission boundaries"
+	description="Understand what the Nearzero infrastructure Agent can inspect, how server-side policy limits actions, and how to handle credentials safely."
+>
+	<DocsShell
+		title="Give the Agent context without unlimited authority"
+		summary="Nearzero’s Agent works through scoped infrastructure tools, server-side permissions, and administrator-controlled production policy. Treat model access and infrastructure access as separate decisions."
+		activePath={publicSiteLinks.agentSafety}
+		toc={[
+			{ href: "#model", label: "Operating model" },
+			{ href: "#permissions", label: "Permissions" },
+			{ href: "#secrets", label: "Secret handling" },
+			{ href: "#builds", label: "Build boundaries" },
+			{ href: "#checklist", label: "Administrator checklist" },
+		]}
+		previous={{ href: publicSiteLinks.domainsAndHttps, label: "Domains and HTTPS" }}
+		next={{ href: publicSiteLinks.docs, label: "Documentation home" }}
+	>
+		<section id="model" class="nz-doc-section">
+			<span class="nz-doc-section__index">01</span>
+			<h2>A bounded observe → act → verify loop</h2>
+			<p>
+				The Agent can inspect Nearzero context such as projects, environments,
+				services, deployments, runtime status, logs, domains, servers, and Git
+				metadata. It uses structured platform tools and their returned results to
+				choose the next step.
+			</p>
+			<figure class="nz-doc-flow">
+				<figcaption class="nz-visually-hidden">The Agent observes context, acts through a scoped tool, and verifies the returned result.</figcaption>
+				<div><small>Observe</small><strong>Read context</strong><span>State, logs, policy</span></div>
+				<i aria-hidden="true">→</i>
+				<div><small>Act</small><strong>Call a scoped tool</strong><span>Only when authorized</span></div>
+				<i aria-hidden="true">→</i>
+				<div><small>Verify</small><strong>Use the result</strong><span>Never invent success</span></div>
+			</figure>
+			<DocCallout title="Nearzero does not promise unrestricted autonomy" tone="note">
+				<p>The Agent is designed as a deployment copilot. It does not imply background execution, universal source-code inspection, or authority outside the tools and organization context Nearzero provides.</p>
+			</DocCallout>
+		</section>
+
+		<section id="permissions" class="nz-doc-section">
+			<span class="nz-doc-section__index">02</span>
+			<h2>Enforcement happens on the server</h2>
+			<p>
+				Workspace role checks and Agent action policies are evaluated by Nearzero,
+				not left to the model. Production mutations start disabled through the
+				organization setting and must be enabled deliberately by an administrator.
+			</p>
+			<div class="nz-doc-table-wrap">
+				<table>
+					<thead><tr><th>Boundary</th><th>Behavior</th></tr></thead>
+					<tbody>
+						<tr><td>Organization scope</td><td>Tools operate within the active organization and the requesting user’s access.</td></tr>
+						<tr><td>Role and action policy</td><td>Each protected action is checked server-side before infrastructure work begins.</td></tr>
+						<tr><td>Production environments</td><td>Agent mutations are denied by default until an administrator enables them.</td></tr>
+						<tr><td>Tool results</td><td>The Agent must not claim success unless the invoked tool returns a successful result.</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<DocCallout title="Enabling production actions is a workspace authority decision" tone="critical">
+				<p>Do it only after reviewing organization roles, server access, Git providers, connected model credentials, and recovery procedures.</p>
+			</DocCallout>
+		</section>
+
+		<section id="secrets" class="nz-doc-section">
+			<span class="nz-doc-section__index">03</span>
+			<h2>Use secure handoffs for credentials</h2>
+			<p>
+				Do not paste API keys, tokens, passwords, private keys, or secret-bearing
+				commands into Agent chat. Nearzero uses dedicated UI handoffs for service
+				environment values and SSH setup so the model does not need the raw value.
+			</p>
+			<ul class="nz-doc-checklist">
+				<li><span>1</span><div><strong>Keep browser-exposed prefixes public.</strong><p><code>NEXT_PUBLIC_</code>, <code>PUBLIC_</code>, and <code>VITE_</code> values are intended for client bundles and must never contain credentials.</p></div></li>
+				<li><span>2</span><div><strong>Treat database storage as privileged.</strong><p>API redaction is not encryption at rest. Encrypt volumes and backups, and restrict Postgres access.</p></div></li>
+				<li><span>3</span><div><strong>Protect SSH material.</strong><p>Dedicated remote setup accounts have root-equivalent Docker and privilege access.</p></div></li>
+				<li><span>4</span><div><strong>Rotate after suspected exposure.</strong><p>Redaction limits accidental display; it cannot revoke a credential that untrusted code already received.</p></div></li>
+			</ul>
+		</section>
+
+		<section id="builds" class="nz-doc-section">
+			<span class="nz-doc-section__index">04</span>
+			<h2>Build-secret transport is not a sandbox</h2>
+			<p>
+				Generated build phases keep configured values out of ordinary command
+				arguments and use BuildKit secret mounts where supported. Durable logs are
+				redacted before storage. These controls reduce accidental leakage, but
+				they cannot make untrusted build code safe.
+			</p>
+			<DocCallout title="A repository that receives a secret can deliberately leak it" tone="warning">
+				<p>A Dockerfile, dependency hook, buildpack, install command, or build command can print, transmit, or bake a supplied value into an image or browser bundle. Give build secrets only to repositories and dependencies you trust.</p>
+			</DocCallout>
+			<ul>
+				<li>Use the dedicated build-secret field when a Dockerfile needs a credential.</li>
+				<li>Keep non-sensitive build arguments separate from private runtime values.</li>
+				<li>Pin user-authored base images and production builder images by digest.</li>
+				<li>Rotate a credential after any suspicious or untrusted build.</li>
+			</ul>
+		</section>
+
+		<section id="checklist" class="nz-doc-section">
+			<span class="nz-doc-section__index">05</span>
+			<h2>Administrator readiness checklist</h2>
+			<ul class="nz-doc-checklist">
+				<li><span>✓</span><div><strong>Roles match actual responsibilities.</strong><p>Only trusted operators can mutate production or deploy privileged Compose workloads.</p></div></li>
+				<li><span>✓</span><div><strong>Model access is organization-scoped.</strong><p>Use the intended BYOK provider and rotate its key through the settings flow.</p></div></li>
+				<li><span>✓</span><div><strong>Production mutations remain off until needed.</strong><p>Enable them only after backups, rollback, and observability are tested.</p></div></li>
+				<li><span>✓</span><div><strong>Secrets stay out of chat and public prefixes.</strong><p>Use the secure configuration surfaces and inspect client bundles before release.</p></div></li>
+				<li><span>✓</span><div><strong>Every action is verified.</strong><p>Check deployment state, logs, domain resolution, and runtime health after changes.</p></div></li>
+			</ul>
+		</section>
+	</DocsShell>
+</MarketingLayout>

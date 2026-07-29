@@ -1,0 +1,171 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import DocCallout from "@/components/marketing/DocCallout.astro";
+import DocCode from "@/components/marketing/DocCode.astro";
+import DocsShell from "@/components/marketing/DocsShell.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { publicSiteLinks } from "@/lib/public-site";
+
+const installCode = `version="<published-version>"
+base_url="https://nearzero.dev/releases/\${version}"
+
+curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \\
+  --output install.sh "\${base_url}/install.sh"
+curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \\
+  --output install.sh.sha256 "\${base_url}/install.sh.sha256"
+
+sha256sum --check install.sh.sha256
+sudo bash install.sh
+rm -f install.sh install.sh.sha256`;
+
+const externalServicesCode = `IFS= read -r -s -p "Database URL: " DATABASE_URL; printf '\\n'
+IFS= read -r -s -p "Redis URL: " REDIS_URL; printf '\\n'
+export DATABASE_URL REDIS_URL
+bash install.sh
+unset DATABASE_URL REDIS_URL`;
+
+const operationsCode = `sudo nearzero status
+sudo nearzero logs platform
+sudo nearzero restart
+sudo nearzero update  # pulls the image references already configured
+
+# Local Postgres installations only
+sudo install -d -m 0700 /var/backups/nearzero
+sudo sh -c 'umask 077; nearzero backup-db /var/backups/nearzero/control-plane.sql'
+sudo nearzero restore-db /path/to/verified-backup.sql`;
+---
+
+<MarketingLayout
+	kind="article"
+	title="Self-host Nearzero Community — Installation and operations"
+	description="Securely install Nearzero Community with a verified release, configure local or managed data services, and operate backups and updates."
+>
+	<DocsShell
+		title="Self-host Nearzero Community"
+		summary="Install a versioned release with checksum verification, keep the management surface private, and establish an update and backup routine before production traffic arrives."
+		activePath={publicSiteLinks.selfHosting}
+		toc={[
+			{ href: "#prerequisites", label: "Prerequisites" },
+			{ href: "#install", label: "Verified install" },
+			{ href: "#configure", label: "Configuration" },
+			{ href: "#secure-access", label: "Secure access" },
+			{ href: "#operate", label: "Operate and recover" },
+		]}
+		previous={{ href: publicSiteLinks.docs, label: "Documentation home" }}
+		next={{ href: publicSiteLinks.remoteServers, label: "Remote servers" }}
+	>
+		<section id="prerequisites" class="nz-doc-section">
+			<span class="nz-doc-section__index">01</span>
+			<h2>Prepare a dedicated Linux host</h2>
+			<p>
+				Run the installer as root or as a user with <code>sudo</code>. Nearzero can
+				install Docker on supported Linux distributions. If Docker Compose is
+				missing, its checksum-pinned fallback supports x86_64 and arm64 hosts.
+			</p>
+
+			<div class="nz-doc-table-wrap">
+				<table>
+					<thead><tr><th>Requirement</th><th>What to prepare</th></tr></thead>
+					<tbody>
+						<tr><td>Host</td><td>A dedicated Linux server with a stable address and root or sudo access.</td></tr>
+						<tr><td>Tools</td><td><code>curl</code>, CA certificates, and <code>sha256sum</code>. Docker may be installed by the script.</td></tr>
+						<tr><td>Storage</td><td>Persistent space for images, application builds, Postgres, Redis, DNS zones, and backups.</td></tr>
+						<tr><td>Management</td><td>A VPN, private network, or HTTPS reverse proxy for the console and API.</td></tr>
+						<tr><td>DNS option</td><td>Dedicated TCP and UDP port 53 when using the built-in authoritative DNS service.</td></tr>
+					</tbody>
+				</table>
+			</div>
+			<DocCallout title="Nearzero does not publish a universal CPU, memory, or disk minimum" tone="note">
+				<p>Size the host for the control plane plus the applications and databases you intend to run. Keep production data and build headroom in the capacity plan.</p>
+			</DocCallout>
+		</section>
+
+		<section id="install" class="nz-doc-section">
+			<span class="nz-doc-section__index">02</span>
+			<h2>Download, verify, then execute</h2>
+			<p>
+				Choose a release only after its matching Nearzero, monitoring, and
+				schedule images have been published. Replace the placeholder with that
+				exact release version.
+			</p>
+			<DocCode code={installCode} />
+			<DocCallout title="Do not pipe a remote installer directly into a shell" tone="warning">
+				<p>Keeping the script as a file gives the SHA-256 check a concrete artifact to verify before privileged execution.</p>
+			</DocCallout>
+			<DocCallout title="The checksum is an integrity check, not an independent signature" tone="note">
+				<p>The installer and checksum are published from the same HTTPS origin. Verification detects a mismatch or corrupted download, but it does not provide a separate signing trust path. Review the verified script before executing it.</p>
+			</DocCallout>
+
+			<h3>What the default installation creates</h3>
+			<ul>
+				<li>Nearzero platform and console on host ports 3000 and 4321.</li>
+				<li>Local PostgreSQL and Redis services with persistent Docker volumes.</li>
+				<li>Loopback-only host monitoring on port 4500.</li>
+				<li>Optional authoritative CoreDNS on TCP and UDP port 53, enabled by default.</li>
+				<li>A mode-0600 configuration file under <code>/opt/nearzero/.env</code> and a <code>nearzero</code> operations helper.</li>
+			</ul>
+		</section>
+
+		<section id="configure" class="nz-doc-section">
+			<span class="nz-doc-section__index">03</span>
+			<h2>Choose local or managed data services</h2>
+			<p>
+				With no database settings, the installer provisions local Postgres and
+				Redis. To use managed services, provide both URLs. Read credentials
+				without terminal echo so they do not become shell arguments or history.
+			</p>
+			<DocCode code={externalServicesCode} label="secure shell input" />
+			<p>Use provider-required TLS, percent-encode credentials inside connection URLs, and remember that the generated mode-0600 environment file is still privileged plaintext available to host administrators.</p>
+
+			<div class="nz-doc-option-grid">
+				<div><code>NEARZERO_ENABLE_MANAGED_DNS=false</code><p>Disable the Compose-owned authoritative DNS service when port 53 is unavailable or an external provider owns DNS.</p></div>
+				<div><code>NEARZERO_DNS_BIND_ADDRESS</code><p>Choose the host address used by CoreDNS. Public resolvers still require destination port 53.</p></div>
+				<div><code>NEARZERO_PLATFORM_PORT</code><p>Change the published platform API port. The container continues listening internally on 3000.</p></div>
+				<div><code>NEARZERO_CONSOLE_PORT</code><p>Change the published console port. Keep the resulting listener behind private or HTTPS management access.</p></div>
+				<div><code>CONSOLE_URL</code><p>Set the externally correct console URL when automatic public-IP detection does not match your reverse proxy.</p></div>
+				<div><code>NEARZERO_SSH_STRICT_HOST_KEY_CHECKING=true</code><p>Require pre-seeded remote-server fingerprints instead of trust on first use.</p></div>
+			</div>
+		</section>
+
+		<section id="secure-access" class="nz-doc-section">
+			<span class="nz-doc-section__index">04</span>
+			<h2>Publish only a protected management endpoint</h2>
+			<DocCallout title="Ports 3000 and 4321 are not TLS endpoints" tone="critical">
+				<p>Bind or firewall them to a management network, or place an authenticated HTTPS reverse proxy in front. Restrict SSH to administrative source ranges and never publish the Docker socket.</p>
+			</DocCallout>
+			<div class="nz-doc-table-wrap">
+				<table>
+					<thead><tr><th>Port</th><th>Role</th><th>Recommended exposure</th></tr></thead>
+					<tbody>
+						<tr><td>3000/TCP</td><td>Platform API</td><td>Private management network or authenticated HTTPS proxy only.</td></tr>
+						<tr><td>4321/TCP</td><td>Console</td><td>Private management network or authenticated HTTPS proxy only.</td></tr>
+						<tr><td>53/TCP + UDP</td><td>Authoritative DNS</td><td>Public only when this host serves delegated managed zones.</td></tr>
+						<tr><td>4500/TCP</td><td>Monitoring</td><td>Loopback only; the generated Compose file already binds it to 127.0.0.1.</td></tr>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
+		<section id="operate" class="nz-doc-section">
+			<span class="nz-doc-section__index">05</span>
+			<h2>Operate, update, and recover</h2>
+			<DocCode code={operationsCode} label="operations helper" />
+			<p>
+				The built-in backup and restore commands support the installer-managed
+				local Postgres service. If you use an external database, follow that
+				provider’s verified backup and point-in-time recovery process.
+			</p>
+			<DocCallout title="nearzero update does not select a newer release" tone="warning">
+				<p>It pulls and recreates the image references already stored in <code>/opt/nearzero/.env</code>. Before changing versions, back up the database and configuration, then move the Nearzero, monitoring, and schedule images as one matching release set.</p>
+			</DocCallout>
+			<p>Database migrations run during platform startup, so there is no guaranteed one-command control-plane downgrade. A rollback can require the prior exact images plus a coordinated restoration of the pre-upgrade database, configuration, and volumes.</p>
+			<p>SQL dumps contain privileged workspace data and credentials. Create them with a restrictive umask, encrypt off-host copies, and back up application volumes, DNS data, configuration, and remote-server state separately—the helper covers only local control-plane Postgres.</p>
+			<ul class="nz-doc-checklist">
+				<li><span>1</span><div><strong>Back up before an update.</strong><p>Store the database dump and privileged configuration in encrypted off-host storage.</p></div></li>
+				<li><span>2</span><div><strong>Pin the release you intend to run.</strong><p>Confirm all companion image tags exist before changing image references.</p></div></li>
+				<li><span>3</span><div><strong>Test restoration.</strong><p>A backup is useful only after a successful restore has been rehearsed on an isolated host.</p></div></li>
+				<li><span>4</span><div><strong>Recheck the perimeter.</strong><p>Verify management, DNS, and workload ports externally after updates and host reboots.</p></div></li>
+			</ul>
+		</section>
+	</DocsShell>
+</MarketingLayout>

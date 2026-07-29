@@ -1,0 +1,89 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import { publicSiteLinks } from "@/lib/public-site";
+import GitHubMark from "./GitHubMark.astro";
+
+interface Props {
+	active?: "home" | "docs" | "compare";
+}
+
+const { active = "home" } = Astro.props;
+---
+
+<div class="nz-announcement">
+	<a href={publicSiteLinks.github} target="_blank" rel="noreferrer">
+		<GitHubMark size={13} />
+		<span class="nz-announcement__status" aria-hidden="true"></span>
+		<span>Nearzero Community is available on GitHub</span>
+		<span class="nz-announcement__arrow" aria-hidden="true">→</span>
+	</a>
+</div>
+
+<header class="nz-nav-shell">
+	<nav class="nz-container nz-nav" aria-label="Primary navigation">
+		<a class="nz-brand" href={publicSiteLinks.home} aria-label="Nearzero home">
+			<span class="nz-brand-mark" aria-hidden="true">
+				<span class="is-on"></span><span></span><span class="is-on"></span>
+				<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span>
+				<span class="is-on"></span><span></span><span class="is-on"></span>
+			</span>
+			<span>Nearzero</span>
+		</a>
+
+		<div class="nz-nav__links" aria-label="Primary links">
+			<a href={publicSiteLinks.howItWorks}>How it works</a>
+			<a href={publicSiteLinks.agent}>Agent</a>
+			<a href={publicSiteLinks.domains}>Domains</a>
+			<a
+				href={publicSiteLinks.compare}
+				aria-current={active === "compare" ? "page" : undefined}
+			>
+				Compare
+			</a>
+			<a href={publicSiteLinks.docs} aria-current={active === "docs" ? "page" : undefined}>Docs</a>
+		</div>
+
+		<div class="nz-nav__actions">
+			<a class="nz-nav__login" href={publicSiteLinks.signIn}>Sign in</a>
+			<a
+				class="nz-button nz-button--small nz-button--primary"
+				href={publicSiteLinks.selfHosting}
+			>
+				Start self-hosting
+				<span aria-hidden="true">↗</span>
+			</a>
+		</div>
+
+		<details class="nz-mobile-nav" data-mobile-nav>
+			<summary aria-label="Toggle navigation menu">
+				<span></span><span></span>
+			</summary>
+			<div class="nz-mobile-nav__panel">
+				<a href={publicSiteLinks.howItWorks}>How it works</a>
+				<a href={publicSiteLinks.agent}>Agent</a>
+				<a href={publicSiteLinks.domains}>Domains</a>
+				<a
+					href={publicSiteLinks.compare}
+					aria-current={active === "compare" ? "page" : undefined}
+				>
+					Compare
+				</a>
+				<a href={publicSiteLinks.docs} aria-current={active === "docs" ? "page" : undefined}>Documentation</a>
+				<a href={publicSiteLinks.signIn}>Sign in</a>
+				<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
+					Start self-hosting
+				</a>
+			</div>
+		</details>
+	</nav>
+</header>
+
+<script>
+	document.querySelectorAll<HTMLDetailsElement>("[data-mobile-nav]").forEach((menu) => {
+		menu.querySelectorAll("a").forEach((link) => {
+			link.addEventListener("click", () => {
+				menu.open = false;
+			});
+		});
+	});
+</script>

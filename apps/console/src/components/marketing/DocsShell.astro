@@ -1,0 +1,106 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import { docsNavigation } from "@/lib/public-site";
+import "@/styles/public-docs.css";
+import MarketingFooter from "./MarketingFooter.astro";
+import MarketingHeader from "./MarketingHeader.astro";
+
+interface TocItem {
+	href: string;
+	label: string;
+}
+
+interface Props {
+	title: string;
+	summary: string;
+	eyebrow?: string;
+	activePath: string;
+	toc?: TocItem[];
+	previous?: { href: string; label: string };
+	next?: { href: string; label: string };
+}
+
+const {
+	title,
+	summary,
+	eyebrow = "Nearzero documentation",
+	activePath,
+	toc = [],
+	previous,
+	next,
+} = Astro.props;
+---
+
+<div class="nz-marketing nz-docs-site">
+	<MarketingHeader active="docs" />
+
+	<main id="main-content" class="nz-docs-main">
+		<header class="nz-docs-hero">
+			<div class="nz-container">
+				<nav class="nz-breadcrumbs" aria-label="Breadcrumb">
+					<a href="/">Home</a><span aria-hidden="true">/</span><a href="/docs">Docs</a>
+					{activePath !== "/docs" && <><span aria-hidden="true">/</span><span>{title}</span></>}
+				</nav>
+				<span class="nz-kicker">{eyebrow}</span>
+				<h1>{title}</h1>
+				<p>{summary}</p>
+			</div>
+		</header>
+
+		<div class="nz-container nz-docs-layout">
+			<aside class="nz-docs-sidebar" aria-label="Documentation sections">
+				<strong>Documentation</strong>
+				<nav>
+					{
+						docsNavigation.map((item) => (
+							<a
+								href={item.href}
+								class:list={{ "is-active": activePath === item.href }}
+								aria-current={activePath === item.href ? "page" : undefined}
+							>
+								<span>{item.label}</span>
+								<small>{item.description}</small>
+							</a>
+						))
+					}
+				</nav>
+			</aside>
+
+			<article class="nz-doc-article">
+				<slot />
+
+				{
+					(previous || next) && (
+						<nav class="nz-doc-pager" aria-label="Adjacent documentation">
+							{previous ? (
+								<a href={previous.href}>
+									<small>Previous</small>
+									<strong>← {previous.label}</strong>
+								</a>
+							) : <span />}
+							{next && (
+								<a href={next.href} class="is-next">
+									<small>Next</small>
+									<strong>{next.label} →</strong>
+								</a>
+							)}
+						</nav>
+					)
+				}
+			</article>
+
+			{
+				toc.length > 0 && (
+					<aside class="nz-docs-toc" aria-label="On this page">
+						<strong>On this page</strong>
+						<nav>
+							{toc.map((item) => <a href={item.href}>{item.label}</a>)}
+						</nav>
+					</aside>
+				)
+			}
+		</div>
+	</main>
+
+	<MarketingFooter />
+</div>

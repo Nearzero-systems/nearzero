@@ -1,0 +1,108 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import DocCallout from "@/components/marketing/DocCallout.astro";
+import DocCode from "@/components/marketing/DocCode.astro";
+import DocsShell from "@/components/marketing/DocsShell.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { publicSiteLinks } from "@/lib/public-site";
+
+const verifyDnsCode = `dig +short NS apps.example.com
+dig @<control-plane-ip> api.apps.example.com A
+dig +short api.apps.example.com A
+curl --fail --show-error --head https://api.apps.example.com`;
+---
+
+<MarketingLayout
+	kind="article"
+	title="Managed DNS and HTTPS with Nearzero"
+	description="Delegate an authoritative subzone to Nearzero CoreDNS, route each service to its selected server, and issue HTTPS certificates through Traefik."
+>
+	<DocsShell
+		title="Route managed domains to the right server"
+		summary="Use an environment-bound authoritative zone for direct multi-server routing, then let Traefik terminate HTTPS on the server that actually runs each service."
+		activePath={publicSiteLinks.domainsAndHttps}
+		toc={[
+			{ href: "#models", label: "Domain models" },
+			{ href: "#delegate", label: "Delegate a zone" },
+			{ href: "#bind", label: "Bind and provision" },
+			{ href: "#https", label: "Issue HTTPS" },
+			{ href: "#production", label: "Production DNS" },
+		]}
+		previous={{ href: publicSiteLinks.remoteServers, label: "Remote servers" }}
+		next={{ href: publicSiteLinks.agentSafety, label: "Agent safety" }}
+	>
+		<section id="models" class="nz-doc-section">
+			<span class="nz-doc-section__index">01</span>
+			<h2>Choose the routing model deliberately</h2>
+			<div class="nz-doc-card-grid nz-doc-card-grid--three">
+				<div class="nz-doc-card is-recommended"><span>Recommended</span><h3>Environment-bound zone</h3><p>Nearzero writes a distinct authoritative A record for each service, pointing directly to its selected local or remote server.</p><strong>Best for multi-server routing</strong></div>
+				<div class="nz-doc-card"><span>Shared edge</span><h3>Platform apex</h3><p>A wildcard hostname can work only when an independently configured shared edge can route every generated hostname to the correct server.</p><strong>Requires external routing</strong></div>
+				<div class="nz-doc-card"><span>Bring your own</span><h3>Manual domain</h3><p>Add a hostname you control and create the required external DNS record using Nearzero’s target-IP validation guidance.</p><strong>Operator-managed DNS</strong></div>
+			</div>
+			<DocCallout title="Setting NEARZERO_PLATFORM_DOMAIN does not create DNS or a cross-server edge" tone="warning">
+				<p>For direct remote-server assignment, bind an environment to a managed zone. Enable the shared-edge flag only when that routing layer genuinely exists.</p>
+			</DocCallout>
+		</section>
+
+		<section id="delegate" class="nz-doc-section">
+			<span class="nz-doc-section__index">02</span>
+			<h2>Delegate a dedicated application subzone</h2>
+			<ol class="nz-doc-steps">
+				<li><span>01</span><div><strong>Keep port 53 on the control-plane host</strong><p>Allow both TCP and UDP from public resolvers. Remote application servers do not run authoritative Nearzero DNS.</p></div></li>
+				<li><span>02</span><div><strong>Create the zone in Settings → DNS</strong><p>A dedicated subzone such as <code>apps.example.com</code> limits the blast radius for existing apex mail and other records.</p></div></li>
+				<li><span>03</span><div><strong>Delegate it at the parent provider</strong><p>Create NS records for the subzone. If nameservers live inside it, add registrar glue or host records pointing to the control-plane public IP.</p></div></li>
+				<li><span>04</span><div><strong>Publish and test externally</strong><p>Verify the authoritative response and public delegation before relying on the zone for production.</p></div></li>
+			</ol>
+			<DocCode code={verifyDnsCode} label="DNS and HTTPS checks" />
+		</section>
+
+		<section id="bind" class="nz-doc-section">
+			<span class="nz-doc-section__index">03</span>
+			<h2>Bind the zone to an environment</h2>
+			<p>
+				Under Project → Domains, select the managed zone and an optional prefix.
+				When a service needs a domain, Nearzero creates the hostname, writes an A
+				record for the IP of its selected server, and keeps the Traefik route in
+				sync.
+			</p>
+			<figure class="nz-doc-flow">
+				<figcaption class="nz-visually-hidden">Managed DNS request flow from CoreDNS to the selected server and Traefik.</figcaption>
+				<div><small>Resolver</small><strong>CoreDNS :53</strong><span>Authoritative A record</span></div>
+				<i aria-hidden="true">→</i>
+				<div><small>Selected host</small><strong>Server :443</strong><span>Public application IP</span></div>
+				<i aria-hidden="true">→</i>
+				<div><small>Ingress</small><strong>Traefik</strong><span>Hostname → service port</span></div>
+			</figure>
+			<DocCallout title="The server public IP must be accurate and stable" tone="critical">
+				<p>Nearzero cannot make a remote application reachable when NAT, cloud firewalls, or an incorrect server address prevent traffic from reaching Traefik.</p>
+			</DocCallout>
+		</section>
+
+		<section id="https" class="nz-doc-section">
+			<span class="nz-doc-section__index">04</span>
+			<h2>Meet the certificate prerequisites</h2>
+			<ul class="nz-doc-checklist">
+				<li><span>1</span><div><strong>Resolve to the selected server.</strong><p>The public A record must match the address receiving the request.</p></div></li>
+				<li><span>2</span><div><strong>Allow TCP 80.</strong><p>Traefik uses it for HTTP-01 validation and redirects.</p></div></li>
+				<li><span>3</span><div><strong>Allow TCP 443.</strong><p>This carries HTTPS application traffic. UDP 443 is optional HTTP/3.</p></div></li>
+				<li><span>4</span><div><strong>Permit Let’s Encrypt in CAA.</strong><p>If the zone has CAA records, include an <code>issue</code> value for <code>letsencrypt.org</code>.</p></div></li>
+			</ul>
+			<p>Certificate issuance occurs on the application server’s Traefik instance, not on the authoritative DNS host.</p>
+		</section>
+
+		<section id="production" class="nz-doc-section">
+			<span class="nz-doc-section__index">05</span>
+			<h2>Plan for production DNS limitations</h2>
+			<DocCallout title="One control-plane host is one authoritative DNS failure domain" tone="warning">
+				<p>Default <code>ns1</code> and <code>ns2</code> names pointing to the same machine do not provide redundancy. Critical zones need a genuinely independent secondary authority or secondary-DNS service.</p>
+			</DocCallout>
+			<ul>
+				<li>The generated CoreDNS configuration is authoritative-only and does not provide recursive resolution.</li>
+				<li>Nearzero does not enable public AXFR in its generated configuration.</li>
+				<li>Generated zones are not DNSSEC-signed; remove stale parent DS records or operate an external signing pipeline.</li>
+				<li>Apply network-level DNS rate limits suitable for expected traffic.</li>
+				<li>Republish active zones after upgrades that migrate the DNS volume or schema.</li>
+			</ul>
+		</section>
+	</DocsShell>
+</MarketingLayout>

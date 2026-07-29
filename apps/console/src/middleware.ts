@@ -1,17 +1,15 @@
 import type { MiddlewareHandler } from "astro";
 import { getSession } from "./lib/backendProxy";
+import { parseInvitationCallback } from "./lib/invitation-routes";
+import { isMarketingHomeEnabled } from "./lib/marketing-home";
 import {
 	invitationPathFromToken,
 	isInviteMemberSetupMode,
 	isWorkspaceSetupMode,
+	registerOnboardingResumePath,
 	registerPathForSession,
 	registerStepFromUrl,
 } from "./lib/onboarding-gates";
-import {
-	isOnboardingRegisterStep,
-	parseRegisterStep,
-} from "./lib/register-onboarding";
-import { parseInvitationCallback } from "./lib/invitation-routes";
 import {
 	dashboardAgentPath,
 	isDashboardRootPath,
@@ -21,12 +19,15 @@ import {
 	orgDashboardPath,
 } from "./lib/org-routes";
 import { consolePathUsesSession } from "./lib/publicRoutes";
+import {
+	isOnboardingRegisterStep,
+	parseRegisterStep,
+} from "./lib/register-onboarding";
 import { createServerTrpcClient } from "./lib/server-api";
 import {
 	fetchActiveOrganization,
 	fetchOnboardingStatus,
 } from "./lib/trpc-server";
-import { registerOnboardingResumePath } from "./lib/onboarding-gates";
 
 /** Internal header set on org-scoped dashboard rewrites to prevent redirect loops. */
 export const ORG_DASHBOARD_REWRITE_HEADER = "x-nearzero-org-dashboard-rewrite";
@@ -58,9 +59,7 @@ async function isPendingInvitationCallback(request: Request, token: string) {
 		const api = createServerTrpcClient(request);
 		const invitation = await api.user.getUserByToken.query({ token });
 		return Boolean(
-			invitation &&
-				!invitation.isExpired &&
-				invitation.status === "pending",
+			invitation && !invitation.isExpired && invitation.status === "pending",
 		);
 	} catch {
 		return false;
@@ -161,6 +160,9 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				),
 			);
 		}
+		if (isMarketingHomeEnabled()) {
+			return next();
+		}
 		return context.redirect("/login");
 	}
 
@@ -178,12 +180,15 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 		return context.redirect("/register?step=profile");
 	}
 
-	const inviteTokenFromUrl = context.url.searchParams.get("token")?.trim() || "";
+	const inviteTokenFromUrl =
+		context.url.searchParams.get("token")?.trim() || "";
 	const registerStep = registerStepFromUrl(context.url);
 	if (
 		path === "/register" &&
 		inviteTokenFromUrl &&
-		isOnboardingRegisterStep(parseRegisterStep(context.url.searchParams.get("step"))) &&
+		isOnboardingRegisterStep(
+			parseRegisterStep(context.url.searchParams.get("step")),
+		) &&
 		!isWorkspaceSetupMode(context.url)
 	) {
 		return context.redirect(invitationPathFromToken(inviteTokenFromUrl));
@@ -229,9 +234,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				session,
 			);
 			if (blocked) return blocked;
-			return context.redirect(
-				dashboardAgentPath(orgSlug) + context.url.search,
-			);
+			return context.redirect(dashboardAgentPath(orgSlug) + context.url.search);
 		}
 
 		if (dashboardPath === "/dashboard/home") {
@@ -241,9 +244,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				session,
 			);
 			if (blocked) return blocked;
-			return context.redirect(
-				dashboardAgentPath(orgSlug) + context.url.search,
-			);
+			return context.redirect(dashboardAgentPath(orgSlug) + context.url.search);
 		}
 
 		const blocked = await guardDashboardAccess(
@@ -256,8 +257,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 		const activeOrg = await fetchActiveOrganization(context.request);
 		if (activeOrg?.slug && activeOrg.slug !== orgSlug) {
 			return context.redirect(
-				orgDashboardPath(activeOrg.slug, dashboardPath) +
-					context.url.search,
+				orgDashboardPath(activeOrg.slug, dashboardPath) + context.url.search,
 			);
 		}
 
@@ -319,11 +319,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 			);
 		}
 
-		const blocked = await guardDashboardAccess(
-			context.request,
-			path,
-			session,
-		);
+		const blocked = await guardDashboardAccess(context.request, path, session);
 		if (blocked) return blocked;
 
 		const activeOrg = await fetchActiveOrganization(context.request);
