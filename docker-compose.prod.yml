@@ -4,26 +4,13 @@ services:
   dns-init:
     image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.42}
     profiles: ["managed-dns"]
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        umask 022
-        mkdir -p /etc/coredns/zones
-        if [ -d /legacy-nearzero/dns/zones ]; then
-          cp -n /legacy-nearzero/dns/zones/*.zone /etc/coredns/zones/ 2>/dev/null || true
-        fi
-        if [ ! -f /etc/coredns/Corefile ]; then
-          printf '%s\n' \
-            '# Managed by Nearzero. Authoritative zones only; this is not a recursive resolver.' \
-            '.:53 {' \
-            '  auto {' \
-            '    directory /etc/coredns/zones (.*)\.zone {1}' \
-            '    reload 2s' \
-            '  }' \
-            '  reload 30s' \
-            '  errors' \
-            '}' > /etc/coredns/Corefile
-        fi
+    entrypoint: ["bun", "/app/dns-init.ts"]
+    environment:
+      NEARZERO_ADMIN_EMAIL: ${NEARZERO_ADMIN_EMAIL:-}
+      NEARZERO_MANAGEMENT_HOSTNAME: ${NEARZERO_MANAGEMENT_HOSTNAME:-}
+      NEARZERO_MANAGED_DNS_ZONE: ${NEARZERO_MANAGED_DNS_ZONE:-}
+      NEARZERO_MANAGED_DNS_SOA_EMAIL: ${NEARZERO_MANAGED_DNS_SOA_EMAIL:-}
+      NEARZERO_PUBLIC_IP: ${NEARZERO_PUBLIC_IP:-}
     volumes:
       - nearzero-data:/legacy-nearzero:ro
       - nearzero-dns:/etc/coredns
@@ -70,11 +57,19 @@ services:
       NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
       NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
       NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.42}
+      NEARZERO_ADMIN_EMAIL: ${NEARZERO_ADMIN_EMAIL:-}
+      NEARZERO_REGISTRATION_MODE: ${NEARZERO_REGISTRATION_MODE:-bootstrap}
+      NEARZERO_INSTALL_SETUP_TOKEN_HASH: ${NEARZERO_INSTALL_SETUP_TOKEN_HASH:-}
+      NEARZERO_ENABLE_MANAGED_DNS: ${NEARZERO_ENABLE_MANAGED_DNS:-true}
+      NEARZERO_MANAGEMENT_HOSTNAME: ${NEARZERO_MANAGEMENT_HOSTNAME:-}
+      NEARZERO_MANAGED_DNS_ZONE: ${NEARZERO_MANAGED_DNS_ZONE:-}
+      NEARZERO_MANAGED_DNS_SOA_EMAIL: ${NEARZERO_MANAGED_DNS_SOA_EMAIL:-}
+      NEARZERO_PUBLIC_IP: ${NEARZERO_PUBLIC_IP:-}
       NEARZERO_PLATFORM_DOMAIN: ${NEARZERO_PLATFORM_DOMAIN:-}
       NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE: ${NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE:-false}
     ports:
-      - "${NEARZERO_PLATFORM_PORT:-3000}:3000"
-      - "${NEARZERO_CONSOLE_PORT:-4321}:4321"
+      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_PLATFORM_PORT:-3000}:3000"
+      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_CONSOLE_PORT:-4321}:4321"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - nearzero-data:/etc/nearzero

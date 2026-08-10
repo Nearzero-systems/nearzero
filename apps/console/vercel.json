@@ -1,8 +1,5 @@
 {
 	"buildCommand": "cd ../.. && bun run server:build && bun run console:build",
 	"installCommand": "cd ../.. && bun install",
-	"env": {
-		"NEARZERO_MARKETING_HOME": "true"
-	},
 	"framework": "astro"
 }

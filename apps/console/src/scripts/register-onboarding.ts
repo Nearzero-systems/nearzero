@@ -75,7 +75,9 @@ function bindSelectField(
 
 function syncProfileFromInputs(root: HTMLElement, draft: OnboardingDraft) {
 	const nameInput = root.querySelector<HTMLInputElement>("[data-profile-name]");
-	const workspaceInput = root.querySelector<HTMLInputElement>("[data-profile-workspace]");
+	const workspaceInput = root.querySelector<HTMLInputElement>(
+		"[data-profile-workspace]",
+	);
 	const nameFromDom = nameInput?.value.trim() ?? "";
 	const workspaceFromDom = workspaceInput?.value.trim() ?? "";
 	if (nameFromDom) draft.firstName = nameFromDom;
@@ -87,19 +89,27 @@ function syncRoleFromSelect(root: HTMLElement, draft: OnboardingDraft) {
 	const select = root.querySelector<HTMLSelectElement>("[data-role-select]");
 	const value = select?.value.trim() ?? "";
 	if (value) draft.role = value;
-	const onPremSelect = root.querySelector<HTMLSelectElement>("[data-onprem-select]");
+	const onPremSelect = root.querySelector<HTMLSelectElement>(
+		"[data-onprem-select]",
+	);
 	const onPremValue = onPremSelect?.value.trim() ?? "";
 	if (onPremValue) draft.needsOnPrem = onPremValue;
-	const volumeSelect = root.querySelector<HTMLSelectElement>("[data-call-volume-select]");
+	const volumeSelect = root.querySelector<HTMLSelectElement>(
+		"[data-call-volume-select]",
+	);
 	const volumeValue = volumeSelect?.value.trim() ?? "";
 	if (volumeValue) draft.monthlyCallVolume = volumeValue;
-	const migrationSelect = root.querySelector<HTMLSelectElement>("[data-migration-select]");
+	const migrationSelect = root.querySelector<HTMLSelectElement>(
+		"[data-migration-select]",
+	);
 	const migrationValue = migrationSelect?.value.trim() ?? "";
 	if (migrationValue) draft.migratingFromProvider = migrationValue;
 }
 
 function syncHeardAboutFromSelect(root: HTMLElement, draft: OnboardingDraft) {
-	const select = root.querySelector<HTMLSelectElement>("[data-heard-about-select]");
+	const select = root.querySelector<HTMLSelectElement>(
+		"[data-heard-about-select]",
+	);
 	const value = select?.value.trim() ?? "";
 	if (value) draft.heardAbout = value;
 }
@@ -107,11 +117,13 @@ function syncHeardAboutFromSelect(root: HTMLElement, draft: OnboardingDraft) {
 function syncDraftFromStorage(draft: OnboardingDraft) {
 	const saved = loadOnboardingDraft();
 	if (!draft.firstName.trim()) draft.firstName = saved.firstName.trim();
-	if (!draft.workspaceName.trim()) draft.workspaceName = saved.workspaceName.trim();
+	if (!draft.workspaceName.trim())
+		draft.workspaceName = saved.workspaceName.trim();
 	if (!draft.role.trim()) draft.role = saved.role.trim();
 	if (!draft.heardAbout.trim()) draft.heardAbout = saved.heardAbout.trim();
 	if (!draft.needsOnPrem.trim()) draft.needsOnPrem = saved.needsOnPrem.trim();
-	if (!draft.monthlyCallVolume.trim()) draft.monthlyCallVolume = saved.monthlyCallVolume.trim();
+	if (!draft.monthlyCallVolume.trim())
+		draft.monthlyCallVolume = saved.monthlyCallVolume.trim();
 	if (!draft.migratingFromProvider.trim()) {
 		draft.migratingFromProvider = saved.migratingFromProvider.trim();
 	}
@@ -136,7 +148,9 @@ function setContinueButtonLabel(continueBtn: HTMLButtonElement, text: string) {
 }
 
 function updateSkipVisibility(root: HTMLElement, draft?: OnboardingDraft) {
-	const skipBtn = root.querySelector<HTMLButtonElement>("[data-onboarding-skip]");
+	const skipBtn = root.querySelector<HTMLButtonElement>(
+		"[data-onboarding-skip]",
+	);
 	if (!skipBtn) return;
 	const resolvedDraft = draft ?? loadOnboardingDraft();
 	const step = parseRegisterStep(
@@ -148,17 +162,29 @@ function updateSkipVisibility(root: HTMLElement, draft?: OnboardingDraft) {
 
 function setVisibleStage(root: HTMLElement, step: RegisterStep) {
 	const inviteMemberSetupMode = root.dataset.inviteMemberSetup === "1";
-	for (const panel of root.querySelectorAll<HTMLElement>("[data-register-stage]")) {
+	for (const panel of root.querySelectorAll<HTMLElement>(
+		"[data-register-stage]",
+	)) {
 		panel.classList.toggle("hidden", panel.dataset.registerStage !== step);
 	}
 	const titleEl = root.querySelector<HTMLElement>("[data-register-title]");
-	const subtitleEl = root.querySelector<HTMLElement>("[data-register-subtitle]");
-	const loginLinkWrap = root.querySelector<HTMLElement>("[data-register-login-link]");
+	const subtitleEl = root.querySelector<HTMLElement>(
+		"[data-register-subtitle]",
+	);
+	const loginLinkWrap = root.querySelector<HTMLElement>(
+		"[data-register-login-link]",
+	);
 	const legalFooter = root.querySelector<HTMLElement>("[data-register-legal]");
 	const oauthPanel = root.querySelector<HTMLElement>("[data-register-oauth]");
-	const actionsPanel = root.querySelector<HTMLElement>("[data-onboarding-actions]");
-	const inviteActionsPanel = root.querySelector<HTMLElement>("[data-onboarding-invite-actions]");
-	const continueBtn = root.querySelector<HTMLButtonElement>("[data-onboarding-continue]");
+	const actionsPanel = root.querySelector<HTMLElement>(
+		"[data-onboarding-actions]",
+	);
+	const inviteActionsPanel = root.querySelector<HTMLElement>(
+		"[data-onboarding-invite-actions]",
+	);
+	const continueBtn = root.querySelector<HTMLButtonElement>(
+		"[data-onboarding-continue]",
+	);
 	const isOnboarding = isOnboardingRegisterStep(step);
 
 	if (titleEl) {
@@ -194,7 +220,9 @@ function setVisibleStage(root: HTMLElement, step: RegisterStep) {
 			inviteMemberSetupMode && step === "workspace" ? "Finish" : "Continue",
 		);
 	}
-	root.querySelector<HTMLElement>("[data-register-progress]")?.classList.add("hidden");
+	root
+		.querySelector<HTMLElement>("[data-register-progress]")
+		?.classList.add("hidden");
 }
 
 function navigateToStep(
@@ -252,7 +280,9 @@ async function persistOnboardingProfile(draft: OnboardingDraft) {
 	});
 }
 
-function withOptionalOnboardingDefaults(draft: OnboardingDraft): OnboardingDraft {
+function withOptionalOnboardingDefaults(
+	draft: OnboardingDraft,
+): OnboardingDraft {
 	return {
 		...draft,
 		heardAbout: draft.heardAbout || "Other",
@@ -275,20 +305,20 @@ async function finishOnboarding(
 
 	await persistOnboardingProfile(draft);
 	const payload = withOptionalOnboardingDefaults(draft);
-	const result = await trpcMutate<{ success: boolean; organizationSlug?: string }>(
-		"user.completeOnboarding",
-		{
-			heardAbout: payload.heardAbout,
-			role: payload.role,
-			needsOnPrem: payload.needsOnPrem || undefined,
-			monthlyCallVolume: payload.monthlyCallVolume || undefined,
-			migratingFromProvider: payload.migratingFromProvider || undefined,
-			workspaceMode: payload.workspaceMode,
-			firstName: payload.firstName.trim(),
-			workspaceName: payload.workspaceName.trim(),
-			inviteEmails,
-		},
-	);
+	const result = await trpcMutate<{
+		success: boolean;
+		organizationSlug?: string;
+	}>("user.completeOnboarding", {
+		heardAbout: payload.heardAbout,
+		role: payload.role,
+		needsOnPrem: payload.needsOnPrem || undefined,
+		monthlyCallVolume: payload.monthlyCallVolume || undefined,
+		migratingFromProvider: payload.migratingFromProvider || undefined,
+		workspaceMode: payload.workspaceMode,
+		firstName: payload.firstName.trim(),
+		workspaceName: payload.workspaceName.trim(),
+		inviteEmails,
+	});
 	sessionStorage.removeItem("nz-register-onboarding-draft");
 	const shouldOfferDomainSetup =
 		root.dataset.inviteMemberSetup !== "1" &&
@@ -298,9 +328,9 @@ async function finishOnboarding(
 		window.location.href = result?.organizationSlug
 			? orgDashboardPath(
 					result.organizationSlug,
-					"/dashboard/about-nearzero?setup=domain",
+					"/dashboard/about-nearzero?setup=welcome",
 				)
-			: "/dashboard/about-nearzero?setup=domain";
+			: "/dashboard/about-nearzero?setup=welcome";
 		return;
 	}
 	window.location.href = result?.organizationSlug
@@ -310,7 +340,9 @@ async function finishOnboarding(
 
 function bindProfileStep(root: HTMLElement, draft: OnboardingDraft) {
 	const nameInput = root.querySelector<HTMLInputElement>("[data-profile-name]");
-	const workspaceInput = root.querySelector<HTMLInputElement>("[data-profile-workspace]");
+	const workspaceInput = root.querySelector<HTMLInputElement>(
+		"[data-profile-workspace]",
+	);
 	if (nameInput) nameInput.value = draft.firstName;
 	if (workspaceInput) workspaceInput.value = draft.workspaceName;
 
@@ -377,10 +409,16 @@ function bindHeardAboutStep(root: HTMLElement, draft: OnboardingDraft) {
 }
 
 function bindInviteStep(root: HTMLElement, draft: OnboardingDraft) {
-	const textarea = root.querySelector<HTMLTextAreaElement>("[data-invite-emails]");
+	const textarea = root.querySelector<HTMLTextAreaElement>(
+		"[data-invite-emails]",
+	);
 	const skipBtn = root.querySelector<HTMLButtonElement>("[data-invite-skip]");
-	const submitBtn = root.querySelector<HTMLButtonElement>("[data-invite-submit]");
-	const form = root.querySelector<HTMLFormElement>("[data-onboarding-invite-form]");
+	const submitBtn = root.querySelector<HTMLButtonElement>(
+		"[data-invite-submit]",
+	);
+	const form = root.querySelector<HTMLFormElement>(
+		"[data-onboarding-invite-form]",
+	);
 
 	const finish = async (
 		emails: string[],
@@ -399,7 +437,10 @@ function bindInviteStep(root: HTMLElement, draft: OnboardingDraft) {
 			await finishOnboarding(root, draft, emails);
 			keepLocked = true;
 		} catch (err) {
-			showToast(err instanceof Error ? err.message : "Could not finish setup.", "error");
+			showToast(
+				err instanceof Error ? err.message : "Could not finish setup.",
+				"error",
+			);
 		} finally {
 			if (!keepLocked) unlockOnboardingPanel(root);
 		}
@@ -460,9 +501,9 @@ async function finishInviteMemberOnboarding(draft: OnboardingDraft) {
 		}
 
 		await activateAcceptedInvitationOrg();
-		const status = await trpcQuery<OnboardingStatus>("user.onboardingStatus").catch(
-			() => null,
-		);
+		const status = await trpcQuery<OnboardingStatus>(
+			"user.onboardingStatus",
+		).catch(() => null);
 		const workspaceName = status?.organizationName?.trim() ?? "";
 		if (!isPlaceholderPersonalOrgName(workspaceName)) {
 			result = await trpcMutate<{ organizationSlug?: string }>(
@@ -504,7 +545,9 @@ function bindInviteMemberActions(
 	getStep: () => RegisterStep,
 	setStep: (step: RegisterStep) => void,
 ) {
-	const continueBtn = root.querySelector<HTMLButtonElement>("[data-onboarding-continue]");
+	const continueBtn = root.querySelector<HTMLButtonElement>(
+		"[data-onboarding-continue]",
+	);
 
 	continueBtn?.addEventListener("click", () => {
 		void (async () => {
@@ -592,7 +635,9 @@ function bindInviteMemberActions(
 }
 
 function bindWorkspaceSetupActions(root: HTMLElement, draft: OnboardingDraft) {
-	const continueBtn = root.querySelector<HTMLButtonElement>("[data-onboarding-continue]");
+	const continueBtn = root.querySelector<HTMLButtonElement>(
+		"[data-onboarding-continue]",
+	);
 	continueBtn?.addEventListener("click", () => {
 		void (async () => {
 			if (!continueBtn || isOnboardingPanelLocked(root)) return;
@@ -630,8 +675,12 @@ function bindOnboardingActions(
 	getStep: () => RegisterStep,
 	setStep: (step: RegisterStep) => void,
 ) {
-	const continueBtn = root.querySelector<HTMLButtonElement>("[data-onboarding-continue]");
-	const skipBtn = root.querySelector<HTMLButtonElement>("[data-onboarding-skip]");
+	const continueBtn = root.querySelector<HTMLButtonElement>(
+		"[data-onboarding-continue]",
+	);
+	const skipBtn = root.querySelector<HTMLButtonElement>(
+		"[data-onboarding-skip]",
+	);
 
 	continueBtn?.addEventListener("click", () => {
 		void (async () => {
@@ -735,7 +784,10 @@ function bindOnboardingActions(
 				await finishOnboarding(root, draft);
 				keepLocked = true;
 			} catch (err) {
-				showToast(err instanceof Error ? err.message : "Could not finish setup.", "error");
+				showToast(
+					err instanceof Error ? err.message : "Could not finish setup.",
+					"error",
+				);
 			} finally {
 				if (!keepLocked) unlockOnboardingPanel(root);
 			}
@@ -758,7 +810,9 @@ export async function bindRegisterOnboarding(root: HTMLElement) {
 		return;
 	}
 
-	const step = parseRegisterStep(new URL(window.location.href).searchParams.get("step"));
+	const step = parseRegisterStep(
+		new URL(window.location.href).searchParams.get("step"),
+	);
 	if (!isOnboardingRegisterStep(step)) return;
 
 	if (step === "profile" && window.location.search.includes("step=source")) {

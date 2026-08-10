@@ -1,23 +1,13 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
 import { publicSiteLinks } from "@/lib/public-site";
-import GitHubMark from "./GitHubMark.astro";
 
 interface Props {
-	active?: "home" | "docs" | "compare";
+	active?: "docs" | "compare";
 }
 
-const { active = "home" } = Astro.props;
+const { active = "docs" } = Astro.props;
 ---
-
-<div class="nz-announcement">
-	<a href={publicSiteLinks.github} target="_blank" rel="noreferrer">
-		<GitHubMark size={13} />
-		<span class="nz-announcement__status" aria-hidden="true"></span>
-		<span>Nearzero Community is available on GitHub</span>
-		<span class="nz-announcement__arrow" aria-hidden="true">→</span>
-	</a>
-</div>
 
 <header class="nz-nav-shell">
 	<nav class="nz-container nz-nav" aria-label="Primary navigation">
@@ -31,9 +21,9 @@ const { active = "home" } = Astro.props;
 		</a>
 
 		<div class="nz-nav__links" aria-label="Primary links">
-			<a href={publicSiteLinks.howItWorks}>How it works</a>
-			<a href={publicSiteLinks.agent}>Agent</a>
-			<a href={publicSiteLinks.domains}>Domains</a>
+			<a href={publicSiteLinks.architecture}>Architecture</a>
+			<a href={publicSiteLinks.selfHosting}>Self-hosting</a>
+			<a href={publicSiteLinks.agentSafety}>Agent</a>
 			<a
 				href={publicSiteLinks.compare}
 				aria-current={active === "compare" ? "page" : undefined}
@@ -49,19 +39,31 @@ const { active = "home" } = Astro.props;
 				class="nz-button nz-button--small nz-button--primary"
 				href={publicSiteLinks.selfHosting}
 			>
-				Start self-hosting
+				Read install guide
 				<span aria-hidden="true">↗</span>
 			</a>
 		</div>
 
-		<details class="nz-mobile-nav" data-mobile-nav>
-			<summary aria-label="Toggle navigation menu">
+		<div class="nz-mobile-nav" data-mobile-nav>
+			<button
+				type="button"
+				class="nz-mobile-nav__toggle"
+				aria-label="Toggle navigation menu"
+				aria-expanded="false"
+				aria-controls="nearzero-mobile-menu"
+				data-mobile-nav-toggle
+			>
 				<span></span><span></span>
-			</summary>
-			<div class="nz-mobile-nav__panel">
-				<a href={publicSiteLinks.howItWorks}>How it works</a>
-				<a href={publicSiteLinks.agent}>Agent</a>
-				<a href={publicSiteLinks.domains}>Domains</a>
+			</button>
+			<div
+				id="nearzero-mobile-menu"
+				class="nz-mobile-nav__panel"
+				data-mobile-nav-panel
+				hidden
+			>
+				<a href={publicSiteLinks.architecture}>Architecture</a>
+				<a href={publicSiteLinks.selfHosting}>Self-hosting</a>
+				<a href={publicSiteLinks.agentSafety}>Agent</a>
 				<a
 					href={publicSiteLinks.compare}
 					aria-current={active === "compare" ? "page" : undefined}
@@ -71,19 +73,139 @@ const { active = "home" } = Astro.props;
 				<a href={publicSiteLinks.docs} aria-current={active === "docs" ? "page" : undefined}>Documentation</a>
 				<a href={publicSiteLinks.signIn}>Sign in</a>
 				<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
-					Start self-hosting
+					Read install guide
 				</a>
 			</div>
-		</details>
+		</div>
 	</nav>
 </header>
 
 <script>
-	document.querySelectorAll<HTMLDetailsElement>("[data-mobile-nav]").forEach((menu) => {
-		menu.querySelectorAll("a").forEach((link) => {
-			link.addEventListener("click", () => {
-				menu.open = false;
-			});
+	import { animate, stagger } from "framer-motion/dom";
+
+	const prefersReducedMotion = window.matchMedia(
+		"(prefers-reduced-motion: reduce)",
+	);
+
+	document.querySelectorAll<HTMLElement>("[data-mobile-nav]").forEach((menu) => {
+		const toggle = menu.querySelector<HTMLButtonElement>("[data-mobile-nav-toggle]");
+		const panel = menu.querySelector<HTMLElement>("[data-mobile-nav-panel]");
+		const links = panel ? [...panel.querySelectorAll<HTMLElement>("a")] : [];
+
+		if (!toggle || !panel) return;
+
+		let isClosing = false;
+
+		const clearAnimatedStyles = () => {
+			for (const element of [panel, ...links]) {
+				element.style.removeProperty("opacity");
+				element.style.removeProperty("transform");
+			}
+		};
+
+		const openMenu = () => {
+			if (menu.dataset.open === "true" || isClosing) return;
+
+			panel.hidden = false;
+			menu.dataset.open = "true";
+			toggle.setAttribute("aria-expanded", "true");
+
+			if (prefersReducedMotion.matches) return;
+
+			animate(
+				panel,
+				{
+					opacity: [0, 1],
+					transform: [
+						"translateY(-10px) scale(0.98)",
+						"translateY(0) scale(1)",
+					],
+				},
+				{
+					duration: 0.24,
+					ease: [0.22, 1, 0.36, 1],
+					onComplete: clearAnimatedStyles,
+				},
+			);
+
+			animate(
+				links,
+				{
+					opacity: [0, 1],
+					transform: ["translateY(-4px)", "translateY(0)"],
+				},
+				{
+					delay: stagger(0.025, { startDelay: 0.04 }),
+					duration: 0.18,
+					ease: [0.22, 1, 0.36, 1],
+				},
+			);
+		};
+
+		const closeMenu = () => {
+			if (menu.dataset.open !== "true" || isClosing) return;
+
+			const finishClose = () => {
+				panel.hidden = true;
+				isClosing = false;
+				delete menu.dataset.closing;
+				delete menu.dataset.open;
+				toggle.setAttribute("aria-expanded", "false");
+				clearAnimatedStyles();
+			};
+
+			if (prefersReducedMotion.matches) {
+				finishClose();
+				return;
+			}
+
+			isClosing = true;
+			menu.dataset.closing = "true";
+
+			animate(
+				links,
+				{ opacity: 0, transform: "translateY(-3px)" },
+				{ duration: 0.1, ease: [0.4, 0, 1, 1] },
+			);
+
+			animate(
+				panel,
+				{
+					opacity: 0,
+					transform: "translateY(-8px) scale(0.985)",
+				},
+				{
+					duration: 0.16,
+					ease: [0.4, 0, 1, 1],
+					onComplete: finishClose,
+				},
+			);
+		};
+
+		toggle.addEventListener("click", () => {
+			if (menu.dataset.open === "true") closeMenu();
+			else openMenu();
+		});
+
+		for (const link of links) {
+			link.addEventListener("click", closeMenu);
+		}
+
+		document.addEventListener("pointerdown", (event) => {
+			if (
+				menu.dataset.open === "true" &&
+				event.target instanceof Node &&
+				!menu.contains(event.target)
+			) {
+				closeMenu();
+			}
+		});
+
+		document.addEventListener("keydown", (event) => {
+			if (event.key === "Escape" && menu.dataset.open === "true") {
+				closeMenu();
+				toggle.focus();
+			}
 		});
 	});
 </script>

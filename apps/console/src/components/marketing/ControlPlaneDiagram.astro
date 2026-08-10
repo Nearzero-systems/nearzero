@@ -1,0 +1,214 @@
+---
+interface Props {
+	/** Narrower layout for docs article width */
+	compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+
+const intents = [
+	{
+		source: "Console",
+		quote: "deploy api to remote-1 and attach api.example.com",
+		blocked: false,
+		icon: "console",
+	},
+	{
+		source: "Agent",
+		quote: "spin up a preview env for PR 412",
+		blocked: false,
+		icon: "agent",
+	},
+	{
+		source: "CLI / API",
+		quote: "scale worker to 6 on the edge host",
+		blocked: false,
+		icon: "cli",
+	},
+	{
+		source: "Agent",
+		quote: "drop the prod database",
+		blocked: true,
+		blockedLabel: "Blocked · outside agent scope",
+		icon: "agent",
+	},
+] as const;
+
+const capabilities = [
+	{
+		title: "Bring your servers",
+		copy: "SSH-connect local and remote Linux hosts you already run",
+		icon: "server",
+	},
+	{
+		title: "Deterministic deploys",
+		copy: "Same intent → same deploy, route, and DNS path",
+		icon: "sliders",
+	},
+	{
+		title: "Guardrails",
+		copy: "Unsafe Agent ops blocked before they run",
+		icon: "shield",
+	},
+	{
+		title: "Audit trail",
+		copy: "Every action logged and attributable",
+		icon: "list",
+	},
+	{
+		title: "Access & governance",
+		copy: "RBAC, org policies, scoped Agent permissions",
+		icon: "users",
+	},
+] as const;
+
+const stackGroups = [
+	{
+		title: "Your hosts",
+		tags: ["Control plane", "Remote SSH", "Docker", "Swarm"],
+		icon: "host",
+	},
+	{
+		title: "Edge & DNS",
+		tags: ["Traefik", "CoreDNS", "Let's Encrypt"],
+		icon: "edge",
+	},
+	{
+		title: "Workloads",
+		tags: ["Apps", "Compose", "Postgres", "MySQL", "Redis", "Mongo"],
+		icon: "work",
+	},
+	{
+		title: "Day-two",
+		tags: ["Metrics", "Backups", "Logs", "Deployments"],
+		icon: "ops",
+	},
+] as const;
+---
+
+<figure
+	class:list={["nz-cp-diagram", compact && "nz-cp-diagram--compact"]}
+	aria-labelledby="nz-cp-diagram-title"
+>
+	<figcaption id="nz-cp-diagram-title" class="nz-visually-hidden">
+		Nearzero control plane: operators and Agent intents flow through guardrails
+		onto servers you bring.
+	</figcaption>
+
+	<div class="nz-cp-diagram__stage">
+		<svg
+			class="nz-cp-diagram__wires"
+			viewBox="0 0 1100 520"
+			preserveAspectRatio="none"
+			aria-hidden="true"
+		>
+			<path class="nz-cp-diagram__wire" d="M250 64 C340 64, 400 130, 470 158" />
+			<path class="nz-cp-diagram__wire" d="M250 150 C340 150, 400 190, 470 210" />
+			<path class="nz-cp-diagram__wire" d="M250 236 C340 236, 400 250, 470 262" />
+			<path class="nz-cp-diagram__wire nz-cp-diagram__wire--blocked" d="M250 340 C320 340, 390 310, 430 292" />
+			<g class="nz-cp-diagram__block-mark">
+				<circle cx="442" cy="286" r="10" />
+				<path d="M438 282 L446 290 M446 282 L438 290" />
+			</g>
+			<path class="nz-cp-diagram__wire" d="M630 140 C720 140, 780 78, 860 78" />
+			<path class="nz-cp-diagram__wire" d="M630 210 C720 210, 780 176, 860 176" />
+			<path class="nz-cp-diagram__wire" d="M630 280 C720 280, 780 274, 860 274" />
+			<path class="nz-cp-diagram__wire" d="M630 350 C720 350, 780 372, 860 372" />
+		</svg>
+
+		<div class="nz-cp-diagram__layout">
+			<section class="nz-cp-diagram__intents" aria-label="Operators and intents">
+				{
+					intents.map((intent) => (
+						<article
+							class:list={[
+								"nz-cp-diagram__intent",
+								intent.blocked && "nz-cp-diagram__intent--blocked",
+							]}
+						>
+							<span
+								class="nz-cp-diagram__glyph"
+								data-glyph={intent.icon}
+								aria-hidden="true"
+							/>
+							<div class="nz-cp-diagram__intent-body">
+								<span class="nz-cp-diagram__intent-source">{intent.source}</span>
+								<p>{intent.quote}</p>
+								{intent.blocked ? (
+									<span class="nz-cp-diagram__blocked" role="status">
+										<span aria-hidden="true">✕</span>
+										{intent.blockedLabel}
+									</span>
+								) : null}
+							</div>
+						</article>
+					))
+				}
+			</section>
+
+			<section class="nz-cp-diagram__plane" aria-label="Nearzero control plane">
+				<header class="nz-cp-diagram__plane-head">
+					<span class="nz-cp-diagram__plane-mark" aria-hidden="true">N</span>
+					<div>
+						<span class="nz-cp-diagram__eyebrow">Nearzero</span>
+						<strong>Control plane</strong>
+					</div>
+				</header>
+				<ul class="nz-cp-diagram__capabilities">
+					{
+						capabilities.map((item) => (
+							<li>
+								<span
+									class="nz-cp-diagram__glyph nz-cp-diagram__glyph--soft"
+									data-glyph={item.icon}
+									aria-hidden="true"
+								/>
+								<div>
+									<strong>{item.title}</strong>
+									<span>{item.copy}</span>
+								</div>
+							</li>
+						))
+					}
+				</ul>
+				<footer class="nz-cp-diagram__plane-foot">
+					one API · optional Agent · your infrastructure
+				</footer>
+			</section>
+
+			<section class="nz-cp-diagram__stack" aria-label="Your servers operated via Nearzero">
+				<header class="nz-cp-diagram__stack-head">
+					<span class="nz-cp-diagram__live" aria-hidden="true"></span>
+					<div>
+						<span class="nz-cp-diagram__eyebrow">Operated via Nearzero</span>
+						<strong>Your servers</strong>
+					</div>
+				</header>
+				<ul class="nz-cp-diagram__stack-list">
+					{
+						stackGroups.map((group) => (
+							<li>
+								<span
+									class="nz-cp-diagram__glyph nz-cp-diagram__glyph--soft"
+									data-glyph={group.icon}
+									aria-hidden="true"
+								/>
+								<div class="nz-cp-diagram__stack-body">
+									<strong>{group.title}</strong>
+									<div class="nz-cp-diagram__tags">
+										{group.tags.map((tag) => (
+											<span>{tag}</span>
+										))}
+									</div>
+								</div>
+							</li>
+						))
+					}
+				</ul>
+				<p class="nz-cp-diagram__stack-foot">
+					+ the rest of your toolchain on hosts you control
+				</p>
+			</section>
+		</div>
+	</div>
+</figure>

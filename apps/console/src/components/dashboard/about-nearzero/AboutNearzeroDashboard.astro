@@ -1,7 +1,10 @@
 ---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
 import MonitoringDashboard from "@/components/dashboard/monitoring/MonitoringDashboard.astro";
 import PublicDomainDialog from "@/components/dashboard/settings/web-server/PublicDomainDialog.astro";
 import Button from "@/components/ui/Button.astro";
+import { selectConfiguredManagedDnsZone } from "@/lib/managed-domain-client";
+import { normalizeDashboardPath, scopeDashboardHref } from "@/lib/org-routes";
 import { createServerTrpcClient } from "@/lib/server-api";
 
 let serverIp = "";
@@ -9,8 +12,20 @@ let publicHost = "";
 let httpsEnabled = false;
 let letsEncryptEmail = "";
 let canConfigureDomain = false;
-const nearzeroVersion = "0.0.1";
+let nearzeroVersion = "";
 let releaseTag = "";
+let managedZones: Array<{
+	name: string;
+	status: "pending" | "active" | "error" | "disabled";
+	lastError?: string | null;
+	published?: boolean;
+	delegated?: boolean;
+	authoritative?: boolean;
+	expectedNameservers?: string[];
+	diagnostics?: string[];
+}> = [];
+let configuredManagedZoneName: string | null = null;
+let setupDataUnavailable = false;
 
 const api = createServerTrpcClient(Astro.request) as {
 	settings: {
@@ -23,32 +38,93 @@ const api = createServerTrpcClient(Astro.request) as {
 			}>;
 		};
 		getReleaseTag: { query: () => Promise<string> };
+		getNearzeroVersion: { query: () => Promise<string> };
+	};
+	dns: {
+		readiness: {
+			query: () => Promise<{
+				configuredZoneName: string | null;
+				zones: Array<{
+					name: string;
+					status: "pending" | "active" | "error" | "disabled";
+					lastError?: string | null;
+					published?: boolean;
+					delegated?: boolean;
+					authoritative?: boolean;
+					expectedNameservers?: string[];
+					diagnostics?: string[];
+				}>;
+			}>;
+		};
 	};
 	user: {
 		get: { query: () => Promise<{ role?: string | null } | null> };
 	};
 };
-try {
-	const [webServerSettings, tag, currentMember] = await Promise.all([
+
+const [settingsResult, tagResult, versionResult, memberResult, dnsResult] =
+	await Promise.allSettled([
 		api.settings.getWebServerSettings.query(),
 		api.settings.getReleaseTag.query(),
+		api.settings.getNearzeroVersion.query(),
 		api.user.get.query(),
+		api.dns.readiness.query(),
 	]);
+
+if (settingsResult.status === "fulfilled") {
+	const webServerSettings = settingsResult.value;
 	serverIp = webServerSettings?.serverIp?.trim() ?? "";
 	publicHost = webServerSettings?.host?.trim() ?? "";
 	httpsEnabled = Boolean(webServerSettings?.https);
 	letsEncryptEmail = webServerSettings?.letsEncryptEmail?.trim() ?? "";
+} else {
+	setupDataUnavailable = true;
+}
+if (memberResult.status === "fulfilled") {
+	const currentMember = memberResult.value;
 	canConfigureDomain =
 		currentMember?.role === "owner" || currentMember?.role === "admin";
-	releaseTag = tag ?? "";
-} catch {
-	/* partial ok */
+}
+if (tagResult.status === "fulfilled") releaseTag = tagResult.value ?? "";
+if (versionResult.status === "fulfilled") {
+	nearzeroVersion = versionResult.value ?? "";
+}
+if (dnsResult.status === "fulfilled") {
+	managedZones = dnsResult.value?.zones ?? [];
+	configuredManagedZoneName =
+		dnsResult.value?.configuredZoneName?.trim() || null;
+} else {
+	setupDataUnavailable = true;
 }
 
 const versionLabel =
 	releaseTag === "nightly" || releaseTag === "feature"
-		? `${nearzeroVersion} (${releaseTag})`
-		: nearzeroVersion;
+		? `${nearzeroVersion || "development"} (${releaseTag})`
+		: releaseTag || nearzeroVersion;
+const managedZone = selectConfiguredManagedDnsZone(
+	managedZones,
+	configuredManagedZoneName,
+);
+const setupWelcome = Astro.url.searchParams.get("setup") === "welcome";
+const managementConfigured = Boolean(publicHost && httpsEnabled);
+const managementReady = Boolean(
+	managementConfigured &&
+		Astro.url.protocol === "https:" &&
+		Astro.url.hostname.toLowerCase() === publicHost.toLowerCase(),
+);
+const managedZoneReady = Boolean(
+	managedZone?.published && managedZone.delegated && managedZone.authoritative,
+);
+const setupReadyCount = [managementReady, managedZoneReady].filter(
+	Boolean,
+).length;
+const shouldShowSetup = setupWelcome || !managementReady || !managedZoneReady;
+const { orgSlug } = normalizeDashboardPath(Astro.url.pathname);
+const domainsHref = scopeDashboardHref("/dashboard/domains", orgSlug);
+const projectsHref = scopeDashboardHref("/dashboard/projects", orgSlug);
+const managementUrl = publicHost
+	? `${httpsEnabled ? "https" : "http"}://${publicHost}`
+	: "";
 ---
 
 <div
@@ -57,6 +133,125 @@ const versionLabel =
 	data-public-host={publicHost}
 	data-letsencrypt-email={letsEncryptEmail}
 >
+	{
+		shouldShowSetup ? (
+			<section class="nz-first-run" aria-labelledby="nz-first-run-title">
+				<div class="nz-first-run__intro">
+					<div>
+						<p class="nz-first-run__eyebrow">First-time setup</p>
+						<h2 id="nz-first-run-title">Finish connecting this Nearzero host</h2>
+						<p>
+							The installer stores the management hostname separately from the
+							authoritative application zone. Complete the checks below before
+							relying on generated application URLs.
+						</p>
+					</div>
+					<span class="nz-first-run__progress">
+						{setupReadyCount}/2 ready
+					</span>
+				</div>
+
+				<ol class="nz-first-run__steps">
+					<li class="nz-first-run__step">
+						<div class="nz-first-run__step-number" aria-hidden="true">1</div>
+						<div class="nz-first-run__step-body">
+							<div class="nz-first-run__step-heading">
+								<h3>Nearzero management URL</h3>
+								<span class:list={["nz-first-run__status", managementReady ? "is-complete" : ""]}>
+									{managementReady
+										? "Ready"
+										: managementConfigured
+											? "DNS / HTTPS pending"
+											: "Needs setup"}
+								</span>
+							</div>
+							<p>
+								{managementUrl
+									? `${managementUrl} is the single console, API callback, WebSocket, and Git OAuth origin.`
+									: "Choose a hostname for the Nearzero console and point its A record to this server."}
+							</p>
+							{publicHost && serverIp ? (
+								<p class="nz-first-run__note">
+									DNS A record: <code>{publicHost}</code> → <code>{serverIp}</code>. Keep TCP 80 and 443 open while Traefik obtains and renews HTTPS.
+								</p>
+							) : null}
+							<div class="nz-first-run__actions">
+								{managementUrl ? <a href={managementUrl}>Open URL</a> : null}
+								{canConfigureDomain ? <button type="button" id="nz-first-run-domain-open">Configure</button> : null}
+							</div>
+						</div>
+					</li>
+
+					<li class="nz-first-run__step">
+						<div class="nz-first-run__step-number" aria-hidden="true">2</div>
+						<div class="nz-first-run__step-body">
+							<div class="nz-first-run__step-heading">
+								<h3>CoreDNS application zone</h3>
+								<span class:list={["nz-first-run__status", managedZoneReady ? "is-complete" : ""]}>
+									{managedZoneReady
+										? "Ready"
+										: managedZone?.published && !managedZone.delegated
+											? "Delegation pending"
+											: managedZone
+												? "Publishing"
+												: "Needs setup"}
+								</span>
+							</div>
+							<p>
+								{managedZone
+									? `${managedZone.name} is the authoritative zone Nearzero will use for generated service and preview records.`
+									: configuredManagedZoneName
+										? `Recreate and delegate the configured ${configuredManagedZoneName} zone before Nearzero generates service and preview records.`
+										: "Add a dedicated application subzone such as apps.example.com and delegate it to this Nearzero CoreDNS host."}
+							</p>
+							<p class="nz-first-run__note">
+								Published means CoreDNS has the zone file. Ready additionally requires public NS delegation and a direct authoritative SOA response.
+							</p>
+							{managedZone?.expectedNameservers?.length ? (
+								<div class="nz-first-run__dns-records">
+									<span>Delegate the zone to</span>
+									{managedZone.expectedNameservers.map((nameserver) => <code>{nameserver}</code>)}
+									{serverIp ? <span>Create glue/host A records for each nameserver at <code>{serverIp}</code>.</span> : null}
+								</div>
+							) : null}
+							{managedZone?.lastError ? <p class="nz-first-run__error">{managedZone.lastError}</p> : null}
+							{managedZone?.diagnostics?.length ? (
+								<ul class="nz-first-run__diagnostics">
+									{managedZone.diagnostics.map((diagnostic) => <li>{diagnostic}</li>)}
+								</ul>
+							) : null}
+							<div class="nz-first-run__actions">
+								<a href={domainsHref}>Review DNS instructions</a>
+							</div>
+						</div>
+					</li>
+
+					<li class="nz-first-run__step">
+						<div class="nz-first-run__step-number" aria-hidden="true">3</div>
+						<div class="nz-first-run__step-body">
+							<div class="nz-first-run__step-heading">
+								<h3>Deploy the first application</h3>
+								<span class="nz-first-run__status">Next</span>
+							</div>
+							<p>
+								Start with a public Git repository on the local Nearzero host. Advanced Git OAuth and remote servers can be connected later.
+							</p>
+							<div class="nz-first-run__actions">
+								<a href={projectsHref} class="is-primary">Open projects</a>
+							</div>
+						</div>
+					</li>
+				</ol>
+
+				{setupDataUnavailable ? (
+					<p class="nz-first-run__load-warning">
+						Some readiness checks could not be loaded. Refresh before changing DNS.
+					</p>
+				) : null}
+			</section>
+		) : null
+	}
+
 	<section class="nz-about-nearzero__meta" aria-label="Platform information">
 		<dl class="nz-about-nearzero__grid">
 			<div class="nz-about-nearzero__item">

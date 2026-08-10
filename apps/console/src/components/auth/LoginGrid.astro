@@ -18,6 +18,8 @@ const {
 	registerHref = "/register",
 	initialEmail = "",
 } = Astro.props;
+const registerUrl = new URL(registerHref, "https://nearzero.local");
+const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 ---
 
 <div
@@ -26,15 +28,24 @@ const {
 	data-callback-url={callbackUrl}
 	data-register-href={registerHref}
 	data-initial-email={initialEmail}
+	data-invitation-flow={hasInvitation ? "1" : "0"}
 >
 	<AuthGrid variant="compact">
 		<div slot="c4" class="mx-auto flex h-full w-full max-w-[30rem] items-end justify-center pb-1 text-center">
 			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">Welcome to Nearzero</h1>
 		</div>
 		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
-			<p class={`text-sm ${authMutedText}`}>
+			<p class={`text-sm ${authMutedText}`} data-registration-open>
 				Don't have an account?{" "}
 				<a href={registerHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Sign up</a>
+			</p>
+			<p class={`hidden text-sm ${authMutedText}`} data-registration-bootstrap>
+				Setting up Nearzero for the first time?{" "}
+				<a href={registerHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Create the first owner account</a>{" "}
+				with the administrator email configured during installation.
+			</p>
+			<p class={`hidden text-sm ${authMutedText}`} data-registration-closed>
+				New accounts require an invitation from a workspace owner.
 			</p>
 		</div>
 		<div slot="c10" class="mx-auto flex h-full w-full max-w-[30rem] flex-col items-center justify-center gap-3">
@@ -83,12 +94,42 @@ const {
 </div>
 
 <script>
+	import { resolveInvitationTokenFromPage } from "@/lib/invitation-routes";
+	import { fetchRegistrationExperience } from "@/lib/registration-status";
 	import { bindAuthCredentialsFlow } from "@/scripts/auth-credentials-flow";
+
+	async function applyRegistrationPolicy(root: HTMLElement) {
+		if (root.dataset.registrationPolicyBound === "1") return;
+		root.dataset.registrationPolicyBound = "1";
+		const experience = await fetchRegistrationExperience(
+			root.dataset.invitationFlow === "1" ||
+				Boolean(resolveInvitationTokenFromPage()),
+		);
+		if (!root.isConnected) return;
+
+		const open = root.querySelector<HTMLElement>("[data-registration-open]");
+		const bootstrap = root.querySelector<HTMLElement>(
+			"[data-registration-bootstrap]",
+		);
+		const closed = root.querySelector<HTMLElement>(
+			"[data-registration-closed]",
+		);
+		open?.classList.toggle("hidden", experience !== "open");
+		bootstrap?.classList.toggle(
+			"hidden",
+			experience !== "bootstrap_owner",
+		);
+		closed?.classList.toggle(
+			"hidden",
+			experience !== "invitation_required",
+		);
+	}
 
 	function bindLogin() {
 		const root = document.getElementById("nz-login-root");
 		if (!root) return;
 		const callbackUrl = root.dataset.callbackUrl || "/dashboard/agent";
+		void applyRegistrationPolicy(root);
 
 		bindAuthCredentialsFlow({
 			root,

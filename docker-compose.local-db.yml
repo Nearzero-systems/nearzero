@@ -15,6 +15,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
 
   redis:
     container_name: nearzero-redis
@@ -26,6 +27,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   platform:
     environment:

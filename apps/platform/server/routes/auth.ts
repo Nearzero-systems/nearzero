@@ -1,13 +1,13 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { buffer } from "node:stream/consumers";
-import { hashPassword, verifyPassword } from "better-auth/crypto";
-import bcrypt from "bcrypt";
-import { auth } from "@nearzero/server/index";
 import { db } from "@nearzero/server/db";
 import { account, session, user } from "@nearzero/server/db/schema";
+import { auth, getPublicRegistrationStatus } from "@nearzero/server/index";
 import { normalizeAuthEmail } from "@nearzero/server/lib/auth-email-policy";
 import { emailEquals } from "@nearzero/server/lib/email-identity";
+import bcrypt from "bcrypt";
+import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { toNodeHandler } from "better-auth/node";
 import { and, eq } from "drizzle-orm";
 
@@ -68,7 +68,10 @@ async function verifyStoredPassword(hash: string, password: string) {
 	return bcrypt.compare(password, hash);
 }
 
-async function handleCredentialSession(req: IncomingMessage, res: ServerResponse) {
+async function handleCredentialSession(
+	req: IncomingMessage,
+	res: ServerResponse,
+) {
 	if (req.method !== "POST") {
 		return json(res, 405, { message: "Method not allowed" });
 	}
@@ -171,7 +174,15 @@ async function handleCredentialSession(req: IncomingMessage, res: ServerResponse
 }
 
 export async function handleAuth(req: IncomingMessage, res: ServerResponse) {
-	if ((req.url ?? "").split("?")[0] === "/api/auth/nearzero-adopt-credential") {
+	const pathname = (req.url ?? "").split("?")[0];
+	if (pathname === "/api/auth/registration-status") {
+		if (req.method !== "GET") {
+			return json(res, 405, { message: "Method not allowed" });
+		}
+		res.setHeader("cache-control", "no-store");
+		return json(res, 200, await getPublicRegistrationStatus());
+	}
+	if (pathname === "/api/auth/nearzero-adopt-credential") {
 		await handleCredentialSession(req, res);
 		return;
 	}

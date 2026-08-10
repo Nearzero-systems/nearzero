@@ -20,6 +20,12 @@ function bindAboutNearzeroPage() {
 		bindCopyServerIp(ac.signal);
 	}
 	bindPublicDomainDialog(root, ac.signal);
+	const setupDomainButton = document.getElementById("nz-first-run-domain-open");
+	setupDomainButton?.addEventListener(
+		"click",
+		() => document.getElementById("nz-ws-domain-open")?.click(),
+		{ signal: ac.signal },
+	);
 }
 
 export function mountAboutNearzeroDashboard() {

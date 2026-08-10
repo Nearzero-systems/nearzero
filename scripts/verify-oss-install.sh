@@ -17,7 +17,8 @@ fail() {
 
 env_value() {
 	local key="$1"
-	awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$INSTALL_DIR/.env"
+	local env_file="${2:-$INSTALL_DIR/.env}"
+	awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$env_file"
 }
 
 file_mode() {
@@ -193,6 +194,10 @@ if grep -R -Fq 'PUBLIC_METRICS_TOKEN' "$ROOT_DIR/apps/console/src" "$ROOT_DIR/ap
 	fail "monitoring credentials must not be exposed through a PUBLIC_ browser variable"
 fi
 
+# Fresh unattended installs use bootstrap registration and must name the only
+# email allowed to claim the first owner account.
+export NEARZERO_ADMIN_EMAIL=owner@example.com
+
 run_installer() {
 	DRY_RUN=1 \
 	INSTALL_DIR="$INSTALL_DIR" \
@@ -208,10 +213,23 @@ NEARZERO_ENABLE_MANAGED_DNS=true \
 "$ROOT_DIR/scripts/install.sh" >/dev/null
 
 [[ "$(file_mode "$INSTALL_DIR/.env")" == "600" ]] || fail ".env must be mode 0600"
+[[ "$(file_mode "$INSTALL_DIR/docker-compose.prod.yml")" == "644" ]] || fail "production Compose must be mode 0644"
+[[ "$(file_mode "$INSTALL_DIR/docker-compose.local-db.yml")" == "644" ]] || fail "local database Compose must be mode 0644"
+[[ "$(file_mode "$INSTALL_DIR/nearzero")" == "755" ]] || fail "operations helper must be mode 0755"
+grep -Fq 'install -o root -g root -m "$mode"' "$ROOT_DIR/scripts/install.sh" || fail "installer files are not installed with explicit root ownership"
+[[ "$(env_value NEARZERO_PUBLIC_IP)" == "203.0.113.10" ]] || fail "detected/overridden public IP was not persisted"
+[[ "$(env_value NEARZERO_ADMIN_EMAIL)" == "owner@example.com" ]] || fail "bootstrap administrator email was not persisted"
+[[ "$(env_value NEARZERO_REGISTRATION_MODE)" == "bootstrap" ]] || fail "fresh install did not default to bootstrap registration"
+[[ "$(env_value NEARZERO_DATA_MODE)" == "local" ]] || fail "fresh install did not persist local data mode"
+[[ "$(env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)" == "127.0.0.1" ]] || fail "management ports must default to loopback"
 [[ "$(env_value NEARZERO_PLATFORM_DOMAIN)" == "example.com" ]] || fail "platform domain was not normalized"
 [[ "$(env_value NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE)" == "false" ]] || fail "shared-edge routing must default to false"
 [[ "$(env_value NEARZERO_ALLOW_MONITORING_DOCKER_METADATA)" == "false" ]] || fail "Docker metadata monitoring must default to false"
 [[ "$(env_value NEARZERO_SSH_STRICT_HOST_KEY_CHECKING)" == "false" ]] || fail "SSH strict host-key mode must default to false until the trust store is seeded"
+[[ "$(env_value CONSOLE_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install did not publish the SSH-tunnel console origin"
+[[ "$(env_value BETTER_AUTH_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install did not use the console origin for auth"
+[[ "$(env_value PUBLIC_GIT_PROVIDER_BASE_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install did not use the console origin for Git callbacks"
+[[ "$(env_value PUBLIC_BACKEND_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install exposed an unreachable raw API origin"
 case ",$(env_value COMPOSE_PROFILES)," in
 	*,managed-dns,*) ;;
 	*) fail "managed-dns profile was not activated" ;;
@@ -235,8 +253,21 @@ grep -Fq 'API_KEY: ${API_KEY:-}' "$INSTALL_DIR/docker-compose.prod.yml" ||
 	fail "schedules API key wiring is missing"
 grep -Fq 'NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE: ${NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE:-false}' "$INSTALL_DIR/docker-compose.prod.yml" ||
 	fail "shared-edge routing flag is not explicitly wired to the platform"
-grep -Fq 'directory /etc/coredns/zones (.*)\.zone {1}' "$INSTALL_DIR/docker-compose.prod.yml" || fail "CoreDNS zone filename matcher is missing"
-grep -Fq 'reload 2s' "$INSTALL_DIR/docker-compose.prod.yml" || fail "CoreDNS zone reload interval is missing"
+grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_PLATFORM_PORT:-3000}:3000' "$INSTALL_DIR/docker-compose.prod.yml" || fail "platform port is not bound through the safe management address"
+grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_CONSOLE_PORT:-4321}:4321' "$INSTALL_DIR/docker-compose.prod.yml" || fail "console port is not bound through the safe management address"
+grep -Fq 'entrypoint: ["bun", "/app/dns-init.ts"]' "$INSTALL_DIR/docker-compose.prod.yml" || fail "managed DNS bootstrap entrypoint is missing"
+for bootstrap_env in NEARZERO_ADMIN_EMAIL NEARZERO_MANAGEMENT_HOSTNAME NEARZERO_MANAGED_DNS_ZONE NEARZERO_MANAGED_DNS_SOA_EMAIL NEARZERO_PUBLIC_IP; do
+	grep -Fq "${bootstrap_env}: \${${bootstrap_env}:-}" "$INSTALL_DIR/docker-compose.prod.yml" ||
+		fail "managed DNS bootstrap is missing $bootstrap_env"
+done
+grep -Fq 'directory /etc/coredns/zones (.*)\\.zone {1}' "$ROOT_DIR/docker/dns-init.ts" || fail "CoreDNS zone filename matcher is missing"
+grep -Fq 'reload 2s' "$ROOT_DIR/docker/dns-init.ts" || fail "CoreDNS zone reload interval is missing"
+grep -Fq 'up -d --force-recreate --wait --wait-timeout' "$ROOT_DIR/scripts/install.sh" || fail "installer does not gate success on Compose readiness"
+grep -Fq -- '--remove-orphans' "$ROOT_DIR/scripts/install.sh" || fail "installer does not retire services removed by an explicit mode transition"
+grep -Fq 'DATA_MODE="$(installed_env_value NEARZERO_DATA_MODE)"' "$INSTALL_DIR/nearzero" || fail "operations helper does not read the persisted data mode"
+grep -Fq 'if [[ ! -f "$INSTALL_DIR/docker-compose.local-db.yml" ]]' "$INSTALL_DIR/nearzero" || fail "operations helper does not fail closed when the local overlay is missing"
+cmp -s "$ROOT_DIR/docker-compose.local-db.yml" "$INSTALL_DIR/docker-compose.local-db.yml" || fail "installer local database Compose template drifted"
+[[ "$(grep -c 'restart: unless-stopped' "$INSTALL_DIR/docker-compose.local-db.yml")" -ge 2 ]] || fail "local Postgres and Redis do not restart after reboot"
 compose_services="$(docker compose -f "$INSTALL_DIR/docker-compose.prod.yml" --env-file "$INSTALL_DIR/.env" config --services)"
 case "$compose_services" in
 	*dns-init*dns*) ;;
@@ -252,6 +283,233 @@ run_installer
 [[ "$(env_value CONSOLE_URL)" == "$old_console_url" ]] || fail "console URL changed on rerun"
 [[ "$(env_value NEARZERO_PLATFORM_DOMAIN)" == "example.com" ]] || fail "platform domain was not preserved on rerun"
 [[ "$(env_value NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE)" == "false" ]] || fail "shared-edge routing changed on rerun"
+
+preserve_dir="$TEST_ROOT/generated-config-preservation"
+custom_nearzero_image='registry.example.com/nearzero:preserved'
+custom_monitoring_image='registry.example.com/monitoring:preserved'
+custom_schedule_image='registry.example.com/schedule:preserved'
+custom_dns_image='registry.example.com/coredns:preserved'
+DRY_RUN=1 \
+INSTALL_DIR="$preserve_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+POSTGRES_USER=preserved_user \
+POSTGRES_DB=preserved_db \
+NEARZERO_PLATFORM_PORT=3100 \
+NEARZERO_CONSOLE_PORT=4421 \
+NEARZERO_METRICS_PORT=4600 \
+NEARZERO_METRICS_REFRESH_SECONDS=11 \
+NEARZERO_METRICS_RETENTION_DAYS=9 \
+NEARZERO_METRICS_CRON='17 4 * * 2' \
+NEARZERO_STARTUP_TIMEOUT_SECONDS=777 \
+NEARZERO_IMAGE="$custom_nearzero_image" \
+NEARZERO_MONITORING_IMAGE="$custom_monitoring_image" \
+NEARZERO_SCHEDULE_IMAGE="$custom_schedule_image" \
+NEARZERO_DNS_IMAGE="$custom_dns_image" \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+
+custom_secret_marker='provider-secret-marker-must-stay-redacted'
+printf '%s\n' "OPENROUTER_API_KEY=$custom_secret_marker" >> "$preserve_dir/.env"
+if ! preserve_rerun_output="$(
+	DRY_RUN=1 \
+	INSTALL_DIR="$preserve_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" 2>&1
+)"; then
+	fail "plain rerun with preserved generated and custom configuration failed"
+fi
+[[ "$preserve_rerun_output" != *"$custom_secret_marker"* ]] || fail "preserved custom environment secret appeared in installer output"
+for expected_assignment in \
+	'POSTGRES_USER=preserved_user' \
+	'POSTGRES_DB=preserved_db' \
+	'NEARZERO_PLATFORM_PORT=3100' \
+	'NEARZERO_CONSOLE_PORT=4421' \
+	'NEARZERO_METRICS_PORT=4600' \
+	'NEARZERO_METRICS_REFRESH_SECONDS=11' \
+	'NEARZERO_METRICS_RETENTION_DAYS=9' \
+	'NEARZERO_METRICS_CRON="17 4 * * 2"' \
+	'NEARZERO_STARTUP_TIMEOUT_SECONDS=777' \
+	"NEARZERO_IMAGE=$custom_nearzero_image" \
+	"NEARZERO_MONITORING_IMAGE=$custom_monitoring_image" \
+	"NEARZERO_SCHEDULE_IMAGE=$custom_schedule_image" \
+	"NEARZERO_DNS_IMAGE=$custom_dns_image" \
+	"OPENROUTER_API_KEY=$custom_secret_marker"; do
+	grep -Fxq "$expected_assignment" "$preserve_dir/.env" || fail "plain rerun did not preserve a generated or custom environment assignment"
+done
+[[ -z "$(awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ { if (seen[$1]++) print $1 }' "$preserve_dir/.env")" ]] || fail "plain rerun produced duplicate generated environment keys"
+grep -Eq '^DATABASE_URL=postgresql://preserved_user:[^@]+@postgres:5432/preserved_db$' "$preserve_dir/.env" || fail "plain rerun rewrote the local database identity"
+
+duplicate_env_dir="$TEST_ROOT/duplicate-custom-env"
+cp -R "$preserve_dir" "$duplicate_env_dir"
+printf '%s\n' "OPENROUTER_API_KEY=$custom_secret_marker" >> "$duplicate_env_dir/.env"
+if DRY_RUN=1 INSTALL_DIR="$duplicate_env_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "duplicate custom environment assignment was accepted on rerun"
+fi
+malformed_env_dir="$TEST_ROOT/malformed-custom-env"
+cp -R "$preserve_dir" "$malformed_env_dir"
+printf '%s\n' 'this is not a dotenv assignment' >> "$malformed_env_dir/.env"
+if DRY_RUN=1 INSTALL_DIR="$malformed_env_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "malformed custom environment content was accepted on rerun"
+fi
+
+backup_fake_bin="$TEST_ROOT/backup-fake-bin"
+backup_args="$TEST_ROOT/backup-docker-args"
+restore_capture="$TEST_ROOT/restore-capture"
+mkdir -p "$backup_fake_bin"
+printf '%s\n' \
+	'#!/usr/bin/env sh' \
+	'printf "%s\n" "$*" >> "$FAKE_DOCKER_ARGS"' \
+	'case "$*" in' \
+	'  *pg_dump*) printf "%s\n" "-- complete atomic dump"; if [ "${FAKE_DOCKER_FAIL:-0}" = 1 ]; then exit 1; fi; exit 0 ;;' \
+	'  *psql*) cat > "$FAKE_RESTORE_CAPTURE" ;;' \
+	'esac' > "$backup_fake_bin/docker"
+chmod 0755 "$backup_fake_bin/docker"
+backup_path="$TEST_ROOT/control-plane.sql"
+: > "$backup_args"
+PATH="$backup_fake_bin:$PATH" \
+INSTALL_DIR="$preserve_dir" \
+POSTGRES_USER=wrong_shell_user \
+POSTGRES_DB=wrong_shell_db \
+FAKE_DOCKER_ARGS="$backup_args" \
+FAKE_RESTORE_CAPTURE="$restore_capture" \
+"$preserve_dir/nearzero" backup-db "$backup_path" >/dev/null
+[[ "$(file_mode "$backup_path")" == "600" ]] || fail "database backup was not installed with mode 0600"
+grep -Fq -- 'pg_dump -U preserved_user preserved_db' "$backup_args" || fail "backup helper did not use the installed Postgres identity"
+grep -Fq -- '-- complete atomic dump' "$backup_path" || fail "backup helper did not publish the completed dump"
+
+printf '%s\n' 'existing-backup-must-survive' > "$backup_path"
+if PATH="$backup_fake_bin:$PATH" \
+	INSTALL_DIR="$preserve_dir" \
+	FAKE_DOCKER_ARGS="$backup_args" \
+	FAKE_RESTORE_CAPTURE="$restore_capture" \
+	FAKE_DOCKER_FAIL=1 \
+	"$preserve_dir/nearzero" backup-db "$backup_path" >/dev/null 2>&1; then
+	fail "failing database dump was reported as successful"
+fi
+grep -Fxq 'existing-backup-must-survive' "$backup_path" || fail "failed database dump replaced the last complete backup"
+[[ -z "$(find "$TEST_ROOT" -maxdepth 1 -name '.control-plane.sql.tmp.*' -print -quit)" ]] || fail "failed database dump left a partial temporary file"
+
+restore_input="$TEST_ROOT/restore-input.sql"
+printf '%s\n' 'verified restore input' > "$restore_input"
+: > "$backup_args"
+PATH="$backup_fake_bin:$PATH" \
+INSTALL_DIR="$preserve_dir" \
+POSTGRES_USER=wrong_shell_user \
+POSTGRES_DB=wrong_shell_db \
+FAKE_DOCKER_ARGS="$backup_args" \
+FAKE_RESTORE_CAPTURE="$restore_capture" \
+"$preserve_dir/nearzero" restore-db "$restore_input" >/dev/null
+grep -Fq -- 'psql -U preserved_user preserved_db' "$backup_args" || fail "restore helper did not use the installed Postgres identity"
+grep -Fxq 'verified restore input' "$restore_capture" || fail "restore helper did not stream the selected input file"
+
+split_url_dir="$TEST_ROOT/split-public-urls"
+DRY_RUN=1 \
+INSTALL_DIR="$split_url_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+CONSOLE_URL=https://console.example.com \
+BETTER_AUTH_URL=https://auth.example.com \
+PUBLIC_GIT_PROVIDER_BASE_URL=https://git-callbacks.example.com \
+PUBLIC_BACKEND_URL=https://api.example.com \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+DRY_RUN=1 \
+INSTALL_DIR="$split_url_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value CONSOLE_URL "$split_url_dir/.env")" == "https://console.example.com" ]] || fail "plain rerun changed an explicit console URL"
+[[ "$(env_value BETTER_AUTH_URL "$split_url_dir/.env")" == "https://auth.example.com" ]] || fail "plain rerun changed an explicit split auth URL"
+[[ "$(env_value PUBLIC_GIT_PROVIDER_BASE_URL "$split_url_dir/.env")" == "https://git-callbacks.example.com" ]] || fail "plain rerun changed an explicit split Git callback URL"
+[[ "$(env_value PUBLIC_BACKEND_URL "$split_url_dir/.env")" == "https://api.example.com" ]] || fail "plain rerun changed an explicit split backend URL"
+
+legacy_url_dir="$TEST_ROOT/legacy-generated-urls"
+DRY_RUN=1 INSTALL_DIR="$legacy_url_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null
+awk -F= '
+	$1 == "CONSOLE_URL" || $1 == "BETTER_AUTH_URL" || $1 == "PUBLIC_GIT_PROVIDER_BASE_URL" { print $1 "=http://203.0.113.10:4321"; next }
+	$1 == "PUBLIC_BACKEND_URL" { print $1 "=http://203.0.113.10:3000"; next }
+	{ print }
+' "$legacy_url_dir/.env" > "$legacy_url_dir/.env.old-urls"
+mv "$legacy_url_dir/.env.old-urls" "$legacy_url_dir/.env"
+DRY_RUN=1 INSTALL_DIR="$legacy_url_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null
+for canonical_key in CONSOLE_URL BETTER_AUTH_URL PUBLIC_GIT_PROVIDER_BASE_URL PUBLIC_BACKEND_URL; do
+	[[ "$(env_value "$canonical_key" "$legacy_url_dir/.env")" == "http://127.0.0.1:4321" ]] || fail "legacy generated raw URL was not corrected to the loopback console origin"
+done
+
+guided_dir="$TEST_ROOT/guided-domain"
+DRY_RUN=1 \
+INSTALL_DIR="$guided_dir" \
+NEARZERO_PUBLIC_IP=8.8.8.8 \
+NEARZERO_MANAGEMENT_HOSTNAME=Nearzero.Apps.Example.COM. \
+NEARZERO_MANAGED_DNS_ZONE=Apps.Example.COM. \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_PUBLIC_IP "$guided_dir/.env")" == "8.8.8.8" ]] || fail "guided public IP was not persisted"
+[[ "$(env_value NEARZERO_MANAGEMENT_HOSTNAME "$guided_dir/.env")" == "nearzero.apps.example.com" ]] || fail "management hostname was not normalized"
+[[ "$(env_value NEARZERO_MANAGED_DNS_ZONE "$guided_dir/.env")" == "apps.example.com" ]] || fail "managed application zone was not normalized"
+[[ "$(env_value NEARZERO_ADMIN_EMAIL "$guided_dir/.env")" == "owner@example.com" ]] || fail "guided admin email was not persisted"
+[[ "$(env_value NEARZERO_MANAGED_DNS_SOA_EMAIL "$guided_dir/.env")" == "owner@example.com" ]] || fail "SOA email did not default to the admin email"
+[[ "$(env_value NEARZERO_REGISTRATION_MODE "$guided_dir/.env")" == "bootstrap" ]] || fail "guided install did not use bootstrap registration"
+[[ "$(env_value CONSOLE_URL "$guided_dir/.env")" == "https://nearzero.apps.example.com" ]] || fail "management hostname did not derive the HTTPS console URL"
+[[ "$(env_value BETTER_AUTH_URL "$guided_dir/.env")" == "https://nearzero.apps.example.com" ]] || fail "management hostname did not derive the auth URL"
+[[ "$(env_value PUBLIC_GIT_PROVIDER_BASE_URL "$guided_dir/.env")" == "https://nearzero.apps.example.com" ]] || fail "management hostname did not derive the Git callback base"
+[[ "$(env_value PUBLIC_BACKEND_URL "$guided_dir/.env")" == "https://nearzero.apps.example.com" ]] || fail "management hostname did not derive the proxied public API origin"
+case ",$(env_value NEARZERO_TRUSTED_ORIGINS "$guided_dir/.env")," in
+	*,https://nearzero.apps.example.com,*) ;;
+	*) fail "management hostname was not added to trusted origins" ;;
+esac
+guided_env_before="$(sha256sum "$guided_dir/.env" | awk '{print $1}')"
+DRY_RUN=1 \
+INSTALL_DIR="$guided_dir" \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+guided_env_after="$(sha256sum "$guided_dir/.env" | awk '{print $1}')"
+[[ "$guided_env_after" == "$guided_env_before" ]] || fail "guided first-run domain settings changed on a plain rerun"
+awk -F= '$1 == "PUBLIC_BACKEND_URL" { print "PUBLIC_BACKEND_URL=http://8.8.8.8:3000"; next } { print }' \
+	"$guided_dir/.env" > "$guided_dir/.env.old-backend-url"
+mv "$guided_dir/.env.old-backend-url" "$guided_dir/.env"
+DRY_RUN=1 INSTALL_DIR="$guided_dir" "$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value PUBLIC_BACKEND_URL "$guided_dir/.env")" == "https://nearzero.apps.example.com" ]] || fail "legacy management install did not move its generated backend URL to the console origin"
+if DRY_RUN=1 \
+	INSTALL_DIR="$guided_dir" \
+	NEARZERO_MANAGEMENT_HOSTNAME=renamed.apps.example.com \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "management hostname was changed by an unsupported installer rerun"
+fi
+if DRY_RUN=1 \
+	INSTALL_DIR="$guided_dir" \
+	NEARZERO_MANAGED_DNS_ZONE=other.example.com \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "managed DNS zone was changed by an unsupported installer rerun"
+fi
+
+management_only_dir="$TEST_ROOT/management-only"
+DRY_RUN=1 \
+INSTALL_DIR="$management_only_dir" \
+NEARZERO_PUBLIC_IP=8.8.4.4 \
+NEARZERO_MANAGEMENT_HOSTNAME=nearzero.example.com \
+NEARZERO_ADMIN_EMAIL=tls@example.com \
+NEARZERO_REGISTRATION_MODE=open \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_MANAGED_DNS_SOA_EMAIL "$management_only_dir/.env")" == "tls@example.com" ]] || fail "management-only install did not persist its SOA/ACME contact"
+DRY_RUN=1 \
+INSTALL_DIR="$management_only_dir" \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_MANAGED_DNS_SOA_EMAIL "$management_only_dir/.env")" == "tls@example.com" ]] || fail "management-only rerun did not preserve its SOA/ACME contact"
+
+legacy_dir="$TEST_ROOT/legacy-registration"
+DRY_RUN=1 \
+INSTALL_DIR="$legacy_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.55 \
+NEARZERO_REGISTRATION_MODE=open \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+awk -F= '$1 != "NEARZERO_ADMIN_EMAIL" && $1 != "NEARZERO_REGISTRATION_MODE"' \
+	"$legacy_dir/.env" > "$legacy_dir/.env.legacy"
+mv "$legacy_dir/.env.legacy" "$legacy_dir/.env"
+DRY_RUN=1 \
+INSTALL_DIR="$legacy_dir" \
+NEARZERO_ADMIN_EMAIL= \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_REGISTRATION_MODE "$legacy_dir/.env")" == "open" ]] || fail "legacy install without registration settings was unexpectedly locked"
+[[ -z "$(env_value NEARZERO_ADMIN_EMAIL "$legacy_dir/.env")" ]] || fail "legacy install invented a bootstrap administrator"
 
 ingress_dir="$TEST_ROOT/ingress"
 verified_traefik_image='registry.example.com/traefik@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -323,6 +581,14 @@ run_installer
 DRY_RUN=1 \
 INSTALL_DIR="$INSTALL_DIR" \
 NEARZERO_PUBLIC_IP=203.0.113.10 \
+NEARZERO_MANAGEMENT_BIND_ADDRESS=0.0.0.0 \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+run_installer
+[[ "$(env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)" == "0.0.0.0" ]] || fail "explicit management bind override was not preserved on rerun"
+
+DRY_RUN=1 \
+INSTALL_DIR="$INSTALL_DIR" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
 NEARZERO_ENABLE_MANAGED_DNS=false \
 "$ROOT_DIR/scripts/install.sh" >/dev/null
 case ",$(env_value COMPOSE_PROFILES)," in
@@ -342,6 +608,110 @@ case ",$(env_value COMPOSE_PROFILES)," in
 esac
 
 invalid_dir="$TEST_ROOT/invalid"
+wizard_dir="$TEST_ROOT/browser-setup"
+DRY_RUN=1 \
+	INSTALL_DIR="$wizard_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_ADMIN_EMAIL= \
+	NEARZERO_MANAGEMENT_HOSTNAME= \
+	NEARZERO_MANAGED_DNS_ZONE= \
+	NEARZERO_REGISTRATION_MODE=bootstrap \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null || fail "browser-deferred bootstrap setup was rejected"
+[[ "$(env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH "$wizard_dir/.env")" =~ ^[a-f0-9]{64}$ ]] ||
+	fail "browser setup token hash was not persisted"
+[[ -z "$(env_value NEARZERO_ADMIN_EMAIL "$wizard_dir/.env")" ]] ||
+	fail "browser-deferred setup should leave admin email empty for the wizard"
+[[ -z "$(env_value NEARZERO_MANAGEMENT_HOSTNAME "$wizard_dir/.env")" ]] ||
+	fail "browser-deferred setup should leave management hostname empty for the wizard"
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_ADMIN_EMAIL= \
+	NEARZERO_INSTALL_SETUP_TOKEN_HASH=not-a-hash \
+	NEARZERO_REGISTRATION_MODE=bootstrap \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "invalid install setup token hash was accepted"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_REGISTRATION_MODE=unknown \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "invalid registration mode was accepted"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$TEST_ROOT/fresh-invite-only" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_ADMIN_EMAIL= \
+	NEARZERO_REGISTRATION_MODE=invite_only \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "invite-only registration was accepted with a fresh local database"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$TEST_ROOT/management-without-contact" \
+	NEARZERO_PUBLIC_IP=8.8.8.8 \
+	NEARZERO_MANAGEMENT_HOSTNAME=nearzero.example.com \
+	NEARZERO_ADMIN_EMAIL= \
+	NEARZERO_MANAGED_DNS_SOA_EMAIL= \
+	NEARZERO_REGISTRATION_MODE=open \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "public management hostname without an SOA/ACME contact was accepted"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$TEST_ROOT/management-private-ip" \
+	NEARZERO_PUBLIC_IP=10.0.0.10 \
+	NEARZERO_MANAGEMENT_HOSTNAME=nearzero.example.com \
+	NEARZERO_ADMIN_EMAIL=owner@example.com \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "private IPv4 address was accepted for a public management hostname"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$TEST_ROOT/zone-documentation-ip" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_MANAGED_DNS_ZONE=apps.example.com \
+	NEARZERO_ADMIN_EMAIL=owner@example.com \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "documentation IPv4 range was accepted for managed authoritative DNS"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_MANAGED_DNS_ZONE=apps.example.com \
+	NEARZERO_ENABLE_MANAGED_DNS=false \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "managed application zone was accepted while managed DNS was disabled"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_MANAGEMENT_HOSTNAME=https://nearzero.example.com \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "URL syntax was accepted as a management hostname"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=999.0.0.1 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "invalid public IP was accepted"
+fi
+
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_MANAGEMENT_BIND_ADDRESS=not-an-ip \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "invalid management bind address was accepted"
+fi
+
 if DRY_RUN=1 \
 	INSTALL_DIR="$invalid_dir" \
 	NEARZERO_PUBLIC_IP=203.0.113.10 \
@@ -433,7 +803,7 @@ fi
 if DRY_RUN=1 \
 	INSTALL_DIR="$invalid_dir" \
 	NEARZERO_PUBLIC_IP=203.0.113.10 \
-	EXTERNAL_SERVICES=1 \
+	NEARZERO_DATA_MODE=external \
 	DATABASE_URL='postgresql://user:unsafe$password@example.invalid:5432/nearzero' \
 	REDIS_URL=redis://example.invalid:6379 \
 	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
@@ -448,15 +818,156 @@ if DRY_RUN=1 \
 	fail "unsafe quoted metrics cron was accepted"
 fi
 
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_DATA_MODE=external \
+	DATABASE_URL=postgresql://example.invalid/nearzero \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "partial external-service input was accepted"
+fi
+
 external_dir="$TEST_ROOT/external"
-DRY_RUN=1 \
-INSTALL_DIR="$external_dir" \
-NEARZERO_PUBLIC_IP=203.0.113.10 \
-EXTERNAL_SERVICES=1 \
-DATABASE_URL=postgresql://user:test%24encoded@example.invalid:5432/nearzero \
-REDIS_URL=redis://user:test%23encoded@example.invalid:6379 \
-"$ROOT_DIR/scripts/install.sh" >/dev/null
+external_db_url='postgresql://user:external-db-marker@example.invalid:5432/nearzero'
+external_redis_url='rediss://user:external-redis-marker@example.invalid:6379'
+if ! external_output="$(
+	DRY_RUN=1 \
+	INSTALL_DIR="$external_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_DATA_MODE=external \
+	DATABASE_URL="$external_db_url" \
+	REDIS_URL="$external_redis_url" \
+	"$ROOT_DIR/scripts/install.sh" 2>&1
+)"; then
+	fail "fresh external-service install failed"
+fi
+if [[ "$external_output" == *external-db-marker* || "$external_output" == *external-redis-marker* ]]; then
+	fail "external-service credentials were printed by the installer"
+fi
+[[ "$(env_value NEARZERO_DATA_MODE "$external_dir/.env")" == "external" ]] || fail "external data mode was not persisted"
 [[ ! -e "$external_dir/docker-compose.local-db.yml" ]] || fail "external-service mode generated a local database Compose file"
+external_database_before="$(env_value DATABASE_URL "$external_dir/.env")"
+external_redis_before="$(env_value REDIS_URL "$external_dir/.env")"
+
+# A plain rerun must preserve the external mode and both stored URLs. Even if a
+# stale local overlay is present from an older bug or manual copy, the installer
+# must remove it instead of silently starting bundled services.
+cp "$ROOT_DIR/docker-compose.local-db.yml" "$external_dir/docker-compose.local-db.yml"
+if ! external_rerun_output="$(
+	DRY_RUN=1 \
+	INSTALL_DIR="$external_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" 2>&1
+)"; then
+	fail "plain external-service rerun failed"
+fi
+if [[ "$external_rerun_output" == *external-db-marker* || "$external_rerun_output" == *external-redis-marker* ]]; then
+	fail "stored external-service credentials were printed on rerun"
+fi
+[[ "$(env_value NEARZERO_DATA_MODE "$external_dir/.env")" == "external" ]] || fail "plain rerun changed external data mode"
+[[ "$(env_value DATABASE_URL "$external_dir/.env")" == "$external_database_before" ]] || fail "plain rerun changed the external database URL"
+[[ "$(env_value REDIS_URL "$external_dir/.env")" == "$external_redis_before" ]] || fail "plain rerun changed the external Redis URL"
+[[ ! -e "$external_dir/docker-compose.local-db.yml" ]] || fail "plain external rerun retained a stale local overlay"
+
+# The generated helper must trust the persisted mode, not merely overlay-file
+# existence. Recreate a stale overlay and observe the Compose arguments through
+# a non-secret fake Docker executable.
+cp "$ROOT_DIR/docker-compose.local-db.yml" "$external_dir/docker-compose.local-db.yml"
+fake_bin="$TEST_ROOT/fake-bin"
+mkdir -p "$fake_bin"
+printf '#!/usr/bin/env sh\nprintf "%%s\\n" "$*"\n' > "$fake_bin/docker"
+chmod 0755 "$fake_bin/docker"
+helper_args="$(PATH="$fake_bin:$PATH" INSTALL_DIR="$external_dir" "$external_dir/nearzero" status)"
+if [[ "$helper_args" == *docker-compose.local-db.yml* ]]; then
+	fail "operations helper resurrected a stale local overlay in external mode"
+fi
+rm -f "$external_dir/docker-compose.local-db.yml"
+
+# Both transitions require an explicit mode. Local -> external additionally
+# requires a complete fresh pair; external -> local replaces both stored URLs
+# with internal service addresses and recreates the overlay.
+transition_dir="$TEST_ROOT/data-mode-transition"
+DRY_RUN=1 \
+INSTALL_DIR="$transition_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+if DRY_RUN=1 \
+	INSTALL_DIR="$transition_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	DATABASE_URL="$external_db_url" \
+	REDIS_URL="$external_redis_url" \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "implicit local-to-external transition was accepted"
+fi
+if ! transition_output="$(
+	DRY_RUN=1 \
+	INSTALL_DIR="$transition_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_DATA_MODE=external \
+	DATABASE_URL="$external_db_url" \
+	REDIS_URL="$external_redis_url" \
+	"$ROOT_DIR/scripts/install.sh" 2>&1
+)"; then
+	fail "explicit local-to-external transition failed"
+fi
+if [[ "$transition_output" == *external-db-marker* || "$transition_output" == *external-redis-marker* ]]; then
+	fail "external-service credentials were printed during a mode transition"
+fi
+[[ "$(env_value NEARZERO_DATA_MODE "$transition_dir/.env")" == "external" ]] || fail "local-to-external transition did not persist its mode"
+[[ ! -e "$transition_dir/docker-compose.local-db.yml" ]] || fail "local-to-external transition retained the local overlay"
+
+DRY_RUN=1 \
+INSTALL_DIR="$transition_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+NEARZERO_DATA_MODE=local \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_DATA_MODE "$transition_dir/.env")" == "local" ]] || fail "external-to-local transition did not persist its mode"
+[[ -e "$transition_dir/docker-compose.local-db.yml" ]] || fail "external-to-local transition did not recreate the local overlay"
+if grep -Fq 'external-db-marker' "$transition_dir/.env" || grep -Fq 'external-redis-marker' "$transition_dir/.env"; then
+	fail "external-to-local transition retained external service credentials"
+fi
+
+# Legacy installs without the persisted marker are inferred only when their
+# generated URLs and overlay agree. A stale overlay combined with external URLs
+# is deliberately ambiguous and requires the operator to select a mode.
+legacy_local_data_dir="$TEST_ROOT/legacy-local-data"
+DRY_RUN=1 \
+INSTALL_DIR="$legacy_local_data_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+awk -F= '$1 != "NEARZERO_DATA_MODE"' "$legacy_local_data_dir/.env" > "$legacy_local_data_dir/.env.legacy"
+mv "$legacy_local_data_dir/.env.legacy" "$legacy_local_data_dir/.env"
+DRY_RUN=1 \
+INSTALL_DIR="$legacy_local_data_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_DATA_MODE "$legacy_local_data_dir/.env")" == "local" ]] || fail "unambiguous legacy local mode was not inferred"
+
+legacy_ambiguous_data_dir="$TEST_ROOT/legacy-ambiguous-data"
+DRY_RUN=1 \
+INSTALL_DIR="$legacy_ambiguous_data_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+NEARZERO_DATA_MODE=external \
+DATABASE_URL="$external_db_url" \
+REDIS_URL="$external_redis_url" \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+awk -F= '$1 != "NEARZERO_DATA_MODE"' "$legacy_ambiguous_data_dir/.env" > "$legacy_ambiguous_data_dir/.env.legacy"
+mv "$legacy_ambiguous_data_dir/.env.legacy" "$legacy_ambiguous_data_dir/.env"
+cp "$ROOT_DIR/docker-compose.local-db.yml" "$legacy_ambiguous_data_dir/docker-compose.local-db.yml"
+if DRY_RUN=1 \
+	INSTALL_DIR="$legacy_ambiguous_data_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "ambiguous legacy data mode was guessed from a stale overlay"
+fi
+DRY_RUN=1 \
+INSTALL_DIR="$legacy_ambiguous_data_dir" \
+NEARZERO_PUBLIC_IP=203.0.113.10 \
+NEARZERO_DATA_MODE=external \
+"$ROOT_DIR/scripts/install.sh" >/dev/null
+[[ "$(env_value NEARZERO_DATA_MODE "$legacy_ambiguous_data_dir/.env")" == "external" ]] || fail "explicit legacy external mode was not persisted"
+[[ ! -e "$legacy_ambiguous_data_dir/docker-compose.local-db.yml" ]] || fail "explicit legacy external selection retained a stale overlay"
+
 docker compose \
 	-f "$external_dir/docker-compose.prod.yml" \
 	--env-file "$external_dir/.env" \

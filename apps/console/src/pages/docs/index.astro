@@ -22,7 +22,7 @@ const guideCards = docsNavigation.slice(1);
 			{ href: "#deployment-model", label: "Deployment model" },
 			{ href: "#security-baseline", label: "Security baseline" },
 		]}
-		next={{ href: publicSiteLinks.selfHosting, label: "Self-host Nearzero" }}
+		next={{ href: publicSiteLinks.architecture, label: "Architecture" }}
 	>
 		<section id="choose-a-path" class="nz-doc-section">
 			<span class="nz-doc-section__index">01</span>
@@ -72,6 +72,11 @@ const guideCards = docsNavigation.slice(1);
 				<div><strong>Managed zones</strong><p>Turn an environment and service selection into an A record targeting the selected server.</p></div>
 				<div><strong>Infrastructure Agent</strong><p>Works through scoped Nearzero tools, user RBAC, and administrator-controlled per-action policy; production mutations start disabled.</p></div>
 			</div>
+			<p>
+				<a class="nz-text-link" href={publicSiteLinks.architecture}>
+					See the full control-plane diagram <span aria-hidden="true">→</span>
+				</a>
+			</p>
 		</section>
 
 		<section id="security-baseline" class="nz-doc-section">

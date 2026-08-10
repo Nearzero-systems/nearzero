@@ -12,7 +12,7 @@ const serverIp = Astro.props.serverIp?.trim() ?? "";
 <NzModal
 	id="nz-ws-domain-dialog"
 	title="Configure public domain"
-	description="Connect a hostname to this Nearzero host and enable HTTPS with Let's Encrypt."
+	description="Connect a hostname to this Nearzero host and request HTTPS with Let's Encrypt. DNS and certificate readiness are verified separately."
 	size="lg"
 	form
 	formId="nz-ws-domain-form"
@@ -55,9 +55,9 @@ const serverIp = Astro.props.serverIp?.trim() ?? "";
 			Nearzero is initially available on port 4321. For the public domain, Traefik listens on ports 80 and 443 and securely proxies requests to Nearzero on port 4321. Open TCP 80 and 443 publicly; do not add <code>:4321</code> to the hostname.
 		</div>
 	</div>
-	<div id="nz-ws-domain-success" class="hidden">
-		<div class="nz-modal__callout border-green-500/20 bg-green-500/10 text-foreground">
-			<strong>HTTPS configuration saved.</strong> Keep these details for your DNS and firewall setup.
+		<div id="nz-ws-domain-success" class="hidden">
+			<div class="nz-modal__callout border-green-500/20 bg-green-500/10 text-foreground">
+				<strong>Configuration saved; HTTPS is pending.</strong> Keep these details for DNS and firewall setup, then verify the public URL before relying on it.
 		</div>
 		<dl class="mt-3 grid gap-2 text-xs">
 			<div>
@@ -77,9 +77,9 @@ const serverIp = Astro.props.serverIp?.trim() ?? "";
 				<dd>DNS commonly updates in 5–30 minutes, but some providers can take up to 48 hours. After DNS resolves, Let's Encrypt usually issues the certificate within 1–5 minutes.</dd>
 			</div>
 		</dl>
-		<label class="mt-3 flex items-start gap-2 text-xs">
-			<input id="nz-ws-domain-ack" type="checkbox" class="mt-0.5" />
-			<span>I have pointed the DNS A record to this IP and opened TCP ports 80 and 443.</span>
+			<label class="mt-3 flex items-start gap-2 text-xs">
+				<input id="nz-ws-domain-ack" type="checkbox" class="mt-0.5" />
+				<span>I understand this is not ready until DNS resolves to this IP and the HTTPS certificate has been issued.</span>
 		</label>
 	</div>
 	<button
@@ -95,11 +95,11 @@ const serverIp = Astro.props.serverIp?.trim() ?? "";
 		slot="footer"
 		type="submit"
 		id="nz-ws-domain-submit"
-		data-default-label="Configure HTTPS"
+		data-default-label="Save and request HTTPS"
 		class="nz-modal__btn nz-modal__btn--primary inline-flex items-center justify-center gap-2"
 	>
 		<AuthButtonSpinner />
-		<span data-auth-btn-label>Configure HTTPS</span>
+		<span data-auth-btn-label>Save and request HTTPS</span>
 	</button>
 	<button
 		slot="footer"

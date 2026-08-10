@@ -3,8 +3,9 @@ import {
 	lockAuthPanel,
 	unlockAuthPanel,
 } from "@/lib/auth-button-state";
-import { getAuthEmailValidationError } from "@/lib/auth-email-policy";
+import { sanitizeAuthCallbackPath } from "@/lib/auth-callback-url";
 import { authClient } from "@/lib/auth-client";
+import { getAuthEmailValidationError } from "@/lib/auth-email-policy";
 import { authErrorMessage } from "@/lib/auth-form-classes";
 import {
 	readPendingInvitationToken,
@@ -66,14 +67,22 @@ async function createNearzeroCredentialSession(
 	});
 	const data = (await res.json().catch(() => null)) as unknown;
 	if (!res.ok) {
-		return { ok: false, code: "request_failed", message: "Auth request failed." };
+		return {
+			ok: false,
+			code: "request_failed",
+			message: "Auth request failed.",
+		};
 	}
 	if (typeof data === "object" && data && "ok" in data) {
 		return data as
 			| { ok: true; token: string; user: unknown }
 			| { ok: false; code: string; message: string };
 	}
-	return { ok: false, code: "invalid_response", message: "Auth request failed." };
+	return {
+		ok: false,
+		code: "invalid_response",
+		message: "Auth request failed.",
+	};
 }
 
 export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
@@ -88,7 +97,9 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 	if (root.dataset.bound === "1") return;
 	root.dataset.bound = "1";
 
-	const form = root.querySelector<HTMLFormElement>("[data-auth-credentials-form]");
+	const form = root.querySelector<HTMLFormElement>(
+		"[data-auth-credentials-form]",
+	);
 	const emailInput = root.querySelector<HTMLInputElement>(
 		"[data-auth-email-input]",
 	);
@@ -187,8 +198,12 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 			}
 
 			keepLocked = true;
-			window.location.href =
+			const requestedCallback =
 				intent === "signup" && afterSignupUrl ? afterSignupUrl : callbackUrl;
+			window.location.href = sanitizeAuthCallbackPath(
+				requestedCallback,
+				window.location.href,
+			);
 		} catch {
 			showToast(
 				intent === "signup"

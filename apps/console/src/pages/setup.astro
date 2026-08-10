@@ -1,0 +1,46 @@
+---
+import SetupGrid from "@/components/auth/SetupGrid.astro";
+import Base from "@/layouts/Base.astro";
+import { pageTitle } from "@/lib/branding";
+import { getSession } from "@/lib/backendProxy";
+import {
+	parseInstallSetupStep,
+	resolveInstallSetupPath,
+} from "@/lib/install-setup";
+import { fetchInstallSetupStatusServer } from "@/lib/install-setup-server";
+
+const session = await getSession(Astro.request);
+if (session?.user) {
+	return Astro.redirect("/dashboard/agent");
+}
+
+const status = await fetchInstallSetupStatusServer(Astro.request);
+if (!status?.setupTokenConfigured || status.bootstrapClaimed) {
+	return Astro.redirect("/login");
+}
+
+const requested = parseInstallSetupStep(Astro.url.searchParams.get("step"));
+const resumePath = resolveInstallSetupPath(status);
+const initialStep =
+	requested ??
+	(status.resumeStep === "welcome" ||
+	status.resumeStep === "management" ||
+	status.resumeStep === "zone" ||
+	status.resumeStep === "verify" ||
+	status.resumeStep === "done"
+		? status.resumeStep
+		: "welcome");
+
+if (
+	status.managementConfigured &&
+	status.adminEmailConfigured &&
+	resumePath === "/register" &&
+	!requested
+) {
+	return Astro.redirect("/register");
+}
+---
+
+<Base title={pageTitle("Setup")} forceLightTheme>
+	<SetupGrid status={status} initialStep={initialStep} />
+</Base>

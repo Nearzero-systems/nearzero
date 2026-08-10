@@ -3,8 +3,8 @@ import { dnsZones, previewDeployments } from "@nearzero/server/db/schema";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { normalizeDnsHostname } from "../utils/dns/zone-file";
-import { resolveAutomaticDomainSsl } from "../utils/domain-ssl";
 import { serviceSpecReferencesNetwork } from "../utils/docker/utils";
+import { resolveAutomaticDomainSsl } from "../utils/domain-ssl";
 import { getRemoteDocker } from "../utils/servers/remote-docker";
 import {
 	loadOrCreateConfig,
@@ -30,6 +30,7 @@ import {
 } from "./domain";
 import { resolveDomainTargetIp } from "./domain-target";
 import { findEnvironmentById, findEnvironmentForDomain } from "./environment";
+import { getInstallDomainConfig } from "./install-domain-bootstrap";
 import {
 	buildManagedPreviewHost,
 	buildManagedServiceHost,
@@ -363,7 +364,10 @@ export async function resolvePreviewDomainPlan(input: {
 		};
 	}
 
-	if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
+	if (
+		platformApex &&
+		canUsePlatformDomainForServer(input.serverId, platformApex)
+	) {
 		return {
 			mode: "platform",
 			host: buildManagedPreviewHost({
@@ -647,7 +651,10 @@ export async function previewServiceDomain(
 				}),
 			);
 		}
-	} else if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
+	} else if (
+		platformApex &&
+		canUsePlatformDomainForServer(input.serverId, platformApex)
+	) {
 		host = buildRandomPlatformServiceHost({
 			zoneName: platformApex,
 			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
@@ -664,10 +671,11 @@ export async function previewServiceDomain(
 			);
 		}
 	} else if (targetIp) {
-		const previewLabel = buildRandomPlatformServiceHost({
-			zoneName: "sslip.io",
-			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
-		}).split(".")[0] || "app";
+		const previewLabel =
+			buildRandomPlatformServiceHost({
+				zoneName: "sslip.io",
+				seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
+			}).split(".")[0] || "app";
 		host = buildManagedPreviewHost({
 			appName: previewLabel,
 			zoneName: "sslip.io",
@@ -770,7 +778,10 @@ export async function provisionServiceDomain(
 		return domain;
 	}
 
-	if (platformApex && canUsePlatformDomainForServer(input.serverId, platformApex)) {
+	if (
+		platformApex &&
+		canUsePlatformDomainForServer(input.serverId, platformApex)
+	) {
 		const host = buildRandomPlatformServiceHost({
 			zoneName: platformApex,
 			seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
@@ -1044,10 +1055,12 @@ export async function getManagedDnsReadiness(organizationId: string) {
 	const settings = await getWebServerSettings();
 	const zones = await checkDnsHealth(organizationId);
 	const platformApex = await resolvePlatformDefaultDomain();
+	const configuredZoneName = getInstallDomainConfig().managedDnsZone;
 	return {
 		platformApex,
 		platformDefaultEnabled: Boolean(platformApex),
 		webServerIp: settings?.serverIp ?? null,
+		configuredZoneName,
 		zones,
 	};
 }

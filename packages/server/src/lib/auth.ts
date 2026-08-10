@@ -15,18 +15,17 @@ import {
 } from "../services/admin";
 import { createAuditLog } from "../services/audit-log";
 import {
-	getWebServerSettings,
-	updateWebServerSettings,
-} from "../services/web-server-settings";
+	adoptConfiguredManagedDnsZone,
+	ensureFirstOwnerServerIp,
+} from "../services/install-domain-bootstrap";
+import { getWebServerSettings } from "../services/web-server-settings";
 import { getPublicIpWithFallback } from "../wss/utils";
 import { ac, adminRole, memberRole, ownerRole } from "./access-control";
 import {
 	getAuthEmailPolicyError,
 	normalizeAuthEmail,
 } from "./auth-email-policy";
-import {
-	getAuthOtpAccountError,
-} from "./auth-otp-intent";
+import { getAuthOtpAccountError } from "./auth-otp-intent";
 import { betterAuthSecret } from "./auth-secret";
 import { emailEquals } from "./email-identity";
 import {
@@ -34,10 +33,22 @@ import {
 	resolveSharedCookieDomain,
 } from "./public-url";
 import {
+	buildPublicRegistrationStatus,
+	decideRegistration,
+	mergeRegistrationPolicyAdminEmail,
+	registrationDecisionMessage,
+	resolveRegistrationPolicy,
+	type RegistrationPolicy,
+} from "./registration-policy";
+import {
+	getSetupAdminEmail,
+	markInstallSetupClaimed,
+} from "../services/install-setup";
+import {
 	appendRequestOrigin,
+	buildHostPortOrigins,
 	resolveConsoleAndPlatformPorts,
 	resolveEnvTrustedOrigins,
-	buildHostPortOrigins,
 } from "./resolve-trusted-origins";
 import { verifyWebSocketTicket } from "./ws-ticket";
 
@@ -82,6 +93,34 @@ async function ensurePersonalOrganizationForUser(
 }
 
 const AUTH_EMAIL_PATHS = new Set(["/sign-in/email", "/sign-up/email"]);
+const baseRegistrationPolicy = resolveRegistrationPolicy();
+
+async function getEffectiveRegistrationPolicy(): Promise<RegistrationPolicy> {
+	const setupAdminEmail = await getSetupAdminEmail();
+	return mergeRegistrationPolicyAdminEmail(
+		baseRegistrationPolicy,
+		setupAdminEmail,
+	);
+}
+
+async function isBootstrapRegistrationClaimed() {
+	const policy = await getEffectiveRegistrationPolicy();
+	if (policy.mode !== "bootstrap" || !policy.adminEmail) {
+		return false;
+	}
+	const configuredAdmin = await db.query.user.findFirst({
+		where: emailEquals(schema.user.email, policy.adminEmail),
+		columns: { id: true },
+	});
+	return Boolean(configuredAdmin);
+}
+
+export async function getPublicRegistrationStatus() {
+	return buildPublicRegistrationStatus(
+		await getEffectiveRegistrationPolicy(),
+		await isBootstrapRegistrationClaimed(),
+	);
+}
 
 async function findAndNormalizeAuthUser(rawEmail: string) {
 	const normalizedEmail = normalizeAuthEmail(rawEmail);
@@ -263,11 +302,7 @@ const { handler, api } = betterAuth({
 			const runtimeOrigins = [
 				...publicIpOrigins,
 				...(settings?.serverIp
-					? buildHostPortOrigins(
-							[settings.serverIp],
-							consolePort,
-							platformPort,
-						)
+					? buildHostPortOrigins([settings.serverIp], consolePort, platformPort)
 					: []),
 				...(settings?.host ? [`https://${settings.host}`] : []),
 				...dbOrigins,
@@ -309,6 +344,10 @@ const { handler, api } = betterAuth({
 		user: {
 			create: {
 				before: async (_user, context) => {
+					const normalizedUser = {
+						..._user,
+						email: normalizeAuthEmail(_user.email),
+					};
 					const xNearzeroToken =
 						context?.request?.headers?.get("x-nearzero-token");
 					if (xNearzeroToken) {
@@ -338,28 +377,49 @@ const { handler, api } = betterAuth({
 								message: "Email does not match invitation",
 							});
 						}
-						return;
+						return { data: normalizedUser };
 					}
 
 					const isSSORequest = context?.path.includes("/sso");
 					if (isSSORequest) {
 						return;
 					}
+					if (context?.path !== "/sign-up/email") {
+						return;
+					}
+
+					const policy = await getEffectiveRegistrationPolicy();
+					if (policy.mode === "bootstrap" && !policy.adminEmail) {
+						throw new APIError("FORBIDDEN", {
+							message:
+								"Finish the one-time domain setup before creating the first owner account.",
+						});
+					}
+					const decision = decideRegistration({
+						policy,
+						email: _user.email,
+						hasValidInvitation: false,
+						bootstrapClaimed: await isBootstrapRegistrationClaimed(),
+					});
+					const policyMessage = registrationDecisionMessage(decision);
+					if (policyMessage) {
+						throw new APIError("FORBIDDEN", { message: policyMessage });
+					}
+					// A normalized unique email makes concurrent bootstrap attempts for the
+					// configured administrator converge on one database row.
+					return { data: normalizedUser };
 				},
 				after: async (user, context) => {
 					const isSSORequest = context?.path.includes("/sso");
-					const invitationToken =
-						context?.request?.headers?.get("x-nearzero-token") ?? "";
 					const isAdminPresent = await db.query.member.findFirst({
 						where: eq(schema.member.role, "owner"),
 					});
 
 					if (!isAdminPresent) {
-						await updateWebServerSettings({
-							serverIp: await getPublicIpWithFallback(),
-						});
+						await ensureFirstOwnerServerIp(getPublicIpWithFallback);
 					}
 
+					let firstOwnerOrganizationId: string | null = null;
 					if (isSSORequest) {
 						const providerId = context?.params?.providerId;
 						if (!providerId) {
@@ -383,14 +443,35 @@ const { handler, api } = betterAuth({
 							createdAt: new Date(),
 							isDefault: true,
 						});
-					} else if (invitationToken) {
-						await db.transaction(async (tx) => {
-							await ensurePersonalOrganizationForUser(user.id, tx);
-						});
 					} else {
-						await db.transaction(async (tx) => {
-							await ensurePersonalOrganizationForUser(user.id, tx);
+						const personalOrganization = await db.transaction(async (tx) => {
+							return ensurePersonalOrganizationForUser(user.id, tx);
 						});
+						if (!isAdminPresent && personalOrganization) {
+							firstOwnerOrganizationId = personalOrganization.id;
+						}
+					}
+
+					if (firstOwnerOrganizationId) {
+						try {
+							await adoptConfiguredManagedDnsZone({
+								organizationId: firstOwnerOrganizationId,
+								ownerEmail: user.email,
+							});
+						} catch (error) {
+							console.error(
+								"First-owner managed DNS adoption failed; the zone remains recoverable from Infrastructure → Domains.",
+								error,
+							);
+						}
+						try {
+							await markInstallSetupClaimed(user.email);
+						} catch (error) {
+							console.error(
+								"Failed to mark install setup as claimed after first-owner signup.",
+								error,
+							);
+						}
 					}
 				},
 			},

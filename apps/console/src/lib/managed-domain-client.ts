@@ -28,6 +28,25 @@ export type ProvisionedDomain = {
 	path: string | null;
 };
 
+function normalizeZoneName(value: string) {
+	return value.trim().toLowerCase().replace(/\.$/, "");
+}
+
+/**
+ * Select the application zone chosen during installation. When that zone is
+ * missing, do not silently report an unrelated organization zone as ready.
+ */
+export function selectConfiguredManagedDnsZone<T extends { name: string }>(
+	zones: T[],
+	configuredZoneName: string | null,
+): T | null {
+	if (!configuredZoneName) return zones[0] ?? null;
+	const expected = normalizeZoneName(configuredZoneName);
+	return (
+		zones.find((zone) => normalizeZoneName(zone.name) === expected) ?? null
+	);
+}
+
 export async function previewServiceDomain(input: {
 	environmentId: string;
 	serviceName: string;
@@ -57,6 +76,7 @@ export async function fetchManagedDnsReadiness() {
 		platformApex: string | null;
 		platformDefaultEnabled: boolean;
 		webServerIp: string | null;
+		configuredZoneName: string | null;
 		zones: Array<{ name: string; status: string; recordCount: number }>;
 	}>("dns.readiness");
 }
@@ -71,9 +91,12 @@ export async function validateDomainWithEdgeIp(input: {
 	isCloudflare?: boolean;
 	cdnProvider?: string;
 }> {
-	const serverIp = await trpcQuery<string>("domain.canGenerateTraefikMeDomains", {
-		serverId: input.serverId ?? undefined,
-	});
+	const serverIp = await trpcQuery<string>(
+		"domain.canGenerateTraefikMeDomains",
+		{
+			serverId: input.serverId ?? undefined,
+		},
+	);
 	return trpcMutate("domain.validateDomain", {
 		domain: input.domain,
 		serverIp: serverIp || undefined,

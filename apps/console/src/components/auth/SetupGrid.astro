@@ -1,0 +1,251 @@
+---
+import AuthGrid from "./AuthGrid.astro";
+import AuthButtonSpinner from "./AuthButtonSpinner.astro";
+import {
+	authBtnClass,
+	authControlClass,
+	authMutedText,
+} from "@/lib/auth-form-classes";
+import type { PublicInstallSetupStatus } from "@/lib/install-setup";
+import { wizardStepsForStatus } from "@/lib/install-setup";
+
+interface Props {
+	status: PublicInstallSetupStatus;
+	initialStep?: string;
+}
+
+const { status, initialStep = "welcome" } = Astro.props;
+const steps = wizardStepsForStatus(status);
+const hostnamePattern =
+	"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$";
+---
+
+<div
+	id="nz-setup-root"
+	class="contents"
+	data-setup-status={JSON.stringify(status)}
+	data-setup-steps={JSON.stringify(steps)}
+	data-initial-step={initialStep}
+>
+	<AuthGrid variant="onboarding">
+		<div slot="c4" class="mx-auto flex h-full w-full max-w-[34rem] flex-col items-center justify-end gap-2 pb-1 text-center">
+			<p class={`text-xs font-medium uppercase tracking-[0.14em] ${authMutedText}`} data-setup-progress aria-live="polite">
+				Step 1 of {steps.length}
+			</p>
+			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl" data-setup-title>
+				Connect this Nearzero host
+			</h1>
+		</div>
+
+		<div slot="c7" class="mx-auto flex h-full w-full max-w-[34rem] items-center justify-center px-3 text-center">
+			<p class={`text-sm ${authMutedText}`} data-setup-subtitle>
+				One-time setup assigns the public management hostname before the first owner account is created.
+			</p>
+		</div>
+
+		<div slot="c10" class="mx-auto flex h-full w-full max-w-[34rem] flex-col justify-center gap-4 px-1">
+			<div
+				data-setup-panel="welcome"
+				class="flex flex-col gap-3 text-left"
+			>
+				<div class="rounded-lg border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#374151]">
+					<p class="font-medium text-[#111827]">What you will configure</p>
+					<ul class="mt-2 list-disc space-y-1 pl-5">
+						<li>Management hostname for the console and API</li>
+						<li>Administrator email used for Let's Encrypt and first-owner signup</li>
+						{
+							status.managedDnsEnabled ? (
+								<li>Optional managed application zone for service hostnames</li>
+							) : (
+								<li>Managed DNS was disabled at install time and stays off</li>
+							)
+						}
+					</ul>
+				</div>
+				{
+					status.publicIp ? (
+						<p class={`text-sm ${authMutedText}`}>
+							Detected public IP:{" "}
+							<code class="rounded bg-[#f7f7f8] px-1.5 py-0.5 text-[#111827]">{status.publicIp}</code>
+						</p>
+					) : (
+						<p class={`text-sm ${authMutedText}`}>
+							Provide a publicly routable IPv4 address in the next step if detection is empty.
+						</p>
+					)
+				}
+			</div>
+
+			<form
+				data-setup-panel="management"
+				class="hidden flex-col gap-3"
+				novalidate
+			>
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>Management hostname</span>
+					<input
+						type="text"
+						name="managementHostname"
+						autocomplete="off"
+						spellcheck="false"
+						required
+						placeholder="nearzero.example.com"
+						pattern={hostnamePattern}
+						value={status.managementHostname ?? ""}
+						class={authControlClass}
+						data-setup-management-hostname
+					/>
+					<span class={`text-xs font-normal ${authMutedText}`}>
+						Create an A record for this hostname pointing at the server IP. Open TCP 80 and 443.
+					</span>
+				</label>
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>Administrator / Let's Encrypt email</span>
+					<input
+						type="email"
+						name="adminEmail"
+						autocomplete="email"
+						inputmode="email"
+						spellcheck="false"
+						required
+						placeholder="owner@example.com"
+						class={authControlClass}
+						data-setup-admin-email
+					/>
+					<span class={`text-xs font-normal ${authMutedText}`}>
+						Only this email can create the first owner account.
+					</span>
+				</label>
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>Public IPv4</span>
+					<input
+						type="text"
+						name="publicIp"
+						autocomplete="off"
+						spellcheck="false"
+						required
+						placeholder="203.0.113.10"
+						value={status.publicIp ?? ""}
+						class={authControlClass}
+						data-setup-public-ip
+					/>
+				</label>
+			</form>
+
+			<form
+				data-setup-panel="zone"
+				class="hidden flex-col gap-3"
+				novalidate
+			>
+				<div class="rounded-lg border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#374151]">
+					<p class="font-medium text-[#111827]">Application zone (optional)</p>
+					<p class={`mt-1 ${authMutedText}`}>
+						This is separate from the management hostname. Delegate an application zone such as
+						<code class="rounded bg-[#f7f7f8] px-1">apps.example.com</code> to Nearzero CoreDNS.
+					</p>
+				</div>
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>Managed application zone</span>
+					<input
+						type="text"
+						name="managedDnsZone"
+						autocomplete="off"
+						spellcheck="false"
+						placeholder="apps.example.com"
+						pattern={hostnamePattern}
+						value={status.managedDnsZone ?? ""}
+						class={authControlClass}
+						data-setup-managed-zone
+					/>
+				</label>
+				<label class="flex flex-col gap-1 text-sm font-medium text-[#111827]">
+					<span>SOA email</span>
+					<input
+						type="email"
+						name="managedDnsSoaEmail"
+						autocomplete="email"
+						spellcheck="false"
+						placeholder="dns@example.com"
+						class={authControlClass}
+						data-setup-soa-email
+					/>
+					<span class={`text-xs font-normal ${authMutedText}`}>
+						Defaults to the administrator email when left blank.
+					</span>
+				</label>
+				<label class="flex items-start gap-2 text-sm text-[#374151]">
+					<input type="checkbox" name="skipManagedDns" data-setup-skip-zone class="mt-1" />
+					<span>Skip managed DNS for now and configure service domains later</span>
+				</label>
+			</form>
+
+			<div data-setup-panel="verify" class="hidden flex-col gap-3 text-left">
+				<div class="rounded-lg border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#374151]">
+					<p class="font-medium text-[#111827]">DNS records to create</p>
+					<ol class="mt-2 list-decimal space-y-2 pl-5" data-setup-dns-instructions>
+						<li>Point the management hostname A record to the public IP.</li>
+					</ol>
+				</div>
+				<div
+					class="rounded-lg border border-[#e5e7eb] bg-[#f7f7f8] px-4 py-3 text-sm"
+					aria-live="polite"
+					data-setup-verify-status
+				>
+					Checking readiness…
+				</div>
+			</div>
+
+			<div data-setup-panel="done" class="hidden flex-col gap-3 text-left">
+				<div class="rounded-lg border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#374151]">
+					<p class="font-medium text-[#111827]">Create the first owner account</p>
+					<p class={`mt-1 ${authMutedText}`}>
+						Registration is limited to the administrator email configured in this wizard.
+						The email address itself is not shown on public pages.
+					</p>
+				</div>
+			</div>
+
+			<p class={`hidden text-sm text-red-600`} data-setup-error role="alert"></p>
+		</div>
+
+		<div slot="c13" class="mx-auto flex h-full w-full max-w-[34rem] flex-wrap items-start justify-center gap-2 pt-1">
+			<button
+				type="button"
+				class="inline-flex min-w-[7rem] items-center justify-center rounded-md border border-transparent px-3 py-1 text-xs font-normal text-[#6b7280] transition-colors hover:bg-[#f7f7f8] hover:text-[#111827]"
+				data-setup-back
+			>
+				Back
+			</button>
+			<button
+				type="button"
+				class={`${authBtnClass} w-auto min-w-[10rem]`}
+				data-setup-next
+				data-default-label="Continue"
+			>
+				<AuthButtonSpinner />
+				<span data-setup-next-label>Continue</span>
+			</button>
+			<button
+				type="button"
+				class={`hidden ${authBtnClass} w-auto min-w-[10rem]`}
+				data-setup-check
+			>
+				Check again
+			</button>
+			<a
+				href="/register"
+				class={`hidden ${authBtnClass} w-auto min-w-[10rem] no-underline`}
+				data-setup-register
+			>
+				Create owner account
+			</a>
+		</div>
+	</AuthGrid>
+</div>
+
+<script>
+	import { bindInstallSetupWizard } from "@/scripts/install-setup-wizard";
+
+	const root = document.getElementById("nz-setup-root");
+	if (root) bindInstallSetupWizard(root);
+</script>

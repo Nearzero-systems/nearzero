@@ -1,3 +1,6 @@
+import { randomInt } from "node:crypto";
+import { createSocket } from "node:dgram";
+import { resolveNs } from "node:dns/promises";
 import {
 	chmodSync,
 	closeSync,
@@ -10,6 +13,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
+import { isIP } from "node:net";
 import path from "node:path";
 import { paths } from "@nearzero/server/constants";
 import { db } from "@nearzero/server/db";
@@ -38,12 +42,12 @@ import {
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
-import { rethrowUnlessSchemaDrift } from "./db-schema-error";
 import {
 	MANAGED_DNS_SETUP_ERROR_CODE,
 	ManagedDnsSetupError,
 	reloadNearzeroDns,
 } from "../setup/dns-setup";
+import { rethrowUnlessSchemaDrift } from "./db-schema-error";
 import { resolveDomainTargetIp } from "./domain-target";
 import { resolvePlatformDefaultDomain } from "./managed-domain";
 
@@ -480,6 +484,103 @@ export async function upsertDnsRecord(
 	});
 }
 
+/**
+ * Persist the control-plane A record that was present in the pre-signup
+ * bootstrap zone. This is intentionally separate from user and service-domain
+ * records so first-owner adoption can republish the zone without dropping the
+ * hostname used to reach the dashboard.
+ */
+export async function upsertSystemDnsARecord(input: {
+	dnsZoneId: string;
+	organizationId: string;
+	host: string;
+	value: string;
+}) {
+	const zone = await findDnsZoneById(input.dnsZoneId, input.organizationId);
+	const name = normalizeRecordName(input.host, zone.name);
+	let value: string;
+	try {
+		value = normalizeDnsRecordValue("A", input.value, zone.name);
+	} catch (error) {
+		return badDnsInput(error);
+	}
+
+	return db.transaction(async (tx) => {
+		await tx.execute(
+			sql`select pg_advisory_xact_lock(hashtextextended(${`${zone.dnsZoneId}:${name}`}, 0))`,
+		);
+		const ownerRecords = await tx.query.dnsRecords.findMany({
+			where: and(
+				eq(dnsRecords.dnsZoneId, zone.dnsZoneId),
+				eq(dnsRecords.name, name),
+			),
+		});
+		if (ownerRecords.some((record) => record.type === "CNAME")) {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message: `The management hostname conflicts with a CNAME at ${input.host}`,
+			});
+		}
+
+		const systemAddresses = ownerRecords.filter(
+			(record) =>
+				record.type === "A" &&
+				record.managedBy === "system" &&
+				!record.domainId,
+		);
+		const unmanagedAddresses = ownerRecords.filter(
+			(record) =>
+				record.type === "A" &&
+				(record.managedBy !== "system" || Boolean(record.domainId)),
+		);
+		if (unmanagedAddresses.length > 0) {
+			throw new TRPCError({
+				code: "CONFLICT",
+				message: `The management hostname already has an operator-managed A record at ${input.host}`,
+			});
+		}
+
+		const current =
+			systemAddresses.find((record) => record.value === value) ??
+			systemAddresses[0];
+		if (current) {
+			const [updated] = await tx
+				.update(dnsRecords)
+				.set({ value, ttl: zone.ttl, updatedAt: new Date().toISOString() })
+				.where(eq(dnsRecords.dnsRecordId, current.dnsRecordId))
+				.returning();
+			for (const duplicate of systemAddresses.filter(
+				(record) => record.dnsRecordId !== current.dnsRecordId,
+			)) {
+				await tx
+					.delete(dnsRecords)
+					.where(eq(dnsRecords.dnsRecordId, duplicate.dnsRecordId));
+			}
+			if (updated) return updated;
+		}
+
+		const [created] = await tx
+			.insert(dnsRecords)
+			.values({
+				dnsZoneId: zone.dnsZoneId,
+				name,
+				type: "A",
+				value,
+				ttl: zone.ttl,
+				managedBy: "system",
+				domainId: null,
+			})
+			.returning();
+		if (!created) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: "Failed to persist the management DNS record",
+			});
+		}
+		return created;
+	});
+}
+
 export async function deleteDnsRecord(
 	dnsRecordId: string,
 	organizationId: string,
@@ -651,16 +752,426 @@ export async function getDnsZoneInstructions(
 	};
 }
 
+const DNS_READINESS_TIMEOUT_MS = 2_500;
+const DNS_PORT = 53;
+const DNS_TYPE_SOA = 6;
+const DNS_CLASS_IN = 1;
+
+function normalizeDnsWireName(name: string) {
+	return name.trim().toLowerCase().replace(/\.$/, "");
+}
+
+function encodeDnsWireName(name: string) {
+	const normalized = normalizeDnsWireName(name);
+	if (!normalized) return Buffer.from([0]);
+
+	const labels = normalized.split(".");
+	const encodedLabels = labels.map((label) => {
+		const encoded = Buffer.from(label, "ascii");
+		if (
+			label.length === 0 ||
+			encoded.length > 63 ||
+			encoded.toString("ascii") !== label
+		) {
+			throw new Error(`Invalid DNS label in ${name}`);
+		}
+		return Buffer.concat([Buffer.from([encoded.length]), encoded]);
+	});
+	const encoded = Buffer.concat([...encodedLabels, Buffer.from([0])]);
+	if (encoded.length > 255) {
+		throw new Error(`DNS name is too long: ${name}`);
+	}
+	return encoded;
+}
+
+function createNonRecursiveSoaQuery(zoneName: string, transactionId: number) {
+	const questionName = encodeDnsWireName(zoneName);
+	const query = Buffer.alloc(12 + questionName.length + 4);
+	query.writeUInt16BE(transactionId, 0);
+	// Flags stay zero deliberately: this is a standard query with RD=0.
+	query.writeUInt16BE(1, 4);
+	questionName.copy(query, 12);
+	const questionTail = 12 + questionName.length;
+	query.writeUInt16BE(DNS_TYPE_SOA, questionTail);
+	query.writeUInt16BE(DNS_CLASS_IN, questionTail + 2);
+	return query;
+}
+
+function readDnsWireName(
+	message: Buffer,
+	offset: number,
+	sourceLimit = message.length,
+) {
+	if (offset < 0 || offset >= sourceLimit || sourceLimit > message.length) {
+		throw new Error("DNS name starts outside the packet section");
+	}
+
+	const labels: string[] = [];
+	const visitedPointers = new Set<number>();
+	let cursor = offset;
+	let nextOffset: number | undefined;
+	let jumped = false;
+	let expandedLength = 1;
+
+	for (let steps = 0; steps <= message.length; steps += 1) {
+		if (cursor >= message.length || (!jumped && cursor >= sourceLimit)) {
+			throw new Error("DNS name extends beyond the packet");
+		}
+		const length = message[cursor];
+		if (length === undefined) {
+			throw new Error("DNS name is truncated");
+		}
+
+		if ((length & 0xc0) === 0xc0) {
+			if (
+				cursor + 1 >= message.length ||
+				(!jumped && cursor + 2 > sourceLimit)
+			) {
+				throw new Error("DNS compression pointer is truncated");
+			}
+			const pointer = ((length & 0x3f) << 8) | message[cursor + 1]!;
+			if (pointer >= message.length) {
+				throw new Error("DNS compression pointer is outside the packet");
+			}
+			if (visitedPointers.has(pointer)) {
+				throw new Error("DNS compression pointer loop detected");
+			}
+			visitedPointers.add(pointer);
+			if (!jumped) nextOffset = cursor + 2;
+			jumped = true;
+			cursor = pointer;
+			continue;
+		}
+
+		if ((length & 0xc0) !== 0) {
+			throw new Error("DNS name uses an unsupported label encoding");
+		}
+		cursor += 1;
+		if (length === 0) {
+			if (!jumped) nextOffset = cursor;
+			return {
+				name: labels.join("."),
+				nextOffset: nextOffset ?? cursor,
+			};
+		}
+		if (length > 63) {
+			throw new Error("DNS label exceeds 63 bytes");
+		}
+		if (
+			cursor + length > message.length ||
+			(!jumped && cursor + length > sourceLimit)
+		) {
+			throw new Error("DNS label is truncated");
+		}
+		expandedLength += length + 1;
+		if (expandedLength > 255) {
+			throw new Error("Expanded DNS name exceeds 255 bytes");
+		}
+		labels.push(message.toString("ascii", cursor, cursor + length));
+		cursor += length;
+	}
+
+	throw new Error("DNS name compression exceeded the packet bounds");
+}
+
+function assertValidSoaRdata(message: Buffer, start: number, end: number) {
+	const primaryNameserver = readDnsWireName(message, start, end);
+	const responsibleMailbox = readDnsWireName(
+		message,
+		primaryNameserver.nextOffset,
+		end,
+	);
+	// SERIAL, REFRESH, RETRY, EXPIRE, and MINIMUM are five uint32 values.
+	if (responsibleMailbox.nextOffset + 20 !== end) {
+		throw new Error("Authoritative SOA response contains malformed RDATA");
+	}
+}
+
+/**
+ * Validate the raw reply to Nearzero's direct, non-recursive SOA query.
+ * A recursive resolver can return a perfectly valid cached SOA, so success
+ * requires the authoritative-answer bit and an exact-zone SOA owner.
+ */
+export function assertAuthoritativeSoaResponse(
+	message: Buffer,
+	expected: { transactionId: number; zoneName: string },
+) {
+	if (message.length < 12) {
+		throw new Error("Authoritative SOA response is shorter than a DNS header");
+	}
+	if (message.readUInt16BE(0) !== expected.transactionId) {
+		throw new Error(
+			"Authoritative SOA response has an unexpected transaction ID",
+		);
+	}
+
+	const flags = message.readUInt16BE(2);
+	if ((flags & 0x8000) === 0) {
+		throw new Error("Authoritative SOA packet is not a response (QR=0)");
+	}
+	const responseCode = flags & 0x000f;
+	if (responseCode !== 0) {
+		throw new Error(
+			`Authoritative SOA response returned RCODE=${responseCode}`,
+		);
+	}
+	if ((flags & 0x0400) === 0) {
+		throw new Error("SOA response is not authoritative (AA=0)");
+	}
+	if ((flags & 0x0200) !== 0) {
+		throw new Error("Authoritative SOA response is truncated");
+	}
+
+	const questionCount = message.readUInt16BE(4);
+	const answerCount = message.readUInt16BE(6);
+	const authorityCount = message.readUInt16BE(8);
+	if (questionCount !== 1) {
+		throw new Error(
+			"Authoritative SOA response must echo exactly one question",
+		);
+	}
+
+	const expectedZone = normalizeDnsWireName(expected.zoneName);
+	const question = readDnsWireName(message, 12);
+	if (question.nextOffset + 4 > message.length) {
+		throw new Error("Authoritative SOA response question is truncated");
+	}
+	const questionType = message.readUInt16BE(question.nextOffset);
+	const questionClass = message.readUInt16BE(question.nextOffset + 2);
+	if (
+		normalizeDnsWireName(question.name) !== expectedZone ||
+		questionType !== DNS_TYPE_SOA ||
+		questionClass !== DNS_CLASS_IN
+	) {
+		throw new Error("Authoritative SOA response does not match the query");
+	}
+
+	let offset = question.nextOffset + 4;
+	let foundExactZoneSoa = false;
+	const inspectResourceRecords = (count: number) => {
+		for (let index = 0; index < count; index += 1) {
+			const owner = readDnsWireName(message, offset);
+			offset = owner.nextOffset;
+			if (offset + 10 > message.length) {
+				throw new Error("DNS resource record header is truncated");
+			}
+			const type = message.readUInt16BE(offset);
+			const recordClass = message.readUInt16BE(offset + 2);
+			const rdataLength = message.readUInt16BE(offset + 8);
+			const rdataStart = offset + 10;
+			const rdataEnd = rdataStart + rdataLength;
+			if (rdataEnd > message.length) {
+				throw new Error("DNS resource record data is truncated");
+			}
+			if (
+				type === DNS_TYPE_SOA &&
+				recordClass === DNS_CLASS_IN &&
+				normalizeDnsWireName(owner.name) === expectedZone
+			) {
+				assertValidSoaRdata(message, rdataStart, rdataEnd);
+				foundExactZoneSoa = true;
+			}
+			offset = rdataEnd;
+		}
+	};
+
+	inspectResourceRecords(answerCount);
+	inspectResourceRecords(authorityCount);
+	if (!foundExactZoneSoa) {
+		throw new Error(
+			`Authoritative response has no SOA owned by ${expectedZone}`,
+		);
+	}
+}
+
+async function probeAuthoritativeSoa(
+	zoneName: string,
+	authoritativeIp: string,
+) {
+	const ipVersion = isIP(authoritativeIp);
+	if (ipVersion !== 4 && ipVersion !== 6) {
+		throw new Error("Authoritative DNS target is not an IP address");
+	}
+
+	const transactionId = randomInt(0x1_0000);
+	const query = createNonRecursiveSoaQuery(zoneName, transactionId);
+	await new Promise<void>((resolve, reject) => {
+		const socket = createSocket(ipVersion === 6 ? "udp6" : "udp4");
+		let settled = false;
+		const timeout = setTimeout(() => {
+			settle(new Error("Authoritative SOA lookup timed out"));
+		}, DNS_READINESS_TIMEOUT_MS);
+		timeout.unref?.();
+
+		const settle = (error?: unknown) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timeout);
+			socket.removeAllListeners();
+			try {
+				socket.close();
+			} catch {
+				// The socket may fail before it has bound; the promise still settles.
+			}
+			if (error) {
+				reject(error instanceof Error ? error : new Error(String(error)));
+			} else {
+				resolve();
+			}
+		};
+
+		socket.once("error", settle);
+		socket.once("message", (response) => {
+			try {
+				assertAuthoritativeSoaResponse(response, { transactionId, zoneName });
+				settle();
+			} catch (error) {
+				settle(error);
+			}
+		});
+		try {
+			socket.connect(DNS_PORT, authoritativeIp, () => {
+				socket.send(query, (error) => {
+					if (error) settle(error);
+				});
+			});
+		} catch (error) {
+			settle(error);
+		}
+	});
+}
+
+async function withDnsReadinessTimeout<T>(
+	operation: Promise<T>,
+	label: string,
+): Promise<T> {
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			operation,
+			new Promise<never>((_, reject) => {
+				timeout = setTimeout(
+					() => reject(new Error(`${label} timed out`)),
+					DNS_READINESS_TIMEOUT_MS,
+				);
+				timeout.unref?.();
+			}),
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
+}
+
+function normalizedNameserverSet(values: string[]) {
+	return Array.from(
+		new Set(
+			values.map((value) => value.trim().toLowerCase().replace(/\.$/, "")),
+		),
+	).sort();
+}
+
+type DnsDelegationInspectionDependencies = {
+	resolveNameservers: (zoneName: string) => Promise<string[]>;
+	resolveAuthoritativeTarget: () => Promise<string>;
+	resolveAuthoritativeSoa: (
+		zoneName: string,
+		authoritativeIp: string,
+	) => Promise<unknown>;
+};
+
+const dnsDelegationInspectionDependencies: DnsDelegationInspectionDependencies =
+	{
+		resolveNameservers: resolveNs,
+		resolveAuthoritativeTarget: () => resolveDomainTargetIp(),
+		resolveAuthoritativeSoa: probeAuthoritativeSoa,
+	};
+
+export async function inspectDnsDelegation(
+	zone: Pick<
+		typeof dnsZones.$inferSelect,
+		"name" | "nameservers" | "status" | "lastPublishedAt"
+	>,
+	dependencies: DnsDelegationInspectionDependencies = dnsDelegationInspectionDependencies,
+) {
+	const expectedNameservers = normalizedNameserverSet(
+		zone.nameservers.length > 0
+			? zone.nameservers
+			: getDefaultManagedNameservers(zone.name),
+	);
+	let observedNameservers: string[] = [];
+	let delegated = false;
+	let authoritative = false;
+	const diagnostics: string[] = [];
+
+	await Promise.all([
+		(async () => {
+			try {
+				observedNameservers = normalizedNameserverSet(
+					await withDnsReadinessTimeout(
+						dependencies.resolveNameservers(zone.name),
+						"Public nameserver lookup",
+					),
+				);
+				delegated =
+					expectedNameservers.length > 0 &&
+					expectedNameservers.every((name) =>
+						observedNameservers.includes(name),
+					);
+				if (!delegated) {
+					diagnostics.push(
+						observedNameservers.length > 0
+							? `Public NS differs from Nearzero: ${observedNameservers.join(", ")}`
+							: "Public resolvers do not return NS records for this zone yet",
+					);
+				}
+			} catch (error) {
+				diagnostics.push(
+					`Public NS check failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		})(),
+		(async () => {
+			try {
+				const authoritativeIp = await withDnsReadinessTimeout(
+					dependencies.resolveAuthoritativeTarget(),
+					"Authoritative server address lookup",
+				);
+				await withDnsReadinessTimeout(
+					dependencies.resolveAuthoritativeSoa(zone.name, authoritativeIp),
+					"Authoritative SOA lookup",
+				);
+				authoritative = true;
+			} catch (error) {
+				diagnostics.push(
+					`Authoritative SOA check failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		})(),
+	]);
+
+	return {
+		published: zone.status === "active" && Boolean(zone.lastPublishedAt),
+		delegated,
+		authoritative,
+		expectedNameservers,
+		observedNameservers,
+		diagnostics,
+	};
+}
+
 export async function checkDnsHealth(organizationId: string) {
 	const zones = await listDnsZones(organizationId);
-	return zones.map((zone) => ({
-		dnsZoneId: zone.dnsZoneId,
-		name: zone.name,
-		status: zone.status,
-		lastPublishedAt: zone.lastPublishedAt,
-		lastError: zone.lastError,
-		recordCount: zone.records.length,
-	}));
+	return Promise.all(
+		zones.map(async (zone) => ({
+			dnsZoneId: zone.dnsZoneId,
+			name: zone.name,
+			status: zone.status,
+			lastPublishedAt: zone.lastPublishedAt,
+			lastError: zone.lastError,
+			recordCount: zone.records.length,
+			...(await inspectDnsDelegation(zone)),
+		})),
+	);
 }
 
 export async function deleteManagedDnsRecordForDomain(domainId: string) {

@@ -102,16 +102,31 @@ describe("buildManagedServiceHost", () => {
 });
 
 describe("platform domain routing scope", () => {
+	const originalSharedEdge = process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
+
+	afterEach(() => {
+		if (originalSharedEdge === undefined) {
+			delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
+		} else {
+			process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = originalSharedEdge;
+		}
+	});
+
 	it("requires a configured platform apex", () => {
 		expect(canUsePlatformDomainForServer(null)).toBe(false);
 		expect(canUsePlatformDomainForServer("remote-server-id")).toBe(false);
 	});
 
-	it("allows platform hostnames locally and on remote servers when an apex exists", () => {
+	it("uses the platform apex locally but requires an explicit shared edge remotely", () => {
+		delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
 		expect(canUsePlatformDomainForServer(null, "veritus.space")).toBe(true);
-		expect(canUsePlatformDomainForServer("remote-server-id", "veritus.space")).toBe(
-			true,
-		);
+		expect(
+			canUsePlatformDomainForServer("remote-server-id", "veritus.space"),
+		).toBe(false);
+		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = "true";
+		expect(
+			canUsePlatformDomainForServer("remote-server-id", "veritus.space"),
+		).toBe(true);
 	});
 });
 
@@ -136,18 +151,20 @@ describe("resolvePlatformDefaultDomain", () => {
 		await expect(resolvePlatformDefaultDomain()).resolves.toBe("example.com");
 	});
 
-	it("falls back to the configured web-server host", async () => {
+	it("does not conflate the management hostname with the service apex", async () => {
 		delete process.env.NEARZERO_PLATFORM_DOMAIN;
-		mockGetWebServerSettings.mockResolvedValue({ host: "https://Veritus.Space/" });
-		await expect(resolvePlatformDefaultDomain()).resolves.toBe("veritus.space");
+		mockGetWebServerSettings.mockResolvedValue({
+			host: "https://Veritus.Space/",
+		});
+		await expect(resolvePlatformDefaultDomain()).resolves.toBeNull();
 	});
 });
 
 describe("platform hostname helpers", () => {
 	it("normalizes configured apex values", () => {
-		expect(normalizeConfiguredPlatformApex("https://Veritus.Space/console")).toBe(
-			"veritus.space",
-		);
+		expect(
+			normalizeConfiguredPlatformApex("https://Veritus.Space/console"),
+		).toBe("veritus.space");
 		expect(normalizeConfiguredPlatformApex("")).toBeNull();
 	});
 
@@ -186,9 +203,9 @@ describe("platform hostname helpers", () => {
 	});
 
 	it("documents DNS setup options for platform and managed zones", () => {
-		expect(platformDomainWildcardDnsHint("veritus.space", "13.51.16.1")).toContain(
-			"*.veritus.space",
-		);
+		expect(
+			platformDomainWildcardDnsHint("veritus.space", "13.51.16.1"),
+		).toContain("*.veritus.space");
 		expect(
 			platformDomainDnsSetupHints({
 				host: "backend.veritus.space",

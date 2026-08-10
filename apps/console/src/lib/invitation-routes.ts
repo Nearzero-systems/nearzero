@@ -1,3 +1,5 @@
+import { sanitizeAuthCallbackPath } from "./auth-callback-url";
+
 export const PENDING_INVITATION_STORAGE_KEY = "nz-pending-invitation-token";
 
 export function invitationPath(token: string, email?: string) {
@@ -15,9 +17,10 @@ export function extractInvitationToken(raw: string | null | undefined) {
 }
 
 export function parseInvitationCallback(raw: string | null | undefined) {
-	if (!raw) return null;
+	const callbackPath = sanitizeAuthCallbackPath(raw, "http://local", "");
+	if (!callbackPath) return null;
 	try {
-		const url = new URL(raw, "http://local");
+		const url = new URL(callbackPath, "http://local");
 		if (url.pathname !== "/invitation") return null;
 		return extractInvitationToken(url.searchParams.get("token"));
 	} catch {

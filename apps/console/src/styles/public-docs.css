@@ -63,7 +63,8 @@
 }
 
 .nz-docs-hero h1 {
-	font-size: clamp(38px, 4.5vw, 54px);
+	font-family: var(--nz-m-title-font);
+	font-size: var(--nz-m-page-title-size);
 	font-weight: 560;
 	letter-spacing: -0.065em;
 	line-height: 1.04;
@@ -235,6 +236,7 @@
 }
 
 .nz-doc-section h2 {
+	font-family: var(--nz-m-title-font);
 	font-size: clamp(28px, 3.2vw, 36px);
 	font-weight: 560;
 	letter-spacing: -0.045em;
@@ -783,7 +785,7 @@ a.nz-doc-card:hover {
 
 @media (max-width: 640px) {
 	.nz-docs-hero h1 {
-		font-size: 36px;
+		font-size: var(--nz-m-page-title-size);
 	}
 
 	.nz-docs-layout {
@@ -857,7 +859,7 @@ a.nz-doc-card:hover {
 
 .nz-docs-hero h1 {
 	color: var(--nz-m-on-dark);
-	font-size: clamp(38px, 4.2vw, 52px);
+	font-size: var(--nz-m-page-title-size);
 }
 
 .nz-docs-hero h1::after {

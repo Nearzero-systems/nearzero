@@ -7,7 +7,7 @@ import {
 const DEFAULT_PUBLIC_SITE_URL = "https://nearzero.dev";
 
 export const PUBLIC_SITE_DESCRIPTION =
-	"Nearzero is an open, self-hosted deployment control plane for applications, databases, Compose, remote servers, domains, HTTPS, and day-two operations.";
+	"Nearzero is an open-source, self-hosted control plane for deploying and operating applications, databases, Compose, remote servers, domains, and HTTPS.";
 
 export function publicSiteUrl(pathname = "/"): URL {
 	const configured = import.meta.env.PUBLIC_NEARZERO_SITE_URL?.trim();
@@ -15,12 +15,7 @@ export function publicSiteUrl(pathname = "/"): URL {
 }
 
 export const publicSiteLinks = {
-	home: "/",
-	howItWorks: "/#how-it-works",
-	agent: "/#agent",
-	platform: "/#platform",
-	domains: "/#domains",
-	faq: "/#faq",
+	home: "/docs",
 	docs: "/docs",
 	compare: "/compare",
 	compareVercel: "/compare/vercel",
@@ -28,6 +23,7 @@ export const publicSiteLinks = {
 	compareDokploy: "/compare/dokploy",
 	compareNetlify: "/compare/netlify",
 	selfHosting: "/docs/self-hosting",
+	architecture: "/docs/architecture",
 	remoteServers: "/docs/remote-servers",
 	domainsAndHttps: "/docs/domains-and-https",
 	agentSafety: "/docs/agent-safety",
@@ -71,6 +67,11 @@ export const docsNavigation = [
 		description: "Choose the right deployment path",
 	},
 	{
+		href: publicSiteLinks.architecture,
+		label: "Architecture",
+		description: "Control plane, your servers, and guardrails",
+	},
+	{
 		href: publicSiteLinks.selfHosting,
 		label: "Self-host Nearzero",
 		description: "Install, update, back up, and restore",
@@ -96,10 +97,10 @@ export const publicFooterGroups = [
 	{
 		title: "Product",
 		links: [
-			{ label: "How it works", href: publicSiteLinks.howItWorks },
-			{ label: "Agent", href: publicSiteLinks.agent },
-			{ label: "Domains", href: publicSiteLinks.domains },
-			{ label: "FAQ", href: publicSiteLinks.faq },
+			{ label: "Architecture", href: publicSiteLinks.architecture },
+			{ label: "Remote servers", href: publicSiteLinks.remoteServers },
+			{ label: "Domains and HTTPS", href: publicSiteLinks.domainsAndHttps },
+			{ label: "Agent safety", href: publicSiteLinks.agentSafety },
 			{ label: "Sign in", href: publicSiteLinks.signIn },
 		],
 	},
@@ -117,6 +118,7 @@ export const publicFooterGroups = [
 		title: "Get started",
 		links: [
 			{ label: "Install Nearzero", href: publicSiteLinks.selfHosting },
+			{ label: "Architecture", href: publicSiteLinks.architecture },
 			{ label: "Remote servers", href: publicSiteLinks.remoteServers },
 			{ label: "Managed DNS", href: publicSiteLinks.domainsAndHttps },
 			{ label: "Agent safety", href: publicSiteLinks.agentSafety },

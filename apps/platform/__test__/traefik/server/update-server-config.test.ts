@@ -103,6 +103,19 @@ test("Should apply redirect-to-https", () => {
 		config.http?.services?.["nearzero-service-app"]?.loadBalancer?.servers?.[0]
 			?.url,
 	).toBe("http://nearzero:4321");
+	expect(
+		config.http?.services?.["nearzero-service-platform"]?.loadBalancer
+			?.servers?.[0]?.url,
+	).toBe("http://nearzero:3000");
+	expect(
+		config.http?.routers?.["nearzero-router-platform-ws-secure"]?.rule,
+	).toContain("PathPrefix(`/listen-deployment`)");
+	expect(
+		config.http?.routers?.["nearzero-router-platform-ws-secure"]?.service,
+	).toBe("nearzero-service-platform");
+	expect(
+		config.http?.routers?.["nearzero-router-platform-ws-secure"]?.tls,
+	).toEqual({ certResolver: "letsencrypt" });
 });
 
 test("Should accept a public hostname and reject URLs or IP addresses", () => {
@@ -134,6 +147,12 @@ test("Should change only host when no certificate", () => {
 	const config: FileConfig = loadOrCreateConfig("nearzero");
 
 	expect(config.http?.routers?.["nearzero-router-app-secure"]).toBeUndefined();
+	expect(
+		config.http?.routers?.["nearzero-router-platform-ws-secure"],
+	).toBeUndefined();
+	expect(config.http?.routers?.["nearzero-router-platform-ws"]?.rule).toContain(
+		"Host(`example.com`)",
+	);
 });
 
 test("Should not touch config without host", () => {
@@ -160,6 +179,9 @@ test("Should remove websecure if https rollback to http", () => {
 	const config: FileConfig = loadOrCreateConfig("nearzero");
 
 	expect(config.http?.routers?.["nearzero-router-app-secure"]).toBeUndefined();
+	expect(
+		config.http?.routers?.["nearzero-router-platform-ws-secure"],
+	).toBeUndefined();
 	expect(
 		config.http?.routers?.["nearzero-router-app"]?.middlewares,
 	).not.toContain("redirect-to-https");

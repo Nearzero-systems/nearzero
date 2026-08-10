@@ -1,0 +1,165 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import ControlPlaneDiagram from "@/components/marketing/ControlPlaneDiagram.astro";
+import DocCallout from "@/components/marketing/DocCallout.astro";
+import DocsShell from "@/components/marketing/DocsShell.astro";
+import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { publicSiteLinks } from "@/lib/public-site";
+---
+
+<MarketingLayout
+	kind="article"
+	title="Nearzero architecture — Control plane on your servers"
+	description="How Nearzero sits between Console, Agent, and API intents and the Linux servers you bring — with Docker, Traefik, DNS, and policy-gated automation."
+	breadcrumbLabel="Architecture"
+>
+	<DocsShell
+		title="Architecture: bring your servers"
+		summary="Nearzero is a self-hosted control plane. Operators and optional Agents send intents through one API; workloads run on the local host or remote Linux servers you connect over SSH."
+		activePath={publicSiteLinks.architecture}
+		toc={[
+			{ href: "#model", label: "Operating model" },
+			{ href: "#diagram", label: "Control-plane diagram" },
+			{ href: "#boundaries", label: "Trust boundaries" },
+			{ href: "#next", label: "Next steps" },
+		]}
+		previous={{ href: publicSiteLinks.docs, label: "Documentation home" }}
+		next={{ href: publicSiteLinks.selfHosting, label: "Self-host Nearzero" }}
+	>
+		<section id="model" class="nz-doc-section">
+			<span class="nz-doc-section__index">01</span>
+			<h2>Operating model</h2>
+			<p>
+				Nearzero separates <strong>control plane</strong> duties from
+				<strong>workload hosts</strong>. The control plane keeps projects,
+				environments, deployments, domains, RBAC, and Agent policy together. Your
+				servers run Docker workloads, Traefik ingress, and the data services you
+				place on them.
+			</p>
+			<div class="nz-doc-feature-list">
+				<div>
+					<strong>Control-plane host</strong>
+					<p>
+						Runs the Nearzero platform, console, monitoring, schedule jobs, and
+						optional authoritative CoreDNS.
+					</p>
+				</div>
+				<div>
+					<strong>Workload servers</strong>
+					<p>
+						Local host and/or remote Linux nodes connected over SSH. Each service
+						targets an explicit server for routing and DNS.
+					</p>
+				</div>
+				<div>
+					<strong>Intents</strong>
+					<p>
+						Console, CLI/API, and the optional Agent all call the same guarded
+						surface — production Agent mutations stay off until an admin enables
+						them.
+					</p>
+				</div>
+				<div>
+					<strong>Your infrastructure</strong>
+					<p>
+						Nearzero does not replace your cloud account. It coordinates deploy
+						state on hosts you already operate.
+					</p>
+				</div>
+			</div>
+		</section>
+
+		<section id="diagram" class="nz-doc-section">
+			<span class="nz-doc-section__index">02</span>
+			<h2>Control-plane diagram</h2>
+			<p>
+				Intents enter on the left. Nearzero applies deterministic deploy paths,
+				guardrails, audit, and access control in the center. Execution lands on
+				<strong>your servers</strong> on the right — not a catalog of third-party
+				SaaS tools.
+			</p>
+			<div class="nz-doc-diagram-wrap">
+				<ControlPlaneDiagram compact />
+			</div>
+		</section>
+
+		<section id="boundaries" class="nz-doc-section">
+			<span class="nz-doc-section__index">03</span>
+			<h2>Trust boundaries</h2>
+			<DocCallout title="Keep management surfaces private" tone="critical">
+				<p>
+					Control-plane HTTP ports are not a public product edge. Put TLS and
+					access control in front of them, or bind them to a management network,
+					before production use.
+				</p>
+			</DocCallout>
+			<div class="nz-doc-feature-list">
+				<div>
+					<strong>Remote servers are root-equivalent</strong>
+					<p>
+						SSH setup accounts with Docker access can control the host. Use a
+						dedicated identity and verify the first host-key fingerprint.
+					</p>
+				</div>
+				<div>
+					<strong>DNS vs app servers</strong>
+					<p>
+						Authoritative CoreDNS belongs on the control-plane host. Remote app
+						servers expose Traefik on 80/443, not Nearzero DNS.
+					</p>
+				</div>
+				<div>
+					<strong>Agent scope</strong>
+					<p>
+						The Agent cannot invent privileged paths. It uses scoped tools under
+						user RBAC and org policy — including blocks like destructive
+						production actions when those policies deny them.
+					</p>
+				</div>
+			</div>
+		</section>
+
+		<section id="next" class="nz-doc-section">
+			<span class="nz-doc-section__index">04</span>
+			<h2>Next steps</h2>
+			<div class="nz-doc-card-grid">
+				<a class="nz-doc-card" href={publicSiteLinks.selfHosting}>
+					<span>01</span>
+					<h3>Self-host Nearzero</h3>
+					<p>Install a verified release and establish backups and updates.</p>
+					<strong>Open guide →</strong>
+				</a>
+				<a class="nz-doc-card" href={publicSiteLinks.remoteServers}>
+					<span>02</span>
+					<h3>Connect remote servers</h3>
+					<p>Add SSH hosts, verify trust, and open only the ports Traefik needs.</p>
+					<strong>Open guide →</strong>
+				</a>
+				<a class="nz-doc-card" href={publicSiteLinks.domainsAndHttps}>
+					<span>03</span>
+					<h3>Domains and HTTPS</h3>
+					<p>Delegate zones or external hostnames and let Traefik terminate TLS.</p>
+					<strong>Open guide →</strong>
+				</a>
+				<a class="nz-doc-card" href={publicSiteLinks.agentSafety}>
+					<span>04</span>
+					<h3>Agent safety</h3>
+					<p>Understand permissions, secrets, and production write gates.</p>
+					<strong>Open guide →</strong>
+				</a>
+			</div>
+		</section>
+	</DocsShell>
+</MarketingLayout>
+
+<style is:global>
+	.nz-doc-diagram-wrap {
+		margin-top: 20px;
+		overflow-x: auto;
+		padding-bottom: 4px;
+	}
+
+	.nz-doc-diagram-wrap .nz-cp-diagram {
+		min-width: min(100%, 920px);
+	}
+</style>

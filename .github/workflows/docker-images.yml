@@ -56,6 +56,9 @@ jobs:
           EXPECTED_RELEASE_VERSION: ${{ steps.release.outputs.release_version }}
         run: bash scripts/verify-oss-install.sh
 
+      - name: Verify combined runtime supervision
+        run: sh docker/entrypoint.test.sh
+
   build:
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest

@@ -5,7 +5,7 @@ export { areConsoleBackendSplit };
 
 export function isPlatformWebSocketSplit() {
 	if (typeof window === "undefined") return false;
-	return areConsoleBackendSplit(window.location.hostname);
+	return areConsoleBackendSplit(window.location.origin);
 }
 
 function resolveWebSocketHost(): string {

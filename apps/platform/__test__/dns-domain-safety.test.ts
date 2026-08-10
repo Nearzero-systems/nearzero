@@ -132,6 +132,29 @@ describe("DNS input safety", () => {
 });
 
 describe("managed DNS target safety", () => {
+	it("reserves the management dashboard hostname from workload routes", () => {
+		const previous = process.env.NEARZERO_MANAGEMENT_HOSTNAME;
+		process.env.NEARZERO_MANAGEMENT_HOSTNAME = "panel.apps.example.com";
+		try {
+			expect(() =>
+				assertHostnameIsNotReservedForPlatform(
+					"panel.apps.example.com",
+					"nearzero_managed",
+				),
+			).toThrow(/management dashboard/);
+			expect(() =>
+				assertHostnameIsNotReservedForPlatform(
+					"api.apps.example.com",
+					"nearzero_managed",
+				),
+			).not.toThrow();
+		} finally {
+			if (previous === undefined)
+				delete process.env.NEARZERO_MANAGEMENT_HOSTNAME;
+			else process.env.NEARZERO_MANAGEMENT_HOSTNAME = previous;
+		}
+	});
+
 	it("reserves the configured platform namespace for generated hostnames", () => {
 		const previous = process.env.NEARZERO_PLATFORM_DOMAIN;
 		process.env.NEARZERO_PLATFORM_DOMAIN = "veritus.space";

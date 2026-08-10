@@ -1,7 +1,9 @@
 import type { MiddlewareHandler } from "astro";
+import { sanitizeAuthCallbackPath } from "./lib/auth-callback-url";
 import { getSession } from "./lib/backendProxy";
+import { resolveInstallSetupPath } from "./lib/install-setup";
+import { fetchInstallSetupStatusServer } from "./lib/install-setup-server";
 import { parseInvitationCallback } from "./lib/invitation-routes";
-import { isMarketingHomeEnabled } from "./lib/marketing-home";
 import {
 	invitationPathFromToken,
 	isInviteMemberSetupMode,
@@ -34,17 +36,6 @@ export const ORG_DASHBOARD_REWRITE_HEADER = "x-nearzero-org-dashboard-rewrite";
 
 function isOrgDashboardRewrite(request: Request) {
 	return request.headers.get(ORG_DASHBOARD_REWRITE_HEADER) === "1";
-}
-
-function sameOriginPath(raw: string | null, site: URL, fallback: string) {
-	if (!raw) return fallback;
-	try {
-		const u = new URL(raw, site);
-		if (u.origin !== site.origin) return fallback;
-		return `${u.pathname}${u.search}${u.hash}`;
-	} catch {
-		return fallback;
-	}
 }
 
 function dashboardPathForOrganization(
@@ -82,7 +73,7 @@ async function resolvePostAuthRedirect(
 	site: URL,
 	fallback: string,
 ) {
-	const callbackPath = sameOriginPath(
+	const callbackPath = sanitizeAuthCallbackPath(
 		site.searchParams.get("callbackUrl"),
 		site,
 		"",
@@ -160,10 +151,60 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				),
 			);
 		}
-		if (isMarketingHomeEnabled()) {
-			return next();
+		const setupStatus = await fetchInstallSetupStatusServer(context.request);
+		const setupPath = resolveInstallSetupPath(setupStatus);
+		if (setupPath && setupPath !== "/login") {
+			return context.redirect(setupPath);
+		}
+		if (
+			setupStatus &&
+			!setupStatus.bootstrapClaimed &&
+			setupStatus.managementConfigured &&
+			setupStatus.adminEmailConfigured
+		) {
+			return context.redirect("/register");
 		}
 		return context.redirect("/login");
+	}
+
+	if (path === "/setup" || path.startsWith("/setup/")) {
+		const setupSession = await getSession(context.request);
+		if (setupSession?.user) {
+			return context.redirect(
+				await resolvePostAuthRedirect(
+					context.request,
+					context.url,
+					"/dashboard/agent",
+				),
+			);
+		}
+		const setupStatus = await fetchInstallSetupStatusServer(context.request);
+		if (!setupStatus?.setupTokenConfigured || setupStatus.bootstrapClaimed) {
+			return context.redirect("/login");
+		}
+		if (
+			setupStatus.managementConfigured &&
+			setupStatus.adminEmailConfigured &&
+			setupStatus.phase !== "pending"
+		) {
+			const resume = resolveInstallSetupPath(setupStatus);
+			if (resume === "/register") {
+				return context.redirect("/register");
+			}
+		}
+	}
+
+	if (path === "/login" || path === "/register") {
+		const setupStatus = await fetchInstallSetupStatusServer(context.request);
+		if (
+			setupStatus?.required &&
+			setupStatus.canSubmit &&
+			!setupStatus.managementConfigured
+		) {
+			return context.redirect(
+				resolveInstallSetupPath(setupStatus) ?? "/setup?step=welcome",
+			);
+		}
 	}
 
 	if (

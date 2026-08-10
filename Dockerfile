@@ -64,6 +64,7 @@ COPY --from=build /usr/src/app/packages/server ./packages/server
 COPY --from=build /usr/src/app/packages/agent ./packages/agent
 COPY --from=build /usr/src/app/packages/trpc-openapi ./packages/trpc-openapi
 COPY docker/entrypoint.sh ./entrypoint.sh
+COPY docker/dns-init.ts ./dns-init.ts
 COPY scripts/install-verified-build-tools.sh /tmp/install-verified-build-tools.sh
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins /usr/local/libexec/docker/cli-plugins
@@ -104,7 +105,8 @@ RUN chmod +x /tmp/install-verified-build-tools.sh && \
 EXPOSE 3000 4321
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
-  CMD curl -fs http://localhost:3000/api/health || exit 1
+  CMD curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/api/health >/dev/null && \
+      curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:4321/login >/dev/null || exit 1
 
 LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
       org.opencontainers.image.licenses="Apache-2.0"

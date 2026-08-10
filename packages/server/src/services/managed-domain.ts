@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
-import { getPlatformDefaultDomain } from "@nearzero/server/constants";
+import {
+	getPlatformDefaultDomain,
+	isPlatformDomainSharedEdgeEnabled,
+} from "@nearzero/server/constants";
 import type { environments } from "@nearzero/server/db/schema";
 import { isProductionEnvironment } from "@nearzero/server/services/environment";
 import {
 	normalizeDnsHostname,
 	normalizeDnsZoneName,
 } from "@nearzero/server/utils/dns/zone-file";
-import { getWebServerSettings } from "./web-server-settings";
 
 type EnvironmentDns = Pick<
 	typeof environments.$inferSelect,
@@ -138,12 +140,13 @@ export function normalizeConfiguredPlatformApex(
 	return host || null;
 }
 
-/** Env apex first, then the configured public web-server host. */
+/**
+ * The automatic service apex is explicit configuration. The management
+ * hostname is deliberately not a fallback: it routes the dashboard and does
+ * not imply wildcard DNS or a cross-server edge for workloads.
+ */
 export async function resolvePlatformDefaultDomain(): Promise<string | null> {
-	const fromEnv = getPlatformDefaultDomain();
-	if (fromEnv) return fromEnv;
-	const settings = await getWebServerSettings();
-	return normalizeConfiguredPlatformApex(settings?.host ?? null);
+	return getPlatformDefaultDomain();
 }
 
 export function canUsePlatformDomainForServer(
@@ -152,7 +155,7 @@ export function canUsePlatformDomainForServer(
 ) {
 	if (!platformApex) return false;
 	if (!serverId) return true;
-	return true;
+	return isPlatformDomainSharedEdgeEnabled();
 }
 
 export function platformDomainWildcardDnsHint(

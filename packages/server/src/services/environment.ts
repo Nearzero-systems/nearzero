@@ -380,6 +380,7 @@ export const duplicateEnvironment = async (
 export const createDefaultEnvironment = async (
 	projectId: string,
 	tx: Pick<typeof db, "insert"> = db,
+	defaults: { dnsZoneId?: string | null } = {},
 ) => {
 	const newEnvironment = await tx
 		.insert(environments)
@@ -389,6 +390,7 @@ export const createDefaultEnvironment = async (
 			projectId,
 			isDefault: true,
 			env: "",
+			dnsZoneId: defaults.dnsZoneId ?? null,
 		})
 		.returning()
 		.then((value) => value[0]);

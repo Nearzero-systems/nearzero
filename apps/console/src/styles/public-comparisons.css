@@ -74,7 +74,8 @@
 
 .nz-compare-hero h1,
 .nz-compare-hub-hero h1 {
-	font-size: clamp(42px, 5vw, 64px);
+	font-family: var(--nz-m-title-font);
+	font-size: var(--nz-m-page-title-size);
 	font-weight: 560;
 	letter-spacing: -0.07em;
 	line-height: 1;
@@ -164,7 +165,7 @@
 }
 
 .nz-compare-hub-hero h1 {
-	font-size: clamp(44px, 5.3vw, 68px);
+	font-size: var(--nz-m-page-title-size);
 }
 
 .nz-compare-review {
@@ -215,6 +216,7 @@
 .nz-compare-section__heading h2,
 .nz-compare-related h2,
 .nz-compare-cta h2 {
+	font-family: var(--nz-m-title-font);
 	font-size: clamp(32px, 3.8vw, 48px);
 	font-weight: 560;
 	letter-spacing: -0.058em;
@@ -871,7 +873,7 @@
 
 	.nz-compare-hero h1,
 	.nz-compare-hub-hero h1 {
-		font-size: clamp(36px, 10.5vw, 48px);
+		font-size: var(--nz-m-page-title-size);
 	}
 
 	.nz-compare-hero__grid > div > p,
@@ -1025,7 +1027,7 @@
 
 .nz-compare-hero h1,
 .nz-compare-hub-hero h1 {
-	font-size: clamp(40px, 4.5vw, 56px);
+	font-size: var(--nz-m-page-title-size);
 }
 
 .nz-compare-answer,

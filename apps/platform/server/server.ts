@@ -1,6 +1,8 @@
 import "./load-env.js";
 import { bootstrapEdition } from "./edition-bootstrap.js";
+
 bootstrapEdition();
+
 import http from "node:http";
 import {
 	connectCurrentContainerToNetwork,
@@ -22,6 +24,8 @@ import {
 	updateLetsEncryptEmail,
 	updateServerTraefik,
 } from "@nearzero/server";
+import { seedConfiguredManagementDomain } from "@nearzero/server/services/install-domain-bootstrap";
+import { syncInstallSetupFromEnvironment } from "@nearzero/server/services/install-setup";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import packageInfo from "../package.json";
 import { migration } from "./db/migration";
@@ -96,9 +100,6 @@ process.on("uncaughtException", (error) => {
 
 if (shouldBootstrapLocalRuntime) {
 	setupDirectories();
-	createDefaultTraefikConfig();
-	createDefaultServerTraefikConfig();
-	console.log("✅ initialization complete");
 } else if (isProduction) {
 	console.log(
 		"Cloud control-plane mode: local Docker, Swarm, Traefik, and monitoring bootstrap is disabled.",
@@ -123,6 +124,33 @@ void (async () => {
 				migrationError,
 			);
 			throw migrationError;
+		}
+
+		const managementDomain = await seedConfiguredManagementDomain();
+		if (managementDomain.publicIp) {
+			console.log(
+				`Runtime IPv4 ${managementDomain.publicIp} ${managementDomain.publicIpChanged ? "seeded" : "already configured"}`,
+			);
+		}
+		if (managementDomain.configured) {
+			console.log(
+				`Management hostname ${managementDomain.host} ${managementDomain.changed ? "seeded" : "already configured"}`,
+			);
+		}
+		try {
+			await syncInstallSetupFromEnvironment();
+		} catch (setupSyncError) {
+			console.warn(
+				"Install setup sync from environment failed; wizard status may be incomplete.",
+				setupSyncError,
+			);
+		}
+		if (shouldBootstrapLocalRuntime) {
+			// The installer-provided management hostname must be durable before any
+			// generated Traefik files can become the source of public routing state.
+			createDefaultTraefikConfig();
+			createDefaultServerTraefikConfig();
+			console.log("✅ initialization complete");
 		}
 
 		const { routeRequest } = await import("./routes/index");

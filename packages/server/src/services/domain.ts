@@ -1,6 +1,9 @@
 import dns from "node:dns";
 import { promisify } from "node:util";
-import { getPlatformDefaultDomain } from "@nearzero/server/constants";
+import {
+	getManagementHostname,
+	getPlatformDefaultDomain,
+} from "@nearzero/server/constants";
 import { db } from "@nearzero/server/db";
 import { getWebServerSettings } from "@nearzero/server/services/web-server-settings";
 import { generateRandomDomain } from "@nearzero/server/templates";
@@ -54,10 +57,21 @@ export function assertHostnameIsNotReservedForPlatform(
 	host: string,
 	dnsMode: "external" | "nearzero_managed" | "platform",
 ) {
+	const normalizedHost = normalizeDnsName(host);
+	const managementHostname = getManagementHostname();
+	if (
+		managementHostname &&
+		normalizedHost === normalizeDnsName(managementHostname)
+	) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message:
+				"This hostname is reserved for the Nearzero management dashboard",
+		});
+	}
 	if (dnsMode === "platform") return;
 	const configuredApex = getPlatformDefaultDomain();
 	if (!configuredApex) return;
-	const normalizedHost = normalizeDnsName(host);
 	const platformApex = normalizeDnsName(configuredApex);
 	if (
 		normalizedHost === platformApex ||

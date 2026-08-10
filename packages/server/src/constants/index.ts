@@ -9,6 +9,14 @@ export {
 } from "./billing";
 
 export {
+	getConfiguredPublicIp,
+	getManagedDnsSoaEmail,
+	getManagedDnsZone,
+	getManagementHostname,
+	isPlatformDomainSharedEdgeEnabled,
+} from "./domains";
+
+export {
 	isSubscriptionFeatureEnabled,
 	SUBSCRIPTION_FEATURES,
 	type SubscriptionFeature,

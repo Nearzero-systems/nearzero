@@ -3,7 +3,6 @@
 import Favicon from "../components/Favicon.astro";
 // biome-ignore lint/correctness/noUnusedImports: Astro resolves this component in the template.
 import MarketingMotion from "../components/marketing/MarketingMotion.astro";
-import { isMarketingHomeEnabled } from "../lib/marketing-home";
 import { PUBLIC_SITE_DESCRIPTION, publicSiteUrl } from "../lib/public-site";
 import "../styles/marketing.css";
 
@@ -30,7 +29,7 @@ const {
 	socialImage: socialImagePath = "/og.png",
 	socialImageAlt = "Nearzero connects Git to applications, databases, remote servers, delegated DNS, HTTPS, logs, and metrics through a self-hosted deployment control plane.",
 	schemaGraph = [],
-	robots = "index, follow",
+	robots = "noindex, nofollow",
 } = Astro.props;
 
 const siteUrl = publicSiteUrl();
@@ -39,7 +38,7 @@ const canonicalHref = canonicalUrl.toString();
 const socialImage = new URL(socialImagePath, siteUrl).toString();
 const websiteId = new URL("/#website", siteUrl).toString();
 const pageId = `${canonicalHref}#webpage`;
-const robotsContent = isMarketingHomeEnabled() ? robots : "noindex, nofollow";
+const robotsContent = robots;
 
 const breadcrumbSegments = canonicalUrl.pathname
 	.split("/")

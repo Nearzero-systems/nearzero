@@ -29,6 +29,9 @@ const forbiddenPublicPaths = [
 	"apps/platform/server/routes/handlers/stripe",
 	"packages/server/src/services/proprietary",
 	"packages/server/src/services/managed-git-provider.ts",
+	// Public marketing homepage stays out of the Community tree.
+	"apps/console/src/components/marketing/NearzeroLanding.astro",
+	"apps/console/src/lib/marketing-home.ts",
 ];
 
 function read(path: string) {
@@ -186,6 +189,27 @@ expectIncludes(
 	"apps/console/src/pages/dashboard/monitoring.astro",
 	"/dashboard/about-nearzero",
 	"Astro monitoring redirect target",
+);
+
+expectIncludes(
+	"apps/console/src/pages/index.astro",
+	"fetchInstallSetupStatusServer",
+	"Community root consults install setup before login",
+);
+expectIncludes(
+	"apps/console/src/pages/setup.astro",
+	"SetupGrid",
+	"Community one-time domain setup page",
+);
+expectIncludes(
+	"apps/platform/server/routes/install-setup.ts",
+	"/api/install/setup",
+	"Community install setup API",
+);
+expectIncludes(
+	"packages/server/src/services/install-setup.ts",
+	"verifyInstallSetupToken",
+	"Community install setup token verification",
 );
 
 expectIncludes(
