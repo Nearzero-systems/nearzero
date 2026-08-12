@@ -13,7 +13,6 @@ import {
 	registerStepFromUrl,
 } from "./lib/onboarding-gates";
 import {
-	dashboardAgentPath,
 	isDashboardRootPath,
 	isOrgScopedDashboardPath,
 	isReservedOrgSegment,
@@ -29,6 +28,8 @@ import { createServerTrpcClient } from "./lib/server-api";
 import {
 	fetchActiveOrganization,
 	fetchOnboardingStatus,
+	fetchOrganizationActivationHttpsSummary,
+	fetchOrganizationActivationSummary,
 } from "./lib/trpc-server";
 
 /** Internal header set on org-scoped dashboard rewrites to prevent redirect loops. */
@@ -68,6 +69,27 @@ function withPrivateNoStore(response: Response) {
 	});
 }
 
+async function resolveDashboardLanding(
+	request: Request,
+	orgSlug?: string | null,
+) {
+	const activation = await fetchOrganizationActivationSummary(request);
+	let needsActivationGuide =
+		activation?.canManage === true && activation.complete === false;
+	if (activation?.canManage === true && activation.complete === true) {
+		const https = await fetchOrganizationActivationHttpsSummary(request);
+		// Fail closed for an owner: a timeout or route error is actionable in the
+		// activation guide and must not silently land them on the optional Agent.
+		needsActivationGuide = https?.verified !== true;
+	}
+	const dashboardPath = needsActivationGuide
+		? "/dashboard/get-started"
+		: "/dashboard/agent";
+	return orgSlug?.trim()
+		? orgDashboardPath(orgSlug.trim(), dashboardPath)
+		: dashboardPath;
+}
+
 async function resolvePostAuthRedirect(
 	request: Request,
 	site: URL,
@@ -96,8 +118,13 @@ async function resolvePostAuthRedirect(
 		return registerOnboardingResumePath(onboardingStatus);
 	}
 
-	const fallbackPath = dashboardPathForOrganization(activeOrg, fallback);
-	return callbackInvitationToken ? fallbackPath : callbackPath || fallbackPath;
+	const activationFallback =
+		fallback === "/dashboard/agent"
+			? await resolveDashboardLanding(request, activeOrg?.slug)
+			: dashboardPathForOrganization(activeOrg, fallback);
+	return callbackInvitationToken
+		? activationFallback
+		: callbackPath || activationFallback;
 }
 
 async function guardDashboardAccess(
@@ -275,7 +302,13 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				session,
 			);
 			if (blocked) return blocked;
-			return context.redirect(dashboardAgentPath(orgSlug) + context.url.search);
+			const activeOrg = await fetchActiveOrganization(context.request);
+			return context.redirect(
+				(await resolveDashboardLanding(
+					context.request,
+					activeOrg?.slug ?? orgSlug,
+				)) + context.url.search,
+			);
 		}
 
 		if (dashboardPath === "/dashboard/home") {
@@ -285,7 +318,13 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				session,
 			);
 			if (blocked) return blocked;
-			return context.redirect(dashboardAgentPath(orgSlug) + context.url.search);
+			const activeOrg = await fetchActiveOrganization(context.request);
+			return context.redirect(
+				(await resolveDashboardLanding(
+					context.request,
+					activeOrg?.slug ?? orgSlug,
+				)) + context.url.search,
+			);
 		}
 
 		const blocked = await guardDashboardAccess(
@@ -342,7 +381,8 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 			const activeOrg = await fetchActiveOrganization(context.request);
 			return context.redirect(
-				dashboardAgentPath(activeOrg?.slug ?? null) + context.url.search,
+				(await resolveDashboardLanding(context.request, activeOrg?.slug)) +
+					context.url.search,
 			);
 		}
 
@@ -356,7 +396,8 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 			const activeOrg = await fetchActiveOrganization(context.request);
 			return context.redirect(
-				dashboardAgentPath(activeOrg?.slug ?? null) + context.url.search,
+				(await resolveDashboardLanding(context.request, activeOrg?.slug)) +
+					context.url.search,
 			);
 		}
 

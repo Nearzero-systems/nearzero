@@ -1,7 +1,10 @@
+import { readRuntimePublicConfig } from "./runtime-public-config";
+
 type PublicUrlEnv = {
 	[key: string]: string | undefined;
 	BETTER_AUTH_URL?: string;
 	CONSOLE_URL?: string;
+	NEARZERO_RUNTIME_PUBLIC_CONFIG_PATH?: string;
 	NODE_ENV?: string;
 };
 
@@ -23,10 +26,51 @@ function normalizePublicUrl(value: string, variableName: string) {
 	return url.toString().replace(/\/$/, "");
 }
 
+function isLoopbackUrl(value: string) {
+	try {
+		const hostname = new URL(value).hostname.toLowerCase();
+		return (
+			hostname === "localhost" ||
+			hostname === "127.0.0.1" ||
+			hostname === "::1" ||
+			hostname === "0.0.0.0"
+		);
+	} catch {
+		return false;
+	}
+}
+
+function runtimeConsoleUrl(env: PublicUrlEnv) {
+	// Keep the public-url helpers deterministic for callers that supply a
+	// synthetic environment. Tests and tooling can opt in with an explicit path.
+	if (env !== process.env && !env.NEARZERO_RUNTIME_PUBLIC_CONFIG_PATH?.trim()) {
+		return null;
+	}
+	return readRuntimePublicConfig({ env })?.consoleUrl ?? null;
+}
+
+function resolveEffectiveUrl(
+	value: string | undefined,
+	variableName: string,
+	persistedConsoleUrl: string | null,
+) {
+	const configured = value?.trim()
+		? normalizePublicUrl(value.trim(), variableName)
+		: null;
+	if (persistedConsoleUrl && (!configured || isLoopbackUrl(configured))) {
+		return persistedConsoleUrl;
+	}
+	return configured;
+}
+
 export function resolveConsoleUrl(env: PublicUrlEnv = process.env) {
-	const configured = env.CONSOLE_URL?.trim();
+	const configured = resolveEffectiveUrl(
+		env.CONSOLE_URL,
+		"CONSOLE_URL",
+		runtimeConsoleUrl(env),
+	);
 	if (configured) {
-		return normalizePublicUrl(configured, "CONSOLE_URL");
+		return configured;
 	}
 	if (env.NODE_ENV === "development" || env.NODE_ENV === "test") {
 		return "http://localhost:4321";
@@ -53,8 +97,17 @@ export function resolveConsoleActionUrl(
  * In split deploys the console BFF serves `/api/auth/*`, so this must be CONSOLE_URL.
  */
 export function resolveAuthPublicBaseUrl(env: PublicUrlEnv = process.env) {
-	const consoleUrl = env.CONSOLE_URL?.trim();
-	const authUrl = env.BETTER_AUTH_URL?.trim();
+	const persistedConsoleUrl = runtimeConsoleUrl(env);
+	const consoleUrl = resolveEffectiveUrl(
+		env.CONSOLE_URL,
+		"CONSOLE_URL",
+		persistedConsoleUrl,
+	);
+	const authUrl = resolveEffectiveUrl(
+		env.BETTER_AUTH_URL,
+		"BETTER_AUTH_URL",
+		persistedConsoleUrl,
+	);
 
 	if (consoleUrl && authUrl) {
 		try {
@@ -69,10 +122,10 @@ export function resolveAuthPublicBaseUrl(env: PublicUrlEnv = process.env) {
 	}
 
 	if (consoleUrl) {
-		return normalizePublicUrl(consoleUrl, "CONSOLE_URL");
+		return consoleUrl;
 	}
 	if (authUrl) {
-		return normalizePublicUrl(authUrl, "BETTER_AUTH_URL");
+		return authUrl;
 	}
 	if (env.NODE_ENV === "development" || env.NODE_ENV === "test") {
 		return "http://localhost:4321";
@@ -84,8 +137,17 @@ export function resolveAuthPublicBaseUrl(env: PublicUrlEnv = process.env) {
 export function resolveSharedCookieDomain(env: PublicUrlEnv = process.env) {
 	if (env.NODE_ENV !== "production") return null;
 
-	const consoleUrl = env.CONSOLE_URL?.trim();
-	const authUrl = env.BETTER_AUTH_URL?.trim();
+	const persistedConsoleUrl = runtimeConsoleUrl(env);
+	const consoleUrl = resolveEffectiveUrl(
+		env.CONSOLE_URL,
+		"CONSOLE_URL",
+		persistedConsoleUrl,
+	);
+	const authUrl = resolveEffectiveUrl(
+		env.BETTER_AUTH_URL,
+		"BETTER_AUTH_URL",
+		persistedConsoleUrl,
+	);
 	if (!consoleUrl || !authUrl) return null;
 
 	try {

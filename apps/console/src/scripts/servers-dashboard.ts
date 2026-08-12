@@ -241,9 +241,11 @@ function setServerFormBusy(busy: boolean) {
 function updateServerFormSubmitState() {
 	const submit = serverFormSubmitButton();
 	const ssh = serverFormSshSelect();
+	const user = document.getElementById("nz-server-user");
 	if (
 		!(submit instanceof HTMLButtonElement) ||
-		!(ssh instanceof HTMLSelectElement)
+		!(ssh instanceof HTMLSelectElement) ||
+		!(user instanceof HTMLInputElement)
 	) {
 		return;
 	}
@@ -252,8 +254,9 @@ function updateServerFormSubmitState() {
 		return;
 	}
 	const hasSshKey = ssh.value.trim() !== "";
+	const hasUsername = user.value.trim() !== "";
 	const blockedByLimit = !canCreateMore && !editingServerId;
-	submit.disabled = !hasSshKey || blockedByLimit;
+	submit.disabled = !hasSshKey || !hasUsername || blockedByLimit;
 }
 
 function resetServerForm() {
@@ -275,7 +278,7 @@ function resetServerForm() {
 	if (desc instanceof HTMLTextAreaElement) desc.value = "";
 	if (ip instanceof HTMLInputElement) ip.value = "";
 	if (port instanceof HTMLInputElement) port.value = "22";
-	if (user instanceof HTMLInputElement) user.value = "root";
+	if (user instanceof HTMLInputElement) user.value = "";
 	if (ssh instanceof HTMLSelectElement) ssh.value = "";
 	if (warn) warn.classList.toggle("hidden", canCreateMore);
 	updateServerFormSubmitState();
@@ -306,8 +309,7 @@ async function openEditServer(serverId: string) {
 		if (ip instanceof HTMLInputElement) ip.value = server.ipAddress || "";
 		if (port instanceof HTMLInputElement)
 			port.value = String(server.port || 22);
-		if (user instanceof HTMLInputElement)
-			user.value = server.username || "root";
+		if (user instanceof HTMLInputElement) user.value = server.username || "";
 		if (ssh instanceof HTMLSelectElement) ssh.value = server.sshKeyId || "";
 		if (warn) warn.classList.add("hidden");
 		updateServerFormSubmitState();
@@ -565,13 +567,33 @@ async function runServerValidation(
 	if (!(validation instanceof HTMLElement)) return false;
 	validation.classList.remove("hidden");
 	validation.textContent = "Checking server configuration…";
-	state && (state.textContent = "Validating");
+	if (state) state.textContent = "Validating";
 	try {
-		const result = await trpcQuery<Record<string, unknown>>("server.validate", {
-			serverId,
-		});
+		const result = await trpcQuery<
+			Record<string, unknown> & {
+				readiness?: {
+					ready?: boolean;
+					backendReady?: boolean;
+					serverStatus?: string | null;
+					setupStatus?: string | null;
+					missingChecks?: string[];
+				};
+			}
+		>("server.validate", { serverId });
+		const readiness = result.readiness;
+		const ready = readiness?.ready === true;
+		const checkEntries = Object.entries(result).filter(
+			([key]) => key !== "readiness",
+		);
+		const readinessMessage = ready
+			? "All mandatory checks passed and the server is ready for deployments."
+			: readiness?.backendReady === false
+				? `Nearzero reports this server as ${readiness.setupStatus || "not ready"} (${readiness.serverStatus || "unknown"}). Finish setup before deploying.`
+				: readiness?.missingChecks?.length
+					? `Mandatory checks still missing: ${readiness.missingChecks.join(", ")}.`
+					: "Nearzero could not confirm every mandatory server check.";
 		validation.innerHTML = `<div class="grid gap-2 md:grid-cols-2">${Object.entries(
-			result || {},
+			Object.fromEntries(checkEntries),
 		)
 			.map(([key, value]) => {
 				const label = key
@@ -580,16 +602,16 @@ async function runServerValidation(
 				const status = validationStatus(value);
 				return `<div class="rounded-md border border-[var(--nz-border)] bg-[var(--nz-surface)] p-2"><p class="font-medium text-[var(--nz-text)]">${escapeHtml(label)}</p><p class="mt-1 text-[var(--nz-text-muted)]">${escapeHtml(status)}</p></div>`;
 			})
-			.join("")}</div>`;
-		state && (state.textContent = "Validation complete");
-		if (options?.reloadOnSuccess) {
+			.join("")}</div><p class="mt-2 ${ready ? "text-emerald-700" : "text-destructive"}">${escapeHtml(readinessMessage)}</p>`;
+		if (state) state.textContent = ready ? "Ready" : "Validation incomplete";
+		if (ready && options?.reloadOnSuccess) {
 			showToast("Server setup completed", "success");
 			window.setTimeout(() => window.location.reload(), 900);
 		}
-		return true;
+		return ready;
 	} catch (error) {
 		validation.innerHTML = `<p class="text-destructive">${escapeHtml(errorMessage(error, "Validation failed"))}</p>`;
-		state && (state.textContent = "Validation failed");
+		if (state) state.textContent = "Validation failed";
 		return false;
 	}
 }
@@ -893,8 +915,10 @@ async function openSetupDialog(
 function bindServerForm() {
 	const form = document.getElementById("nz-server-form");
 	const ssh = serverFormSshSelect();
+	const user = document.getElementById("nz-server-user");
 
 	ssh?.addEventListener("change", updateServerFormSubmitState);
+	user?.addEventListener("input", updateServerFormSubmitState);
 	updateServerFormSubmitState();
 
 	form?.addEventListener("submit", async (e) => {
@@ -918,11 +942,17 @@ function bindServerForm() {
 			return;
 		}
 		if (!canCreateMore && !editingServerId) {
-			showToast("Cannot create more servers — upgrade your plan", "error");
+			showToast("This workspace cannot add another server", "error");
 			return;
 		}
 		if (!ssh.value.trim()) {
 			showToast("Select an SSH key", "error");
+			updateServerFormSubmitState();
+			return;
+		}
+		if (!user.value.trim()) {
+			showToast("Enter the dedicated SSH username", "error");
+			user.focus();
 			updateServerFormSubmitState();
 			return;
 		}
@@ -933,7 +963,7 @@ function bindServerForm() {
 			description: desc.value,
 			ipAddress: ip.value.trim(),
 			port: Number(port.value) || 22,
-			username: user.value || "root",
+			username: user.value.trim(),
 			sshKeyId: ssh.value,
 			serverId: editingServerId || "",
 		};

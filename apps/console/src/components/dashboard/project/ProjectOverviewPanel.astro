@@ -1,6 +1,9 @@
 ---
 import EnvironmentServiceLauncher from "@/components/dashboard/environment/EnvironmentServiceLauncher.astro";
-import { projectWorkspaceHref } from "@/lib/project-workspace-nav";
+import {
+	environmentApplicationNewHref,
+	projectWorkspaceHref,
+} from "@/lib/project-workspace-nav";
 import type { RuntimeServerOption } from "@/lib/runtime-server-options";
 import ProjectServiceList from "./ProjectServiceList.astro";
 import ProjectServicesDiagram from "./ProjectServicesDiagram.astro";
@@ -44,6 +47,10 @@ const {
 	isProduction = false,
 	dnsZoneName = null,
 } = Astro.props;
+const firstApplicationHref = environmentApplicationNewHref(
+	projectId,
+	environmentId,
+);
 ---
 
 <section class="nz-project-overview" aria-label="Project overview">
@@ -77,6 +84,12 @@ const {
 				<p class="mt-1 text-xs text-[var(--nz-text-muted)]">
 					Deploy a service successfully to see live applications, databases, and compose services here.
 				</p>
+				<a
+					href={firstApplicationHref}
+					class="mt-3 inline-flex items-center rounded-md bg-[var(--nz-primary)] px-2 py-1 text-xs font-medium text-[var(--nz-primary-fg)] no-underline hover:bg-[var(--nz-primary-hover)]"
+				>
+					Deploy your first application →
+				</a>
 			</div>
 		)
 	}

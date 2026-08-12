@@ -49,7 +49,10 @@ const {
 	dnsZoneName = null,
 } = Astro.props;
 const projectSlug = slugify(projectName);
-const applicationNewHref = environmentApplicationNewHref(projectId, environmentId);
+const applicationNewHref = environmentApplicationNewHref(
+	projectId,
+	environmentId,
+);
 
 const fieldClass =
 	"flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -109,7 +112,14 @@ const dialogShellClass =
 		<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]" data-open-env-db="true" role="menuitem">
 			Database
 		</button>
-		<button type="button" class="flex w-full rounded-md px-3 py-2 text-left text-sm text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)]" data-open-env-domain="true" role="menuitem">
+		<button
+			type="button"
+			class="flex w-full rounded-md px-3 py-2 text-left text-sm text-[var(--nz-text)] hover:bg-[var(--nz-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+			data-open-env-domain="true"
+			role="menuitem"
+			disabled={services.length === 0}
+			title={services.length === 0 ? "Deploy an application or Compose service before adding a domain." : undefined}
+		>
 			Domain
 		</button>
 	</div>

@@ -320,17 +320,17 @@ async function finishOnboarding(
 		inviteEmails,
 	});
 	sessionStorage.removeItem("nz-register-onboarding-draft");
-	const shouldOfferDomainSetup =
+	const shouldStartWorkspaceActivation =
 		root.dataset.inviteMemberSetup !== "1" &&
 		root.dataset.workspaceSetup !== "1" &&
 		!root.dataset.invitationToken;
-	if (shouldOfferDomainSetup) {
+	if (shouldStartWorkspaceActivation) {
 		window.location.href = result?.organizationSlug
 			? orgDashboardPath(
 					result.organizationSlug,
-					"/dashboard/about-nearzero?setup=welcome",
+					"/dashboard/get-started",
 				)
-			: "/dashboard/about-nearzero?setup=welcome";
+			: "/dashboard/get-started";
 		return;
 	}
 	window.location.href = result?.organizationSlug
@@ -470,8 +470,8 @@ async function finishWorkspaceSetup(draft: OnboardingDraft) {
 	);
 	sessionStorage.removeItem("nz-register-onboarding-draft");
 	window.location.href = result?.organizationSlug
-		? orgDashboardPath(result.organizationSlug, "/dashboard/agent")
-		: "/dashboard/agent";
+		? orgDashboardPath(result.organizationSlug, "/dashboard/get-started")
+		: "/dashboard/get-started";
 }
 
 async function finishInviteMemberOnboarding(draft: OnboardingDraft) {

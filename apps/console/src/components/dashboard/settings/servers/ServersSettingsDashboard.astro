@@ -375,7 +375,7 @@ function setupBadgeClass(server: ServerRow) {
 				showClose={false}
 			>
 				<div id="nz-server-form-limit" class:list={["nz-modal__callout border-amber-200/80 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200", canCreateMoreServers && "hidden"]}>
-					You cannot create more servers. Upgrade your plan to add more.
+					This workspace cannot add another server.
 				</div>
 				<input type="hidden" id="nz-server-form-id" value="" />
 				<label class="nz-modal__field">
@@ -405,7 +405,10 @@ function setupBadgeClass(server: ServerRow) {
 				</div>
 				<label class="nz-modal__field">
 					<span class="nz-modal__label">Username</span>
-					<input id="nz-server-user" value="root" class="nz-modal__input" />
+					<input id="nz-server-user" required autocomplete="username" placeholder="nearzero" class="nz-modal__input" />
+					<span class="text-[11px] leading-5 text-[var(--nz-text-muted)]">
+						Use a dedicated non-root account with key-only SSH and passwordless sudo. Add it to the Docker group if Docker does not run through sudo. Direct root login works, but is not recommended.
+					</span>
 				</label>
 				<button slot="footer" type="button" class="nz-modal__btn nz-modal__btn--ghost" data-nz-modal-close>Cancel</button>
 				<button
@@ -475,7 +478,7 @@ function setupBadgeClass(server: ServerRow) {
 			<NzModal
 				id="nz-servers-welcome-dialog"
 				title="Welcome to Nearzero"
-				description="Your subscription is active. Create an SSH key, connect your first server, and run setup to get started."
+				description="Create an SSH key, connect a dedicated server account, and let Nearzero verify every required runtime check before the first deployment."
 				size="md"
 				showClose
 			>

@@ -43,7 +43,7 @@ export const DOCKER_COMPOSE_BOOTSTRAP_VERSION = "5.1.4";
 export const BUN_BOOTSTRAP_VERSION = "1.3.10";
 export const PNPM_BOOTSTRAP_VERSION = "10.34.0";
 export const MONITORING_BOOTSTRAP_IMAGE =
-	"ghcr.io/nearzero-systems/monitoring:0.1.42";
+	"ghcr.io/nearzero-systems/monitoring:0.1.43";
 
 const generateToken = () => {
 	const array = new Uint8Array(64);
@@ -201,6 +201,26 @@ export function getMissingSetupChecks(validation: ServerValidateResult) {
 	}
 	if (!validation.isNearzeroNetworkInstalled) missing.push("nearzero-network");
 	return missing;
+}
+
+export function getServerValidationReadiness(
+	validation: ServerValidateResult,
+	server: {
+		serverStatus?: string | null;
+		setupStatus?: string | null;
+	},
+) {
+	const missingChecks = getMissingSetupChecks(validation);
+	const backendReady =
+		server.serverStatus === "active" && server.setupStatus === "ready";
+	return {
+		ready: backendReady && missingChecks.length === 0,
+		checksReady: missingChecks.length === 0,
+		backendReady,
+		serverStatus: server.serverStatus ?? null,
+		setupStatus: server.setupStatus ?? null,
+		missingChecks,
+	};
 }
 
 const preSetupCleanup = () => `

@@ -1,0 +1,505 @@
+---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves component imports in the template.
+import type { SessionUser } from "@/lib/backendProxy";
+import {
+	type ActivationHttpsVerification,
+	type ActivationJourneyStep,
+	activationHttpsVerificationMessage,
+	activationStepComplete,
+	currentActivationStep,
+	EMPTY_ACTIVATION_STATUS,
+	firstApplicationSetupPath,
+	firstProjectWorkspacePath,
+	httpsUrlForHost,
+	loadActivationHttpsVerification,
+	loadActivationStatus,
+	sourceModeLabel,
+} from "@/lib/get-started";
+import { normalizeDashboardPath, scopeDashboardHref } from "@/lib/org-routes";
+import { createServerTrpcClient } from "@/lib/server-api";
+import "@/styles/get-started.css";
+
+interface Props {
+	request: Request;
+	owner: SessionUser;
+}
+
+type WebServerSettings = {
+	host?: string | null;
+	https?: boolean;
+	serverIp?: string | null;
+};
+
+type ActiveOrganization = {
+	name?: string | null;
+	slug?: string | null;
+};
+
+const { request, owner } = Astro.props;
+const api = createServerTrpcClient(request) as {
+	settings: {
+		getWebServerSettings: { query: () => Promise<WebServerSettings> };
+	};
+	organization: {
+		active: { query: () => Promise<ActiveOrganization | null> };
+	};
+};
+
+const [activationResult, settingsResult, organizationResult] =
+	await Promise.allSettled([
+		loadActivationStatus(api),
+		api.settings.getWebServerSettings.query(),
+		api.organization.active.query(),
+	]);
+
+const statusAvailable = activationResult.status === "fulfilled";
+const status = statusAvailable
+	? activationResult.value
+	: EMPTY_ACTIVATION_STATUS;
+let httpsVerification: ActivationHttpsVerification | null = null;
+if (statusAvailable && status.canManage && status.steps.domain.configured) {
+	httpsVerification = await loadActivationHttpsVerification(api).catch(
+		() => null,
+	);
+}
+const httpsVerified = httpsVerification?.verified === true;
+const settings =
+	settingsResult.status === "fulfilled" ? settingsResult.value : null;
+const organization =
+	organizationResult.status === "fulfilled" ? organizationResult.value : null;
+
+const orgSlug = normalizeDashboardPath(new URL(request.url).pathname).orgSlug;
+const dash = (path: string) => scopeDashboardHref(path, orgSlug);
+const serversHref = dash("/dashboard/servers");
+const domainsHref = dash("/dashboard/domains");
+const deploymentsHref = dash("/dashboard/deployments");
+const notificationsHref = dash("/dashboard/settings/notifications");
+const tasksHref = dash("/dashboard/tasks");
+const profileHref = dash("/dashboard/settings/profile");
+const aboutHref = dash("/dashboard/about-nearzero");
+const agentHref = dash("/dashboard/agent");
+const agentPoliciesHref = dash("/dashboard/settings/agent");
+const refreshHref = dash("/dashboard/get-started");
+
+const projectWorkspacePath = firstProjectWorkspacePath(status);
+const projectHref = dash(projectWorkspacePath ?? "/dashboard/projects");
+const gitSetupHref = dash(
+	firstApplicationSetupPath(status, "git") ?? "/dashboard/projects",
+);
+const imageSetupHref = dash(
+	firstApplicationSetupPath(status, "image") ?? "/dashboard/projects",
+);
+
+const managementHost = settings?.host?.trim() ?? "";
+const managementHttpsConfigured = Boolean(managementHost && settings?.https);
+const managementUrl = managementHttpsConfigured
+	? httpsUrlForHost(managementHost)
+	: null;
+const liveUrl = httpsVerified
+	? httpsUrlForHost(httpsVerification?.host ?? status.steps.domain.host)
+	: null;
+const activeStep = statusAvailable
+	? currentActivationStep(status, { httpsVerified })
+	: "runtime";
+
+const journeySteps: Array<{
+	id: ActivationJourneyStep;
+	label: string;
+	description: string;
+}> = [
+	{
+		id: "runtime",
+		label: "Runtime",
+		description: "Choose local or remote",
+	},
+	{
+		id: "project",
+		label: "Project",
+		description: "Create a workspace for the app",
+	},
+	{
+		id: "source",
+		label: "Source",
+		description: "Git repository or image",
+	},
+	{
+		id: "deployment",
+		label: "Deployment",
+		description: "Build and start the service",
+	},
+	{
+		id: "https",
+		label: "HTTPS",
+		description: "Confirm the public URL",
+	},
+];
+
+function stepState(step: ActivationJourneyStep) {
+	if (!statusAvailable) return "unknown";
+	if (activationStepComplete(status, step, { httpsVerified }))
+		return "complete";
+	if (activeStep === step) return "current";
+	return "upcoming";
+}
+
+function stepStateLabel(step: ActivationJourneyStep) {
+	if (!statusAvailable) return "Unavailable";
+	if (step === "https") {
+		if (httpsVerified) return "HTTPS verified";
+		if (
+			status.steps.domain.configured &&
+			httpsVerification?.status === "failed"
+		) {
+			return "Configured · check failed";
+		}
+		if (status.steps.domain.configured) return "HTTPS configured";
+	}
+	if (activationStepComplete(status, step, { httpsVerified }))
+		return "Complete";
+	if (step === "deployment" && status.steps.deployment.status === "running") {
+		return "Deploying";
+	}
+	if (
+		step === "deployment" &&
+		(status.steps.deployment.status === "error" ||
+			status.steps.deployment.status === "cancelled")
+	) {
+		return "Needs attention";
+	}
+	return activeStep === step ? "Do this next" : "Waiting";
+}
+
+function plural(value: number, singular: string, pluralForm = `${singular}s`) {
+	return `${value} ${value === 1 ? singular : pluralForm}`;
+}
+
+const progressMax = Math.max(status.total, 1);
+const verifiedCompleted = Math.max(
+	0,
+	status.completed - (status.steps.domain.complete && !httpsVerified ? 1 : 0),
+);
+const progressValue = Math.min(verifiedCompleted, progressMax);
+const activationComplete = status.complete && httpsVerified;
+const activationHeadline = activationComplete
+	? "Your first deployment is verified"
+	: status.steps.domain.configured
+		? "Finish by checking public HTTPS"
+		: status.completed > 0
+			? "Continue your first deployment"
+			: "Deploy your first app";
+const sourceLabel = sourceModeLabel(status.steps.source.mode);
+const project = status.steps.project.first;
+const service = status.steps.service.first;
+const deploymentStatusLabel =
+	status.steps.deployment.status === "not_started"
+		? "Not started"
+		: status.steps.deployment.status === "running"
+			? "In progress"
+			: status.steps.deployment.status === "done"
+				? "Successful"
+				: status.steps.deployment.status === "cancelled"
+					? "Cancelled"
+					: "Failed";
+---
+
+<div class="nz-get-started nz-dashboard-content" data-activation-available={statusAvailable ? "1" : "0"}>
+	<main class="nz-get-started__inner">
+		<header class="nz-get-started__header">
+			<div class="nz-get-started__heading-copy">
+				<p class="nz-get-started__eyebrow">Workspace activation</p>
+				<h1>{activationHeadline}</h1>
+				<p class="nz-get-started__lede">
+					Nearzero reads real workspace state, so this guide resumes after every
+					project, deployment, or DNS change. Nothing here is marked complete by
+					the browser.
+				</p>
+			</div>
+			<div class="nz-get-started__progress-card" aria-label="Activation progress">
+				<div class="nz-get-started__progress-copy">
+					<span>{statusAvailable ? `${verifiedCompleted} of ${status.total}` : "Status unavailable"}</span>
+					<strong>{activationComplete ? "Verified" : "Required setup"}</strong>
+				</div>
+				<progress max={progressMax} value={statusAvailable ? progressValue : 0}>
+					{statusAvailable ? `${verifiedCompleted} of ${status.total}` : "Unavailable"}
+				</progress>
+				<a href={refreshHref}>Refresh progress</a>
+			</div>
+		</header>
+
+		<section class="nz-get-started__summary" aria-labelledby="nz-activation-summary-title">
+			<div class="nz-get-started__section-heading">
+				<div>
+					<p class="nz-get-started__eyebrow">Before you deploy</p>
+					<h2 id="nz-activation-summary-title">Confirm this installation</h2>
+				</div>
+				<span class="nz-get-started__quiet-status">Read-only summary</span>
+			</div>
+			<dl class="nz-get-started__summary-grid">
+				<div>
+					<dt>Control plane</dt>
+					<dd>{managementHost || "Public hostname not configured"}</dd>
+					<span>{managementHttpsConfigured ? "HTTPS configured" : "Review hostname and HTTPS"}</span>
+					<a href={managementUrl ?? aboutHref}>{managementUrl ? "Open console" : "Review setup"}</a>
+				</div>
+				<div>
+					<dt>Owner</dt>
+					<dd>{owner.name?.trim() || "Workspace owner"}</dd>
+					<span>{owner.email}</span>
+					<a href={profileHref}>Review profile</a>
+				</div>
+				<div>
+					<dt>Workspace and app URL</dt>
+					<dd>{organization?.name?.trim() || "Current workspace"}</dd>
+					<span>{status.steps.domain.host || "Assigned after the first service"}</span>
+					<a href={domainsHref}>Open domains</a>
+				</div>
+			</dl>
+		</section>
+
+		{!statusAvailable ? (
+			<div class="nz-get-started__alert" role="alert">
+				<div>
+					<strong>Nearzero could not read activation progress.</strong>
+					<p>Refresh before repeating a deployment or DNS change. The links below remain safe to open.</p>
+				</div>
+				<a class="nz-get-started__button nz-get-started__button--secondary" href={refreshHref}>Try again</a>
+			</div>
+		) : null}
+		{statusAvailable && !status.canManage ? (
+			<div class="nz-get-started__alert" role="note">
+				<div>
+					<strong>This is a read-only activation view.</strong>
+					<p>An organization owner or administrator can change infrastructure and run the public HTTPS check.</p>
+				</div>
+			</div>
+		) : null}
+
+		<div class="nz-get-started__mobile-progress" aria-label="Activation steps">
+			<span>{activeStep === "complete" ? "Activation complete" : `Current: ${journeySteps.find((step) => step.id === activeStep)?.label ?? "Runtime"}`}</span>
+			<span>{statusAvailable ? `${verifiedCompleted}/${status.total}` : "—"}</span>
+		</div>
+
+		<div class="nz-get-started__journey">
+			<aside class="nz-get-started__rail" aria-label="Activation steps">
+				<ol>
+					{journeySteps.map((step, index) => (
+						<li class:list={[`is-${stepState(step.id)}`]} aria-current={activeStep === step.id ? "step" : undefined}>
+							<span class="nz-get-started__rail-number" aria-hidden="true">
+							{activationStepComplete(status, step.id, { httpsVerified }) && statusAvailable ? "✓" : index + 1}
+							</span>
+							<span>
+								<strong>{step.label}</strong>
+								<small>{step.description}</small>
+							</span>
+						</li>
+					))}
+				</ol>
+			</aside>
+
+			<div class="nz-get-started__steps">
+				<section class:list={["nz-get-started__step", `is-${stepState("runtime")}`]} aria-labelledby="nz-activation-runtime-title">
+					<div class="nz-get-started__step-head">
+						<div class="nz-get-started__step-title">
+							<span>01</span>
+							<div>
+								<h2 id="nz-activation-runtime-title">Choose where the app runs</h2>
+								<p>The Community host works locally by default. A prepared remote server is optional.</p>
+							</div>
+						</div>
+						<span class="nz-get-started__status">{stepStateLabel("runtime")}</span>
+					</div>
+					<div class="nz-get-started__choice-grid">
+						<article class="nz-get-started__choice">
+							<div>
+								<span class="nz-get-started__choice-kicker">Recommended for the first app</span>
+								<h3>Local Community runtime</h3>
+								<p>Build and run on the same server as this Nearzero control plane.</p>
+							</div>
+							<div class="nz-get-started__choice-footer">
+								<span>{statusAvailable ? (status.steps.runtime.local.ready ? "Ready" : "Not ready") : "Unknown"}</span>
+								<a class="nz-get-started__button" href={projectHref}>Continue locally</a>
+							</div>
+						</article>
+						<article class="nz-get-started__choice">
+							<div>
+								<span class="nz-get-started__choice-kicker">Bring another Linux server</span>
+								<h3>Remote runtime</h3>
+								<p>Connect over SSH, complete setup, then select the server while creating the app.</p>
+							</div>
+							<div class="nz-get-started__choice-footer">
+								<span>{statusAvailable ? plural(status.steps.runtime.readyRemoteCount, "ready server") : "Unknown"}</span>
+								<a class="nz-get-started__button nz-get-started__button--secondary" href={serversHref}>
+									{status.steps.runtime.readyRemoteCount > 0 ? "Review servers" : "Add a server"}
+								</a>
+							</div>
+						</article>
+					</div>
+				</section>
+
+				<section class:list={["nz-get-started__step", `is-${stepState("project")}`]} aria-labelledby="nz-activation-project-title">
+					<div class="nz-get-started__step-head">
+						<div class="nz-get-started__step-title">
+							<span>02</span>
+							<div>
+								<h2 id="nz-activation-project-title">Create a project</h2>
+								<p>A project groups environments, services, domains, and deployment history.</p>
+							</div>
+						</div>
+						<span class="nz-get-started__status">{stepStateLabel("project")}</span>
+					</div>
+					<div class="nz-get-started__fact-row">
+						<div>
+							<strong>{project?.name || "No project yet"}</strong>
+							<span>{statusAvailable ? `${plural(status.steps.project.projectCount, "project")} · ${plural(status.steps.project.environmentCount, "environment")}` : "Counts unavailable"}</span>
+						</div>
+						<a class="nz-get-started__button" href={projectHref}>{project ? "Open first project" : "Create a project"}</a>
+					</div>
+				</section>
+
+				<section class:list={["nz-get-started__step", `is-${stepState("source")}`]} aria-labelledby="nz-activation-source-title">
+					<div class="nz-get-started__step-head">
+						<div class="nz-get-started__step-title">
+							<span>03</span>
+							<div>
+								<h2 id="nz-activation-source-title">Choose the application source</h2>
+								<p>Use a repository for build-based deploys or point the service at a container image.</p>
+							</div>
+						</div>
+						<span class="nz-get-started__status">{stepStateLabel("source")}</span>
+					</div>
+					{!project ? (
+						<p class="nz-get-started__dependency">Create the project in step 2 first. Nearzero then opens source setup inside its default environment.</p>
+					) : null}
+					<div class="nz-get-started__choice-grid">
+						<article class="nz-get-started__choice">
+							<div>
+								<span class="nz-get-started__choice-kicker">Recommended for beginners</span>
+								<h3>Git repository</h3>
+								<p>Paste a public repository URL, or connect GitHub, GitLab, Bitbucket, or Gitea for private repositories.</p>
+							</div>
+							<div class="nz-get-started__choice-footer">
+								<span>{statusAvailable ? plural(status.steps.source.gitProviderCount, "connected provider") : "Unknown"}</span>
+								<a class="nz-get-started__button" href={gitSetupHref}>{project ? "Import repository" : "Create project first"}</a>
+							</div>
+						</article>
+						<article class="nz-get-started__choice">
+							<div>
+								<span class="nz-get-started__choice-kicker">Prebuilt artifact</span>
+								<h3>Container image</h3>
+								<p>Create the application, configure its Docker image and registry, then deploy it. Nearzero treats this as a two-step source setup.</p>
+							</div>
+							<div class="nz-get-started__choice-footer">
+								<span>{status.steps.source.mode === "image" ? "Selected" : "Available"}</span>
+								<a class="nz-get-started__button nz-get-started__button--secondary" href={imageSetupHref}>{project ? "Configure container image" : "Create project first"}</a>
+							</div>
+						</article>
+					</div>
+					<div class="nz-get-started__fact-row nz-get-started__fact-row--subtle">
+						<div>
+							<strong>{service?.name || "Application not created"}</strong>
+							<span>{statusAvailable ? `${sourceLabel} · ${plural(status.steps.service.count, "service")}` : "Source status unavailable"}</span>
+						</div>
+						<a href={dash("/dashboard/settings/git-providers")}>Git provider settings</a>
+					</div>
+				</section>
+
+				<section class:list={["nz-get-started__step", `is-${stepState("deployment")}`]} aria-labelledby="nz-activation-deployment-title">
+					<div class="nz-get-started__step-head">
+						<div class="nz-get-started__step-title">
+							<span>04</span>
+							<div>
+								<h2 id="nz-activation-deployment-title">Complete the first deployment</h2>
+								<p>Nearzero only completes this step after the deployment reports a successful finish.</p>
+							</div>
+						</div>
+						<span class="nz-get-started__status">{stepStateLabel("deployment")}</span>
+					</div>
+					<div class="nz-get-started__fact-row">
+						<div>
+							<strong>{deploymentStatusLabel}</strong>
+							<span>{status.steps.deployment.deploymentId ? `Deployment ${status.steps.deployment.deploymentId}` : service ? `${service.name} is ready to deploy` : "Create an application before deploying"}</span>
+						</div>
+						<a class="nz-get-started__button" href={service ? deploymentsHref : gitSetupHref}>{service ? "Open deployments" : "Create application"}</a>
+					</div>
+				</section>
+
+				<section class:list={["nz-get-started__step", `is-${stepState("https")}`]} aria-labelledby="nz-activation-https-title">
+					<div class="nz-get-started__step-head">
+						<div class="nz-get-started__step-title">
+							<span>05</span>
+							<div>
+								<h2 id="nz-activation-https-title">Verify the public HTTPS URL</h2>
+								<p>First attach HTTPS to a successful deployment. Nearzero then checks public DNS, TLS, and the route before this guide calls it verified.</p>
+							</div>
+						</div>
+						<span class="nz-get-started__status">{stepStateLabel("https")}</span>
+					</div>
+					<div class="nz-get-started__fact-row">
+						<div>
+							<strong>{status.steps.domain.host || "No configured hostname yet"}</strong>
+							<span>
+								{!statusAvailable
+									? "Domain status unavailable"
+									: !status.steps.domain.configured
+										? `${plural(status.steps.domain.count, "domain")} · ${plural(status.steps.domain.httpsCount, "HTTPS domain")}`
+										: !status.canManage
+											? "HTTPS is configured. Ask an owner or administrator to run the live check."
+											: activationHttpsVerificationMessage(httpsVerification)}
+							</span>
+						</div>
+						<div class="nz-get-started__actions">
+							<a class="nz-get-started__button nz-get-started__button--secondary" href={domainsHref}>Review domains</a>
+							{status.canManage && status.steps.domain.configured ? <a class="nz-get-started__button nz-get-started__button--secondary" href={refreshHref}>Recheck HTTPS</a> : null}
+							{liveUrl ? <a class="nz-get-started__button" href={liveUrl} target="_blank" rel="noreferrer">Open verified URL</a> : null}
+						</div>
+					</div>
+				</section>
+			</div>
+		</div>
+
+		<section class="nz-get-started__optional" aria-labelledby="nz-production-readiness-title">
+			<div class="nz-get-started__section-heading">
+				<div>
+					<p class="nz-get-started__eyebrow">Optional after launch</p>
+					<h2 id="nz-production-readiness-title">Production readiness</h2>
+					<p>These recommendations do not block activation and are not reported as complete without a real check.</p>
+				</div>
+				<span class="nz-get-started__quiet-status">Does not block launch</span>
+			</div>
+			<ul class="nz-get-started__readiness-list">
+				<li>
+					<span aria-hidden="true">{httpsVerified ? "✓" : "·"}</span>
+					<div><strong>Public DNS and certificate</strong><small>{httpsVerified ? "Verified by a live Nearzero check" : status.steps.domain.configured ? "Configured; live verification is still required" : "Finish HTTPS configuration and verification above"}</small></div>
+					<a href={domainsHref}>Review</a>
+				</li>
+				<li>
+					<span aria-hidden="true">·</span>
+					<div><strong>Deployment notifications</strong><small>Send failures and completion events to your team.</small></div>
+					<a href={notificationsHref}>Configure</a>
+				</li>
+				<li>
+					<span aria-hidden="true">·</span>
+					<div><strong>Backups and recurring tasks</strong><small>Schedule the recovery jobs your application and data need.</small></div>
+					<a href={tasksHref}>Review tasks</a>
+				</li>
+				<li>
+					<span aria-hidden="true">·</span>
+					<div><strong>Host updates and access</strong><small>Review updates, server IP, owner security, and team access.</small></div>
+					<a href={aboutHref}>Review host</a>
+				</li>
+			</ul>
+		</section>
+
+		<section class="nz-get-started__agent" aria-labelledby="nz-agent-last-title">
+			<div>
+				<p class="nz-get-started__eyebrow">Explore last</p>
+				<h2 id="nz-agent-last-title">Bring in the Agent after the platform path is clear</h2>
+				<p>The Agent can inspect context and assist with operations under explicit server-side policy. It is optional and never required for a normal deployment.</p>
+			</div>
+			<div class="nz-get-started__actions">
+				<a class="nz-get-started__button nz-get-started__button--secondary" href={agentPoliciesHref}>Review policies</a>
+				<a class="nz-get-started__button" href={agentHref}>Open Agent</a>
+			</div>
+		</section>
+	</main>
+</div>

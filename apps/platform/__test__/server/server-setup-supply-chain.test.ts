@@ -3,6 +3,7 @@ import {
 	BUN_BOOTSTRAP_VERSION,
 	DOCKER_COMPOSE_BOOTSTRAP_VERSION,
 	defaultCommand,
+	getServerValidationReadiness,
 	installRClone,
 	isLatestGeneratedCommand,
 	normalizeDockerImageReference,
@@ -14,6 +15,48 @@ import {
 import { describe, expect, test } from "vitest";
 
 describe("remote server bootstrap supply-chain controls", () => {
+	const validRuntime = {
+		docker: { version: "27.0.0", enabled: true },
+		rclone: { version: "1.74.2", enabled: true },
+		nixpacks: { version: "1.40.0", enabled: true },
+		buildpacks: { version: "0.38.2", enabled: true },
+		railpack: { version: "0.14.0", enabled: true },
+		isNearzeroNetworkInstalled: true,
+		isSwarmInstalled: true,
+		isSwarmManager: true,
+		isMainDirectoryInstalled: true,
+		privilegeMode: "sudo",
+		dockerGroupMember: true,
+	};
+
+	test("marks validation ready only when runtime checks and backend state agree", () => {
+		expect(
+			getServerValidationReadiness(validRuntime, {
+				serverStatus: "active",
+				setupStatus: "ready",
+			}),
+		).toMatchObject({ ready: true, checksReady: true, backendReady: true });
+
+		expect(
+			getServerValidationReadiness(
+				{ ...validRuntime, isSwarmManager: false },
+				{ serverStatus: "active", setupStatus: "ready" },
+			),
+		).toMatchObject({
+			ready: false,
+			checksReady: false,
+			backendReady: true,
+			missingChecks: ["Docker Swarm manager"],
+		});
+
+		expect(
+			getServerValidationReadiness(validRuntime, {
+				serverStatus: "inactive",
+				setupStatus: "ready",
+			}),
+		).toMatchObject({ ready: false, checksReady: true, backendReady: false });
+	});
+
 	test("accepts inert pinned ingress references and rejects shell syntax", () => {
 		expect(normalizeTraefikVersion("3.6.17")).toBe("3.6.17");
 		expect(normalizeTraefikVersion("3.7.0-rc.1")).toBe("3.7.0-rc.1");

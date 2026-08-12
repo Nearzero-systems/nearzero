@@ -3,26 +3,95 @@ import {
 	extractSetupTokenFromHash,
 	INSTALL_SETUP_DRAFT_KEY,
 	INSTALL_SETUP_TOKEN_KEY,
-	isPublicInstallSetupStatus,
-	parseInstallSetupStep,
 	type InstallSetupWizardStep,
+	inferInstallBaseDomain,
+	isPublicInstallSetupReadiness,
+	isPublicInstallSetupStatus,
+	isPublicIpv4Input,
+	normalizeBaseDomainInput,
+	type PublicInstallSetupReadiness,
 	type PublicInstallSetupStatus,
+	parseInstallSetupStep,
+	type SetupCheckState,
+	suggestInstallDomains,
 	wizardStepsForStatus,
 } from "@/lib/install-setup";
 import { showToast } from "@/scripts/ui";
 
+type DnsMode = "managed" | "external";
+
 type Draft = {
+	baseDomain?: string;
 	managementHostname?: string;
 	adminEmail?: string;
 	publicIp?: string;
 	managedDnsZone?: string;
 	managedDnsSoaEmail?: string;
+	dnsMode?: DnsMode;
 	skipManagedDns?: boolean;
+};
+
+type DnsRecord = {
+	id: string;
+	type: "A" | "NS";
+	name: string;
+	value: string;
+};
+
+const STEP_NAMES = [
+	"welcome",
+	"management",
+	"zone",
+	"review",
+	"verify",
+	"done",
+] as const;
+
+const STEP_COPY: Record<
+	InstallSetupWizardStep,
+	{ title: string; subtitle: string; action: string }
+> = {
+	welcome: {
+		title: "Set up your Nearzero server",
+		subtitle:
+			"Connect a domain, turn on HTTPS, and choose how deployed apps receive URLs.",
+		action: "Start setup",
+	},
+	management: {
+		title: "Choose your Nearzero URL",
+		subtitle:
+			"Enter one domain you control. Nearzero suggests safe subdomains without moving your website or email.",
+		action: "Continue",
+	},
+	zone: {
+		title: "Choose how app URLs work",
+		subtitle:
+			"Nearzero can assign a domain to every application and preview automatically.",
+		action: "Review setup",
+	},
+	review: {
+		title: "Review your domain setup",
+		subtitle:
+			"Nearzero applies these names once. Changing them later requires a domain migration.",
+		action: "Apply this configuration",
+	},
+	verify: {
+		title: "Connect DNS and verify HTTPS",
+		subtitle:
+			"Add the records at your DNS provider. Nearzero checks the public result without changing your root domain.",
+		action: "Continue",
+	},
+	done: {
+		title: "Nearzero is ready",
+		subtitle:
+			"Your public console is secured. Create the first owner account to finish setup.",
+		action: "Continue",
+	},
 };
 
 function readDraft(): Draft {
 	try {
-		const raw = sessionStorage.getItem(INSTALL_SETUP_DRAFT_KEY);
+		const raw = localStorage.getItem(INSTALL_SETUP_DRAFT_KEY);
 		if (!raw) return {};
 		const parsed = JSON.parse(raw) as Draft;
 		return parsed && typeof parsed === "object" ? parsed : {};
@@ -32,7 +101,7 @@ function readDraft(): Draft {
 }
 
 function writeDraft(draft: Draft) {
-	sessionStorage.setItem(INSTALL_SETUP_DRAFT_KEY, JSON.stringify(draft));
+	localStorage.setItem(INSTALL_SETUP_DRAFT_KEY, JSON.stringify(draft));
 }
 
 function persistToken(token: string | null) {
@@ -48,39 +117,74 @@ function panel(root: HTMLElement, name: InstallSetupWizardStep) {
 	return root.querySelector<HTMLElement>(`[data-setup-panel="${name}"]`);
 }
 
-function setBusy(button: HTMLButtonElement | null, busy: boolean) {
+function setButtonBusy(button: HTMLButtonElement | null, busy: boolean) {
 	if (!button) return;
 	button.disabled = busy;
 	button.setAttribute("aria-busy", busy ? "true" : "false");
 	const spinner = button.querySelector<HTMLElement>("[data-auth-btn-spinner]");
-	const label = button.querySelector<HTMLElement>("[data-setup-next-label]");
 	if (spinner) spinner.classList.toggle("hidden", !busy);
-	if (label && busy) label.textContent = "Working…";
+}
+
+function setText(root: ParentNode, selector: string, value: string) {
+	const element = root.querySelector<HTMLElement>(selector);
+	if (element) element.textContent = value;
+}
+
+function appendRecordPart(
+	item: HTMLLIElement,
+	label: string,
+	value: string,
+	code = false,
+) {
+	const wrap = document.createElement("span");
+	const small = document.createElement("small");
+	small.textContent = label;
+	const content = document.createElement(code ? "code" : "strong");
+	content.textContent = value;
+	wrap.append(small, content);
+	item.append(wrap);
+}
+
+async function writeClipboard(value: string) {
+	if (!navigator.clipboard?.writeText) {
+		throw new Error("Clipboard access is unavailable in this browser");
+	}
+	await navigator.clipboard.writeText(value);
 }
 
 export function bindInstallSetupWizard(root: HTMLElement) {
-	const fromHash = extractSetupTokenFromHash(window.location.hash);
-	if (fromHash) {
-		persistToken(fromHash);
-		history.replaceState(
-			null,
-			"",
-			`${window.location.pathname}${window.location.search}`,
-		);
-	}
+	const hashToken = extractSetupTokenFromHash(window.location.hash);
+	if (hashToken) persistToken(hashToken);
 
 	let status = JSON.parse(
 		root.dataset.setupStatus || "{}",
 	) as PublicInstallSetupStatus;
 	let steps = wizardStepsForStatus(status);
-	const initial =
-		parseInstallSetupStep(root.dataset.initialStep) ||
-		parseInstallSetupStep(new URL(window.location.href).searchParams.get("step")) ||
-		(status.resumeStep as InstallSetupWizardStep) ||
-		"welcome";
-	let stepIndex = Math.max(0, steps.indexOf(initial));
+	const configured = () =>
+		status.phase === "configured" ||
+		(status.managementConfigured && !status.canSubmit);
+	const initialRequested = parseInstallSetupStep(
+		new URL(window.location.href).searchParams.get("step"),
+	);
+	const initialFromData = parseInstallSetupStep(root.dataset.initialStep);
+	const requestedInitial = initialFromData || initialRequested || "welcome";
+	const safeInitial = configured()
+		? "verify"
+		: steps.includes(requestedInitial)
+			? requestedInitial
+			: "welcome";
+	let stepIndex = Math.max(0, steps.indexOf(safeInitial));
+	let readiness: PublicInstallSetupReadiness | null = null;
+	let readinessTimer: number | null = null;
+	let pollingStartedAt = 0;
+	let checkingReadiness = false;
+	let managementHostnameEdited = false;
+	let managedZoneEdited = false;
 
 	const progress = root.querySelector<HTMLElement>("[data-setup-progress]");
+	const progressBar = root.querySelector<HTMLElement>(
+		"[data-setup-progress-bar]",
+	);
 	const title = root.querySelector<HTMLElement>("[data-setup-title]");
 	const subtitle = root.querySelector<HTMLElement>("[data-setup-subtitle]");
 	const errorEl = root.querySelector<HTMLElement>("[data-setup-error]");
@@ -88,22 +192,64 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	const nextBtn = root.querySelector<HTMLButtonElement>("[data-setup-next]");
 	const nextLabel = root.querySelector<HTMLElement>("[data-setup-next-label]");
 	const checkBtn = root.querySelector<HTMLButtonElement>("[data-setup-check]");
-	const registerLink = root.querySelector<HTMLAnchorElement>("[data-setup-register]");
-	const verifyStatus = root.querySelector<HTMLElement>("[data-setup-verify-status]");
-	const dnsInstructions = root.querySelector<HTMLElement>(
+	const registerLink = root.querySelector<HTMLAnchorElement>(
+		"[data-setup-register]",
+	);
+	const openManagementLink = root.querySelector<HTMLAnchorElement>(
+		"[data-setup-open-management]",
+	);
+	const canonicalUrl = root.querySelector<HTMLElement>(
+		"[data-setup-canonical-url]",
+	);
+	const verifyStatus = root.querySelector<HTMLElement>(
+		"[data-setup-verify-status]",
+	);
+	const lastChecked = root.querySelector<HTMLElement>(
+		"[data-setup-last-checked]",
+	);
+	const dnsInstructions = root.querySelector<HTMLOListElement>(
 		"[data-setup-dns-instructions]",
 	);
+	const copyAllButton = root.querySelector<HTMLButtonElement>(
+		"[data-setup-copy-dns]",
+	);
 
+	const baseDomain = root.querySelector<HTMLInputElement>(
+		"[data-setup-base-domain]",
+	);
 	const managementHostname = root.querySelector<HTMLInputElement>(
 		"[data-setup-management-hostname]",
 	);
-	const adminEmail = root.querySelector<HTMLInputElement>("[data-setup-admin-email]");
-	const publicIp = root.querySelector<HTMLInputElement>("[data-setup-public-ip]");
-	const managedZone = root.querySelector<HTMLInputElement>("[data-setup-managed-zone]");
-	const soaEmail = root.querySelector<HTMLInputElement>("[data-setup-soa-email]");
-	const skipZone = root.querySelector<HTMLInputElement>("[data-setup-skip-zone]");
+	const adminEmail = root.querySelector<HTMLInputElement>(
+		"[data-setup-admin-email]",
+	);
+	const publicIp = root.querySelector<HTMLInputElement>(
+		"[data-setup-public-ip]",
+	);
+	const managedZone = root.querySelector<HTMLInputElement>(
+		"[data-setup-managed-zone]",
+	);
+	const soaEmail = root.querySelector<HTMLInputElement>(
+		"[data-setup-soa-email]",
+	);
+	const skipZone = root.querySelector<HTMLInputElement>(
+		"[data-setup-skip-zone]",
+	);
+	const managedDnsMode = root.querySelector<HTMLInputElement>(
+		'[data-setup-dns-mode="managed"]',
+	);
+	const externalDnsMode = root.querySelector<HTMLInputElement>(
+		'[data-setup-dns-mode="external"]',
+	);
+	const zoneFields = root.querySelector<HTMLElement>(
+		"[data-setup-zone-fields]",
+	);
 
 	const draft = readDraft();
+	managementHostnameEdited = Boolean(draft.managementHostname);
+	managedZoneEdited = Boolean(draft.managedDnsZone);
+	const inferredBase = inferInstallBaseDomain(status);
+	if (baseDomain) baseDomain.value = draft.baseDomain || inferredBase;
 	if (managementHostname && draft.managementHostname) {
 		managementHostname.value = draft.managementHostname;
 	}
@@ -115,25 +261,22 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	if (soaEmail && draft.managedDnsSoaEmail) {
 		soaEmail.value = draft.managedDnsSoaEmail;
 	}
-	if (skipZone) skipZone.checked = Boolean(draft.skipManagedDns);
+	const initialDnsMode: DnsMode =
+		draft.dnsMode ||
+		(draft.skipManagedDns ||
+		status.managedDnsSkipped ||
+		!status.managedDnsEnabled
+			? "external"
+			: "managed");
+	if (managedDnsMode) managedDnsMode.checked = initialDnsMode === "managed";
+	if (externalDnsMode) externalDnsMode.checked = initialDnsMode === "external";
+	if (skipZone) skipZone.checked = initialDnsMode === "external";
 
-	const titles: Record<InstallSetupWizardStep, string> = {
-		welcome: "Connect this Nearzero host",
-		management: "Management domain",
-		zone: "Application domain",
-		verify: "Verify DNS",
-		done: "Ready for the first owner",
-	};
-	const subtitles: Record<InstallSetupWizardStep, string> = {
-		welcome:
-			"One-time setup assigns the public management hostname before the first owner account is created.",
-		management:
-			"This hostname becomes the console URL. It is not the application zone used by deployed services.",
-		zone: "Optional. Skip if you will use an external DNS provider for application hostnames.",
-		verify:
-			"Finish the A record (and NS delegation when using managed DNS), then continue.",
-		done: "Create the first owner account with the configured administrator email.",
-	};
+	function currentDnsMode(): DnsMode {
+		return managedDnsMode?.checked && status.managedDnsEnabled
+			? "managed"
+			: "external";
+	}
 
 	function showError(message: string | null) {
 		if (!errorEl) return;
@@ -146,125 +289,292 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		errorEl.classList.remove("hidden");
 	}
 
+	function syncDomainSuggestions() {
+		const plan = suggestInstallDomains(baseDomain?.value || "");
+		if (plan) {
+			if (
+				managementHostname &&
+				!managementHostnameEdited &&
+				!status.managementHostname
+			) {
+				managementHostname.value = plan.managementHostname;
+			}
+			if (managedZone && !managedZoneEdited && !status.managedDnsZone) {
+				managedZone.value = plan.managedDnsZone;
+			}
+		}
+		setText(
+			root,
+			"[data-setup-derived-management]",
+			managementHostname?.value.trim() || "nearzero.example.com",
+		);
+		setText(
+			root,
+			"[data-setup-derived-zone]",
+			managedZone?.value.trim() || "apps.example.com",
+		);
+	}
+
+	function syncDnsChoice() {
+		const managed = currentDnsMode() === "managed";
+		if (skipZone) skipZone.checked = !managed;
+		zoneFields?.classList.toggle("hidden", !managed);
+	}
+
 	function captureDraft() {
 		writeDraft({
+			baseDomain: baseDomain?.value.trim(),
 			managementHostname: managementHostname?.value.trim(),
 			adminEmail: adminEmail?.value.trim(),
 			publicIp: publicIp?.value.trim(),
 			managedDnsZone: managedZone?.value.trim(),
 			managedDnsSoaEmail: soaEmail?.value.trim(),
-			skipManagedDns: Boolean(skipZone?.checked),
+			dnsMode: currentDnsMode(),
+			skipManagedDns: currentDnsMode() === "external",
 		});
+	}
+
+	function managementUrl() {
+		const host =
+			managementHostname?.value.trim() || status.managementHostname || "";
+		return host ? `https://${host}` : "";
+	}
+
+	function updateCanonicalLinks() {
+		const url = managementUrl();
+		if (canonicalUrl)
+			canonicalUrl.textContent = url || "Waiting for your domain";
+		if (openManagementLink) {
+			openManagementLink.href = url || "#";
+		}
+		if (registerLink) {
+			registerLink.href = url ? `${url}/register` : "/register";
+		}
+	}
+
+	function updateReview() {
+		const managed = currentDnsMode() === "managed";
+		setText(
+			root,
+			"[data-setup-review-management]",
+			managementUrl() || "Not configured",
+		);
+		setText(
+			root,
+			"[data-setup-review-dns-mode]",
+			managed ? "Nearzero DNS" : "External DNS",
+		);
+		setText(
+			root,
+			"[data-setup-review-zone]",
+			managed ? managedZone?.value.trim() || "Not configured" : "Not required",
+		);
+		setText(
+			root,
+			"[data-setup-review-ip]",
+			publicIp?.value.trim() || "Not configured",
+		);
+		setText(
+			root,
+			"[data-setup-review-email]",
+			adminEmail?.value.trim() || "Not configured",
+		);
+		setText(
+			root,
+			"[data-setup-review-ports]",
+			managed ? "TCP 80, 443 · UDP/TCP 53" : "TCP 80, 443",
+		);
+	}
+
+	function recordsForConfiguration(): DnsRecord[] {
+		const host =
+			managementHostname?.value.trim() || status.managementHostname || "";
+		const ip = publicIp?.value.trim() || status.publicIp || "";
+		const records: DnsRecord[] = [];
+		if (currentDnsMode() !== "managed") {
+			records.push({ id: "management-a", type: "A", name: host, value: ip });
+			return records;
+		}
+		const zone = managedZone?.value.trim() || status.managedDnsZone || "";
+		const managementIsInsideZone =
+			Boolean(zone) && (host === zone || host.endsWith(`.${zone}`));
+		if (!managementIsInsideZone) {
+			records.push({ id: "management-a", type: "A", name: host, value: ip });
+		}
+		if (!zone) return records;
+		for (const nameserver of ["ns1", "ns2"] as const) {
+			records.push({
+				id: `${nameserver}-a`,
+				type: "A",
+				name: `${nameserver}.${zone}`,
+				value: ip,
+			});
+		}
+		for (const nameserver of ["ns1", "ns2"] as const) {
+			records.push({
+				id: `${nameserver}-ns`,
+				type: "NS",
+				name: zone,
+				value: `${nameserver}.${zone}`,
+			});
+		}
+		return records;
 	}
 
 	function renderDnsInstructions() {
 		if (!dnsInstructions) return;
-		const host =
-			managementHostname?.value.trim() || status.managementHostname || "nearzero.example.com";
-		const ip = publicIp?.value.trim() || status.publicIp || "<public-ip>";
-		const zone =
-			managedZone?.value.trim() || status.managedDnsZone || null;
-		const items = [
-			`A record: <code class="rounded bg-[#f7f7f8] px-1">${host}</code> → <code class="rounded bg-[#f7f7f8] px-1">${ip}</code>`,
-			"Allow inbound TCP 80 and 443 to this server for Let's Encrypt and the console.",
-		];
-		if (zone && !skipZone?.checked) {
-			items.push(
-				`NS records for <code class="rounded bg-[#f7f7f8] px-1">${zone}</code> → <code class="rounded bg-[#f7f7f8] px-1">ns1.${zone}</code> and <code class="rounded bg-[#f7f7f8] px-1">ns2.${zone}</code>`,
-				`Glue A records: <code class="rounded bg-[#f7f7f8] px-1">ns1.${zone}</code> and <code class="rounded bg-[#f7f7f8] px-1">ns2.${zone}</code> → <code class="rounded bg-[#f7f7f8] px-1">${ip}</code>`,
-			);
+		dnsInstructions.replaceChildren();
+		for (const record of recordsForConfiguration()) {
+			const item = document.createElement("li");
+			item.dataset.setupDnsRecord = record.id;
+			appendRecordPart(item, "Type", record.type);
+			appendRecordPart(item, "Name", record.name, true);
+			appendRecordPart(item, "Value", record.value, true);
+			const button = document.createElement("button");
+			button.type = "button";
+			button.dataset.setupCopyRecord = record.id;
+			button.setAttribute("aria-label", `Copy ${record.type} record`);
+			button.textContent = "Copy";
+			button.addEventListener("click", async () => {
+				try {
+					await writeClipboard(
+						`${record.type}\t${record.name}\t${record.value}`,
+					);
+					showToast("DNS record copied", "success");
+				} catch (error) {
+					showToast(
+						error instanceof Error ? error.message : "Could not copy record",
+						"error",
+					);
+				}
+			});
+			item.append(button);
+			dnsInstructions.append(item);
 		}
-		dnsInstructions.innerHTML = items.map((item) => `<li>${item}</li>`).join("");
 	}
 
-	async function refreshStatus() {
-		const response = await fetch("/api/install/setup-status", {
-			method: "GET",
+	async function exchangeSetupSession(token: string) {
+		const response = await fetch("/api/install/setup/session", {
+			method: "POST",
 			credentials: "same-origin",
-			headers: { accept: "application/json" },
-			cache: "no-store",
+			headers: {
+				accept: "application/json",
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({ token }),
 		});
-		if (!response.ok) return status;
-		const value = (await response.json().catch(() => null)) as unknown;
-		if (isPublicInstallSetupStatus(value)) {
-			status = value;
-			steps = wizardStepsForStatus(status);
-			root.dataset.setupStatus = JSON.stringify(status);
-		}
-		return status;
-	}
-
-	function updateVerifyCopy() {
-		if (!verifyStatus) return;
-		if (status.managementConfigured) {
-			verifyStatus.textContent =
-				"Management hostname saved. Open the public hostname over HTTPS after DNS propagates; certificate issuance can take a few minutes.";
-		} else {
-			verifyStatus.textContent =
-				"Submit the management domain first so Nearzero can configure Traefik and Let's Encrypt.";
+		const body = await response.json().catch(() => null);
+		if (!response.ok) {
+			throw new Error(authErrorMessage(body, "Invalid or expired setup link"));
 		}
 	}
 
-	function render() {
-		const step = steps[stepIndex] ?? "welcome";
-		for (const name of ["welcome", "management", "zone", "verify", "done"] as const) {
-			const el = panel(root, name);
-			if (!el) continue;
-			const active = name === step;
-			el.classList.toggle("hidden", !active);
-			el.classList.toggle("flex", active);
+	function lockInput(
+		input: HTMLInputElement | null,
+		locked: boolean,
+		value: string | null,
+	) {
+		if (!input || !value) return;
+		if (locked || !input.value.trim()) input.value = value;
+		if (!locked) return;
+		input.readOnly = true;
+		input.dataset.setupLocked = "true";
+		input.setAttribute(
+			"aria-description",
+			"This value was fixed by the installer",
+		);
+	}
+
+	function applyAuthorizedConfiguration(value: PublicInstallSetupReadiness) {
+		const { configuration } = value;
+		const { lockedFields } = configuration;
+		lockInput(
+			managementHostname,
+			lockedFields.managementHostname,
+			configuration.managementHostname,
+		);
+		if (lockedFields.managementHostname && configuration.managementHostname) {
+			managementHostnameEdited = true;
 		}
-		if (progress) {
-			progress.textContent = `Step ${stepIndex + 1} of ${steps.length}`;
-		}
-		if (title) title.textContent = titles[step];
-		if (subtitle) subtitle.textContent = subtitles[step];
-		if (backBtn) backBtn.classList.toggle("hidden", stepIndex === 0);
-		if (nextBtn) {
-			const hideNext = step === "done";
-			nextBtn.classList.toggle("hidden", hideNext);
-			if (nextLabel) {
-				nextLabel.textContent =
-					step === "verify"
-						? "Continue"
-						: step === "management" || step === "zone"
-							? "Save and continue"
-							: "Continue";
+		lockInput(adminEmail, lockedFields.adminEmail, configuration.adminEmail);
+		lockInput(publicIp, lockedFields.publicIp, configuration.publicIp);
+		lockInput(
+			managedZone,
+			lockedFields.managedDnsZone,
+			configuration.managedDnsZone,
+		);
+		if (lockedFields.managedDnsZone && configuration.managedDnsZone) {
+			managedZoneEdited = true;
+			if (managedDnsMode) managedDnsMode.checked = true;
+			if (externalDnsMode) {
+				externalDnsMode.checked = false;
+				externalDnsMode.disabled = true;
 			}
 		}
-		if (checkBtn) checkBtn.classList.toggle("hidden", step !== "verify");
-		if (registerLink) registerLink.classList.toggle("hidden", step !== "done");
-		if (step === "verify") {
-			renderDnsInstructions();
-			updateVerifyCopy();
-		}
-		const url = new URL(window.location.href);
-		url.searchParams.set("step", step);
-		history.replaceState(null, "", `${url.pathname}${url.search}`);
+		lockInput(
+			soaEmail,
+			lockedFields.managedDnsSoaEmail,
+			configuration.managedDnsSoaEmail,
+		);
+		syncDomainSuggestions();
+		syncDnsChoice();
+		captureDraft();
 	}
 
-	async function submitSetup() {
-		const token = readToken();
-		if (!token) {
-			throw new Error(
-				"Missing setup token. Open the setup URL printed by the installer again.",
+	const setupSessionPromise = (async () => {
+		const token = hashToken || readToken();
+		if (!token) return;
+		await exchangeSetupSession(token);
+		// The server now owns the credential in a scoped HttpOnly cookie. Keeping
+		// the plaintext token in JavaScript storage would undo that protection.
+		sessionStorage.removeItem(INSTALL_SETUP_TOKEN_KEY);
+		if (hashToken) {
+			history.replaceState(
+				null,
+				"",
+				`${window.location.pathname}${window.location.search}`,
 			);
 		}
+	})();
+	setupSessionPromise.catch((error) => {
+		showError(error instanceof Error ? error.message : "Setup link is invalid");
+	});
+
+	const authorizedConfigurationPromise = setupSessionPromise
+		.then(async () => {
+			if (configured()) return;
+			const response = await fetch("/api/install/setup/readiness", {
+				method: "POST",
+				credentials: "same-origin",
+				headers: { accept: "application/json" },
+			});
+			if (!response.ok) return;
+			const body = (await response.json().catch(() => null)) as unknown;
+			if (isPublicInstallSetupReadiness(body)) {
+				applyAuthorizedConfiguration(body);
+			}
+		})
+		.catch(() => {
+			// Submit and readiness endpoints still enforce installer locks. This
+			// background prefill is a convenience, never the authority boundary.
+		});
+
+	async function submitSetup() {
+		await setupSessionPromise;
 		captureDraft();
+		const token = readToken();
 		const payload = {
-			token,
+			...(token ? { token } : {}),
 			managementHostname: managementHostname?.value.trim() || "",
 			adminEmail: adminEmail?.value.trim() || "",
 			publicIp: publicIp?.value.trim() || undefined,
 			managedDnsZone:
-				skipZone?.checked || !status.managedDnsEnabled
+				currentDnsMode() === "external"
 					? null
 					: managedZone?.value.trim() || null,
 			managedDnsSoaEmail:
-				skipZone?.checked || !status.managedDnsEnabled
-					? null
-					: soaEmail?.value.trim() || null,
-			skipManagedDns: Boolean(skipZone?.checked) || !status.managedDnsEnabled,
+				currentDnsMode() === "external" ? null : soaEmail?.value.trim() || null,
+			skipManagedDns: currentDnsMode() === "external",
 		};
 		const response = await fetch("/api/install/setup", {
 			method: "POST",
@@ -283,45 +593,345 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			status = body;
 			steps = wizardStepsForStatus(status);
 		}
-		showToast("Management domain saved", "success");
+		localStorage.removeItem(INSTALL_SETUP_DRAFT_KEY);
+		updateCanonicalLinks();
+		showToast("Domain configuration applied", "success");
+	}
+
+	function readinessLabel(state: SetupCheckState) {
+		switch (state) {
+			case "ready":
+				return "Ready";
+			case "pending":
+				return "Waiting";
+			case "failed":
+				return "Needs attention";
+			case "warning":
+				return "Check";
+			case "not_applicable":
+				return "Not required";
+		}
+	}
+
+	function renderReadinessRow(
+		id: string,
+		state: SetupCheckState,
+		message: string,
+	) {
+		const row = root.querySelector<HTMLElement>(
+			`[data-setup-readiness-row="${id}"]`,
+		);
+		if (!row) return;
+		row.dataset.readinessState =
+			state === "ready"
+				? "ready"
+				: state === "failed"
+					? "error"
+					: state === "pending"
+						? "checking"
+						: "idle";
+		setText(row, "[data-setup-readiness-status]", readinessLabel(state));
+		setText(row, "[data-setup-readiness-message]", message);
+	}
+
+	function renderCheckingState() {
+		for (const id of [
+			"management-dns",
+			"https-certificate",
+			"zone-delegated",
+			"authoritative-soa",
+		]) {
+			renderReadinessRow(id, "pending", "Checking public readiness…");
+		}
+	}
+
+	function canFinish() {
+		return readiness?.ready === true;
+	}
+
+	function renderReadiness(value: PublicInstallSetupReadiness) {
+		readiness = value;
+		const managementDnsState: SetupCheckState =
+			value.management.aRecord.status === "ready"
+				? "ready"
+				: value.management.aRecord.status === "not_configured"
+					? "failed"
+					: "pending";
+		const managementHttpsState: SetupCheckState =
+			value.management.https.status === "ready"
+				? "ready"
+				: value.management.https.status === "failed"
+					? "failed"
+					: "pending";
+		renderReadinessRow(
+			"management-dns",
+			managementDnsState,
+			value.management.aRecord.diagnostic,
+		);
+		renderReadinessRow(
+			"https-certificate",
+			managementHttpsState,
+			value.management.https.diagnostic,
+		);
+		const application = value.managedDns;
+		const applicationState: SetupCheckState = application.skipped
+			? "not_applicable"
+			: application.status === "ready"
+				? "ready"
+				: application.status === "not_configured"
+					? "failed"
+					: "pending";
+		renderReadinessRow(
+			"zone-delegated",
+			application.zoneName
+				? application.delegated
+					? "ready"
+					: applicationState
+				: "not_applicable",
+			application.zoneName
+				? application.delegated
+					? "Public NS records point to Nearzero."
+					: application.diagnostics[0] || "Add the NS records shown above."
+				: "External DNS was selected.",
+		);
+		renderReadinessRow(
+			"authoritative-soa",
+			application.zoneName
+				? application.authoritativeSoa
+					? "ready"
+					: applicationState
+				: "not_applicable",
+			application.zoneName
+				? application.authoritativeSoa
+					? "CoreDNS answers authoritatively on port 53."
+					: application.diagnostics.at(-1) ||
+						"Allow inbound UDP and TCP 53 to this server."
+				: "External DNS was selected.",
+		);
+		if (lastChecked) {
+			const checked = new Date(value.checkedAt);
+			lastChecked.textContent = Number.isNaN(checked.getTime())
+				? "Checked now"
+				: `Checked ${checked.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+		}
+		if (verifyStatus) {
+			verifyStatus.textContent = canFinish()
+				? "The HTTPS console and selected application DNS mode are ready. Continue to create the first owner."
+				: managementDnsState !== "ready"
+					? value.management.aRecord.diagnostic
+					: managementHttpsState !== "ready"
+						? value.management.https.diagnostic
+						: application.diagnostics[0] ||
+							"Finish the application-zone delegation and check again.";
+		}
+		render();
+	}
+
+	async function checkReadiness(options: { quiet?: boolean } = {}) {
+		if (checkingReadiness) return;
+		checkingReadiness = true;
+		await setupSessionPromise;
+		setButtonBusy(checkBtn, true);
+		if (checkBtn) checkBtn.textContent = "Checking…";
+		renderCheckingState();
+		try {
+			const token = readToken();
+			const response = await fetch("/api/install/setup/readiness", {
+				method: "POST",
+				credentials: "same-origin",
+				headers: {
+					accept: "application/json",
+					...(token ? { "x-nearzero-setup-token": token } : {}),
+				},
+			});
+			const body = await response.json().catch(() => null);
+			if (!response.ok) {
+				throw new Error(
+					authErrorMessage(body, "Could not check DNS readiness"),
+				);
+			}
+			if (!isPublicInstallSetupReadiness(body)) {
+				throw new Error("Nearzero returned an invalid readiness response");
+			}
+			renderReadiness(body);
+			if (!options.quiet) {
+				showToast(
+					canFinish() ? "Public console is ready" : "Readiness refreshed",
+					"success",
+				);
+			}
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "Could not check readiness";
+			showError(message);
+			if (!options.quiet) showToast(message, "error");
+		} finally {
+			checkingReadiness = false;
+			setButtonBusy(checkBtn, false);
+			if (checkBtn) checkBtn.textContent = "Check again";
+			scheduleReadinessCheck();
+		}
+	}
+
+	function clearReadinessTimer() {
+		if (readinessTimer !== null) window.clearTimeout(readinessTimer);
+		readinessTimer = null;
+	}
+
+	function scheduleReadinessCheck() {
+		clearReadinessTimer();
+		const step = steps[stepIndex];
+		if (
+			step !== "verify" ||
+			document.hidden ||
+			!navigator.onLine ||
+			canFinish()
+		) {
+			return;
+		}
+		if (!pollingStartedAt) pollingStartedAt = Date.now();
+		const elapsed = Date.now() - pollingStartedAt;
+		const delay = elapsed < 120_000 ? 10_000 : 30_000;
+		readinessTimer = window.setTimeout(() => {
+			void checkReadiness({ quiet: true });
+		}, delay);
+	}
+
+	function renderStepRail(step: InstallSetupWizardStep) {
+		for (const item of root.querySelectorAll<HTMLElement>(
+			"[data-setup-step-item]",
+		)) {
+			const name = parseInstallSetupStep(item.dataset.setupStepItem);
+			if (!name || !steps.includes(name)) {
+				item.classList.add("hidden");
+				continue;
+			}
+			item.classList.remove("hidden");
+			const index = steps.indexOf(name);
+			const number = item.querySelector<HTMLElement>(
+				".nz-install-setup__step-number",
+			);
+			if (number) number.textContent = String(index + 1);
+			item.dataset.stepState =
+				index < stepIndex ? "complete" : name === step ? "current" : "upcoming";
+			item.setAttribute("aria-current", name === step ? "step" : "false");
+		}
+	}
+
+	function render() {
+		const step = steps[stepIndex] ?? "welcome";
+		for (const name of STEP_NAMES) {
+			const element = panel(root, name);
+			if (!element) continue;
+			const active = name === step;
+			element.classList.toggle("hidden", !active);
+			element.classList.toggle("flex", active);
+		}
+		const copy = STEP_COPY[step];
+		if (progress)
+			progress.textContent = `Step ${stepIndex + 1} of ${steps.length}`;
+		if (progressBar) {
+			progressBar.style.width = `${((stepIndex + 1) / steps.length) * 100}%`;
+		}
+		if (title) title.textContent = copy.title;
+		if (subtitle) subtitle.textContent = copy.subtitle;
+		renderStepRail(step);
+
+		const isApplied = configured();
+		if (backBtn) {
+			backBtn.classList.toggle("hidden", stepIndex === 0 || isApplied);
+		}
+		if (nextBtn) {
+			const showNext = step !== "done" && (step !== "verify" || canFinish());
+			nextBtn.classList.toggle("hidden", !showNext);
+			if (nextLabel) nextLabel.textContent = copy.action;
+		}
+		if (checkBtn) checkBtn.classList.toggle("hidden", step !== "verify");
+		if (registerLink) registerLink.classList.toggle("hidden", step !== "done");
+
+		if (step === "management") syncDomainSuggestions();
+		if (step === "zone") syncDnsChoice();
+		if (step === "review") updateReview();
+		if (step === "verify") {
+			renderDnsInstructions();
+			updateCanonicalLinks();
+			if (!readiness && !checkingReadiness) {
+				window.setTimeout(() => void checkReadiness({ quiet: true }), 0);
+			}
+		} else {
+			clearReadinessTimer();
+		}
+		if (step === "done") updateCanonicalLinks();
+
+		const url = new URL(window.location.href);
+		url.searchParams.set("step", step);
+		history.replaceState(null, "", `${url.pathname}${url.search}`);
+	}
+
+	function validateManagement() {
+		const normalized = normalizeBaseDomainInput(baseDomain?.value || "");
+		baseDomain?.setCustomValidity(
+			normalized
+				? ""
+				: "Enter a domain only, for example example.com. Do not include https:// or a path.",
+		);
+		if (!baseDomain?.reportValidity()) return false;
+		if (!managementHostname?.reportValidity()) return false;
+		if (!adminEmail?.reportValidity()) return false;
+		publicIp?.setCustomValidity(
+			isPublicIpv4Input(publicIp?.value || "")
+				? ""
+				: "Enter this server's publicly routable IPv4 address. Private, loopback, and documentation addresses cannot receive public DNS traffic.",
+		);
+		if (!publicIp?.reportValidity()) return false;
+		return true;
+	}
+
+	function validateZone() {
+		if (currentDnsMode() === "external") return true;
+		if (!managedZone?.value.trim()) {
+			managedZone?.setCustomValidity(
+				"Enter the application zone Nearzero should manage.",
+			);
+			managedZone?.reportValidity();
+			return false;
+		}
+		managedZone.setCustomValidity("");
+		if (!managedZone.reportValidity()) return false;
+		const normalizedBase = normalizeBaseDomainInput(baseDomain?.value || "");
+		if (
+			normalizedBase &&
+			managedZone.value.trim().toLowerCase() === normalizedBase
+		) {
+			showError(
+				`Delegating ${normalizedBase} would move all DNS for the root domain. Use apps.${normalizedBase} unless you intend a full migration.`,
+			);
+			return false;
+		}
+		return true;
 	}
 
 	async function goNext() {
 		showError(null);
 		const step = steps[stepIndex] ?? "welcome";
 		try {
-			if (step === "management") {
-				if (!managementHostname?.reportValidity() || !adminEmail?.reportValidity()) {
-					return;
-				}
-				if (!publicIp?.reportValidity()) return;
-				// If zone step follows, wait to submit until after zone choices.
-				if (steps.includes("zone")) {
-					captureDraft();
-					stepIndex += 1;
-					render();
-					return;
-				}
-				setBusy(nextBtn, true);
+			if (step === "management") await authorizedConfigurationPromise;
+			if (step === "management" && !validateManagement()) return;
+			if (step === "zone" && !validateZone()) return;
+			captureDraft();
+			if (step === "review") {
+				setButtonBusy(nextBtn, true);
+				if (nextLabel) nextLabel.textContent = "Configuring Nearzero…";
 				await submitSetup();
-				setBusy(nextBtn, false);
+				setButtonBusy(nextBtn, false);
 				stepIndex = steps.indexOf("verify");
-				render();
-				return;
-			}
-			if (step === "zone") {
-				if (!skipZone?.checked && managedZone?.value.trim()) {
-					if (!managedZone.reportValidity()) return;
-				}
-				setBusy(nextBtn, true);
-				await submitSetup();
-				setBusy(nextBtn, false);
-				stepIndex = steps.indexOf("verify");
+				readiness = null;
+				pollingStartedAt = Date.now();
 				render();
 				return;
 			}
 			if (step === "verify") {
-				await refreshStatus();
+				if (!canFinish()) return;
 				stepIndex = steps.indexOf("done");
 				render();
 				return;
@@ -331,7 +941,8 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 				render();
 			}
 		} catch (error) {
-			setBusy(nextBtn, false);
+			setButtonBusy(nextBtn, false);
+			if (nextLabel) nextLabel.textContent = STEP_COPY[step].action;
 			const message =
 				error instanceof Error ? error.message : "Setup failed unexpectedly";
 			showError(message);
@@ -341,30 +952,66 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 
 	backBtn?.addEventListener("click", () => {
 		showError(null);
-		if (stepIndex > 0) {
+		if (!configured() && stepIndex > 0) {
 			stepIndex -= 1;
 			render();
 		}
 	});
-	nextBtn?.addEventListener("click", () => {
-		void goNext();
+	nextBtn?.addEventListener("click", () => void goNext());
+	checkBtn?.addEventListener("click", () => void checkReadiness());
+	copyAllButton?.addEventListener("click", async () => {
+		try {
+			const value = recordsForConfiguration()
+				.map((record) => `${record.type}\t${record.name}\t${record.value}`)
+				.join("\n");
+			await writeClipboard(value);
+			showToast("DNS records copied", "success");
+		} catch (error) {
+			showToast(
+				error instanceof Error ? error.message : "Could not copy DNS records",
+				"error",
+			);
+		}
 	});
-	checkBtn?.addEventListener("click", async () => {
-		await refreshStatus();
-		updateVerifyCopy();
-		showToast("Readiness refreshed", "success");
-	});
-	for (const input of [
-		managementHostname,
-		adminEmail,
-		publicIp,
-		managedZone,
-		soaEmail,
-	]) {
-		input?.addEventListener("change", captureDraft);
-		input?.addEventListener("input", captureDraft);
-	}
-	skipZone?.addEventListener("change", captureDraft);
 
+	baseDomain?.addEventListener("input", () => {
+		syncDomainSuggestions();
+		captureDraft();
+	});
+	managementHostname?.addEventListener("input", () => {
+		managementHostnameEdited = true;
+		syncDomainSuggestions();
+		captureDraft();
+	});
+	managedZone?.addEventListener("input", () => {
+		managedZoneEdited = true;
+		syncDomainSuggestions();
+		captureDraft();
+	});
+	for (const input of [adminEmail, publicIp, soaEmail]) {
+		input?.addEventListener("input", captureDraft);
+		input?.addEventListener("change", captureDraft);
+	}
+	for (const choice of [managedDnsMode, externalDnsMode]) {
+		choice?.addEventListener("change", () => {
+			syncDnsChoice();
+			captureDraft();
+		});
+	}
+
+	document.addEventListener("visibilitychange", () => {
+		if (document.hidden) clearReadinessTimer();
+		else scheduleReadinessCheck();
+	});
+	window.addEventListener("online", scheduleReadinessCheck);
+	window.addEventListener("offline", clearReadinessTimer);
+
+	if (!baseDomain?.value) {
+		if (baseDomain) baseDomain.value = inferInstallBaseDomain(status);
+	}
+	syncDomainSuggestions();
+	syncDnsChoice();
+	updateReview();
+	updateCanonicalLinks();
 	render();
 }

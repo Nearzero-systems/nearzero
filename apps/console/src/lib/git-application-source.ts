@@ -159,6 +159,72 @@ export function parseEnvBlock(text: string): { key: string; value: string }[] {
 	return rows;
 }
 
+export type EnvBlockIssue = {
+	line: number;
+	code: "missing_equals" | "invalid_key" | "duplicate_key";
+	key?: string;
+};
+
+export type EnvBlockParseResult = {
+	rows: { key: string; value: string }[];
+	issues: EnvBlockIssue[];
+};
+
+const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Strict parser used by the import UI. Diagnostics contain only line numbers
+ * and validated variable names; pasted values never enter an error message.
+ * `parseEnvBlock` remains unchanged for callers that rely on its permissive API.
+ */
+export function parseEnvBlockWithDiagnostics(
+	text: string,
+	existingKeys: ReadonlyArray<string> = [],
+): EnvBlockParseResult {
+	const rows: { key: string; value: string }[] = [];
+	const issues: EnvBlockIssue[] = [];
+	const seen = new Set(existingKeys.map((key) => key.trim()).filter(Boolean));
+
+	for (const [index, sourceLine] of text.split(/\r?\n/).entries()) {
+		let line = sourceLine.trim();
+		if (!line || line.startsWith("#")) continue;
+		if (line.startsWith("export ")) line = line.slice(7).trimStart();
+		const eq = line.indexOf("=");
+		if (eq === -1) {
+			issues.push({ line: index + 1, code: "missing_equals" });
+			continue;
+		}
+		const key = line.slice(0, eq).trim();
+		if (!ENV_KEY_PATTERN.test(key)) {
+			issues.push({ line: index + 1, code: "invalid_key" });
+			continue;
+		}
+		if (seen.has(key)) {
+			issues.push({ line: index + 1, code: "duplicate_key", key });
+			continue;
+		}
+		seen.add(key);
+		rows.push({ key, value: line.slice(eq + 1) });
+	}
+
+	return { rows, issues };
+}
+
+export function formatEnvBlockIssues(issues: ReadonlyArray<EnvBlockIssue>) {
+	const visible = issues.slice(0, 5).map((issue) => {
+		switch (issue.code) {
+			case "missing_equals":
+				return `Line ${issue.line} must use KEY=value.`;
+			case "invalid_key":
+				return `Line ${issue.line} has an invalid variable name.`;
+			case "duplicate_key":
+				return `Line ${issue.line} duplicates ${issue.key}.`;
+		}
+	});
+	const remaining = issues.length - visible.length;
+	return `${visible.join(" ")}${remaining > 0 ? ` ${remaining} more ${remaining === 1 ? "line needs" : "lines need"} attention.` : ""}`;
+}
+
 const BROWSER_PUBLIC_ENV_PREFIX =
 	/^(?:NEXT_PUBLIC_|VITE_|PUBLIC_|REACT_APP_|NUXT_PUBLIC_)/i;
 const SECRET_LIKE_ENV_NAME =

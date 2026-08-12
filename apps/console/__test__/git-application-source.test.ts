@@ -3,7 +3,9 @@ import {
 	buildSaveProviderInput,
 	findBrowserExposedSecretEnvKeys,
 	formatEnvBlock,
+	formatEnvBlockIssues,
 	parseEnvBlock,
+	parseEnvBlockWithDiagnostics,
 } from "../src/lib/git-application-source";
 
 describe("formatEnvBlock / parseEnvBlock", () => {
@@ -29,6 +31,47 @@ describe("formatEnvBlock / parseEnvBlock", () => {
 				{ key: "A", value: "1" },
 			]),
 		).toBe("A=1");
+	});
+
+	test("strict parsing reports malformed and duplicate lines without values", () => {
+		const secretValue = "do-not-leak-this-secret";
+		const result = parseEnvBlockWithDiagnostics(
+			[
+				"GOOD=one",
+				`MISSING_EQUALS_${secretValue}`,
+				`BAD-KEY=${secretValue}`,
+				`GOOD=${secretValue}`,
+				`EXISTING=${secretValue}`,
+			].join("\n"),
+			["EXISTING"],
+		);
+
+		expect(result.rows).toEqual([{ key: "GOOD", value: "one" }]);
+		expect(result.issues).toEqual([
+			{ line: 2, code: "missing_equals" },
+			{ line: 3, code: "invalid_key" },
+			{ line: 4, code: "duplicate_key", key: "GOOD" },
+			{ line: 5, code: "duplicate_key", key: "EXISTING" },
+		]);
+		const message = formatEnvBlockIssues(result.issues);
+		expect(message).toContain("Line 2");
+		expect(message).toContain("duplicates GOOD");
+		expect(message).not.toContain(secretValue);
+	});
+
+	test("strict parsing accepts export syntax and preserves values", () => {
+		expect(
+			parseEnvBlockWithDiagnostics(
+				'export API_URL=https://example.com?a=b\nEMPTY=\nQUOTED="two words"',
+			),
+		).toEqual({
+			rows: [
+				{ key: "API_URL", value: "https://example.com?a=b" },
+				{ key: "EMPTY", value: "" },
+				{ key: "QUOTED", value: '"two words"' },
+			],
+			issues: [],
+		});
 	});
 });
 

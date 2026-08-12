@@ -63,17 +63,17 @@ export type NavItem = NavLeaf;
 const always = () => true;
 const admin = (ctx: NavContext) => !!ctx.permissions?.organization?.update;
 
-/** Main workspace navigation — Agent, Projects, Deployments, Tasks. */
+/** Main workspace navigation — activation, workloads, operations, then the optional Agent. */
 export const WORKSPACE_ITEMS: NavLeaf[] = [
 	{
-		key: "agent",
-		label: "Agent",
-		href: "/dashboard/agent",
-		icon: "agent",
-		asyncRouteId: "dashboard:agent",
-		loadingLabel: "Loading agent...",
-		shellMode: "workspace",
-		isEnabled: always,
+		key: "get-started",
+		label: "Get started",
+		href: "/dashboard/get-started",
+		icon: "tasks",
+		asyncRouteId: "dashboard:get-started",
+		loadingLabel: "Loading activation...",
+		shellMode: "normal",
+		isEnabled: admin,
 	},
 	{
 		key: "projects",
@@ -114,6 +114,16 @@ export const WORKSPACE_ITEMS: NavLeaf[] = [
 		loadingLabel: "Loading analytics...",
 		shellMode: "normal",
 		isEnabled: (ctx) => !!ctx.permissions?.docker?.read,
+	},
+	{
+		key: "agent",
+		label: "Agent",
+		href: "/dashboard/agent",
+		icon: "agent",
+		asyncRouteId: "dashboard:agent",
+		loadingLabel: "Loading agent...",
+		shellMode: "workspace",
+		isEnabled: always,
 	},
 ];
 
@@ -394,6 +404,7 @@ export function findActiveNavKey(pathname: string, section = ""): string {
 	}
 
 	if (dashboardPath === "/dashboard/agent") return "agent";
+	if (dashboardPath === "/dashboard/get-started") return "get-started";
 	if (dashboardPath.startsWith("/dashboard/project")) return "projects";
 	if (dashboardPath === "/dashboard/projects") return "projects";
 	if (dashboardPath === "/dashboard/deployments") return "deployments";

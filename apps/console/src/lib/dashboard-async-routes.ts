@@ -8,6 +8,7 @@ export type DashboardAsyncRouteId =
 	| "dashboard:analytics"
 	| "dashboard:deployments"
 	| "dashboard:domains"
+	| "dashboard:get-started"
 	| "dashboard:home"
 	| "dashboard:monitoring"
 	| "dashboard:projects"
@@ -44,6 +45,7 @@ const SIMPLE_ROUTES: Record<
 	"dashboard:analytics": "/dashboard/analytics",
 	"dashboard:deployments": "/dashboard/deployments",
 	"dashboard:domains": "/dashboard/domains",
+	"dashboard:get-started": "/dashboard/get-started",
 	"dashboard:home": "/dashboard/home",
 	"dashboard:monitoring": "/dashboard/monitoring",
 	"dashboard:projects": "/dashboard/projects",
@@ -141,7 +143,10 @@ export function scopedDashboardAsyncPath(
 	search?: string | null,
 	orgSlug?: string | null,
 ) {
-	return scopeDashboardHref(dashboardAsyncPath(routeId, params, search), orgSlug);
+	return scopeDashboardHref(
+		dashboardAsyncPath(routeId, params, search),
+		orgSlug,
+	);
 }
 
 export function isDashboardFragmentRequest(request: Request) {

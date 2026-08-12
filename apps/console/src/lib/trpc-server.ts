@@ -59,6 +59,16 @@ export type ActiveOrganization = {
 	slug: string | null;
 };
 
+export type OrganizationActivationSummary = {
+	complete: boolean;
+	canManage: boolean;
+};
+
+export type OrganizationActivationHttpsSummary = {
+	configured: boolean;
+	verified: boolean;
+};
+
 export async function fetchOnboardingStatus(
 	request: Request,
 ): Promise<OnboardingStatus | null> {
@@ -69,6 +79,26 @@ export async function fetchActiveOrganization(
 	request: Request,
 ): Promise<ActiveOrganization | null> {
 	return trpcQuery<ActiveOrganization | null>(request, "organization.active");
+}
+
+/** Resolve only the server-derived completion bit needed for landing redirects. */
+export async function fetchOrganizationActivationSummary(
+	request: Request,
+): Promise<OrganizationActivationSummary | null> {
+	return trpcQuery<OrganizationActivationSummary>(
+		request,
+		"organization.activationStatus",
+	);
+}
+
+/** Run the bounded public DNS/TLS/route check before leaving activation. */
+export async function fetchOrganizationActivationHttpsSummary(
+	request: Request,
+): Promise<OrganizationActivationHttpsSummary | null> {
+	return trpcQuery<OrganizationActivationHttpsSummary>(
+		request,
+		"organization.verifyActivationHttps",
+	);
 }
 
 export async function fetchOnboardingComplete(

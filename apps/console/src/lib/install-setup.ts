@@ -2,6 +2,7 @@ export type InstallSetupResumeStep =
 	| "welcome"
 	| "management"
 	| "zone"
+	| "review"
 	| "verify"
 	| "done"
 	| "register"
@@ -29,6 +30,7 @@ export const INSTALL_SETUP_STEPS = [
 	"welcome",
 	"management",
 	"zone",
+	"review",
 	"verify",
 	"done",
 ] as const;
@@ -45,6 +47,7 @@ function isInstallSetupResumeStep(
 		value === "welcome" ||
 		value === "management" ||
 		value === "zone" ||
+		value === "review" ||
 		value === "verify" ||
 		value === "done" ||
 		value === "register" ||
@@ -94,6 +97,7 @@ export function resolveInstallSetupPath(
 			status.resumeStep === "welcome" ||
 			status.resumeStep === "management" ||
 			status.resumeStep === "zone" ||
+			status.resumeStep === "review" ||
 			status.resumeStep === "verify" ||
 			status.resumeStep === "done")
 	) {
@@ -101,6 +105,7 @@ export function resolveInstallSetupPath(
 			status.resumeStep === "welcome" ||
 			status.resumeStep === "management" ||
 			status.resumeStep === "zone" ||
+			status.resumeStep === "review" ||
 			status.resumeStep === "verify" ||
 			status.resumeStep === "done"
 				? status.resumeStep
@@ -139,6 +144,167 @@ export function extractSetupTokenFromHash(hash: string) {
 export function wizardStepsForStatus(status: PublicInstallSetupStatus) {
 	const steps: InstallSetupWizardStep[] = ["welcome", "management"];
 	if (status.managedDnsEnabled) steps.push("zone");
-	steps.push("verify", "done");
+	steps.push("review", "verify", "done");
 	return steps;
+}
+
+export type SetupCheckState =
+	| "not_applicable"
+	| "pending"
+	| "ready"
+	| "warning"
+	| "failed";
+
+export type PublicInstallSetupReadiness = {
+	ready: boolean;
+	checkedAt: string;
+	configuration: {
+		managementHostname: string | null;
+		adminEmail: string | null;
+		publicIp: string | null;
+		managedDnsZone: string | null;
+		managedDnsSoaEmail: string | null;
+		managedDnsEnabled: boolean;
+		lockedFields: {
+			managementHostname: boolean;
+			adminEmail: boolean;
+			publicIp: boolean;
+			managedDnsZone: boolean;
+			managedDnsSoaEmail: boolean;
+			managedDnsEnabled: boolean;
+		};
+	};
+	management: {
+		hostname: string | null;
+		expectedAddresses: string[];
+		observedAddresses: string[];
+		ready: boolean;
+		aRecord: {
+			status: "not_configured" | "pending" | "ready";
+			code: string;
+			matches: boolean;
+			diagnostic: string;
+		};
+		https: {
+			status: "pending" | "ready" | "failed";
+			code: string;
+			diagnostic: string;
+		};
+	};
+	managedDns: {
+		enabled: boolean;
+		skipped: boolean;
+		zoneName: string | null;
+		status: "not_configured" | "skipped" | "pending" | "ready";
+		code: string;
+		expectedNameservers: string[];
+		observedNameservers: string[];
+		delegated: boolean;
+		authoritativeSoa: boolean;
+		ready: boolean;
+		diagnostics: string[];
+	};
+};
+
+export function normalizeBaseDomainInput(value: string) {
+	const normalized = value.trim().toLowerCase().replace(/\.$/, "");
+	if (
+		!normalized ||
+		normalized.includes("://") ||
+		normalized.includes("/") ||
+		normalized.includes(":") ||
+		!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	return normalized;
+}
+
+function ipv4ToInteger(value: string) {
+	return (
+		value
+			.split(".")
+			.map(Number)
+			.reduce((result, octet) => result * 256 + octet, 0) >>> 0
+	);
+}
+
+function isInIpv4Cidr(value: string, network: string, prefix: number) {
+	const address = ipv4ToInteger(value);
+	const base = ipv4ToInteger(network);
+	const mask = prefix === 0 ? 0 : (0xffff_ffff << (32 - prefix)) >>> 0;
+	return (address & mask) === (base & mask);
+}
+
+const NON_PUBLIC_IPV4_RANGES: ReadonlyArray<readonly [string, number]> = [
+	["0.0.0.0", 8],
+	["10.0.0.0", 8],
+	["100.64.0.0", 10],
+	["127.0.0.0", 8],
+	["169.254.0.0", 16],
+	["172.16.0.0", 12],
+	["192.0.0.0", 24],
+	["192.0.2.0", 24],
+	["192.88.99.0", 24],
+	["192.168.0.0", 16],
+	["198.18.0.0", 15],
+	["198.51.100.0", 24],
+	["203.0.113.0", 24],
+	["224.0.0.0", 4],
+	["240.0.0.0", 4],
+];
+
+export function isPublicIpv4Input(value: string) {
+	const normalized = value.trim();
+	const parts = normalized.split(".");
+	if (
+		parts.length !== 4 ||
+		parts.some(
+			(part) =>
+				!/^\d{1,3}$/.test(part) ||
+				(part.length > 1 && part.startsWith("0")) ||
+				Number(part) > 255,
+		)
+	) {
+		return false;
+	}
+	return !NON_PUBLIC_IPV4_RANGES.some(([network, prefix]) =>
+		isInIpv4Cidr(normalized, network, prefix),
+	);
+}
+
+export function suggestInstallDomains(value: string) {
+	const baseDomain = normalizeBaseDomainInput(value);
+	if (!baseDomain) return null;
+	return {
+		baseDomain,
+		managementHostname: `nearzero.${baseDomain}`,
+		managedDnsZone: `apps.${baseDomain}`,
+	};
+}
+
+export function inferInstallBaseDomain(status: PublicInstallSetupStatus) {
+	const candidate = status.managedDnsZone || status.managementHostname;
+	if (!candidate) return "";
+	const labels = candidate.replace(/\.$/, "").split(".");
+	return labels.length > 2 ? labels.slice(1).join(".") : candidate;
+}
+
+export function isPublicInstallSetupReadiness(
+	value: unknown,
+): value is PublicInstallSetupReadiness {
+	if (!value || typeof value !== "object") return false;
+	const readiness = value as Record<string, unknown>;
+	return (
+		typeof readiness.ready === "boolean" &&
+		typeof readiness.checkedAt === "string" &&
+		typeof readiness.configuration === "object" &&
+		readiness.configuration !== null &&
+		typeof readiness.management === "object" &&
+		readiness.management !== null &&
+		typeof readiness.managedDns === "object" &&
+		readiness.managedDns !== null
+	);
 }

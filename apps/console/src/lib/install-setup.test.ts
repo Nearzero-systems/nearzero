@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
 	extractSetupTokenFromHash,
+	inferInstallBaseDomain,
+	isPublicIpv4Input,
+	normalizeBaseDomainInput,
+	type PublicInstallSetupStatus,
 	parseInstallSetupStep,
 	resolveInstallSetupPath,
+	suggestInstallDomains,
 	wizardStepsForStatus,
-	type PublicInstallSetupStatus,
 } from "./install-setup";
 
 function status(
@@ -71,21 +75,62 @@ describe("install setup console helpers", () => {
 
 	it("parses wizard steps and hash tokens", () => {
 		expect(parseInstallSetupStep("Management")).toBe("management");
+		expect(parseInstallSetupStep("review")).toBe("review");
 		expect(parseInstallSetupStep("nope")).toBeNull();
 		expect(extractSetupTokenFromHash("#token=abc123")).toBe("abc123");
 		expect(extractSetupTokenFromHash("#other=1")).toBeNull();
 	});
 
 	it("omits the zone step when managed DNS is disabled", () => {
-		expect(wizardStepsForStatus(status({ managedDnsEnabled: false }))).toEqual(
-			["welcome", "management", "verify", "done"],
-		);
+		expect(wizardStepsForStatus(status({ managedDnsEnabled: false }))).toEqual([
+			"welcome",
+			"management",
+			"review",
+			"verify",
+			"done",
+		]);
 		expect(wizardStepsForStatus(status({ managedDnsEnabled: true }))).toEqual([
 			"welcome",
 			"management",
 			"zone",
+			"review",
 			"verify",
 			"done",
 		]);
+	});
+
+	it("turns one base domain into safe management and app subdomains", () => {
+		expect(suggestInstallDomains(" Example.COM. ")).toEqual({
+			baseDomain: "example.com",
+			managementHostname: "nearzero.example.com",
+			managedDnsZone: "apps.example.com",
+		});
+		expect(normalizeBaseDomainInput("https://example.com")).toBeNull();
+		expect(normalizeBaseDomainInput("example.com/path")).toBeNull();
+		expect(suggestInstallDomains("localhost")).toBeNull();
+	});
+
+	it("infers the editable base domain from an existing install plan", () => {
+		expect(
+			inferInstallBaseDomain(status({ managedDnsZone: "apps.example.co.uk" })),
+		).toBe("example.co.uk");
+		expect(
+			inferInstallBaseDomain(
+				status({
+					managedDnsZone: null,
+					managementHostname: "nearzero.example.com",
+				}),
+			),
+		).toBe("example.com");
+	});
+
+	it("accepts only publicly routable IPv4 input", () => {
+		expect(isPublicIpv4Input("8.8.8.8")).toBe(true);
+		expect(isPublicIpv4Input("1.1.1.1")).toBe(true);
+		expect(isPublicIpv4Input("127.0.0.1")).toBe(false);
+		expect(isPublicIpv4Input("192.168.1.10")).toBe(false);
+		expect(isPublicIpv4Input("203.0.113.10")).toBe(false);
+		expect(isPublicIpv4Input("999.1.1.1")).toBe(false);
+		expect(isPublicIpv4Input("1.01.1.1")).toBe(false);
 	});
 });

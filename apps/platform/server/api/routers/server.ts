@@ -52,6 +52,7 @@ import {
 	type PermissionCtx,
 } from "@nearzero/server/services/permission";
 import { monitoringDockerAccessConfig } from "@nearzero/server/setup/monitoring-setup";
+import { getServerValidationReadiness } from "@nearzero/server/setup/server-setup";
 import { TRPCError } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
 import { and, desc, eq, getTableColumns, isNotNull, sql } from "drizzle-orm";
@@ -773,7 +774,11 @@ export const serverRouter = createTRPCRouter({
 					});
 				}
 				const response = await serverValidate(input.serverId);
-				return response as unknown as {
+				const readiness = getServerValidationReadiness(response, server);
+				return {
+					...response,
+					readiness,
+				} as unknown as {
 					docker: {
 						enabled: boolean;
 						version: string;
@@ -799,6 +804,7 @@ export const serverRouter = createTRPCRouter({
 					isMainDirectoryInstalled: boolean;
 					privilegeMode: string;
 					dockerGroupMember: boolean;
+					readiness: ReturnType<typeof getServerValidationReadiness>;
 				};
 			} catch (error) {
 				throw new TRPCError({

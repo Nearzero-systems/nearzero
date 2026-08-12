@@ -115,10 +115,17 @@ const managementReady = Boolean(
 const managedZoneReady = Boolean(
 	managedZone?.published && managedZone.delegated && managedZone.authoritative,
 );
-const setupReadyCount = [managementReady, managedZoneReady].filter(
-	Boolean,
-).length;
-const shouldShowSetup = setupWelcome || !managementReady || !managedZoneReady;
+const managedZoneRequired = Boolean(configuredManagedZoneName);
+const setupChecks = [
+	managementReady,
+	...(managedZoneRequired ? [managedZoneReady] : []),
+];
+const setupReadyCount = setupChecks.filter(Boolean).length;
+const setupReadyTotal = setupChecks.length;
+const shouldShowSetup =
+	setupWelcome ||
+	!managementReady ||
+	(managedZoneRequired && !managedZoneReady);
 const { orgSlug } = normalizeDashboardPath(Astro.url.pathname);
 const domainsHref = scopeDashboardHref("/dashboard/domains", orgSlug);
 const projectsHref = scopeDashboardHref("/dashboard/projects", orgSlug);
@@ -147,7 +154,7 @@ const managementUrl = publicHost
 						</p>
 					</div>
 					<span class="nz-first-run__progress">
-						{setupReadyCount}/2 ready
+						{setupReadyCount}/{setupReadyTotal} ready
 					</span>
 				</div>
 
@@ -182,7 +189,7 @@ const managementUrl = publicHost
 						</div>
 					</li>
 
-					<li class="nz-first-run__step">
+					{managedZoneRequired ? <li class="nz-first-run__step">
 						<div class="nz-first-run__step-number" aria-hidden="true">2</div>
 						<div class="nz-first-run__step-body">
 							<div class="nz-first-run__step-heading">
@@ -224,10 +231,10 @@ const managementUrl = publicHost
 								<a href={domainsHref}>Review DNS instructions</a>
 							</div>
 						</div>
-					</li>
+					</li> : null}
 
 					<li class="nz-first-run__step">
-						<div class="nz-first-run__step-number" aria-hidden="true">3</div>
+						<div class="nz-first-run__step-number" aria-hidden="true">{managedZoneRequired ? 3 : 2}</div>
 						<div class="nz-first-run__step-body">
 							<div class="nz-first-run__step-heading">
 								<h3>Deploy the first application</h3>
@@ -300,10 +307,10 @@ const managementUrl = publicHost
 						}
 					</span>
 					{
-						canConfigureDomain ? (
-							<Button type="button" variant="outline" id="nz-ws-domain-open">
-								{publicHost ? "Change domain" : "Configure domain"}
-							</Button>
+					canConfigureDomain && !publicHost ? (
+						<Button type="button" variant="outline" id="nz-ws-domain-open">
+							Configure domain
+						</Button>
 						) : null
 					}
 				</dd>

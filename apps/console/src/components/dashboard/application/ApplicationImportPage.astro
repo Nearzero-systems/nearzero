@@ -427,6 +427,12 @@ const serverRequirementMessage = runtimeServerRequirementMessage(servers);
 							spellcheck="false"
 						></textarea>
 					</label>
+					<p
+						id="nz-app-import-env-paste-error"
+						class="nz-app-import-env-warning hidden"
+						role="alert"
+						hidden
+					></p>
 				</section>
 				</div>
 				<div class="nz-app-import-panel__actions nz-app-import-panel__actions--sticky">
@@ -494,6 +500,18 @@ const serverRequirementMessage = runtimeServerRequirementMessage(servers);
 				<label class="grid gap-2">
 					<span class={labelClass}>App name</span>
 					<input id="nz-app-import-empty-appname" class={fieldClass} value={`${projectSlug}-`} required />
+				</label>
+				<label class="grid gap-2 nz-app-import-config-grid__wide">
+					<span class={labelClass}>Container image</span>
+					<input
+						id="nz-app-import-empty-docker-image"
+						class={fieldClass}
+						placeholder="nginx:alpine or ghcr.io/acme/api:1.2.0"
+						autocomplete="off"
+					/>
+					<span class="text-xs text-[var(--nz-text-muted,#6b7280)]">
+						Optional for a blank service. Set it now to configure a public container image without Git.
+					</span>
 				</label>
 				<label class="grid gap-2 nz-app-import-config-grid__wide">
 					<span class={labelClass}>Description</span>

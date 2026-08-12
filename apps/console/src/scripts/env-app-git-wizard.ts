@@ -13,8 +13,9 @@ import {
 	fetchGiteaBranches,
 	fetchGiteaRepositories,
 	findBrowserExposedSecretEnvKeys,
+	formatEnvBlockIssues,
 	formatEnvBlock,
-	parseEnvBlock,
+	parseEnvBlockWithDiagnostics,
 	resolvePublicGitDefaultBranch,
 	type BitbucketRepoOption,
 	type DetectedRepositoryApp,
@@ -398,10 +399,16 @@ export function mountApplicationImportPage(root: HTMLElement) {
 	const envPaste = document.getElementById(
 		"nz-app-import-env-paste",
 	) as HTMLTextAreaElement | null;
+	const envPasteError = document.getElementById(
+		"nz-app-import-env-paste-error",
+	) as HTMLParagraphElement | null;
 
 	const emptyName = document.getElementById("nz-app-import-empty-name") as HTMLInputElement | null;
 	const emptyAppName = document.getElementById(
 		"nz-app-import-empty-appname",
+	) as HTMLInputElement | null;
+	const emptyDockerImage = document.getElementById(
+		"nz-app-import-empty-docker-image",
 	) as HTMLInputElement | null;
 	const emptyDescription = document.getElementById(
 		"nz-app-import-empty-description",
@@ -1170,13 +1177,29 @@ export function mountApplicationImportPage(root: HTMLElement) {
 	}
 
 	function importEnvText(text: string) {
-		const parsed = parseEnvBlock(text);
-		if (parsed.length === 0) return false;
-
 		syncEnvRowsFromDom();
 		const merged = state.envRows.filter((row) => row.key.trim());
-		state.envRows = [...merged, ...parsed];
+		const parsed = parseEnvBlockWithDiagnostics(
+			text,
+			merged.map((row) => row.key),
+		);
+		if (parsed.issues.length > 0) {
+			if (envPasteError) {
+				envPasteError.textContent = formatEnvBlockIssues(parsed.issues);
+				envPasteError.hidden = false;
+				envPasteError.classList.remove("hidden");
+			}
+			return false;
+		}
+		if (parsed.rows.length === 0) return false;
+
+		state.envRows = [...merged, ...parsed.rows];
 		if (envPaste) envPaste.value = "";
+		if (envPasteError) {
+			envPasteError.textContent = "";
+			envPasteError.hidden = true;
+			envPasteError.classList.add("hidden");
+		}
 		renderEnvRows();
 		return true;
 	}
@@ -1774,12 +1797,25 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		const name = emptyName?.value.trim() ?? "";
 		const appName = emptyAppName?.value.trim() ?? "";
 		const description = emptyDescription?.value ?? "";
+		const dockerImage = emptyDockerImage?.value.trim() ?? "";
+		const containerImageRequired =
+			new URLSearchParams(window.location.search).get("source") === "docker";
 		if (!name) {
 			setError(errEl, "Name is required");
 			return;
 		}
 		if (!appName || !isValidAppName(appName)) {
 			setError(errEl, APP_NAME_MESSAGE);
+			return;
+		}
+		if (containerImageRequired && !dockerImage) {
+			setError(errEl, "Enter a public container image to continue.");
+			emptyDockerImage?.focus();
+			return;
+		}
+		if (dockerImage && /\s/.test(dockerImage)) {
+			setError(errEl, "Container image references cannot contain spaces.");
+			emptyDockerImage?.focus();
 			return;
 		}
 		const serverId = normalizeServerId(emptyServerSelect?.value);
@@ -1801,7 +1837,44 @@ export function mountApplicationImportPage(root: HTMLElement) {
 				serverId,
 				environmentId: ctx.environmentId,
 			});
-			toast("Application created", "success");
+			if (dockerImage) {
+				try {
+					await trpcMutate("application.saveDockerProvider", {
+						applicationId: created.applicationId,
+						dockerImage,
+						username: null,
+						password: null,
+						registryUrl: null,
+					});
+				} catch (error) {
+					// Keep this two-step convenience flow transactional. A retry must not
+					// create a second blank service after provider configuration fails.
+					const rolledBack = await trpcMutate("application.delete", {
+						applicationId: created.applicationId,
+					})
+						.then(() => true)
+						.catch(() => false);
+					if (!rolledBack) {
+						toast(
+							"Application was created, but the image needs to be configured on its service page.",
+							"error",
+						);
+						window.location.href = environmentApplicationHref(
+							ctx.projectId,
+							ctx.environmentId,
+							created.applicationId,
+						);
+						return;
+					}
+					throw error;
+				}
+			}
+			toast(
+				dockerImage
+					? "Application and container image configured"
+					: "Application created",
+				"success",
+			);
 			window.location.href = environmentApplicationHref(
 				ctx.projectId,
 				ctx.environmentId,
@@ -1847,6 +1920,10 @@ export function mountApplicationImportPage(root: HTMLElement) {
 	// URL ?mode=empty
 	if (new URLSearchParams(window.location.search).get("mode") === "empty") {
 		showEmptyPanel();
+		if (new URLSearchParams(window.location.search).get("source") === "docker") {
+			emptyDockerImage?.setAttribute("required", "");
+			emptyDockerImage?.focus();
+		}
 	} else {
 		showGitWizard();
 		setStep("provider");
@@ -2118,8 +2195,8 @@ export function mountApplicationImportPage(root: HTMLElement) {
 				envPaste.value.slice(selectionEnd),
 			].join("");
 
-			if (parseEnvBlock(nextText).length === 0) return;
 			event.preventDefault();
+			envPaste.value = nextText;
 			importEnvText(nextText);
 		},
 		{ signal },

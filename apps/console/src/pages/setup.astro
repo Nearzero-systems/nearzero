@@ -1,8 +1,9 @@
 ---
+// biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
 import SetupGrid from "@/components/auth/SetupGrid.astro";
 import Base from "@/layouts/Base.astro";
-import { pageTitle } from "@/lib/branding";
 import { getSession } from "@/lib/backendProxy";
+import { pageTitle } from "@/lib/branding";
 import {
 	parseInstallSetupStep,
 	resolveInstallSetupPath,
@@ -21,15 +22,23 @@ if (!status?.setupTokenConfigured || status.bootstrapClaimed) {
 
 const requested = parseInstallSetupStep(Astro.url.searchParams.get("step"));
 const resumePath = resolveInstallSetupPath(status);
+const requestedPendingStep =
+	status.phase === "pending" &&
+	(requested === "welcome" ||
+		requested === "management" ||
+		requested === "zone" ||
+		requested === "review")
+		? requested
+		: null;
 const initialStep =
-	requested ??
-	(status.resumeStep === "welcome" ||
-	status.resumeStep === "management" ||
-	status.resumeStep === "zone" ||
-	status.resumeStep === "verify" ||
-	status.resumeStep === "done"
-		? status.resumeStep
-		: "welcome");
+	status.phase === "configured"
+		? "verify"
+		: (requestedPendingStep ??
+			(status.resumeStep === "welcome" ||
+			status.resumeStep === "management" ||
+			status.resumeStep === "zone"
+				? status.resumeStep
+				: "welcome"));
 
 if (
 	status.managementConfigured &&

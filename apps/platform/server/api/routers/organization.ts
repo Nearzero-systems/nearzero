@@ -1,5 +1,10 @@
 import { db } from "@nearzero/server/db";
-import { getConsoleUrl, sendInvitationEmail } from "@nearzero/server/index";
+import {
+	getConsoleUrl,
+	getOrganizationActivationStatus,
+	sendInvitationEmail,
+	verifyOrganizationActivationHttps,
+} from "@nearzero/server/index";
 import { emailEquals } from "@nearzero/server/lib/email-identity";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, exists, gt, lt } from "drizzle-orm";
@@ -13,7 +18,12 @@ import {
 	organizationRole,
 	user,
 } from "@/server/db/schema";
-import { createTRPCRouter, protectedProcedure, withPermission } from "../trpc";
+import {
+	adminProcedure,
+	createTRPCRouter,
+	protectedProcedure,
+	withPermission,
+} from "../trpc";
 
 const INVITATION_TTL_MS = 60 * 60 * 1000;
 const EXPIRED_INVITATION_CLEANUP_GRACE_MS = 60 * 60 * 1000;
@@ -343,10 +353,7 @@ export const organizationRouter = createTRPCRouter({
 						organizationName: org?.name || "organization",
 					});
 				} catch (err) {
-					console.error(
-						`Failed to send invitation email to ${email}:`,
-						err,
-					);
+					console.error(`Failed to send invitation email to ${email}:`, err);
 				}
 			}
 
@@ -559,5 +566,39 @@ export const organizationRouter = createTRPCRouter({
 		return await db.query.organization.findFirst({
 			where: eq(organization.id, ctx.session.activeOrganizationId),
 		});
+	}),
+	activationStatus: protectedProcedure.query(async ({ ctx }) => {
+		if (!ctx.session.activeOrganizationId) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: "Select an organization before checking activation status",
+			});
+		}
+		const activeMember = await db.query.member.findFirst({
+			where: and(
+				eq(member.organizationId, ctx.session.activeOrganizationId),
+				eq(member.userId, ctx.user.id),
+			),
+			columns: { role: true },
+		});
+		if (!activeMember) {
+			throw new TRPCError({
+				code: "FORBIDDEN",
+				message: "You are not a member of the active organization",
+			});
+		}
+		return getOrganizationActivationStatus({
+			organizationId: ctx.session.activeOrganizationId,
+			canManage: activeMember.role === "owner" || activeMember.role === "admin",
+		});
+	}),
+	verifyActivationHttps: adminProcedure.query(async ({ ctx }) => {
+		if (!ctx.session.activeOrganizationId) {
+			throw new TRPCError({
+				code: "BAD_REQUEST",
+				message: "Select an organization before verifying HTTPS",
+			});
+		}
+		return verifyOrganizationActivationHttps(ctx.session.activeOrganizationId);
 	}),
 });

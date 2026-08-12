@@ -18,6 +18,10 @@ import {
 	adoptConfiguredManagedDnsZone,
 	ensureFirstOwnerServerIp,
 } from "../services/install-domain-bootstrap";
+import {
+	getSetupAdminEmail,
+	markInstallSetupClaimed,
+} from "../services/install-setup";
 import { getWebServerSettings } from "../services/web-server-settings";
 import { getPublicIpWithFallback } from "../wss/utils";
 import { ac, adminRole, memberRole, ownerRole } from "./access-control";
@@ -36,14 +40,10 @@ import {
 	buildPublicRegistrationStatus,
 	decideRegistration,
 	mergeRegistrationPolicyAdminEmail,
+	type RegistrationPolicy,
 	registrationDecisionMessage,
 	resolveRegistrationPolicy,
-	type RegistrationPolicy,
 } from "./registration-policy";
-import {
-	getSetupAdminEmail,
-	markInstallSetupClaimed,
-} from "../services/install-setup";
 import {
 	appendRequestOrigin,
 	buildHostPortOrigins,
@@ -205,11 +205,6 @@ const authEmailPolicyPlugin = {
 	},
 };
 
-const sharedCookieDomain = resolveSharedCookieDomain();
-const authBaseUrl = resolveAuthPublicBaseUrl();
-const useLocalAuthCookies =
-	process.env.NODE_ENV !== "production" ||
-	(authBaseUrl?.startsWith("http://") ?? false);
 const productionCookieAttributes = {
 	sameSite: "lax" as const,
 	secure: true,
@@ -217,415 +212,472 @@ const productionCookieAttributes = {
 	path: "/",
 };
 
-const { handler, api } = betterAuth({
-	database: drizzleAdapter(db, {
-		provider: "pg",
-		schema: schema,
-	}),
-	disabledPaths: [
-		"/sso/register",
-		"/organization/create",
-		"/organization/update",
-		"/organization/delete",
-		"/verify-email",
-	],
-	emailAndPassword: {
-		enabled: true,
-		requireEmailVerification: false,
-	},
-	secret: betterAuthSecret,
-	...(authBaseUrl ? { baseURL: authBaseUrl } : {}),
-	...(useLocalAuthCookies
-		? {
-				advanced: {
-					useSecureCookies: false,
-					disableOriginCheck: true,
-					defaultCookieAttributes: {
-						sameSite: "lax",
-						secure: false,
-						httpOnly: true,
-						path: "/",
-					},
-				},
-			}
-		: {
-				advanced: {
-					useSecureCookies: true,
-					disableOriginCheck: true,
-					...(sharedCookieDomain
-						? {
-								crossSubDomainCookies: {
-									enabled: true,
-									domain: sharedCookieDomain,
-								},
-							}
-						: {}),
-					defaultCookieAttributes: productionCookieAttributes,
-				},
-			}),
+function createAuthRuntime() {
+	const sharedCookieDomain = resolveSharedCookieDomain();
+	const authBaseUrl = resolveAuthPublicBaseUrl();
+	const useLocalAuthCookies =
+		process.env.NODE_ENV !== "production" ||
+		(authBaseUrl?.startsWith("http://") ?? false);
 
-	account: {
-		accountLinking: {
+	return betterAuth({
+		database: drizzleAdapter(db, {
+			provider: "pg",
+			schema: schema,
+		}),
+		disabledPaths: [
+			"/sso/register",
+			"/organization/create",
+			"/organization/update",
+			"/organization/delete",
+			"/verify-email",
+		],
+		emailAndPassword: {
 			enabled: true,
-			async trustedProviders() {
-				return getTrustedProviders();
-			},
-			allowDifferentEmails: true,
+			requireEmailVerification: false,
 		},
-	},
-	appName: "Nearzero",
-	logger: {
-		disabled: process.env.NODE_ENV === "production",
-	},
-	async trustedOrigins(request) {
-		const { consolePort, platformPort } = resolveConsoleAndPlatformPorts();
-		const envOrigins = resolveEnvTrustedOrigins();
+		secret: betterAuthSecret,
+		...(authBaseUrl ? { baseURL: authBaseUrl } : {}),
+		...(useLocalAuthCookies
+			? {
+					advanced: {
+						useSecureCookies: false,
+						disableOriginCheck: true,
+						defaultCookieAttributes: {
+							sameSite: "lax",
+							secure: false,
+							httpOnly: true,
+							path: "/",
+						},
+					},
+				}
+			: {
+					advanced: {
+						useSecureCookies: true,
+						disableOriginCheck: true,
+						...(sharedCookieDomain
+							? {
+									crossSubDomainCookies: {
+										enabled: true,
+										domain: sharedCookieDomain,
+									},
+								}
+							: {}),
+						defaultCookieAttributes: productionCookieAttributes,
+					},
+				}),
 
-		let publicIpOrigins: string[] = [];
-		try {
-			const publicIp = await getPublicIpWithFallback();
-			if (publicIp) {
-				publicIpOrigins = buildHostPortOrigins(
-					[publicIp],
+		account: {
+			accountLinking: {
+				enabled: true,
+				async trustedProviders() {
+					return getTrustedProviders();
+				},
+				allowDifferentEmails: true,
+			},
+		},
+		appName: "Nearzero",
+		logger: {
+			disabled: process.env.NODE_ENV === "production",
+		},
+		async trustedOrigins(request) {
+			const { consolePort, platformPort } = resolveConsoleAndPlatformPorts();
+			const envOrigins = resolveEnvTrustedOrigins();
+
+			let publicIpOrigins: string[] = [];
+			try {
+				const publicIp = await getPublicIpWithFallback();
+				if (publicIp) {
+					publicIpOrigins = buildHostPortOrigins(
+						[publicIp],
+						consolePort,
+						platformPort,
+					);
+				}
+			} catch (error) {
+				console.error(
+					"Failed to resolve public IP for trusted origins:",
+					error,
+				);
+			}
+
+			try {
+				const dbOrigins = await getTrustedOrigins();
+				const settings = await getWebServerSettings();
+
+				const runtimeOrigins = [
+					...publicIpOrigins,
+					...(settings?.serverIp
+						? buildHostPortOrigins(
+								[settings.serverIp],
+								consolePort,
+								platformPort,
+							)
+						: []),
+					...(settings?.host ? [`https://${settings.host}`] : []),
+					...dbOrigins,
+				];
+
+				return appendRequestOrigin(
+					[...new Set([...envOrigins, ...runtimeOrigins])],
+					request,
 					consolePort,
 					platformPort,
 				);
-			}
-		} catch (error) {
-			console.error("Failed to resolve public IP for trusted origins:", error);
-		}
-
-		try {
-			const dbOrigins = await getTrustedOrigins();
-			const settings = await getWebServerSettings();
-
-			const runtimeOrigins = [
-				...publicIpOrigins,
-				...(settings?.serverIp
-					? buildHostPortOrigins([settings.serverIp], consolePort, platformPort)
-					: []),
-				...(settings?.host ? [`https://${settings.host}`] : []),
-				...dbOrigins,
-			];
-
-			return appendRequestOrigin(
-				[...new Set([...envOrigins, ...runtimeOrigins])],
-				request,
-				consolePort,
-				platformPort,
-			);
-		} catch (error) {
-			console.error("Failed to resolve trusted origins:", error);
-			const fallbackOrigins = [...new Set([...envOrigins, ...publicIpOrigins])];
-			if (fallbackOrigins.length > 0) {
+			} catch (error) {
+				console.error("Failed to resolve trusted origins:", error);
+				const fallbackOrigins = [
+					...new Set([...envOrigins, ...publicIpOrigins]),
+				];
+				if (fallbackOrigins.length > 0) {
+					return appendRequestOrigin(
+						fallbackOrigins,
+						request,
+						consolePort,
+						platformPort,
+					);
+				}
 				return appendRequestOrigin(
-					fallbackOrigins,
+					process.env.NODE_ENV === "development"
+						? [
+								"http://localhost:4321",
+								"http://127.0.0.1:4321",
+								"http://localhost:3000",
+								"http://127.0.0.1:3000",
+							]
+						: [],
 					request,
 					consolePort,
 					platformPort,
 				);
 			}
-			return appendRequestOrigin(
-				process.env.NODE_ENV === "development"
-					? [
-							"http://localhost:4321",
-							"http://127.0.0.1:4321",
-							"http://localhost:3000",
-							"http://127.0.0.1:3000",
-						]
-					: [],
-				request,
-				consolePort,
-				platformPort,
-			);
-		}
-	},
-	databaseHooks: {
-		user: {
-			create: {
-				before: async (_user, context) => {
-					const normalizedUser = {
-						..._user,
-						email: normalizeAuthEmail(_user.email),
-					};
-					const xNearzeroToken =
-						context?.request?.headers?.get("x-nearzero-token");
-					if (xNearzeroToken) {
-						let invitation: Awaited<ReturnType<typeof getUserByToken>>;
-						try {
-							invitation = await getUserByToken(xNearzeroToken);
-						} catch {
-							throw new APIError("BAD_REQUEST", {
-								message: "Invalid invitation token",
+		},
+		databaseHooks: {
+			user: {
+				create: {
+					before: async (_user, context) => {
+						const normalizedUser = {
+							..._user,
+							email: normalizeAuthEmail(_user.email),
+						};
+						const xNearzeroToken =
+							context?.request?.headers?.get("x-nearzero-token");
+						if (xNearzeroToken) {
+							let invitation: Awaited<ReturnType<typeof getUserByToken>>;
+							try {
+								invitation = await getUserByToken(xNearzeroToken);
+							} catch {
+								throw new APIError("BAD_REQUEST", {
+									message: "Invalid invitation token",
+								});
+							}
+							if (invitation.isExpired) {
+								throw new APIError("BAD_REQUEST", {
+									message: "Invitation has expired",
+								});
+							}
+							if (invitation.status !== "pending") {
+								throw new APIError("BAD_REQUEST", {
+									message: "Invitation has already been used",
+								});
+							}
+							if (
+								_user.email.toLowerCase().trim() !==
+								invitation.email.toLowerCase().trim()
+							) {
+								throw new APIError("BAD_REQUEST", {
+									message: "Email does not match invitation",
+								});
+							}
+							return { data: normalizedUser };
+						}
+
+						const isSSORequest = context?.path.includes("/sso");
+						if (isSSORequest) {
+							return;
+						}
+						if (context?.path !== "/sign-up/email") {
+							return;
+						}
+
+						const policy = await getEffectiveRegistrationPolicy();
+						if (policy.mode === "bootstrap" && !policy.adminEmail) {
+							throw new APIError("FORBIDDEN", {
+								message:
+									"Finish the one-time domain setup before creating the first owner account.",
 							});
 						}
-						if (invitation.isExpired) {
-							throw new APIError("BAD_REQUEST", {
-								message: "Invitation has expired",
-							});
+						const decision = decideRegistration({
+							policy,
+							email: _user.email,
+							hasValidInvitation: false,
+							bootstrapClaimed: await isBootstrapRegistrationClaimed(),
+						});
+						const policyMessage = registrationDecisionMessage(decision);
+						if (policyMessage) {
+							throw new APIError("FORBIDDEN", { message: policyMessage });
 						}
-						if (invitation.status !== "pending") {
-							throw new APIError("BAD_REQUEST", {
-								message: "Invitation has already been used",
-							});
-						}
-						if (
-							_user.email.toLowerCase().trim() !==
-							invitation.email.toLowerCase().trim()
-						) {
-							throw new APIError("BAD_REQUEST", {
-								message: "Email does not match invitation",
-							});
-						}
+						// A normalized unique email makes concurrent bootstrap attempts for the
+						// configured administrator converge on one database row.
 						return { data: normalizedUser };
-					}
-
-					const isSSORequest = context?.path.includes("/sso");
-					if (isSSORequest) {
-						return;
-					}
-					if (context?.path !== "/sign-up/email") {
-						return;
-					}
-
-					const policy = await getEffectiveRegistrationPolicy();
-					if (policy.mode === "bootstrap" && !policy.adminEmail) {
-						throw new APIError("FORBIDDEN", {
-							message:
-								"Finish the one-time domain setup before creating the first owner account.",
+					},
+					after: async (user, context) => {
+						const isSSORequest = context?.path.includes("/sso");
+						const isAdminPresent = await db.query.member.findFirst({
+							where: eq(schema.member.role, "owner"),
 						});
-					}
-					const decision = decideRegistration({
-						policy,
-						email: _user.email,
-						hasValidInvitation: false,
-						bootstrapClaimed: await isBootstrapRegistrationClaimed(),
-					});
-					const policyMessage = registrationDecisionMessage(decision);
-					if (policyMessage) {
-						throw new APIError("FORBIDDEN", { message: policyMessage });
-					}
-					// A normalized unique email makes concurrent bootstrap attempts for the
-					// configured administrator converge on one database row.
-					return { data: normalizedUser };
+
+						if (!isAdminPresent) {
+							await ensureFirstOwnerServerIp(getPublicIpWithFallback);
+						}
+
+						let firstOwnerOrganizationId: string | null = null;
+						if (isSSORequest) {
+							const providerId = context?.params?.providerId;
+							if (!providerId) {
+								throw new APIError("BAD_REQUEST", {
+									message: "Provider ID is required",
+								});
+							}
+							const provider = await db.query.ssoProvider.findFirst({
+								where: eq(schema.ssoProvider.providerId, providerId),
+							});
+
+							if (!provider) {
+								throw new APIError("BAD_REQUEST", {
+									message: "Provider not found",
+								});
+							}
+							await db.insert(schema.member).values({
+								userId: user.id,
+								organizationId: provider?.organizationId || "",
+								role: "member",
+								createdAt: new Date(),
+								isDefault: true,
+							});
+						} else {
+							const personalOrganization = await db.transaction(async (tx) => {
+								return ensurePersonalOrganizationForUser(user.id, tx);
+							});
+							if (!isAdminPresent && personalOrganization) {
+								firstOwnerOrganizationId = personalOrganization.id;
+							}
+						}
+
+						if (firstOwnerOrganizationId) {
+							try {
+								await adoptConfiguredManagedDnsZone({
+									organizationId: firstOwnerOrganizationId,
+									ownerEmail: user.email,
+								});
+							} catch (error) {
+								console.error(
+									"First-owner managed DNS adoption failed; the zone remains recoverable from Infrastructure → Domains.",
+									error,
+								);
+							}
+							try {
+								await markInstallSetupClaimed(user.email);
+							} catch (error) {
+								console.error(
+									"Failed to mark install setup as claimed after first-owner signup.",
+									error,
+								);
+							}
+						}
+					},
 				},
-				after: async (user, context) => {
-					const isSSORequest = context?.path.includes("/sso");
-					const isAdminPresent = await db.query.member.findFirst({
-						where: eq(schema.member.role, "owner"),
-					});
-
-					if (!isAdminPresent) {
-						await ensureFirstOwnerServerIp(getPublicIpWithFallback);
-					}
-
-					let firstOwnerOrganizationId: string | null = null;
-					if (isSSORequest) {
-						const providerId = context?.params?.providerId;
-						if (!providerId) {
-							throw new APIError("BAD_REQUEST", {
-								message: "Provider ID is required",
-							});
-						}
-						const provider = await db.query.ssoProvider.findFirst({
-							where: eq(schema.ssoProvider.providerId, providerId),
+			},
+			session: {
+				create: {
+					before: async (session) => {
+						const member = await db.query.member.findFirst({
+							where: eq(schema.member.userId, session.userId),
+							orderBy: [
+								desc(schema.member.isDefault),
+								desc(schema.member.createdAt),
+							],
+							with: {
+								organization: true,
+							},
 						});
 
-						if (!provider) {
-							throw new APIError("BAD_REQUEST", {
-								message: "Provider not found",
-							});
-						}
-						await db.insert(schema.member).values({
-							userId: user.id,
-							organizationId: provider?.organizationId || "",
-							role: "member",
-							createdAt: new Date(),
-							isDefault: true,
+						return {
+							data: {
+								...session,
+								activeOrganizationId: member?.organization.id,
+							},
+						};
+					},
+					after: async (session) => {
+						const orgId = (
+							session as typeof session & { activeOrganizationId?: string }
+						).activeOrganizationId;
+						if (!orgId) return;
+						const memberRecord = await db.query.member.findFirst({
+							where: and(
+								eq(schema.member.userId, session.userId),
+								eq(schema.member.organizationId, orgId),
+							),
+							with: { user: true },
 						});
-					} else {
-						const personalOrganization = await db.transaction(async (tx) => {
-							return ensurePersonalOrganizationForUser(user.id, tx);
+						if (!memberRecord) return;
+						await createAuditLog({
+							organizationId: orgId,
+							userId: session.userId,
+							userEmail: memberRecord.user.email,
+							userRole: memberRecord.role,
+							action: "login",
+							resourceType: "session",
 						});
-						if (!isAdminPresent && personalOrganization) {
-							firstOwnerOrganizationId = personalOrganization.id;
-						}
-					}
-
-					if (firstOwnerOrganizationId) {
-						try {
-							await adoptConfiguredManagedDnsZone({
-								organizationId: firstOwnerOrganizationId,
-								ownerEmail: user.email,
-							});
-						} catch (error) {
-							console.error(
-								"First-owner managed DNS adoption failed; the zone remains recoverable from Infrastructure → Domains.",
-								error,
-							);
-						}
-						try {
-							await markInstallSetupClaimed(user.email);
-						} catch (error) {
-							console.error(
-								"Failed to mark install setup as claimed after first-owner signup.",
-								error,
-							);
-						}
-					}
+					},
+				},
+				delete: {
+					after: async (session) => {
+						const orgId = (
+							session as typeof session & { activeOrganizationId?: string }
+						).activeOrganizationId;
+						if (!orgId) return;
+						const memberRecord = await db.query.member.findFirst({
+							where: and(
+								eq(schema.member.userId, session.userId),
+								eq(schema.member.organizationId, orgId),
+							),
+							with: { user: true },
+						});
+						if (!memberRecord) return;
+						await createAuditLog({
+							organizationId: orgId,
+							userId: session.userId,
+							userEmail: memberRecord.user.email,
+							userRole: memberRecord.role,
+							action: "logout",
+							resourceType: "session",
+						});
+					},
 				},
 			},
 		},
 		session: {
-			create: {
-				before: async (session) => {
-					const member = await db.query.member.findFirst({
-						where: eq(schema.member.userId, session.userId),
-						orderBy: [
-							desc(schema.member.isDefault),
-							desc(schema.member.createdAt),
-						],
-						with: {
-							organization: true,
-						},
-					});
+			expiresIn: 60 * 60 * 24 * 3,
+			updateAge: 60 * 60 * 24,
+		},
+		user: {
+			modelName: "user",
+			fields: {
+				name: "firstName",
+			},
+			additionalFields: {
+				role: {
+					type: "string",
+					input: false,
+				},
+				ownerId: {
+					type: "string",
+					input: false,
+				},
+				allowImpersonation: {
+					fieldName: "allowImpersonation",
+					type: "boolean",
+					defaultValue: false,
+				},
+				lastName: {
+					type: "string",
+					required: false,
+					input: true,
+					defaultValue: "",
+				},
+				enableEnterpriseFeatures: {
+					type: "boolean",
+					required: false,
+					input: false,
+				},
+				isValidEnterpriseLicense: {
+					type: "boolean",
+					required: false,
+					input: false,
+				},
+			},
+		},
+		plugins: [
+			authEmailPolicyPlugin,
+			apiKey({
+				enableMetadata: true,
+				references: "user",
+			}),
+			sso(),
+			twoFactor(),
+			organization({
+				ac,
+				roles: {
+					owner: ownerRole,
+					admin: adminRole,
+					member: memberRole,
+				},
+				dynamicAccessControl: {
+					enabled: true,
+					maximumRolesPerOrganization: 10,
+				},
+			}),
+			...(process.env.USER_ADMIN_ID
+				? [
+						admin({
+							adminUserIds: [process.env.USER_ADMIN_ID as string],
+						}),
+					]
+				: []),
+		],
+	});
+}
 
-					return {
-						data: {
-							...session,
-							activeOrganizationId: member?.organization.id,
-						},
-					};
-				},
-				after: async (session) => {
-					const orgId = (
-						session as typeof session & { activeOrganizationId?: string }
-					).activeOrganizationId;
-					if (!orgId) return;
-					const memberRecord = await db.query.member.findFirst({
-						where: and(
-							eq(schema.member.userId, session.userId),
-							eq(schema.member.organizationId, orgId),
-						),
-						with: { user: true },
-					});
-					if (!memberRecord) return;
-					await createAuditLog({
-						organizationId: orgId,
-						userId: session.userId,
-						userEmail: memberRecord.user.email,
-						userRole: memberRecord.role,
-						action: "login",
-						resourceType: "session",
-					});
-				},
-			},
-			delete: {
-				after: async (session) => {
-					const orgId = (
-						session as typeof session & { activeOrganizationId?: string }
-					).activeOrganizationId;
-					if (!orgId) return;
-					const memberRecord = await db.query.member.findFirst({
-						where: and(
-							eq(schema.member.userId, session.userId),
-							eq(schema.member.organizationId, orgId),
-						),
-						with: { user: true },
-					});
-					if (!memberRecord) return;
-					await createAuditLog({
-						organizationId: orgId,
-						userId: session.userId,
-						userEmail: memberRecord.user.email,
-						userRole: memberRecord.role,
-						action: "logout",
-						resourceType: "session",
-					});
-				},
-			},
-		},
-	},
-	session: {
-		expiresIn: 60 * 60 * 24 * 3,
-		updateAge: 60 * 60 * 24,
-	},
-	user: {
-		modelName: "user",
-		fields: {
-			name: "firstName",
-		},
-		additionalFields: {
-			role: {
-				type: "string",
-				input: false,
-			},
-			ownerId: {
-				type: "string",
-				input: false,
-			},
-			allowImpersonation: {
-				fieldName: "allowImpersonation",
-				type: "boolean",
-				defaultValue: false,
-			},
-			lastName: {
-				type: "string",
-				required: false,
-				input: true,
-				defaultValue: "",
-			},
-			enableEnterpriseFeatures: {
-				type: "boolean",
-				required: false,
-				input: false,
-			},
-			isValidEnterpriseLicense: {
-				type: "boolean",
-				required: false,
-				input: false,
-			},
-		},
-	},
-	plugins: [
-		authEmailPolicyPlugin,
-		apiKey({
-			enableMetadata: true,
-			references: "user",
-		}),
-		sso(),
-		twoFactor(),
-		organization({
-			ac,
-			roles: {
-				owner: ownerRole,
-				admin: adminRole,
-				member: memberRole,
-			},
-			dynamicAccessControl: {
-				enabled: true,
-				maximumRolesPerOrganization: 10,
-			},
-		}),
-		...(process.env.USER_ADMIN_ID
-			? [
-					admin({
-						adminUserIds: [process.env.USER_ADMIN_ID as string],
-					}),
-				]
-			: []),
-	],
-});
+type AuthRuntime = ReturnType<typeof createAuthRuntime>;
+type ReloadableAuthApiMethod =
+	| "createApiKey"
+	| "registerSSOProvider"
+	| "updateSSOProvider";
+
+let currentAuthRuntime = createAuthRuntime();
+
+function currentAuthApi() {
+	return currentAuthRuntime.api;
+}
+
+function reloadableApiMethod<K extends ReloadableAuthApiMethod>(key: K) {
+	return ((...args: unknown[]) => {
+		const method = currentAuthApi()[key] as unknown as (
+			...values: unknown[]
+		) => unknown;
+		return method(...args);
+	}) as AuthRuntime["api"][K];
+}
+
+const stableAuthHandler: AuthRuntime["handler"] = (request) =>
+	currentAuthRuntime.handler(request);
 
 const _auth = {
-	handler,
-	createApiKey: api.createApiKey,
-	registerSSOProvider: api.registerSSOProvider,
-	updateSSOProvider: api.updateSSOProvider,
+	handler: stableAuthHandler,
+	createApiKey: reloadableApiMethod("createApiKey"),
+	registerSSOProvider: reloadableApiMethod("registerSSOProvider"),
+	updateSSOProvider: reloadableApiMethod("updateSSOProvider"),
 };
 
 export type AuthType = typeof _auth;
 export const auth: AuthType = _auth;
+
+/**
+ * Rebuild Better Auth after first-run setup changes the durable public origin.
+ * `auth` remains referentially stable, so Node adapters and service imports keep
+ * dispatching through the newly created runtime without a process restart.
+ */
+export function reloadAuthRuntime() {
+	currentAuthRuntime = createAuthRuntime();
+	const publicBaseUrl = resolveAuthPublicBaseUrl() ?? null;
+	return {
+		publicBaseUrl,
+		secureCookies:
+			process.env.NODE_ENV === "production" &&
+			Boolean(publicBaseUrl?.startsWith("https://")),
+	};
+}
 
 const validateWebSocketTicket = async (request: IncomingMessage) => {
 	let ticket: ReturnType<typeof verifyWebSocketTicket> = null;
@@ -681,6 +733,9 @@ const validateWebSocketTicket = async (request: IncomingMessage) => {
 };
 
 export const validateRequest = async (request: IncomingMessage) => {
+	// Capture one coherent Better Auth runtime for the whole request. A setup
+	// reload can replace the global runtime concurrently without mixing APIs.
+	const api = currentAuthApi();
 	const apiKey = request.headers["x-api-key"] as string;
 	if (apiKey) {
 		try {
