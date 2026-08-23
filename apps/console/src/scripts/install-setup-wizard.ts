@@ -1,5 +1,6 @@
-import { authErrorMessage } from "@/lib/auth-form-classes";
+import { authErrorMessage, authResendBtnClass } from "@/lib/auth-form-classes";
 import {
+	extractSetupToken,
 	extractSetupTokenFromHash,
 	INSTALL_SETUP_DRAFT_KEY,
 	INSTALL_SETUP_TOKEN_KEY,
@@ -78,7 +79,7 @@ const STEP_COPY: Record<
 	verify: {
 		title: "Connect DNS and verify HTTPS",
 		subtitle:
-			"Add the records at your DNS provider. Nearzero checks the public result without changing your root domain.",
+			"Add the records at your DNS provider. Nearzero checks the public result automatically.",
 		action: "Continue",
 	},
 	done: {
@@ -153,7 +154,11 @@ async function writeClipboard(value: string) {
 }
 
 export function bindInstallSetupWizard(root: HTMLElement) {
-	const hashToken = extractSetupTokenFromHash(window.location.hash);
+	const hashToken =
+		extractSetupTokenFromHash(window.location.hash) ||
+		extractSetupToken(
+			new URL(window.location.href).searchParams.get("token") || "",
+		);
 	if (hashToken) persistToken(hashToken);
 
 	let status = JSON.parse(
@@ -213,6 +218,23 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	const copyAllButton = root.querySelector<HTMLButtonElement>(
 		"[data-setup-copy-dns]",
 	);
+	const verifyTabs = root.querySelectorAll<HTMLButtonElement>(
+		"[data-setup-verify-tab]",
+	);
+
+	function setVerifyView(view: "records" | "readiness") {
+		for (const tab of verifyTabs) {
+			tab.setAttribute(
+				"aria-selected",
+				tab.dataset.setupVerifyTab === view ? "true" : "false",
+			);
+		}
+		for (const pane of root.querySelectorAll<HTMLElement>(
+			"[data-setup-verify-view]",
+		)) {
+			pane.classList.toggle("hidden", pane.dataset.setupVerifyView !== view);
+		}
+	}
 
 	const baseDomain = root.querySelector<HTMLInputElement>(
 		"[data-setup-base-domain]",
@@ -243,6 +265,12 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	);
 	const zoneFields = root.querySelector<HTMLElement>(
 		"[data-setup-zone-fields]",
+	);
+	const setupTokenField = root.querySelector<HTMLElement>(
+		"[data-setup-token-field]",
+	);
+	const setupTokenInput = root.querySelector<HTMLInputElement>(
+		"[data-setup-token]",
 	);
 
 	const draft = readDraft();
@@ -384,6 +412,7 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			"[data-setup-review-ports]",
 			managed ? "TCP 80, 443 · UDP/TCP 53" : "TCP 80, 443",
 		);
+		syncSetupTokenField();
 	}
 
 	function recordsForConfiguration(): DnsRecord[] {
@@ -432,6 +461,7 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			appendRecordPart(item, "Value", record.value, true);
 			const button = document.createElement("button");
 			button.type = "button";
+			button.className = authResendBtnClass;
 			button.dataset.setupCopyRecord = record.id;
 			button.setAttribute("aria-label", `Copy ${record.type} record`);
 			button.textContent = "Copy";
@@ -521,20 +551,32 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		captureDraft();
 	}
 
+	function currentSetupToken() {
+		return (
+			extractSetupToken(setupTokenInput?.value || "") ||
+			extractSetupTokenFromHash(window.location.hash) ||
+			extractSetupToken(
+				new URL(window.location.href).searchParams.get("token") || "",
+			) ||
+			readToken()
+		);
+	}
+
+	let promptForSetupToken = false;
+
+	function syncSetupTokenField() {
+		setupTokenField?.classList.toggle("hidden", !promptForSetupToken);
+	}
+
 	const setupSessionPromise = (async () => {
 		const token = hashToken || readToken();
 		if (!token) return;
+		persistToken(token);
 		await exchangeSetupSession(token);
-		// The server now owns the credential in a scoped HttpOnly cookie. Keeping
-		// the plaintext token in JavaScript storage would undo that protection.
-		sessionStorage.removeItem(INSTALL_SETUP_TOKEN_KEY);
-		if (hashToken) {
-			history.replaceState(
-				null,
-				"",
-				`${window.location.pathname}${window.location.search}`,
-			);
-		}
+		if (!hashToken) return;
+		const url = new URL(window.location.href);
+		url.hash = "";
+		history.replaceState(null, "", `${url.pathname}${url.search}`);
 	})();
 	setupSessionPromise.catch((error) => {
 		showError(error instanceof Error ? error.message : "Setup link is invalid");
@@ -543,10 +585,14 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	const authorizedConfigurationPromise = setupSessionPromise
 		.then(async () => {
 			if (configured()) return;
+			const token = currentSetupToken();
 			const response = await fetch("/api/install/setup/readiness", {
 				method: "POST",
 				credentials: "same-origin",
-				headers: { accept: "application/json" },
+				headers: {
+					accept: "application/json",
+					...(token ? { "x-nearzero-setup-token": token } : {}),
+				},
 			});
 			if (!response.ok) return;
 			const body = (await response.json().catch(() => null)) as unknown;
@@ -562,7 +608,11 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	async function submitSetup() {
 		await setupSessionPromise;
 		captureDraft();
-		const token = readToken();
+		const token = currentSetupToken();
+		if (token) {
+			persistToken(token);
+			await exchangeSetupSession(token);
+		}
 		const payload = {
 			...(token ? { token } : {}),
 			managementHostname: managementHostname?.value.trim() || "",
@@ -582,13 +632,25 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			headers: {
 				accept: "application/json",
 				"content-type": "application/json",
+				...(token ? { "x-nearzero-setup-token": token } : {}),
 			},
 			body: JSON.stringify(payload),
 		});
 		const body = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(authErrorMessage(body, "Failed to apply install setup"));
+			const message = authErrorMessage(body, "Failed to apply install setup");
+			if (
+				response.status === 401 ||
+				/setup link|setup token|setup payload/i.test(message)
+			) {
+				promptForSetupToken = true;
+				syncSetupTokenField();
+				setupTokenInput?.focus();
+			}
+			throw new Error(message);
 		}
+		promptForSetupToken = false;
+		syncSetupTokenField();
 		if (isPublicInstallSetupStatus(body)) {
 			status = body;
 			steps = wizardStepsForStatus(status);
@@ -733,9 +795,10 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		await setupSessionPromise;
 		setButtonBusy(checkBtn, true);
 		if (checkBtn) checkBtn.textContent = "Checking…";
+		if (!options.quiet) setVerifyView("readiness");
 		renderCheckingState();
 		try {
-			const token = readToken();
+			const token = currentSetupToken();
 			const response = await fetch("/api/install/setup/readiness", {
 				method: "POST",
 				credentials: "same-origin",
@@ -837,9 +900,8 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		if (subtitle) subtitle.textContent = copy.subtitle;
 		renderStepRail(step);
 
-		const isApplied = configured();
 		if (backBtn) {
-			backBtn.classList.toggle("hidden", stepIndex === 0 || isApplied);
+			backBtn.classList.toggle("hidden", stepIndex === 0);
 		}
 		if (nextBtn) {
 			const showNext = step !== "done" && (step !== "verify" || canFinish());
@@ -865,7 +927,11 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 
 		const url = new URL(window.location.href);
 		url.searchParams.set("step", step);
-		history.replaceState(null, "", `${url.pathname}${url.search}`);
+		history.replaceState(
+			null,
+			"",
+			`${url.pathname}${url.search}${url.hash}`,
+		);
 	}
 
 	function validateManagement() {
@@ -952,13 +1018,19 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 
 	backBtn?.addEventListener("click", () => {
 		showError(null);
-		if (!configured() && stepIndex > 0) {
+		if (stepIndex > 0) {
 			stepIndex -= 1;
 			render();
 		}
 	});
 	nextBtn?.addEventListener("click", () => void goNext());
 	checkBtn?.addEventListener("click", () => void checkReadiness());
+	for (const tab of verifyTabs) {
+		tab.addEventListener("click", () => {
+			const view = tab.dataset.setupVerifyTab;
+			if (view === "records" || view === "readiness") setVerifyView(view);
+		});
+	}
 	copyAllButton?.addEventListener("click", async () => {
 		try {
 			const value = recordsForConfiguration()
@@ -992,6 +1064,11 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		input?.addEventListener("input", captureDraft);
 		input?.addEventListener("change", captureDraft);
 	}
+	setupTokenInput?.addEventListener("input", () => {
+		const token = extractSetupToken(setupTokenInput.value);
+		if (token) persistToken(token);
+		showError(null);
+	});
 	for (const choice of [managedDnsMode, externalDnsMode]) {
 		choice?.addEventListener("change", () => {
 			syncDnsChoice();

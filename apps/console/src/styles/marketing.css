@@ -141,23 +141,17 @@
 }
 
 .nz-brand-mark {
-	display: grid;
-	gap: 2px;
-	grid-template-columns: repeat(3, 4px);
-	grid-template-rows: repeat(3, 4px);
-	height: 16px;
-	width: 16px;
+	display: inline-flex;
+	flex-shrink: 0;
+	height: 28px;
+	width: 28px;
 }
 
-.nz-brand-mark > span {
-	background: #52525b;
-	border-radius: 1px;
-	height: 4px;
-	width: 4px;
-}
-
-.nz-brand-mark > span.is-on {
-	background: var(--nz-m-brand-gradient);
+.nz-brand-mark .nz-nearzero-mark,
+.nz-brand-mark img {
+	display: block;
+	height: 100%;
+	width: 100%;
 }
 
 .nz-nav__links {

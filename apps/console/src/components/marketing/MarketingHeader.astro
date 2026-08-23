@@ -1,21 +1,21 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import NearzeroMark from "@/components/NearzeroMark.astro";
 import { publicSiteLinks } from "@/lib/public-site";
 
 interface Props {
 	active?: "docs" | "compare";
+	showSignIn?: boolean;
 }
 
-const { active = "docs" } = Astro.props;
+const { active = "docs", showSignIn = true } = Astro.props;
 ---
 
 <header class="nz-nav-shell">
 	<nav class="nz-container nz-nav" aria-label="Primary navigation">
 		<a class="nz-brand" href={publicSiteLinks.home} aria-label="Nearzero home">
 			<span class="nz-brand-mark" aria-hidden="true">
-				<span class="is-on"></span><span></span><span class="is-on"></span>
-				<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span>
-				<span class="is-on"></span><span></span><span class="is-on"></span>
+				<NearzeroMark size={28} />
 			</span>
 			<span>Nearzero</span>
 		</a>
@@ -34,7 +34,9 @@ const { active = "docs" } = Astro.props;
 		</div>
 
 		<div class="nz-nav__actions">
-			<a class="nz-nav__login" href={publicSiteLinks.signIn}>Sign in</a>
+			{showSignIn && (
+				<a class="nz-nav__login" href={publicSiteLinks.signIn}>Sign in</a>
+			)}
 			<a
 				class="nz-button nz-button--small nz-button--primary"
 				href={publicSiteLinks.selfHosting}
@@ -71,7 +73,9 @@ const { active = "docs" } = Astro.props;
 					Compare
 				</a>
 				<a href={publicSiteLinks.docs} aria-current={active === "docs" ? "page" : undefined}>Documentation</a>
-				<a href={publicSiteLinks.signIn}>Sign in</a>
+				{showSignIn && (
+					<a href={publicSiteLinks.signIn}>Sign in</a>
+				)}
 				<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
 					Read install guide
 				</a>

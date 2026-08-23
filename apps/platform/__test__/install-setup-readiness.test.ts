@@ -16,6 +16,7 @@ import {
 	installSetupRequestIsHttps,
 	installSetupRequestToken,
 	installSetupSessionCookie,
+	installSetupPayloadErrorMessage,
 	installSetupSubmitPayload,
 	readInstallSetupJsonBody,
 } from "../server/routes/install-setup";
@@ -36,7 +37,7 @@ const READY_STATE: InstallSetupReadinessState = {
 		managedDnsZone: "apps.example.com",
 		managedDnsSkipped: false,
 		canSubmit: false,
-		resumeStep: "verify",
+		resumeStep: "register",
 	},
 	adminEmail: "owner@example.com",
 	managedDnsSoaEmail: "dns@example.com",
@@ -338,7 +339,7 @@ describe("install setup session cookie", () => {
 		const plain = installSetupSessionCookie("token/value", false);
 		expect(plain).toContain("nearzero_install_setup_token=token%2Fvalue");
 		expect(plain).toContain("Max-Age=86400");
-		expect(plain).toContain("Path=/api/install/setup");
+		expect(plain).toContain("Path=/");
 		expect(plain).toContain("HttpOnly");
 		expect(plain).toContain("SameSite=Strict");
 		expect(plain).not.toContain("Secure");
@@ -361,6 +362,25 @@ describe("install setup session cookie", () => {
 				},
 			}),
 		).toBe("cookie/token");
+	});
+
+	it("explains a missing setup token instead of a generic payload error", () => {
+		expect(
+			installSetupPayloadErrorMessage({
+				name: "ZodError",
+				issues: [
+					{
+						code: "invalid_type",
+						expected: "string",
+						received: "undefined",
+						path: ["token"],
+						message: "Required",
+					},
+				],
+			}),
+		).toBe(
+			"Open the setup link from the installer to apply this configuration.",
+		);
 	});
 
 	it("injects the HttpOnly session token into setup submission", () => {

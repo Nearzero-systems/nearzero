@@ -1,0 +1,22 @@
+---
+/**
+ * Practical Nearzero mark — same matrix "N" asset as favicon.svg / logo.svg.
+ */
+interface Props {
+	class?: string;
+	size?: number;
+}
+
+const { class: className = "", size = 28 } = Astro.props;
+const src = "/logo.svg";
+---
+
+<img
+	class:list={["nz-nearzero-mark", className]}
+	src={src}
+	width={size}
+	height={size}
+	alt=""
+	aria-hidden="true"
+	draggable="false"
+/>

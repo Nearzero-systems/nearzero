@@ -1,8 +1,14 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
-import { authBtnClass, authControlClass } from "@/lib/auth-form-classes";
+import {
+	authBtnClass,
+	authControlClass,
+	authMutedText,
+	authResendBtnClass,
+} from "@/lib/auth-form-classes";
 import type { PublicInstallSetupStatus } from "@/lib/install-setup";
 import { wizardStepsForStatus } from "@/lib/install-setup";
+import AuthGrid from "./AuthGrid.astro";
 import AuthButtonSpinner from "./AuthButtonSpinner.astro";
 import "../../styles/install-setup.css";
 
@@ -32,356 +38,337 @@ const stepRail = [
 	{ id: "management", label: "Domain" },
 	{ id: "zone", label: "App URLs" },
 	{ id: "review", label: "Review" },
-	{ id: "verify", label: "DNS & HTTPS" },
+	{ id: "verify", label: "DNS" },
 	{ id: "done", label: "Finish" },
 ] as const;
+const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 ---
 
 <div
 	id="nz-setup-root"
-	class="nz-install-setup"
+	class="contents nz-install-setup"
 	data-setup-status={JSON.stringify(status)}
 	data-setup-steps={JSON.stringify(steps)}
 	data-initial-step={initialStep}
 >
-	<header class="nz-install-setup__header">
-		<a class="nz-install-setup__brand" href="/setup" aria-label="Nearzero setup home">
-			<span class="nz-install-setup__mark" aria-hidden="true">N</span>
-			<span>Nearzero</span>
-		</a>
-		<span class="nz-install-setup__header-note">
-			<span aria-hidden="true">●</span>
-			One-time OSS setup
-		</span>
-	</header>
+	<AuthGrid variant="setup">
+		<div slot="c4" class="mx-auto flex h-full w-full max-w-[36rem] items-end justify-center pb-1 text-center">
+			<h1
+				id="nz-setup-title"
+				data-setup-title
+				class="font-display text-xl font-semibold tracking-tight text-[#111827] sm:text-2xl"
+			>
+				Set up your Nearzero server
+			</h1>
+		</div>
 
-	<main class="nz-install-setup__layout">
-		<nav class="nz-install-setup__rail" aria-label="Setup progress">
-			<p class="nz-install-setup__rail-label">Setup progress</p>
-			<ol>
+		<div slot="c7" class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-2 px-3 text-center">
+			<div class="nz-install-setup__progress" aria-label="Setup progress">
+				<p class={`text-xs ${authMutedText}`} data-setup-progress>Step 1 of {steps.length}</p>
+				<div class="nz-install-setup__progress-track" aria-hidden="true">
+					<span data-setup-progress-bar style={`width: ${(1 / Math.max(steps.length, 1)) * 100}%`}></span>
+				</div>
+			</div>
+			<ol class="sr-only">
 				{stepRail.map((step, index) => (
 					<li data-setup-step-item={step.id} data-step-state={index === 0 ? "current" : "upcoming"}>
-						<span class="nz-install-setup__step-number" aria-hidden="true">{index + 1}</span>
+						<span class="nz-install-setup__step-number">{index + 1}</span>
 						<span>{step.label}</span>
 					</li>
 				))}
 			</ol>
-			<p class="nz-install-setup__rail-help">
-				Your choices stay on this server. Nearzero never takes ownership of your root domain.
-			</p>
-		</nav>
+		</div>
 
-		<section class="nz-install-setup__workspace" aria-labelledby="nz-setup-title">
-			<div class="nz-install-setup__mobile-progress">
-				<p data-setup-progress aria-live="polite">Step 1 of {stepRail.length}</p>
-				<div class="nz-install-setup__progress-track" aria-hidden="true">
-					<span data-setup-progress-bar style="width: 16.6667%"></span>
+		<div slot="c10" class="mx-auto my-auto flex w-full max-w-[42rem] flex-col gap-3">
+			<section data-setup-panel="welcome" class="nz-install-setup__panel flex">
+				<div class="nz-install-setup__intro">
+					<p class={`text-sm ${authMutedText}`}>This takes about a minute. Have these ready:</p>
+					<ul class="nz-install-setup__checklist">
+						<li><span aria-hidden="true">1</span><div><strong>A domain you can edit</strong><p>You will add a few records at your DNS provider.</p></div></li>
+						<li><span aria-hidden="true">2</span><div><strong>This server's public IPv4 address</strong><p>You will confirm it on the next step.</p></div></li>
+						<li><span aria-hidden="true">3</span><div><strong>Firewall access</strong><p>HTTPS needs TCP 80 and 443. Nearzero DNS also needs UDP and TCP 53.</p></div></li>
+					</ul>
 				</div>
-			</div>
+			</section>
 
-			<div class="nz-install-setup__card" data-setup-card>
-				<header class="nz-install-setup__card-header">
-					<p class="nz-install-setup__eyebrow">Nearzero Community</p>
-					<h1 id="nz-setup-title" data-setup-title>Set up your Nearzero server</h1>
-					<p data-setup-subtitle>
-						Connect a domain, turn on HTTPS, and choose how deployed apps receive URLs.
+			<form data-setup-panel="management" class="nz-install-setup__panel hidden" novalidate>
+				<label class="nz-install-setup__field">
+					<span>Domain you control</span>
+					<input
+						type="text"
+						name="baseDomain"
+						autocomplete="off"
+						spellcheck="false"
+						required
+						placeholder="example.com"
+						pattern={hostnamePattern}
+						value={initialBaseDomain}
+						class={authControlClass}
+						data-setup-base-domain
+					/>
+					<small>Enter a domain only. Do not include <code>https://</code> or a path.</small>
+				</label>
+
+				<div class="nz-install-setup__preview" aria-live="polite">
+					<div><span>Nearzero console</span><code data-setup-derived-management>{managementHostname}</code></div>
+					<div><span>Suggested application zone</span><code data-setup-derived-zone>{managedZone}</code></div>
+				</div>
+
+				<label class="nz-install-setup__field">
+					<span>Owner email</span>
+					<input
+						type="email"
+						name="adminEmail"
+						autocomplete="email"
+						inputmode="email"
+						spellcheck="false"
+						required
+						placeholder="owner@example.com"
+						class={authControlClass}
+						data-setup-admin-email
+					/>
+					<small>Only this email can create the first owner account. It is also used for Let's Encrypt notices.</small>
+				</label>
+
+				<label class="nz-install-setup__field">
+					<span>Server IPv4 address</span>
+					<input
+						type="text"
+						name="publicIp"
+						autocomplete="off"
+						inputmode="decimal"
+						spellcheck="false"
+						required
+						placeholder="203.0.113.10"
+						value={status.publicIp ?? ""}
+						class={authControlClass}
+						data-setup-public-ip
+					/>
+					<small>This must be the publicly routable IPv4 address that receives traffic for this server.</small>
+				</label>
+
+				<details class="nz-install-setup__advanced" data-setup-advanced-hostnames>
+					<summary>Customize the console hostname</summary>
+					<label class="nz-install-setup__field">
+						<span>Nearzero console hostname</span>
+						<input
+							type="text"
+							name="managementHostname"
+							autocomplete="off"
+							spellcheck="false"
+							required
+							placeholder="nearzero.example.com"
+							pattern={hostnamePattern}
+							value={status.managementHostname ?? ""}
+							class={authControlClass}
+							data-setup-management-hostname
+						/>
+						<small>Most users should keep the suggested <code>nearzero.example.com</code> hostname.</small>
+					</label>
+				</details>
+			</form>
+
+			<form data-setup-panel="zone" class="nz-install-setup__panel hidden" novalidate>
+				<fieldset class="nz-install-setup__choice-group">
+					<legend>How should applications receive domains?</legend>
+					<label class:list={["nz-install-setup__choice", !status.managedDnsEnabled && "is-disabled"]}>
+						<input
+							type="radio"
+							name="dnsMode"
+							value="managed"
+							checked={status.managedDnsEnabled && !status.managedDnsSkipped}
+							disabled={!status.managedDnsEnabled}
+							data-setup-dns-mode="managed"
+						/>
+						<span class="nz-install-setup__choice-copy">
+							<span class="nz-install-setup__choice-title">Use Nearzero DNS <em>Recommended</em></span>
+							<span>Apps receive URLs such as <code>api.apps.example.com</code>. Nearzero runs CoreDNS and creates records automatically.</span>
+						</span>
+					</label>
+
+					<label class="nz-install-setup__choice">
+						<input
+							type="radio"
+							name="dnsMode"
+							value="external"
+							checked={!status.managedDnsEnabled || status.managedDnsSkipped}
+							data-setup-dns-mode="external"
+						/>
+						<span class="nz-install-setup__choice-copy">
+							<span class="nz-install-setup__choice-title">I'll manage app domains myself</span>
+							<span>Nearzero configures only the console URL. You can add application domains manually after signing in.</span>
+						</span>
+					</label>
+				</fieldset>
+
+				<input type="checkbox" name="skipManagedDns" data-setup-skip-zone class="hidden" tabindex="-1" aria-hidden="true" />
+
+				{!status.managedDnsEnabled ? (
+					<p class="nz-install-setup__notice">
+						Nearzero DNS was disabled during installation. Re-run the installer with managed DNS enabled to use automatic app URLs.
 					</p>
-				</header>
+				) : null}
 
-				<div class="nz-install-setup__body">
-					<section data-setup-panel="welcome" class="nz-install-setup__panel flex">
-						<div class="nz-install-setup__intro">
-							<h2>Before you start</h2>
-							<p>This takes about five minutes. Have these three things ready:</p>
-							<ul class="nz-install-setup__checklist">
-								<li><span aria-hidden="true">1</span><div><strong>A domain you can edit</strong><p>You will add a few records at your DNS provider.</p></div></li>
-								<li><span aria-hidden="true">2</span><div><strong>This server's public IPv4 address</strong><p>Nearzero detected it when possible.</p></div></li>
-								<li><span aria-hidden="true">3</span><div><strong>Firewall access</strong><p>HTTPS needs TCP 80 and 443. Nearzero DNS also needs UDP and TCP 53.</p></div></li>
-							</ul>
-						</div>
-						<div class="nz-install-setup__detected" data-setup-preflight-status>
-							<span class="nz-install-setup__status-dot" aria-hidden="true"></span>
-							<div>
-								<strong>{status.publicIp ? "Server address detected" : "Server address needed"}</strong>
-								<p>
-									{status.publicIp
-										? <>Nearzero found <code>{status.publicIp}</code>. You can review it before anything is applied.</>
-										: "Enter this server's public IPv4 address in the next step."}
-								</p>
-							</div>
-						</div>
-					</section>
+				<div class="nz-install-setup__zone-fields" data-setup-zone-fields>
+					<label class="nz-install-setup__field">
+						<span>Application zone</span>
+						<input
+							type="text"
+							name="managedDnsZone"
+							autocomplete="off"
+							spellcheck="false"
+							placeholder="apps.example.com"
+							pattern={hostnamePattern}
+							value={status.managedDnsZone ?? ""}
+							class={authControlClass}
+							data-setup-managed-zone
+						/>
+						<small>Delegate only this subdomain to Nearzero.</small>
+					</label>
+					<label class="nz-install-setup__field">
+						<span>DNS contact email <small>Optional</small></span>
+						<input
+							type="email"
+							name="managedDnsSoaEmail"
+							autocomplete="email"
+							spellcheck="false"
+							placeholder="Defaults to the owner email"
+							class={authControlClass}
+							data-setup-soa-email
+						/>
+					</label>
+				</div>
+			</form>
 
-					<form data-setup-panel="management" class="nz-install-setup__panel hidden" novalidate>
-						<label class="nz-install-setup__field">
-							<span>Domain you control</span>
-							<input
-								type="text"
-								name="baseDomain"
-								autocomplete="off"
-								spellcheck="false"
-								required
-								placeholder="example.com"
-								pattern={hostnamePattern}
-								value={initialBaseDomain}
-								class={authControlClass}
-								data-setup-base-domain
-							/>
-							<small>Enter a domain only. Do not include <code>https://</code> or a path.</small>
-						</label>
+			<section data-setup-panel="review" class="nz-install-setup__panel hidden">
+				<div class="nz-install-setup__notice">
+					<p>Review these values carefully. Applying them writes the console hostname and application zone. Changing either later requires a domain migration.</p>
+				</div>
+				<dl class="nz-install-setup__summary">
+					<div><dt>Console URL</dt><dd data-setup-review-management>https://{managementHostname}</dd></div>
+					<div><dt>Application URL mode</dt><dd data-setup-review-dns-mode>{status.managedDnsEnabled ? "Nearzero DNS" : "External DNS"}</dd></div>
+					<div><dt>Application zone</dt><dd data-setup-review-zone>{status.managedDnsZone ?? "apps.example.com"}</dd></div>
+					<div><dt>Server IPv4</dt><dd data-setup-review-ip>{status.publicIp ?? "Not detected"}</dd></div>
+					<div><dt>First owner email</dt><dd data-setup-review-email>Not entered</dd></div>
+					<div><dt>Required ports</dt><dd data-setup-review-ports>TCP 80, 443 · UDP/TCP 53</dd></div>
+				</dl>
+				<label class="nz-install-setup__field hidden" data-setup-token-field>
+					<span>Installer setup link</span>
+					<input
+						type="text"
+						autocomplete="off"
+						spellcheck="false"
+						placeholder="Paste the /setup#token=… URL from the installer"
+						class={authControlClass}
+						data-setup-token
+					/>
+					<small>This page is missing the one-time setup token. Paste the installer URL or the token itself, then apply.</small>
+				</label>
+			</section>
 
-						<div class="nz-install-setup__preview" aria-live="polite">
-							<div><span>Nearzero console</span><code data-setup-derived-management>{managementHostname}</code></div>
-							<div><span>Suggested application zone</span><code data-setup-derived-zone>{managedZone}</code></div>
-						</div>
-
-						<label class="nz-install-setup__field">
-							<span>Owner email</span>
-							<input
-								type="email"
-								name="adminEmail"
-								autocomplete="email"
-								inputmode="email"
-								spellcheck="false"
-								required
-								placeholder="owner@example.com"
-								class={authControlClass}
-								data-setup-admin-email
-							/>
-							<small>Only this email can create the first owner account. It is also used for Let's Encrypt notices.</small>
-						</label>
-
-						<label class="nz-install-setup__field">
-							<span>Server IPv4 address</span>
-							<input
-								type="text"
-								name="publicIp"
-								autocomplete="off"
-								inputmode="decimal"
-								spellcheck="false"
-								required
-								placeholder="203.0.113.10"
-								value={status.publicIp ?? ""}
-								class={authControlClass}
-								data-setup-public-ip
-							/>
-							<small>This must be the publicly routable IPv4 address that receives traffic for this server.</small>
-						</label>
-
-						<details class="nz-install-setup__advanced" data-setup-advanced-hostnames>
-							<summary>Customize the console hostname</summary>
-							<label class="nz-install-setup__field">
-								<span>Nearzero console hostname</span>
-								<input
-									type="text"
-									name="managementHostname"
-									autocomplete="off"
-									spellcheck="false"
-									required
-									placeholder="nearzero.example.com"
-									pattern={hostnamePattern}
-									value={status.managementHostname ?? ""}
-									class={authControlClass}
-									data-setup-management-hostname
-								/>
-								<small>Most users should keep the suggested <code>nearzero.example.com</code> hostname.</small>
-							</label>
-						</details>
-					</form>
-
-					<form data-setup-panel="zone" class="nz-install-setup__panel hidden" novalidate>
-						<fieldset class="nz-install-setup__choice-group">
-							<legend>How should applications receive domains?</legend>
-							<label class:list={["nz-install-setup__choice", !status.managedDnsEnabled && "is-disabled"]}>
-								<input
-									type="radio"
-									name="dnsMode"
-									value="managed"
-									checked={status.managedDnsEnabled && !status.managedDnsSkipped}
-									disabled={!status.managedDnsEnabled}
-									data-setup-dns-mode="managed"
-								/>
-								<span class="nz-install-setup__choice-copy">
-									<span class="nz-install-setup__choice-title">Use Nearzero DNS <em>Recommended</em></span>
-									<span>Apps receive URLs such as <code>api.apps.example.com</code>. Nearzero runs CoreDNS and creates records automatically. Your existing website and email DNS stay where they are.</span>
-								</span>
-							</label>
-
-							<label class="nz-install-setup__choice">
-								<input
-									type="radio"
-									name="dnsMode"
-									value="external"
-									checked={!status.managedDnsEnabled || status.managedDnsSkipped}
-									data-setup-dns-mode="external"
-								/>
-								<span class="nz-install-setup__choice-copy">
-									<span class="nz-install-setup__choice-title">I'll manage app domains myself</span>
-									<span>Nearzero configures only the console URL. You can add application domains manually after signing in.</span>
-								</span>
-							</label>
-						</fieldset>
-
-						<input type="checkbox" name="skipManagedDns" data-setup-skip-zone class="hidden" tabindex="-1" aria-hidden="true" />
-
-						{!status.managedDnsEnabled ? (
-							<p class="nz-install-setup__notice">
-								Nearzero DNS was disabled during installation. Re-run the installer with managed DNS enabled to use automatic app URLs.
-							</p>
-						) : null}
-
-						<div class="nz-install-setup__zone-fields" data-setup-zone-fields>
-							<label class="nz-install-setup__field">
-								<span>Application zone</span>
-								<input
-									type="text"
-									name="managedDnsZone"
-									autocomplete="off"
-									spellcheck="false"
-									placeholder="apps.example.com"
-									pattern={hostnamePattern}
-									value={status.managedDnsZone ?? ""}
-									class={authControlClass}
-									data-setup-managed-zone
-								/>
-								<small>Delegate only this subdomain to Nearzero. Keep the rest of your DNS with its current provider.</small>
-							</label>
-							<label class="nz-install-setup__field nz-install-setup__field--secondary">
-								<span>DNS contact email <small>Optional</small></span>
-								<input
-									type="email"
-									name="managedDnsSoaEmail"
-									autocomplete="email"
-									spellcheck="false"
-									placeholder="Defaults to the owner email"
-									class={authControlClass}
-									data-setup-soa-email
-								/>
-							</label>
-						</div>
-					</form>
-
-					<section data-setup-panel="review" class="nz-install-setup__panel hidden">
-						<div class="nz-install-setup__review-note">
-							<strong>Nothing has been changed yet.</strong>
-							<p>Review these values carefully. Changing the console hostname or application zone later requires a domain migration.</p>
-						</div>
-						<dl class="nz-install-setup__summary">
-							<div><dt>Console URL</dt><dd data-setup-review-management>https://{managementHostname}</dd></div>
-							<div><dt>Application URL mode</dt><dd data-setup-review-dns-mode>{status.managedDnsEnabled ? "Nearzero DNS" : "External DNS"}</dd></div>
-							<div><dt>Application zone</dt><dd data-setup-review-zone>{status.managedDnsZone ?? "apps.example.com"}</dd></div>
-							<div><dt>Server IPv4</dt><dd data-setup-review-ip>{status.publicIp ?? "Not detected"}</dd></div>
-							<div><dt>First owner email</dt><dd data-setup-review-email>Not entered</dd></div>
-							<div><dt>Required ports</dt><dd data-setup-review-ports>TCP 80, 443 · UDP/TCP 53</dd></div>
-						</dl>
-					</section>
-
-					<section data-setup-panel="verify" class="nz-install-setup__panel hidden">
-						<div class="nz-install-setup__records" data-setup-dns-records>
-							<div class="nz-install-setup__section-heading">
-								<div>
-									<h2>Add these DNS records</h2>
-									<p>Open your DNS provider and add each record exactly as shown.</p>
-								</div>
-								<button type="button" class="nz-install-setup__copy" data-setup-copy-dns>Copy all</button>
-							</div>
-							<ol class="nz-install-setup__record-list" data-setup-dns-instructions>
-								<li data-setup-dns-record="management-a">
-									<span><small>Type</small><strong>A</strong></span>
-									<span><small>Name</small><code data-setup-record-name>{managementHostname}</code></span>
-									<span><small>Value</small><code data-setup-record-value>{serverIp}</code></span>
-									<button type="button" data-setup-copy-record="management-a" aria-label="Copy management A record">Copy</button>
-								</li>
-							</ol>
-							<p class="nz-install-setup__record-help" data-setup-dns-help>
-								Keep TCP 80 and 443 open. Nearzero DNS also requires UDP and TCP 53 in both the server and cloud firewalls. If your provider offers a proxy or CDN toggle, choose <strong>DNS only</strong> until setup is verified.
-							</p>
-						</div>
-
-						<div class="nz-install-setup__readiness" aria-labelledby="nz-setup-readiness-title">
-							<div class="nz-install-setup__section-heading">
-								<div>
-									<h2 id="nz-setup-readiness-title">DNS and HTTPS readiness</h2>
-									<p>Nearzero checks automatically. DNS changes can take a few minutes to appear.</p>
-								</div>
-								<span class="nz-install-setup__last-checked" data-setup-last-checked>Not checked</span>
-							</div>
-							<ul class="nz-install-setup__readiness-list">
-								{[
-									["management-dns", "Console DNS", "The console hostname must point to this server."],
-									["https-certificate", "HTTPS certificate", "Traefik obtains and renews this automatically."],
-									["zone-delegated", "Application-zone delegation", "Public NS records must point to Nearzero."],
-									["authoritative-soa", "Authoritative DNS response", "CoreDNS must answer directly on port 53."],
-								].map(([id, label, description]) => (
-									<li data-setup-readiness-row={id} data-readiness-state="idle">
-										<span class="nz-install-setup__readiness-icon" aria-hidden="true"></span>
-										<div><strong>{label}</strong><p data-setup-readiness-message>{description}</p></div>
-										<span class="nz-install-setup__readiness-state" data-setup-readiness-status>Not checked</span>
-									</li>
-								))}
-							</ul>
-						</div>
-
-						<div class="nz-install-setup__verify-summary" aria-live="polite" data-setup-verify-status>
-							Add the DNS records above, then check readiness.
-						</div>
-					</section>
-
-					<section data-setup-panel="done" class="nz-install-setup__panel hidden">
-						<div class="nz-install-setup__success-mark" aria-hidden="true">✓</div>
-						<div class="nz-install-setup__success-copy">
-							<h2>Nearzero is ready</h2>
-							<p>Your console is secured with HTTPS. Create the first owner account to finish setup.</p>
-						</div>
-						<a
-							href={managementUrl || "#"}
-							class="nz-install-setup__canonical-url"
-							data-setup-open-management
-						>
-							<span>Nearzero console</span>
-							<code data-setup-canonical-url>{managementUrl || "Waiting for your domain"}</code>
-						</a>
-						<p class="nz-install-setup__owner-note">
-							Registration is limited to the owner email configured in this wizard. That address is not shown on public pages.
-						</p>
-					</section>
-
-					<p class="nz-install-setup__error hidden" data-setup-error role="alert"></p>
+			<section data-setup-panel="verify" class="nz-install-setup__panel nz-install-setup__panel--verify hidden">
+				<div class="nz-install-setup__switcher" role="tablist" aria-label="DNS setup views">
+					<button type="button" role="tab" aria-selected="true" data-setup-verify-tab="records">Records</button>
+					<button type="button" role="tab" aria-selected="false" data-setup-verify-tab="readiness">Readiness</button>
 				</div>
 
-				<footer class="nz-install-setup__actions">
-					<button type="button" class="nz-install-setup__button nz-install-setup__button--secondary" data-setup-back>
-						Back
-					</button>
-					<div class="nz-install-setup__actions-end">
-						<button
-							type="button"
-							class={`${authBtnClass} nz-install-setup__button nz-install-setup__button--primary`}
-							data-setup-next
-							data-default-label="Continue"
-						>
-							<AuthButtonSpinner />
-							<span data-setup-next-label>Continue</span>
-						</button>
-						<button
-							type="button"
-							class={`${authBtnClass} nz-install-setup__button nz-install-setup__button--primary hidden`}
-							data-setup-check
-						>
-							Check again
-						</button>
-						<a
-							href={registerUrl}
-							class={`${authBtnClass} nz-install-setup__button nz-install-setup__button--primary hidden no-underline`}
-							data-setup-register
-						>
-							Open Nearzero and create the owner account
-						</a>
+				<div data-setup-verify-view="records">
+					<div class="nz-install-setup__records" data-setup-dns-records>
+						<div class="nz-install-setup__section-heading">
+							<p class={authMutedText}>Add each record at your DNS provider.</p>
+							<button type="button" class={authResendBtnClass} data-setup-copy-dns>Copy all</button>
+						</div>
+						<ol class="nz-install-setup__record-list" data-setup-dns-instructions>
+							<li data-setup-dns-record="management-a">
+								<span><small>Type</small><strong>A</strong></span>
+								<span><small>Name</small><code data-setup-record-name>{managementHostname}</code></span>
+								<span><small>Value</small><code data-setup-record-value>{serverIp}</code></span>
+								<button type="button" class={authResendBtnClass} data-setup-copy-record="management-a" aria-label="Copy management A record">Copy</button>
+							</li>
+						</ol>
+						<p class={`nz-install-setup__record-help ${authMutedText}`} data-setup-dns-help>
+							Leave TCP 80/443 open. Nearzero DNS also needs UDP/TCP 53. Use DNS only, not a proxy.
+						</p>
 					</div>
-				</footer>
-			</div>
-		</section>
-	</main>
+				</div>
+
+				<div class="hidden" data-setup-verify-view="readiness">
+					<div class="nz-install-setup__readiness" aria-labelledby="nz-setup-readiness-title">
+						<div class="nz-install-setup__section-heading">
+							<h2 id="nz-setup-readiness-title">Public checks</h2>
+							<span class="nz-install-setup__last-checked" data-setup-last-checked>Not checked</span>
+						</div>
+						<ul class="nz-install-setup__readiness-list">
+							{[
+								["management-dns", "Console DNS", "The console hostname must point to this server."],
+								["https-certificate", "HTTPS certificate", "Traefik obtains and renews this automatically."],
+								["zone-delegated", "Application-zone delegation", "Public NS records must point to Nearzero."],
+								["authoritative-soa", "Authoritative DNS response", "CoreDNS must answer directly on port 53."],
+							].map(([id, label, description]) => (
+								<li data-setup-readiness-row={id} data-readiness-state="idle">
+									<span class="nz-install-setup__readiness-icon" aria-hidden="true"></span>
+									<div>
+										<strong>{label}</strong>
+										<p data-setup-readiness-message>{description}</p>
+									</div>
+									<span class="nz-install-setup__readiness-state" data-setup-readiness-status>Not checked</span>
+								</li>
+							))}
+						</ul>
+					</div>
+				</div>
+
+				<div class="nz-install-setup__notice" aria-live="polite" data-setup-verify-status>
+					Add the records, then check readiness.
+				</div>
+			</section>
+
+			<section data-setup-panel="done" class="nz-install-setup__panel hidden">
+				<div class="nz-install-setup__success-copy">
+					<h2>Nearzero is ready</h2>
+					<p class={authMutedText}>Your console is secured with HTTPS. Create the first owner account to finish setup.</p>
+				</div>
+				<a
+					href={managementUrl || "#"}
+					class="nz-install-setup__canonical-url"
+					data-setup-open-management
+				>
+					<span>Nearzero console</span>
+					<code data-setup-canonical-url>{managementUrl || "Waiting for your domain"}</code>
+				</a>
+				<p class={`text-xs ${authMutedText}`}>
+					Registration is limited to the owner email configured in this wizard.
+				</p>
+			</section>
+
+			<p class="nz-install-setup__error hidden" data-setup-error role="alert"></p>
+		</div>
+
+		<div slot="c16" class="mx-auto flex h-full w-full max-w-[36rem] items-center justify-center gap-2 px-3">
+			<button type="button" class={authResendBtnClass} data-setup-back>
+				Previous
+			</button>
+			<button
+				type="button"
+				class={setupActionClass}
+				data-setup-next
+				data-default-label="Continue"
+			>
+				<AuthButtonSpinner />
+				<span data-setup-next-label>Continue</span>
+			</button>
+			<button type="button" class={`${setupActionClass} hidden`} data-setup-check>
+				Check again
+			</button>
+			<a
+				href={registerUrl}
+				class={`${setupActionClass} hidden no-underline`}
+				data-setup-register
+			>
+				Create owner account
+			</a>
+		</div>
+	</AuthGrid>
 </div>
 
 <script>

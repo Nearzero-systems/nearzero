@@ -1,7 +1,10 @@
 import type { MiddlewareHandler } from "astro";
 import { sanitizeAuthCallbackPath } from "./lib/auth-callback-url";
 import { getSession } from "./lib/backendProxy";
-import { resolveInstallSetupPath } from "./lib/install-setup";
+import {
+	isInstallSetupPageOpen,
+	resolveInstallSetupPath,
+} from "./lib/install-setup";
 import { fetchInstallSetupStatusServer } from "./lib/install-setup-server";
 import { parseInvitationCallback } from "./lib/invitation-routes";
 import {
@@ -206,18 +209,10 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 			);
 		}
 		const setupStatus = await fetchInstallSetupStatusServer(context.request);
-		if (!setupStatus?.setupTokenConfigured || setupStatus.bootstrapClaimed) {
-			return context.redirect("/login");
-		}
-		if (
-			setupStatus.managementConfigured &&
-			setupStatus.adminEmailConfigured &&
-			setupStatus.phase !== "pending"
-		) {
-			const resume = resolveInstallSetupPath(setupStatus);
-			if (resume === "/register") {
-				return context.redirect("/register");
-			}
+		if (!isInstallSetupPageOpen(setupStatus)) {
+			return context.redirect(
+				resolveInstallSetupPath(setupStatus) ?? "/login",
+			);
 		}
 	}
 

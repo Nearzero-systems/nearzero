@@ -52,6 +52,13 @@ function shouldBootstrapConsoleSession(pathWithQuery: string) {
 	return AUTH_SESSION_BOOTSTRAP_PREFIXES.some((prefix) => path.endsWith(prefix));
 }
 
+export function shouldRelayUpstreamCookies(pathWithQuery: string) {
+	const path = pathWithQuery.split("?")[0] ?? pathWithQuery;
+	return (
+		path.startsWith("/api/auth") || path === "/api/install/setup/session"
+	);
+}
+
 async function maybeAppendConsoleSessionCookie(
 	request: Request,
 	pathWithQuery: string,
@@ -139,12 +146,14 @@ function forwardHeaders(
 	const origin = request.headers.get("origin");
 	const referer = request.headers.get("referer");
 	const invitationToken = request.headers.get("x-nearzero-token");
+	const setupToken = request.headers.get("x-nearzero-setup-token");
 	const stripBrowserCredentials = options?.stripBrowserCredentials ?? false;
 	return {
 		...(cookie && !stripBrowserCredentials ? { cookie } : {}),
 		...(origin && !stripBrowserCredentials ? { origin } : {}),
 		...(referer && !stripBrowserCredentials ? { referer } : {}),
 		...(invitationToken ? { "x-nearzero-token": invitationToken } : {}),
+		...(setupToken ? { "x-nearzero-setup-token": setupToken } : {}),
 		...(request.headers.get("content-type")
 			? { "content-type": request.headers.get("content-type")! }
 			: {}),
@@ -211,6 +220,7 @@ export async function proxyBackendRequest(
 
 	const headers = new Headers();
 	const relayAuthCookies = pathWithQuery.startsWith("/api/auth");
+	const relayUpstreamCookies = shouldRelayUpstreamCookies(pathWithQuery);
 	let requestOrigin = "";
 	try {
 		requestOrigin = new URL(request.url).origin;
@@ -237,10 +247,13 @@ export async function proxyBackendRequest(
 		headers.append(key, value);
 	}
 
-	if (relayAuthCookies) {
+	if (relayUpstreamCookies) {
 		for (const cookie of collectUpstreamSetCookies(upstream.headers)) {
 			headers.append("set-cookie", rewriteSetCookieForConsole(cookie));
 		}
+	}
+
+	if (relayAuthCookies) {
 		await maybeAppendConsoleSessionCookie(
 			request,
 			pathWithQuery,

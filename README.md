@@ -50,7 +50,7 @@ instead of the mutable latest path:
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT
   cd "$workdir"
-  version="0.1.43"
+  version="0.1.44"
   base_url="https://nearzero.dev/releases/${version}"
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --retry 3 --output install.sh "${base_url}/install.sh"

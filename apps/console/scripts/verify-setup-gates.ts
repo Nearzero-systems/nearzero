@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
 	extractSetupTokenFromHash,
+	isInstallSetupPageOpen,
 	parseInstallSetupStep,
 	resolveInstallSetupPath,
 	wizardStepsForStatus,
@@ -47,11 +48,36 @@ assert.equal(
 	),
 	"/login",
 );
+assert.equal(
+	resolveInstallSetupPath(
+		status({
+			managementConfigured: true,
+			adminEmailConfigured: true,
+			phase: "configured",
+			canSubmit: false,
+			required: false,
+			resumeStep: "register",
+		}),
+	),
+	"/register",
+);
+assert.equal(
+	isInstallSetupPageOpen(
+		status({
+			phase: "configured",
+			canSubmit: false,
+			required: false,
+			resumeStep: "register",
+		}),
+	),
+	false,
+);
 assert.equal(parseInstallSetupStep("verify"), "verify");
 assert.equal(extractSetupTokenFromHash("#token=secret"), "secret");
 assert.deepEqual(wizardStepsForStatus(status({ managedDnsEnabled: false })), [
 	"welcome",
 	"management",
+	"review",
 	"verify",
 	"done",
 ]);

@@ -1,4 +1,6 @@
+import { join } from "node:path";
 import { fs, vol } from "memfs";
+import { parse } from "yaml";
 
 vi.mock("node:fs", () => ({
 	...fs,
@@ -9,6 +11,7 @@ import type { FileConfig } from "@nearzero/server";
 import {
 	createDefaultServerTraefikConfig,
 	loadOrCreateConfig,
+	updateLetsEncryptEmail,
 	updateServerTraefik,
 } from "@nearzero/server";
 import {
@@ -185,4 +188,20 @@ test("Should remove websecure if https rollback to http", () => {
 	expect(
 		config.http?.routers?.["nearzero-router-app"]?.middlewares,
 	).not.toContain("redirect-to-https");
+});
+
+test("creates traefik.yml when Let's Encrypt email is applied", () => {
+	vol.reset();
+	updateLetsEncryptEmail("owner@example.com");
+
+	const configPath = join(process.cwd(), ".docker/traefik/traefik.yml");
+	expect(fs.existsSync(configPath)).toBe(true);
+	const config = parse(fs.readFileSync(configPath, "utf8")) as {
+		certificatesResolvers?: {
+			letsencrypt?: { acme?: { email?: string } };
+		};
+	};
+	expect(config.certificatesResolvers?.letsencrypt?.acme?.email).toBe(
+		"owner@example.com",
+	);
 });

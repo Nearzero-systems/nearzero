@@ -1,10 +1,11 @@
 ---
-/** Matrix "N" favicon — matches AgentDotMatrixIcon. */
-const faviconHref = "/favicon.svg?v=2";
+/** Matrix "N" favicon — same asset as /logo.svg and NearzeroMark. */
+const faviconHref = "/favicon.svg?v=3";
 ---
 <link rel="icon" href={faviconHref} type="image/svg+xml" sizes="any" />
 <link rel="shortcut icon" href={faviconHref} type="image/svg+xml" />
 <link rel="apple-touch-icon" href={faviconHref} />
+<link rel="mask-icon" href={faviconHref} color="#18181b" />
 <script is:inline define:vars={{ faviconHref }}>
 	function ensureNearzeroFavicon() {
 		const href = faviconHref;

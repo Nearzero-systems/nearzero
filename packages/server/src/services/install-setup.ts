@@ -25,6 +25,10 @@ import {
 	resolveRuntimePublicConfigPath,
 } from "../lib/runtime-public-config";
 import {
+	createDefaultMiddlewares,
+	createDefaultTraefikConfig,
+} from "../setup/traefik-setup";
+import {
 	updateLetsEncryptEmail,
 	updateServerTraefik,
 } from "../utils/traefik/web-server";
@@ -199,7 +203,7 @@ export function resolveInstallSetupResumeStep(input: {
 	phase: InstallSetupPhase;
 }): PublicInstallSetupStatus["resumeStep"] {
 	if (input.bootstrapClaimed || input.phase === "claimed") return "login";
-	if (input.phase === "configured") return "verify";
+	if (input.phase === "configured") return "register";
 	if (!input.required) return "login";
 	// A pending row remains retryable even if an earlier attempt already wrote
 	// web-server settings before a later Traefik, DNS, or auth step failed.
@@ -673,15 +677,33 @@ export async function submitInstallSetup(
 		}
 
 		try {
+			createDefaultTraefikConfig();
+			createDefaultMiddlewares();
 			updateServerTraefik(settings, configuration.managementHostname);
 			updateLetsEncryptEmail(configuration.adminEmail);
-			await ensureTraefikSetup();
 		} catch (error) {
 			console.error("Install setup Traefik apply failed:", error);
 			throw new InstallSetupError(
 				error instanceof Error
 					? error.message
 					: "Failed to apply Traefik management routing",
+			);
+		}
+
+		try {
+			await ensureTraefikSetup();
+		} catch (error) {
+			if (process.env.NODE_ENV === "production") {
+				console.error("Install setup Traefik runtime failed:", error);
+				throw new InstallSetupError(
+					error instanceof Error
+						? error.message
+						: "Failed to start Traefik management routing",
+				);
+			}
+			console.warn(
+				"Install setup wrote Traefik files; local runtime start skipped:",
+				error,
 			);
 		}
 

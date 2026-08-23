@@ -1,226 +1,67 @@
-.nz-install-setup {
-	min-height: 100dvh;
-	width: 100%;
-	overflow-x: clip;
-	background: #ffffff;
-	color: #111827;
-	font-family: inherit;
-}
-
-.nz-install-setup *,
-.nz-install-setup *::before,
-.nz-install-setup *::after {
-	box-sizing: border-box;
-}
-
-.nz-install-setup__header {
-	position: sticky;
-	top: 0;
-	z-index: 30;
-	display: flex;
-	min-height: 3.5rem;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	border-bottom: 1px solid #eceef3;
-	background: rgb(255 255 255 / 96%);
-	padding: 0.5rem clamp(1rem, 4vw, 3rem);
-	backdrop-filter: blur(8px);
-}
-
-.nz-install-setup__brand {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.625rem;
-	font-size: 0.875rem;
-	font-weight: 650;
-	text-decoration: none;
-	color: #111827;
-}
-
-.nz-install-setup__mark {
-	display: inline-flex;
-	height: 1.75rem;
-	width: 1.75rem;
-	align-items: center;
-	justify-content: center;
-	border-radius: 0.375rem;
-	background: #111827;
-	font-size: 0.75rem;
-	font-weight: 700;
-	color: #ffffff;
-}
-
-.nz-install-setup__header-note {
-	display: inline-flex;
-	align-items: center;
+.nz-install-setup__progress {
+	display: grid;
+	width: min(16rem, 100%);
 	gap: 0.45rem;
-	font-size: 0.6875rem;
-	font-weight: 600;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
-	color: #6b7280;
+	justify-items: center;
 }
 
-.nz-install-setup__header-note > span {
-	font-size: 0.5rem;
-	color: #111827;
-}
-
-.nz-install-setup__layout {
-	display: grid;
-	grid-template-columns: minmax(10rem, 13rem) minmax(0, 44rem);
-	justify-content: center;
-	gap: clamp(2rem, 5vw, 5rem);
-	width: 100%;
-	max-width: 74rem;
-	margin: 0 auto;
-	padding: clamp(2rem, 5vw, 4.5rem) clamp(1rem, 4vw, 3rem) 5rem;
-}
-
-.nz-install-setup__rail {
-	position: sticky;
-	top: 6rem;
-	align-self: start;
-	min-width: 0;
-}
-
-.nz-install-setup__rail-label {
-	margin: 0 0 0.75rem;
-	font-size: 0.6875rem;
-	font-weight: 650;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	color: #9ca3af;
-}
-
-.nz-install-setup__rail ol {
-	display: grid;
-	gap: 0;
+.nz-install-setup__progress p {
 	margin: 0;
-	padding: 0;
-	list-style: none;
 }
 
-.nz-install-setup__rail li {
-	position: relative;
-	display: flex;
-	min-height: 2.75rem;
-	align-items: flex-start;
-	gap: 0.75rem;
-	font-size: 0.75rem;
-	font-weight: 500;
-	color: #9ca3af;
+.nz-install-setup__progress-track {
+	width: 100%;
+	height: 2px;
+	overflow: hidden;
+	border-radius: 999px;
+	background: #eceef3;
 }
 
-.nz-install-setup__rail li:not(:last-child)::after {
-	position: absolute;
-	top: 1.5rem;
-	left: 0.6875rem;
-	height: calc(100% - 0.25rem);
-	width: 1px;
-	background: #e5e7eb;
-	content: "";
-}
-
-.nz-install-setup__rail li[data-step-state="current"],
-.nz-install-setup__rail li[data-step-state="complete"] {
-	color: #111827;
-}
-
-.nz-install-setup__step-number {
-	position: relative;
-	z-index: 1;
-	display: inline-flex;
-	height: 1.375rem;
-	width: 1.375rem;
-	flex: 0 0 1.375rem;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid #e5e7eb;
-	border-radius: 0.3rem;
-	background: #ffffff;
-	font-size: 0.625rem;
-	color: #9ca3af;
-}
-
-.nz-install-setup__rail
-	li[data-step-state="current"]
-	.nz-install-setup__step-number,
-.nz-install-setup__rail
-	li[data-step-state="complete"]
-	.nz-install-setup__step-number {
-	border-color: #111827;
+.nz-install-setup__progress-track span {
+	display: block;
+	height: 100%;
 	background: #111827;
-	color: #ffffff;
-}
-
-.nz-install-setup__rail-help {
-	margin: 1rem 0 0;
-	padding-top: 1rem;
-	border-top: 1px solid #eceef3;
-	font-size: 0.6875rem;
-	line-height: 1.55;
-	color: #9ca3af;
-}
-
-.nz-install-setup__workspace {
-	min-width: 0;
-	width: 100%;
-}
-
-.nz-install-setup__mobile-progress {
-	display: none;
-}
-
-.nz-install-setup__card {
-	width: 100%;
-	min-width: 0;
-	border: 1px solid #e5e7eb;
-	border-radius: 0.5rem;
-	background: #ffffff;
-}
-
-.nz-install-setup__card-header {
-	padding: clamp(1.25rem, 3vw, 2rem);
-	border-bottom: 1px solid #eceef3;
-}
-
-.nz-install-setup__eyebrow {
-	margin: 0 0 0.5rem;
-	font-size: 0.6875rem;
-	font-weight: 650;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	color: #9ca3af;
-}
-
-.nz-install-setup__card-header h1 {
-	margin: 0;
-	font-size: clamp(1.5rem, 4vw, 2rem);
-	font-weight: 650;
-	line-height: 1.2;
-	letter-spacing: -0.025em;
-	color: #111827;
-}
-
-.nz-install-setup__card-header > p:last-child {
-	max-width: 38rem;
-	margin: 0.625rem 0 0;
-	font-size: 0.8125rem;
-	line-height: 1.6;
-	color: #6b7280;
-}
-
-.nz-install-setup__body {
-	min-height: 24rem;
-	padding: clamp(1.25rem, 3vw, 2rem);
+	transition: width 180ms ease;
 }
 
 .nz-install-setup__panel {
 	flex-direction: column;
-	gap: 1rem;
+	gap: 0.75rem;
 	min-width: 0;
+	width: 100%;
+}
+
+.nz-install-setup__panel--verify {
+	gap: 0.55rem;
+}
+
+.nz-install-setup__switcher {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1px;
+	padding: 1px;
+	border-radius: 0.375rem;
+	background: #eceef3;
+}
+
+.nz-install-setup__switcher button {
+	border: 0;
+	border-radius: 0.3rem;
+	background: transparent;
+	padding: 0.4rem 0.75rem;
+	font-size: 0.75rem;
+	font-weight: 550;
+	color: #6b7280;
+	cursor: pointer;
+}
+
+.nz-install-setup__switcher button[aria-selected="true"] {
+	background: #ffffff;
+	color: #111827;
+}
+
+.nz-install-setup__switcher button:hover {
+	color: #111827;
 }
 
 .nz-install-setup__panel[hidden],
@@ -228,63 +69,69 @@
 	display: none;
 }
 
+.nz-install-setup__intro,
+.nz-install-setup__success-copy {
+	display: grid;
+	gap: 0.75rem;
+}
+
 .nz-install-setup__intro h2,
 .nz-install-setup__section-heading h2,
 .nz-install-setup__success-copy h2 {
 	margin: 0;
-	font-size: 0.9375rem;
-	font-weight: 650;
-	line-height: 1.4;
+	font-size: 0.875rem;
+	font-weight: 600;
 	color: #111827;
 }
 
-.nz-install-setup__intro > p,
-.nz-install-setup__section-heading p,
-.nz-install-setup__success-copy p {
-	margin: 0.35rem 0 0;
-	font-size: 0.75rem;
-	line-height: 1.55;
-	color: #6b7280;
-}
-
-.nz-install-setup__checklist {
+.nz-install-setup__checklist,
+.nz-install-setup__preview,
+.nz-install-setup__summary,
+.nz-install-setup__record-list,
+.nz-install-setup__readiness-list {
 	display: grid;
-	gap: 0;
-	margin: 1.25rem 0 0;
+	gap: 1px;
+	margin: 0;
 	padding: 0;
-	border: 1px solid #eceef3;
 	border-radius: 0.375rem;
+	background: #eceef3;
 	list-style: none;
 	overflow: hidden;
 }
 
-.nz-install-setup__checklist li {
+.nz-install-setup__checklist li,
+.nz-install-setup__preview > div,
+.nz-install-setup__summary > div,
+.nz-install-setup__record-list li,
+.nz-install-setup__readiness-list li {
 	display: flex;
+	align-items: flex-start;
 	gap: 0.75rem;
-	padding: 0.875rem;
+	padding: 0.75rem;
 	background: #ffffff;
 }
 
-.nz-install-setup__checklist li + li {
-	border-top: 1px solid #eceef3;
+.nz-install-setup__record-list li,
+.nz-install-setup__readiness-list li {
+	padding: 0.5rem 0.65rem;
 }
 
 .nz-install-setup__checklist li > span {
 	display: inline-flex;
-	height: 1.375rem;
-	width: 1.375rem;
-	flex: 0 0 1.375rem;
+	height: 1.25rem;
+	width: 1.25rem;
+	flex: 0 0 1.25rem;
 	align-items: center;
 	justify-content: center;
-	border-radius: 0.25rem;
-	background: #111827;
+	border-radius: 0.375rem;
+	background: #f7f7f8;
 	font-size: 0.625rem;
-	font-weight: 650;
-	color: #ffffff;
+	font-weight: 600;
+	color: #111827;
 }
 
 .nz-install-setup__checklist strong,
-.nz-install-setup__detected strong {
+.nz-install-setup__readiness-list strong {
 	display: block;
 	font-size: 0.75rem;
 	font-weight: 600;
@@ -292,30 +139,11 @@
 }
 
 .nz-install-setup__checklist p,
-.nz-install-setup__detected p {
+.nz-install-setup__readiness-list p {
 	margin: 0.2rem 0 0;
 	font-size: 0.6875rem;
-	line-height: 1.5;
-	color: #6b7280;
-}
-
-.nz-install-setup__detected {
-	display: flex;
-	align-items: flex-start;
-	gap: 0.625rem;
-	padding: 0.875rem;
-	border: 1px solid #e5e7eb;
-	border-radius: 0.375rem;
-	background: #f7f7f8;
-}
-
-.nz-install-setup__status-dot {
-	height: 0.5rem;
-	width: 0.5rem;
-	flex: 0 0 0.5rem;
-	margin-top: 0.3rem;
-	border-radius: 999px;
-	background: #111827;
+	line-height: 1.45;
+	color: #9ca3af;
 }
 
 .nz-install-setup code {
@@ -338,7 +166,7 @@
 	font-size: 0.6875rem;
 	font-weight: 400;
 	line-height: 1.5;
-	color: #6b7280;
+	color: #9ca3af;
 }
 
 .nz-install-setup__field > span > small {
@@ -347,51 +175,38 @@
 	color: #9ca3af;
 }
 
-.nz-install-setup__field input {
-	min-height: 2.5rem;
-}
-
 .nz-install-setup__field input[data-setup-locked="true"] {
 	background: #f8fafc;
 	color: #475569;
 	cursor: not-allowed;
 }
 
-.nz-install-setup__preview {
+.nz-install-setup__preview > div,
+.nz-install-setup__summary > div {
 	display: grid;
-	gap: 1px;
-	border: 1px solid #eceef3;
-	border-radius: 0.375rem;
-	background: #eceef3;
-	overflow: hidden;
-}
-
-.nz-install-setup__preview > div {
-	display: grid;
-	grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.3fr);
+	grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr);
 	align-items: center;
-	gap: 1rem;
-	min-width: 0;
-	padding: 0.75rem;
-	background: #ffffff;
 }
 
 .nz-install-setup__preview span,
-.nz-install-setup__preview code {
+.nz-install-setup__summary dt {
 	font-size: 0.6875rem;
+	color: #9ca3af;
 }
 
-.nz-install-setup__preview span {
-	color: #6b7280;
-}
-
-.nz-install-setup__preview code {
+.nz-install-setup__preview code,
+.nz-install-setup__summary dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+	font-size: 0.6875rem;
+	font-weight: 550;
 	text-align: right;
+	color: #111827;
 }
 
 .nz-install-setup__advanced {
 	border-top: 1px solid #eceef3;
-	padding-top: 0.875rem;
+	padding-top: 0.75rem;
 }
 
 .nz-install-setup__advanced summary {
@@ -402,20 +217,19 @@
 }
 
 .nz-install-setup__advanced[open] summary {
-	margin-bottom: 0.875rem;
+	margin-bottom: 0.75rem;
 }
 
 .nz-install-setup__choice-group {
 	display: grid;
-	gap: 0.75rem;
-	min-width: 0;
+	gap: 0.5rem;
 	margin: 0;
 	padding: 0;
 	border: 0;
 }
 
 .nz-install-setup__choice-group legend {
-	margin-bottom: 0.75rem;
+	margin-bottom: 0.5rem;
 	font-size: 0.75rem;
 	font-weight: 600;
 	color: #111827;
@@ -425,20 +239,17 @@
 	display: flex;
 	align-items: flex-start;
 	gap: 0.75rem;
-	padding: 0.875rem;
+	padding: 0.75rem;
 	border: 1px solid #e5e7eb;
 	border-radius: 0.375rem;
-	background: #ffffff;
+	background: #f7f7f8;
 	cursor: pointer;
-	transition:
-		border-color 160ms ease,
-		background-color 160ms ease;
 }
 
 .nz-install-setup__choice:hover,
 .nz-install-setup__choice:has(input:checked) {
-	border-color: #111827;
-	background: #f7f7f8;
+	border-color: #d1d5db;
+	background: #ffffff;
 }
 
 .nz-install-setup__choice.is-disabled {
@@ -453,10 +264,9 @@
 
 .nz-install-setup__choice-copy {
 	display: grid;
-	gap: 0.3rem;
-	min-width: 0;
+	gap: 0.25rem;
 	font-size: 0.6875rem;
-	line-height: 1.55;
+	line-height: 1.5;
 	color: #6b7280;
 }
 
@@ -472,177 +282,87 @@
 
 .nz-install-setup__choice-title em {
 	padding: 0.1rem 0.35rem;
-	border: 1px solid #d1d5db;
-	border-radius: 0.25rem;
+	border: 1px solid #e5e7eb;
+	border-radius: 0.375rem;
+	background: #ffffff;
 	font-size: 0.5625rem;
 	font-style: normal;
-	font-weight: 650;
-	letter-spacing: 0.05em;
+	font-weight: 600;
+	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	color: #6b7280;
 }
 
-.nz-install-setup__zone-fields {
+.nz-install-setup__zone-fields,
+.nz-install-setup__notice {
 	display: grid;
-	gap: 0.875rem;
-	padding: 1rem;
-	border: 1px solid #eceef3;
-	border-radius: 0.375rem;
-	background: #f7f7f8;
-}
-
-.nz-install-setup__notice,
-.nz-install-setup__review-note,
-.nz-install-setup__verify-summary,
-.nz-install-setup__owner-note {
-	margin: 0;
-	padding: 0.875rem;
+	gap: 0.75rem;
+	padding: 0.75rem;
 	border: 1px solid #e5e7eb;
 	border-radius: 0.375rem;
 	background: #f7f7f8;
 	font-size: 0.6875rem;
-	line-height: 1.55;
+	line-height: 1.5;
 	color: #6b7280;
 }
 
-.nz-install-setup__review-note strong {
+.nz-install-setup__panel--verify .nz-install-setup__notice {
+	padding: 0.5rem 0.65rem;
+}
+
+.nz-install-setup__notice strong {
 	display: block;
 	font-size: 0.75rem;
 	color: #111827;
 }
 
-.nz-install-setup__review-note p {
+.nz-install-setup__notice p {
 	margin: 0.25rem 0 0;
-}
-
-.nz-install-setup__summary {
-	display: grid;
-	margin: 0;
-	border: 1px solid #eceef3;
-	border-radius: 0.375rem;
-	overflow: hidden;
-}
-
-.nz-install-setup__summary > div {
-	display: grid;
-	grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr);
-	gap: 1rem;
-	padding: 0.75rem 0.875rem;
-	background: #ffffff;
-}
-
-.nz-install-setup__summary > div + div {
-	border-top: 1px solid #eceef3;
-}
-
-.nz-install-setup__summary dt,
-.nz-install-setup__summary dd {
-	margin: 0;
-	font-size: 0.6875rem;
-	line-height: 1.5;
-}
-
-.nz-install-setup__summary dt {
-	color: #6b7280;
-}
-
-.nz-install-setup__summary dd {
-	overflow-wrap: anywhere;
-	font-weight: 550;
-	text-align: right;
-	color: #111827;
 }
 
 .nz-install-setup__records,
 .nz-install-setup__readiness {
 	display: grid;
-	gap: 0.875rem;
-}
-
-.nz-install-setup__readiness {
-	margin-top: 0.5rem;
-	padding-top: 1.25rem;
-	border-top: 1px solid #eceef3;
+	gap: 0.45rem;
 }
 
 .nz-install-setup__section-heading {
 	display: flex;
-	align-items: flex-start;
-	justify-content: space-between;
-	gap: 1rem;
-}
-
-.nz-install-setup__copy,
-.nz-install-setup__record-list button {
-	display: inline-flex;
-	min-height: 2rem;
 	align-items: center;
-	justify-content: center;
-	padding: 0.25rem 0.5rem;
-	border: 1px solid #e5e7eb;
-	border-radius: 0.3rem;
-	background: #ffffff;
-	font: inherit;
-	font-size: 0.6875rem;
-	color: #111827;
-	cursor: pointer;
+	justify-content: space-between;
+	gap: 0.75rem;
 }
 
-.nz-install-setup__copy:hover,
-.nz-install-setup__record-list button:hover {
-	background: #f7f7f8;
-}
-
-.nz-install-setup__record-list,
-.nz-install-setup__readiness-list {
-	display: grid;
-	gap: 0;
+.nz-install-setup__section-heading p {
 	margin: 0;
-	padding: 0;
-	border: 1px solid #eceef3;
-	border-radius: 0.375rem;
-	list-style: none;
-	overflow: hidden;
+	font-size: 0.75rem;
 }
 
 .nz-install-setup__record-list li {
 	display: grid;
-	grid-template-columns: 4rem minmax(8rem, 1fr) minmax(7rem, 1fr) auto;
+	grid-template-columns: 3.25rem minmax(0, 1.15fr) minmax(0, 1fr) auto;
 	align-items: center;
-	gap: 0.75rem;
-	min-width: 0;
-	padding: 0.75rem;
-	background: #ffffff;
-}
-
-.nz-install-setup__record-list li + li {
-	border-top: 1px solid #eceef3;
+	gap: 0.5rem;
 }
 
 .nz-install-setup__record-list li > span {
 	display: grid;
-	gap: 0.2rem;
+	gap: 0.15rem;
 	min-width: 0;
 }
 
 .nz-install-setup__record-list small {
 	font-size: 0.5625rem;
 	font-weight: 600;
-	letter-spacing: 0.05em;
+	letter-spacing: 0.04em;
 	text-transform: uppercase;
 	color: #9ca3af;
-}
-
-.nz-install-setup__record-list strong,
-.nz-install-setup__record-list code {
-	font-size: 0.6875rem;
 }
 
 .nz-install-setup__record-help {
 	margin: 0;
 	font-size: 0.6875rem;
-	line-height: 1.55;
-	color: #6b7280;
+	line-height: 1.5;
 }
 
 .nz-install-setup__last-checked {
@@ -651,25 +371,33 @@
 	color: #9ca3af;
 }
 
+.nz-install-setup__readiness-list {
+	grid-template-columns: 1fr;
+}
+
 .nz-install-setup__readiness-list li {
 	display: grid;
 	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: 0.75rem;
 	min-width: 0;
-	padding: 0.75rem;
-	background: #ffffff;
 }
 
-.nz-install-setup__readiness-list li + li {
-	border-top: 1px solid #eceef3;
+.nz-install-setup__readiness-list li > div {
+	min-width: 0;
+}
+
+.nz-install-setup__panel--verify .nz-install-setup__readiness-list p {
+	margin: 0.2rem 0 0;
+	white-space: normal;
+	overflow-wrap: anywhere;
 }
 
 .nz-install-setup__readiness-icon {
-	height: 0.625rem;
-	width: 0.625rem;
-	border: 1px solid #9ca3af;
-	border-radius: 999px;
+	height: 0.5rem;
+	width: 0.5rem;
+	border: 1px solid #d1d5db;
+	border-radius: 0.375rem;
 }
 
 [data-readiness-state="checking"] .nz-install-setup__readiness-icon {
@@ -687,24 +415,11 @@
 	background: #b91c1c;
 }
 
-.nz-install-setup__readiness-list strong {
-	display: block;
-	font-size: 0.6875rem;
-	font-weight: 600;
-	color: #111827;
-}
-
-.nz-install-setup__readiness-list p {
-	margin: 0.2rem 0 0;
-	font-size: 0.625rem;
-	line-height: 1.45;
-	color: #6b7280;
-}
-
 .nz-install-setup__readiness-state {
-	padding: 0.2rem 0.4rem;
+	padding: 0.15rem 0.4rem;
 	border: 1px solid #e5e7eb;
-	border-radius: 0.25rem;
+	border-radius: 0.375rem;
+	background: #f7f7f8;
 	font-size: 0.5625rem;
 	font-weight: 600;
 	white-space: nowrap;
@@ -712,7 +427,7 @@
 }
 
 [data-readiness-state="ready"] .nz-install-setup__readiness-state {
-	border-color: #111827;
+	background: #ffffff;
 	color: #111827;
 }
 
@@ -721,44 +436,26 @@
 	color: #991b1b;
 }
 
-.nz-install-setup__success-mark {
-	display: inline-flex;
-	height: 2.5rem;
-	width: 2.5rem;
-	align-items: center;
-	justify-content: center;
-	border-radius: 0.375rem;
-	background: #111827;
-	font-size: 1rem;
-	font-weight: 700;
-	color: #ffffff;
-}
-
 .nz-install-setup__canonical-url {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
-	min-width: 0;
-	padding: 0.875rem;
+	padding: 0.75rem;
 	border: 1px solid #e5e7eb;
 	border-radius: 0.375rem;
-	background: #ffffff;
+	background: #f7f7f8;
 	font-size: 0.6875rem;
 	text-decoration: none;
 	color: #6b7280;
 }
 
 .nz-install-setup__canonical-url:hover {
-	border-color: #111827;
-}
-
-.nz-install-setup__canonical-url code {
-	text-align: right;
+	background: #ffffff;
 }
 
 .nz-install-setup__error {
-	margin: 1rem 0 0;
+	margin: 0;
 	padding: 0.75rem;
 	border: 1px solid #fecaca;
 	border-radius: 0.375rem;
@@ -766,67 +463,8 @@
 	font-size: 0.6875rem;
 	line-height: 1.5;
 	color: #991b1b;
-}
-
-.nz-install-setup__actions {
-	position: sticky;
-	bottom: 0;
-	z-index: 20;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.75rem;
-	padding: 0.75rem clamp(1.25rem, 3vw, 2rem)
-		calc(0.75rem + env(safe-area-inset-bottom));
-	border-top: 1px solid #eceef3;
-	border-radius: 0 0 0.5rem 0.5rem;
-	background: rgb(255 255 255 / 96%);
-	backdrop-filter: blur(8px);
-}
-
-.nz-install-setup__actions-end {
-	display: flex;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-	gap: 0.5rem;
-}
-
-.nz-install-setup__button {
-	min-height: 2.5rem;
-	width: auto;
-	min-width: 6rem;
-	padding: 0.25rem 0.5rem;
-	border-radius: 0.375rem;
-	font-size: 0.75rem;
-	font-weight: 550;
-	line-height: 1.2;
-	cursor: pointer;
-}
-
-.nz-install-setup__button--secondary {
-	border: 1px solid transparent;
-	background: #ffffff;
-	color: #6b7280;
-}
-
-.nz-install-setup__button--secondary:hover {
-	background: #f7f7f8;
-	color: #111827;
-}
-
-.nz-install-setup__button--primary,
-.nz-install-setup__button--primary:hover {
-	border-color: #111827;
-	background: #111827;
-	color: #ffffff;
-}
-
-.nz-install-setup__button:focus-visible,
-.nz-install-setup__copy:focus-visible,
-.nz-install-setup__record-list button:focus-visible,
-.nz-install-setup__choice:has(input:focus-visible) {
-	outline: 2px solid #111827;
-	outline-offset: 2px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .nz-install-setup .hidden {
@@ -839,88 +477,11 @@
 	}
 }
 
-@media (max-width: 767px) {
-	.nz-install-setup__header {
-		padding-inline: 1rem;
-	}
-
-	.nz-install-setup__header-note {
-		font-size: 0.625rem;
-	}
-
-	.nz-install-setup__layout {
-		display: block;
-		padding: 1rem 0 3rem;
-	}
-
-	.nz-install-setup__rail {
-		display: none;
-	}
-
-	.nz-install-setup__workspace {
-		width: 100%;
-	}
-
-	.nz-install-setup__mobile-progress {
-		display: grid;
-		gap: 0.45rem;
-		padding: 0 1rem 1rem;
-	}
-
-	.nz-install-setup__mobile-progress p {
-		margin: 0;
-		font-size: 0.6875rem;
-		font-weight: 600;
-		color: #6b7280;
-	}
-
-	.nz-install-setup__progress-track {
-		height: 2px;
-		border-radius: 999px;
-		background: #e5e7eb;
-		overflow: hidden;
-	}
-
-	.nz-install-setup__progress-track span {
-		display: block;
-		height: 100%;
-		background: #111827;
-		transition: width 180ms ease;
-	}
-
-	.nz-install-setup__card {
-		border-right: 0;
-		border-left: 0;
-		border-radius: 0;
-	}
-
-	.nz-install-setup__card-header {
-		padding: 1.25rem 1rem;
-	}
-
-	.nz-install-setup__body {
-		min-height: 26rem;
-		padding: 1.25rem 1rem;
-	}
-
-	.nz-install-setup__actions {
-		border-radius: 0;
-		padding-inline: 1rem;
-	}
-
-	.nz-install-setup__actions-end {
-		min-width: 0;
-		flex: 1;
-	}
-
-	.nz-install-setup__actions-end .nz-install-setup__button {
-		width: 100%;
-	}
-
+@media (max-width: 640px) {
 	.nz-install-setup__preview > div,
 	.nz-install-setup__summary > div {
 		grid-template-columns: 1fr;
-		gap: 0.25rem;
+		gap: 0.2rem;
 	}
 
 	.nz-install-setup__preview code,
@@ -928,72 +489,20 @@
 		text-align: left;
 	}
 
-	.nz-install-setup__section-heading {
-		align-items: flex-start;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
 	.nz-install-setup__record-list li {
-		grid-template-columns: 4rem minmax(0, 1fr) auto;
+		grid-template-columns: 3.5rem minmax(0, 1fr) auto;
 	}
 
 	.nz-install-setup__record-list li > span:nth-child(3) {
 		grid-column: 2;
 	}
 
-	.nz-install-setup__record-list li > button {
-		grid-column: 3;
-		grid-row: 1 / span 2;
+	.nz-install-setup__readiness-list {
+		grid-template-columns: 1fr;
 	}
 
 	.nz-install-setup__readiness-list li {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-
-	.nz-install-setup__readiness-state {
-		grid-column: 2;
-		justify-self: start;
-	}
-
-	.nz-install-setup__canonical-url {
-		align-items: flex-start;
-		flex-direction: column;
-		gap: 0.35rem;
-	}
-
-	.nz-install-setup__canonical-url code {
-		text-align: left;
-	}
-}
-
-@media (max-width: 420px) {
-	.nz-install-setup__header-note {
-		max-width: 8rem;
-		text-align: right;
-	}
-
-	.nz-install-setup__actions {
-		align-items: stretch;
-		flex-direction: column-reverse;
-	}
-
-	.nz-install-setup__button,
-	.nz-install-setup__actions-end {
-		width: 100%;
-	}
-
-	.nz-install-setup__record-list li {
-		grid-template-columns: 1fr auto;
-	}
-
-	.nz-install-setup__record-list li > span {
-		grid-column: 1;
-	}
-
-	.nz-install-setup__record-list li > button {
-		grid-column: 2;
-		grid-row: 1 / span 3;
+		grid-template-columns: auto minmax(0, 1fr) auto;
 	}
 }
 

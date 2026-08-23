@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { paths } from "@nearzero/server/constants";
 import type { webServerSettings } from "@nearzero/server/db/schema/web-server-settings";
 import { parse, stringify } from "yaml";
+import { getDefaultTraefikConfig } from "../../setup/traefik-setup";
 import { loadOrCreateConfig, writeTraefikConfig } from "./application";
 import type { FileConfig } from "./file-types";
 import type { MainTraefikConfig } from "./types";
@@ -140,22 +141,33 @@ export const updateServerTraefik = (
 };
 
 export const updateLetsEncryptEmail = (newEmail: string | null) => {
-	try {
-		if (!newEmail) return;
-		const { MAIN_TRAEFIK_PATH } = paths();
-		const configPath = join(MAIN_TRAEFIK_PATH, "traefik.yml");
-		const configContent = readFileSync(configPath, "utf8");
-		const config = parse(configContent) as MainTraefikConfig;
-		if (config?.certificatesResolvers?.letsencrypt?.acme) {
-			config.certificatesResolvers.letsencrypt.acme.email = newEmail;
-		} else {
-			throw new Error("Invalid Let's Encrypt configuration structure.");
-		}
-		const newYamlContent = stringify(config);
-		writeFileSync(configPath, newYamlContent, "utf8");
-	} catch (error) {
-		throw error;
+	if (!newEmail) return;
+	const { MAIN_TRAEFIK_PATH, DYNAMIC_TRAEFIK_PATH } = paths();
+	const configPath = join(MAIN_TRAEFIK_PATH, "traefik.yml");
+	const acmeJsonPath = join(DYNAMIC_TRAEFIK_PATH, "acme.json");
+	mkdirSync(MAIN_TRAEFIK_PATH, { recursive: true, mode: 0o700 });
+	mkdirSync(DYNAMIC_TRAEFIK_PATH, { recursive: true, mode: 0o700 });
+	if (!existsSync(acmeJsonPath)) {
+		writeFileSync(acmeJsonPath, "", { encoding: "utf8", mode: 0o600 });
 	}
+
+	const config = (
+		existsSync(configPath)
+			? parse(readFileSync(configPath, "utf8"))
+			: parse(getDefaultTraefikConfig())
+	) as MainTraefikConfig;
+
+	config.certificatesResolvers = config.certificatesResolvers ?? {};
+	config.certificatesResolvers.letsencrypt =
+		config.certificatesResolvers.letsencrypt ?? {};
+	config.certificatesResolvers.letsencrypt.acme = {
+		storage: "/etc/nearzero/traefik/dynamic/acme.json",
+		httpChallenge: { entryPoint: "web" },
+		...config.certificatesResolvers.letsencrypt.acme,
+		email: newEmail,
+	};
+
+	writeFileSync(configPath, stringify(config), { encoding: "utf8", mode: 0o600 });
 };
 
 export const readMainConfig = () => {

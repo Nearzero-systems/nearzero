@@ -46,5 +46,7 @@ yarn-error.log*
 *.pem
 PRIVATE.md
 
+# Local-only previews (never ship in Community)
+.local/
 
 .db

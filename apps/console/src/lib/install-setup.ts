@@ -39,6 +39,12 @@ export type InstallSetupWizardStep = (typeof INSTALL_SETUP_STEPS)[number];
 
 export const INSTALL_SETUP_DRAFT_KEY = "nz-install-setup-draft";
 export const INSTALL_SETUP_TOKEN_KEY = "nz-install-setup-token";
+export const INSTALL_SETUP_SESSION_COOKIE = "nearzero_install_setup_token";
+
+export function isLoopbackHostname(hostname: string) {
+	const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+	return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
 
 function isInstallSetupResumeStep(
 	value: unknown,
@@ -81,15 +87,35 @@ export function parseInstallSetupStep(
 		: null;
 }
 
+export function isInstallSetupPageOpen(
+	status: PublicInstallSetupStatus | null,
+): boolean {
+	if (!status?.setupTokenConfigured || status.bootstrapClaimed) return false;
+	if (
+		status.phase === "configured" ||
+		status.phase === "claimed" ||
+		status.phase === "operational"
+	) {
+		return false;
+	}
+	return status.phase === "pending";
+}
+
 export function resolveInstallSetupPath(
 	status: PublicInstallSetupStatus | null,
 ): string | null {
 	if (!status) return null;
-	if (status.bootstrapClaimed || status.phase === "operational") {
+	if (
+		status.bootstrapClaimed ||
+		status.phase === "operational" ||
+		status.phase === "claimed"
+	) {
 		return "/login";
 	}
 	if (status.resumeStep === "login") return "/login";
-	if (status.resumeStep === "register") return "/register";
+	if (!isInstallSetupPageOpen(status) || status.resumeStep === "register") {
+		return "/register";
+	}
 	if (
 		status.setupTokenConfigured &&
 		!status.bootstrapClaimed &&
@@ -139,6 +165,41 @@ export function extractSetupTokenFromHash(hash: string) {
 	const params = new URLSearchParams(raw);
 	const token = params.get("token")?.trim();
 	return token || null;
+}
+
+export function extractSetupToken(value: string) {
+	const raw = value.trim();
+	if (!raw) return null;
+	if (/^[A-Za-z0-9_-]{16,256}$/.test(raw)) return raw;
+
+	try {
+		if (
+			raw.includes("://") ||
+			raw.startsWith("/") ||
+			raw.startsWith("?") ||
+			raw.startsWith("#")
+		) {
+			const url = new URL(raw, "http://nearzero.local/setup");
+			const fromHash = extractSetupTokenFromHash(url.hash);
+			if (fromHash) return fromHash;
+			const fromQuery = url.searchParams.get("token")?.trim();
+			if (fromQuery) return fromQuery;
+		}
+	} catch {
+		// Fall through to the token= fragment parser below.
+	}
+
+	if (raw.includes("token=")) {
+		const query = raw.includes("#")
+			? raw.slice(raw.indexOf("#") + 1)
+			: raw.startsWith("?")
+				? raw.slice(1)
+				: raw;
+		const token = new URLSearchParams(query).get("token")?.trim();
+		if (token) return token;
+	}
+
+	return null;
 }
 
 export function wizardStepsForStatus(status: PublicInstallSetupStatus) {

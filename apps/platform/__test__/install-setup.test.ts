@@ -181,6 +181,14 @@ describe("install setup lifecycle and single writer", () => {
 			}),
 		).toBe("management");
 		expect(
+			resolveInstallSetupResumeStep({
+				required: false,
+				bootstrapClaimed: false,
+				managementConfigured: true,
+				phase: "configured",
+			}),
+		).toBe("register");
+		expect(
 			deriveInstallSetupLifecycle({
 				community: true,
 				bootstrapClaimed: false,

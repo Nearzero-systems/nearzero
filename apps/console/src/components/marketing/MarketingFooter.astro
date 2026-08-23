@@ -1,5 +1,6 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import NearzeroMark from "@/components/NearzeroMark.astro";
 import { publicFooterGroups, publicSiteLinks } from "@/lib/public-site";
 import GitHubMark from "./GitHubMark.astro";
 ---
@@ -10,9 +11,7 @@ import GitHubMark from "./GitHubMark.astro";
 			<div class="nz-footer__brand">
 				<a class="nz-brand" href={publicSiteLinks.home} aria-label="Nearzero home">
 					<span class="nz-brand-mark" aria-hidden="true">
-						<span class="is-on"></span><span></span><span class="is-on"></span>
-						<span class="is-on"></span><span class="is-on"></span><span class="is-on"></span>
-						<span class="is-on"></span><span></span><span class="is-on"></span>
+						<NearzeroMark size={28} />
 					</span>
 					<span>Nearzero</span>
 				</a>

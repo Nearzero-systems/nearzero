@@ -5,10 +5,18 @@ import Base from "@/layouts/Base.astro";
 import { getSession } from "@/lib/backendProxy";
 import { pageTitle } from "@/lib/branding";
 import {
+	extractSetupToken,
+	INSTALL_SETUP_SESSION_COOKIE,
+	isInstallSetupPageOpen,
+	isLoopbackHostname,
 	parseInstallSetupStep,
 	resolveInstallSetupPath,
 } from "@/lib/install-setup";
-import { fetchInstallSetupStatusServer } from "@/lib/install-setup-server";
+import {
+	fetchInstallSetupStatusServer,
+	resolveLoopbackInstallSetupToken,
+	verifyInstallSetupSessionToken,
+} from "@/lib/install-setup-server";
 
 const session = await getSession(Astro.request);
 if (session?.user) {
@@ -16,38 +24,49 @@ if (session?.user) {
 }
 
 const status = await fetchInstallSetupStatusServer(Astro.request);
-if (!status?.setupTokenConfigured || status.bootstrapClaimed) {
-	return Astro.redirect("/login");
+if (!status || !isInstallSetupPageOpen(status)) {
+	Astro.cookies.delete(INSTALL_SETUP_SESSION_COOKIE, { path: "/" });
+	return Astro.redirect(resolveInstallSetupPath(status) ?? "/login");
+}
+
+const queryToken = extractSetupToken(Astro.url.searchParams.get("token") || "");
+const existingSetupCookie = Astro.cookies.get(INSTALL_SETUP_SESSION_COOKIE)
+	?.value;
+const loopbackToken =
+	!queryToken && !existingSetupCookie && isLoopbackHostname(Astro.url.hostname)
+		? resolveLoopbackInstallSetupToken()
+		: null;
+const sessionToken = queryToken || loopbackToken;
+if (sessionToken && (await verifyInstallSetupSessionToken(sessionToken))) {
+	Astro.cookies.set(INSTALL_SETUP_SESSION_COOKIE, sessionToken, {
+		path: "/",
+		httpOnly: true,
+		sameSite: "strict",
+		maxAge: 60 * 60 * 24,
+		secure: Astro.url.protocol === "https:",
+	});
+	if (queryToken) {
+		const next = new URL(Astro.url);
+		next.searchParams.delete("token");
+		return Astro.redirect(`${next.pathname}${next.search}`);
+	}
 }
 
 const requested = parseInstallSetupStep(Astro.url.searchParams.get("step"));
-const resumePath = resolveInstallSetupPath(status);
 const requestedPendingStep =
-	status.phase === "pending" &&
-	(requested === "welcome" ||
-		requested === "management" ||
-		requested === "zone" ||
-		requested === "review")
+	requested === "welcome" ||
+	requested === "management" ||
+	requested === "zone" ||
+	requested === "review"
 		? requested
 		: null;
 const initialStep =
-	status.phase === "configured"
-		? "verify"
-		: (requestedPendingStep ??
-			(status.resumeStep === "welcome" ||
-			status.resumeStep === "management" ||
-			status.resumeStep === "zone"
-				? status.resumeStep
-				: "welcome"));
-
-if (
-	status.managementConfigured &&
-	status.adminEmailConfigured &&
-	resumePath === "/register" &&
-	!requested
-) {
-	return Astro.redirect("/register");
-}
+	requestedPendingStep ??
+	(status.resumeStep === "welcome" ||
+	status.resumeStep === "management" ||
+	status.resumeStep === "zone"
+		? status.resumeStep
+		: "welcome");
 ---
 
 <Base title={pageTitle("Setup")} forceLightTheme>

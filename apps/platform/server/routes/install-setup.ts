@@ -10,6 +10,7 @@ import {
 	getInstallSetupReadiness,
 	InstallSetupReadinessError,
 } from "@nearzero/server/services/install-setup-readiness";
+import { ZodError } from "zod";
 
 export const INSTALL_SETUP_SESSION_COOKIE = "nearzero_install_setup_token";
 export const INSTALL_SETUP_JSON_BODY_LIMIT_BYTES = 16 * 1024;
@@ -195,7 +196,7 @@ export function installSetupSessionCookie(token: string, secure: boolean) {
 	const attributes = [
 		`${INSTALL_SETUP_SESSION_COOKIE}=${encodeURIComponent(token)}`,
 		`Max-Age=${INSTALL_SETUP_SESSION_MAX_AGE_SECONDS}`,
-		"Path=/api/install/setup",
+		"Path=/",
 		"HttpOnly",
 		"SameSite=Strict",
 	];
@@ -209,6 +210,47 @@ export function installSetupSubmitPayload(
 ) {
 	const requestToken = installSetupRequestToken(req);
 	return requestToken ? { ...body, token: requestToken } : body;
+}
+
+export function installSetupPayloadErrorMessage(error: unknown) {
+	const issues =
+		error instanceof ZodError
+			? error.issues
+			: error &&
+					typeof error === "object" &&
+					"name" in error &&
+					(error as { name: string }).name === "ZodError" &&
+					"issues" in error &&
+					Array.isArray((error as ZodError).issues)
+				? (error as ZodError).issues
+				: [];
+	const issue = issues[0];
+	if (!issue) return "Invalid setup payload";
+	const field = issue.path[0];
+	if (field === "token") {
+		return "Open the setup link from the installer to apply this configuration.";
+	}
+	if (
+		typeof issue.message === "string" &&
+		issue.message.trim() &&
+		issue.message !== "Required"
+	) {
+		return issue.message;
+	}
+	switch (field) {
+		case "managementHostname":
+			return "Enter a valid console hostname.";
+		case "adminEmail":
+			return "Enter a valid owner email.";
+		case "publicIp":
+			return "Enter a valid IPv4 address.";
+		case "managedDnsZone":
+			return "Enter a valid application zone.";
+		case "managedDnsSoaEmail":
+			return "Enter a valid DNS contact email.";
+		default:
+			return "Invalid setup payload";
+	}
 }
 
 function readinessErrorStatus(error: InstallSetupReadinessError) {
@@ -258,10 +300,17 @@ export async function handleInstallSetup(
 					code: "FORBIDDEN",
 				});
 			}
-			if (status.bootstrapClaimed) {
+			if (status.bootstrapClaimed || status.phase === "operational") {
 				return json(res, 403, {
 					message:
 						"Install setup is no longer available after the first owner exists",
+					code: "FORBIDDEN",
+				});
+			}
+			if (status.phase === "configured") {
+				return json(res, 403, {
+					message:
+						"Install setup is no longer available after domain setup is complete",
 					code: "FORBIDDEN",
 				});
 			}
@@ -328,13 +377,14 @@ export async function handleInstallSetup(
 				return json(res, status, { message: error.message, code: error.code });
 			}
 			if (
-				error &&
-				typeof error === "object" &&
-				"name" in error &&
-				(error as { name: string }).name === "ZodError"
+				error instanceof ZodError ||
+				(error &&
+					typeof error === "object" &&
+					"name" in error &&
+					(error as { name: string }).name === "ZodError")
 			) {
 				return json(res, 400, {
-					message: "Invalid setup payload",
+					message: installSetupPayloadErrorMessage(error),
 					code: "BAD_REQUEST",
 				});
 			}
