@@ -7,6 +7,11 @@ on:
         description: "Release version, for example 0.1.44"
         required: true
         type: string
+      deploy_worker:
+        description: "Also deploy the Cloudflare Worker (needs Workers Edit on the API token)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,7 +24,7 @@ env:
 
 jobs:
   publish:
-    name: Publish install.sh to nearzero.dev
+    name: Publish install.sh to R2
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -93,6 +98,7 @@ jobs:
             --cache-control "public, max-age=31536000, immutable"
 
       - name: Deploy installer delivery worker
+        if: ${{ inputs.deploy_worker }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         working-directory: workers/install-script

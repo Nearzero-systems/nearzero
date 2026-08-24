@@ -6,6 +6,8 @@ import DocsShell from "@/components/marketing/DocsShell.astro";
 import MarketingLayout from "@/layouts/MarketingLayout.astro";
 import { publicSiteLinks } from "@/lib/public-site";
 
+const quickInstallCode = `curl -fsSL https://nearzero.dev/install.sh | bash`;
+
 const installCode = `(set -Eeuo pipefail
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
@@ -104,16 +106,19 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 
 		<section id="install" class="nz-doc-section">
 			<span class="nz-doc-section__index">02</span>
-			<h2>Download, verify, then execute</h2>
+			<h2>Install Nearzero Community</h2>
 			<p>
-				This copy-ready command downloads the current published installer and its
-				checksum into a temporary directory. <code>set -Eeuo pipefail</code> stops
-				before execution if either download or verification fails. The installer
-				runs as your current sudo-capable user so its guided answers and explicit
-				environment variables are preserved.
+				Quick start on a fresh Linux host (root or sudo). The script installs Docker
+				when needed, pulls the published images, and prints a one-time setup URL.
+			</p>
+			<DocCode code={quickInstallCode} />
+			<p>
+				For production, prefer the checksum-verified path below. It downloads the
+				installer and its SHA-256 into a temporary directory and refuses to run if
+				either download or verification fails.
 			</p>
 			<DocCode code={installCode} />
-			<DocCallout title="Do not pipe a remote installer directly into a shell" tone="warning">
+			<DocCallout title="Prefer checksum verification for production hosts" tone="warning">
 				<p>Keeping the script as a file gives the SHA-256 check a concrete artifact to verify before privileged execution.</p>
 			</DocCallout>
 			<DocCallout title="The checksum is an integrity check, not an independent signature" tone="note">
