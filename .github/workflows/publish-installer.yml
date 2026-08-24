@@ -1,0 +1,120 @@
+name: Publish Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version, for example 0.1.44"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: nearzero-systems
+  R2_BUCKET: nearzero
+  CLOUDFLARE_ACCOUNT_ID: 2888ec0ba25e82e4c0f3819aaceca38e
+
+jobs:
+  publish:
+    name: Publish install.sh to nearzero.dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Validate release version
+        env:
+          REQUESTED_RELEASE_VERSION: ${{ github.event.inputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="${REQUESTED_RELEASE_VERSION#v}"
+          if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "release_version must look like 0.1.44" >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${release_version}" >> "$GITHUB_ENV"
+
+      - name: Verify companion images are public
+        shell: bash
+        run: |
+          set -euo pipefail
+          for image in nearzero monitoring schedule; do
+            image_ref="${REGISTRY}/${IMAGE_NAMESPACE}/${image}:${RELEASE_VERSION}"
+            manifest=""
+            for attempt in 1 2 3 4 5 6; do
+              if manifest="$(docker manifest inspect "$image_ref" 2>/dev/null)"; then
+                break
+              fi
+              if [[ "$attempt" != "6" ]]; then sleep 5; fi
+            done
+            if [[ -z "$manifest" ]]; then
+              echo "$image_ref is not anonymously readable" >&2
+              exit 1
+            fi
+          done
+
+      - name: Generate installer checksum
+        working-directory: scripts
+        run: sha256sum install.sh > install.sh.sha256
+
+      - name: Upload latest installer
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control no-cache
+
+      - name: Upload latest installer checksum
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control no-cache
+
+      - name: Upload versioned installer
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ env.RELEASE_VERSION }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control "public, max-age=31536000, immutable"
+
+      - name: Upload versioned installer checksum
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ env.RELEASE_VERSION }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control "public, max-age=31536000, immutable"
+
+      - name: Deploy installer delivery worker
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/install-script
+          command: deploy
+
+      - name: Verify nearzero.dev serves the installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          download_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$download_dir"' EXIT
+          for base_url in \
+            "https://nearzero.dev" \
+            "https://nearzero.dev/releases/${RELEASE_VERSION}"; do
+            for artifact in install.sh install.sh.sha256; do
+              curl --fail --location \
+                --proto '=https' --proto-redir '=https' --tlsv1.2 \
+                --retry 6 --retry-all-errors --retry-delay 5 \
+                --output "$download_dir/$artifact" \
+                "$base_url/$artifact"
+            done
+            cmp -s scripts/install.sh "$download_dir/install.sh"
+            (cd "$download_dir" && sha256sum --check install.sh.sha256)
+            rm -f "$download_dir"/*
+          done
