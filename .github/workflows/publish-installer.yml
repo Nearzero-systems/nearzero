@@ -62,41 +62,41 @@ jobs:
         working-directory: scripts
         run: sha256sum install.sh > install.sh.sha256
 
-      - name: Upload latest installer
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ${{ env.R2_BUCKET }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control no-cache
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler@3.114.15
 
-      - name: Upload latest installer checksum
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ${{ env.R2_BUCKET }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control no-cache
-
-      - name: Upload versioned installer
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ env.RELEASE_VERSION }}/install.sh --remote --file scripts/install.sh --content-type text/x-shellscript --cache-control "public, max-age=31536000, immutable"
-
-      - name: Upload versioned installer checksum
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ${{ env.R2_BUCKET }}/releases/${{ env.RELEASE_VERSION }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control "public, max-age=31536000, immutable"
+      - name: Publish installer artifacts to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          wrangler r2 object put "${R2_BUCKET}/install.sh" \
+            --remote \
+            --file scripts/install.sh \
+            --content-type text/x-shellscript \
+            --cache-control no-cache
+          wrangler r2 object put "${R2_BUCKET}/install.sh.sha256" \
+            --remote \
+            --file scripts/install.sh.sha256 \
+            --content-type text/plain \
+            --cache-control no-cache
+          wrangler r2 object put "${R2_BUCKET}/releases/${RELEASE_VERSION}/install.sh" \
+            --remote \
+            --file scripts/install.sh \
+            --content-type text/x-shellscript \
+            --cache-control "public, max-age=31536000, immutable"
+          wrangler r2 object put "${R2_BUCKET}/releases/${RELEASE_VERSION}/install.sh.sha256" \
+            --remote \
+            --file scripts/install.sh.sha256 \
+            --content-type text/plain \
+            --cache-control "public, max-age=31536000, immutable"
 
       - name: Deploy installer delivery worker
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: workers/install-script
-          command: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        working-directory: workers/install-script
+        run: wrangler deploy
 
       - name: Verify nearzero.dev serves the installer
         shell: bash
