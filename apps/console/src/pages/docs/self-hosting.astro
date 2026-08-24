@@ -6,12 +6,12 @@ import DocsShell from "@/components/marketing/DocsShell.astro";
 import MarketingLayout from "@/layouts/MarketingLayout.astro";
 import { publicSiteLinks } from "@/lib/public-site";
 
-const quickInstallCode = `curl -fsSL https://nearzero.dev/install.sh | bash`;
+const quickInstallCode = `curl -fsSL https://cdn.nearzero.dev/install.sh | bash`;
 
 const installCode = `(set -Eeuo pipefail
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
-base_url="https://nearzero.dev"
+base_url="https://cdn.nearzero.dev"
 
 curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \\
   --output "$tmp/install.sh" "$base_url/install.sh"

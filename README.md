@@ -30,7 +30,7 @@ either download or checksum verification fails:
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT
   cd "$workdir"
-  base_url="https://nearzero.dev"
+  base_url="https://cdn.nearzero.dev"
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --retry 3 --output install.sh "${base_url}/install.sh"
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
@@ -51,7 +51,7 @@ instead of the mutable latest path:
   trap 'rm -rf "$workdir"' EXIT
   cd "$workdir"
   version="0.1.44"
-  base_url="https://nearzero.dev/releases/${version}"
+  base_url="https://cdn.nearzero.dev/releases/${version}"
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --retry 3 --output install.sh "${base_url}/install.sh"
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
