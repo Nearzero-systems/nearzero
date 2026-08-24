@@ -108,15 +108,15 @@ jobs:
         working-directory: workers/install-script
         run: wrangler deploy
 
-      - name: Verify nearzero.dev serves the installer
+      - name: Verify CDN serves the installer
         shell: bash
         run: |
           set -euo pipefail
           download_dir="$(mktemp -d)"
           trap 'rm -rf -- "$download_dir"' EXIT
           for base_url in \
-            "https://nearzero.dev" \
-            "https://nearzero.dev/releases/${RELEASE_VERSION}"; do
+            "https://cdn.nearzero.dev" \
+            "https://cdn.nearzero.dev/releases/${RELEASE_VERSION}"; do
             for artifact in install.sh install.sh.sha256; do
               curl --fail --location \
                 --proto '=https' --proto-redir '=https' --tlsv1.2 \
