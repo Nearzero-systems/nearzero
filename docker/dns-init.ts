@@ -1,4 +1,5 @@
 import {
+	chmodSync,
 	copyFileSync,
 	existsSync,
 	mkdirSync,
@@ -20,6 +21,21 @@ const LEGACY_ZONES_PATH =
 const BOOTSTRAP_MARKER =
 	"; Nearzero bootstrap zone - adopted after first-owner signup";
 const DNS_ZONE_ADOPTION_MARKER_PREFIX = ".nearzero-adopted-";
+
+/** CoreDNS runs as a non-root user and mounts this volume read-only. */
+function makeWorldReadable(target: string, directory: boolean) {
+	chmodSync(target, directory ? 0o755 : 0o644);
+}
+
+function ensureReadableTree() {
+	makeWorldReadable(DNS_ROOT, true);
+	if (existsSync(ZONES_PATH)) makeWorldReadable(ZONES_PATH, true);
+	if (existsSync(COREFILE_PATH)) makeWorldReadable(COREFILE_PATH, false);
+	if (!existsSync(ZONES_PATH)) return;
+	for (const filename of readdirSync(ZONES_PATH)) {
+		makeWorldReadable(path.join(ZONES_PATH, filename), false);
+	}
+}
 
 function normalizeDnsName(value: string, field: string) {
 	const raw = value.trim().toLowerCase().replace(/\.$/, "");
@@ -116,7 +132,7 @@ function ensureCorefile() {
 			"}",
 			"",
 		].join("\n"),
-		"utf8",
+		{ encoding: "utf8", mode: 0o644 },
 	);
 }
 
@@ -194,7 +210,10 @@ function ensureBootstrapZone() {
 		if (!existing.startsWith(BOOTSTRAP_MARKER)) return;
 	}
 	const temporaryPath = `${zonePath}.${process.pid}.tmp`;
-	writeFileSync(temporaryPath, records.join("\n"), "utf8");
+	writeFileSync(temporaryPath, records.join("\n"), {
+		encoding: "utf8",
+		mode: 0o644,
+	});
 	renameSync(temporaryPath, zonePath);
 }
 
@@ -202,3 +221,4 @@ mkdirSync(ZONES_PATH, { recursive: true, mode: 0o755 });
 copyLegacyZones();
 ensureCorefile();
 ensureBootstrapZone();
+ensureReadableTree();

@@ -143,6 +143,18 @@ describe("Community registration policy", () => {
 			adminEmailConfigured: true,
 		});
 		expect(status).not.toHaveProperty("adminEmail");
+
+		expect(
+			buildPublicRegistrationStatus(
+				{ mode: "bootstrap", adminEmail: "private-admin@example.com" },
+				true,
+			),
+		).toEqual({
+			mode: "bootstrap",
+			normalSignupAllowed: false,
+			bootstrapClaimed: true,
+			adminEmailConfigured: true,
+		});
 	});
 
 	it("merges wizard admin email when env bootstrap email is unset", () => {

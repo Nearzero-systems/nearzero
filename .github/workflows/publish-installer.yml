@@ -63,9 +63,11 @@ jobs:
             fi
           done
 
-      - name: Generate installer checksum
-        working-directory: scripts
-        run: sha256sum install.sh > install.sh.sha256
+      - name: Generate installer checksums
+        run: |
+          set -euo pipefail
+          sha256sum scripts/install.sh > scripts/install.sh.sha256
+          sha256sum docker/dns-init.ts > docker/dns-init.ts.sha256
 
       - name: Install Wrangler CLI
         run: npm install -g wrangler@4.76.0
@@ -90,6 +92,16 @@ jobs:
             --file scripts/install.sh.sha256 \
             --content-type text/plain \
             --cache-control no-cache
+          wrangler r2 object put "${R2_BUCKET}/dns-init.ts" \
+            --remote \
+            --file docker/dns-init.ts \
+            --content-type text/plain \
+            --cache-control no-cache
+          wrangler r2 object put "${R2_BUCKET}/dns-init.ts.sha256" \
+            --remote \
+            --file docker/dns-init.ts.sha256 \
+            --content-type text/plain \
+            --cache-control no-cache
           wrangler r2 object put "${R2_BUCKET}/releases/${RELEASE_VERSION}/install.sh" \
             --remote \
             --file scripts/install.sh \
@@ -98,6 +110,16 @@ jobs:
           wrangler r2 object put "${R2_BUCKET}/releases/${RELEASE_VERSION}/install.sh.sha256" \
             --remote \
             --file scripts/install.sh.sha256 \
+            --content-type text/plain \
+            --cache-control "public, max-age=31536000, immutable"
+          wrangler r2 object put "${R2_BUCKET}/releases/${RELEASE_VERSION}/dns-init.ts" \
+            --remote \
+            --file docker/dns-init.ts \
+            --content-type text/plain \
+            --cache-control "public, max-age=31536000, immutable"
+          wrangler r2 object put "${R2_BUCKET}/releases/${RELEASE_VERSION}/dns-init.ts.sha256" \
+            --remote \
+            --file docker/dns-init.ts.sha256 \
             --content-type text/plain \
             --cache-control "public, max-age=31536000, immutable"
 
@@ -117,7 +139,7 @@ jobs:
           for base_url in \
             "https://cdn.nearzero.dev" \
             "https://cdn.nearzero.dev/releases/${RELEASE_VERSION}"; do
-            for artifact in install.sh install.sh.sha256; do
+            for artifact in install.sh install.sh.sha256 dns-init.ts dns-init.ts.sha256; do
               curl --fail --location \
                 --proto '=https' --proto-redir '=https' --tlsv1.2 \
                 --retry 6 --retry-all-errors --retry-delay 5 \
@@ -125,6 +147,8 @@ jobs:
                 "$base_url/$artifact"
             done
             cmp -s scripts/install.sh "$download_dir/install.sh"
+            cmp -s docker/dns-init.ts "$download_dir/dns-init.ts"
             (cd "$download_dir" && sha256sum --check install.sh.sha256)
+            (cd "$download_dir" && sha256sum --check dns-init.ts.sha256)
             rm -f "$download_dir"/*
           done

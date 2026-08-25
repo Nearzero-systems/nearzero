@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	extractSetupToken,
 	extractSetupTokenFromHash,
+	isInstallSetupBlockingAuth,
 	isInstallSetupPageOpen,
 	isLoopbackHostname,
 	inferInstallBaseDomain,
@@ -84,6 +85,17 @@ describe("install setup console helpers", () => {
 				}),
 			),
 		).toBe("/register");
+		expect(isInstallSetupBlockingAuth(status())).toBe(true);
+		expect(
+			isInstallSetupBlockingAuth(
+				status({
+					phase: "configured",
+					canSubmit: false,
+					required: false,
+					resumeStep: "register",
+				}),
+			),
+		).toBe(false);
 	});
 
 	it("sends claimed installs to login", () => {

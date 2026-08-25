@@ -256,6 +256,9 @@ grep -Fq 'NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE: ${NEARZERO_PLATFORM_DOMAIN_SHARE
 grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_PLATFORM_PORT:-3000}:3000' "$INSTALL_DIR/docker-compose.prod.yml" || fail "platform port is not bound through the safe management address"
 grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_CONSOLE_PORT:-4321}:4321' "$INSTALL_DIR/docker-compose.prod.yml" || fail "console port is not bound through the safe management address"
 grep -Fq 'entrypoint: ["bun", "/app/dns-init.ts"]' "$INSTALL_DIR/docker-compose.prod.yml" || fail "managed DNS bootstrap entrypoint is missing"
+grep -Fq './dns-init.ts:/app/dns-init.ts:ro' "$INSTALL_DIR/docker-compose.prod.yml" || fail "managed DNS bootstrap script mount is missing"
+grep -Fq 'user: "0:0"' "$INSTALL_DIR/docker-compose.prod.yml" || fail "CoreDNS must run as root to read installer-owned zone volume files"
+[[ -f "$INSTALL_DIR/dns-init.ts" ]] || fail "installer did not materialize dns-init.ts"
 for bootstrap_env in NEARZERO_ADMIN_EMAIL NEARZERO_MANAGEMENT_HOSTNAME NEARZERO_MANAGED_DNS_ZONE NEARZERO_MANAGED_DNS_SOA_EMAIL NEARZERO_PUBLIC_IP; do
 	grep -Fq "${bootstrap_env}: \${${bootstrap_env}:-}" "$INSTALL_DIR/docker-compose.prod.yml" ||
 		fail "managed DNS bootstrap is missing $bootstrap_env"
@@ -337,6 +340,25 @@ for expected_assignment in \
 done
 [[ -z "$(awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ { if (seen[$1]++) print $1 }' "$preserve_dir/.env")" ]] || fail "plain rerun produced duplicate generated environment keys"
 grep -Eq '^DATABASE_URL=postgresql://preserved_user:[^@]+@postgres:5432/preserved_db$' "$preserve_dir/.env" || fail "plain rerun rewrote the local database identity"
+
+upgrade_dir="$TEST_ROOT/stale-official-image-upgrade"
+mkdir -p "$upgrade_dir"
+printf '%s\n' \
+	'NEARZERO_IMAGE=ghcr.io/nearzero-systems/nearzero:0.1.40' \
+	'NEARZERO_MONITORING_IMAGE=ghcr.io/nearzero-systems/monitoring:0.1.40' \
+	'NEARZERO_PUBLIC_IP=203.0.113.10' \
+	'NEARZERO_DATA_MODE=local' \
+	'POSTGRES_USER=nearzero' \
+	'POSTGRES_DB=nearzero' \
+	'NEARZERO_REGISTRATION_MODE=open' \
+	'BETTER_AUTH_SECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+	'NEARZERO_METRICS_TOKEN=0123456789abcdef0123456789abcdef' > "$upgrade_dir/.env"
+DRY_RUN=1 INSTALL_DIR="$upgrade_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null
+grep -Fxq 'NEARZERO_IMAGE=ghcr.io/nearzero-systems/nearzero:0.1.45' "$upgrade_dir/.env" ||
+	fail "plain rerun did not upgrade a stale official NEARZERO_IMAGE"
+grep -Fxq 'NEARZERO_MONITORING_IMAGE=ghcr.io/nearzero-systems/monitoring:0.1.45' "$upgrade_dir/.env" ||
+	fail "plain rerun did not upgrade a stale official NEARZERO_MONITORING_IMAGE"
 
 duplicate_env_dir="$TEST_ROOT/duplicate-custom-env"
 cp -R "$preserve_dir" "$duplicate_env_dir"

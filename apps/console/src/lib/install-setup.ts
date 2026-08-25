@@ -101,6 +101,13 @@ export function isInstallSetupPageOpen(
 	return status.phase === "pending";
 }
 
+/** Login and signup stay closed until the one-time domain wizard has been applied. */
+export function isInstallSetupBlockingAuth(
+	status: PublicInstallSetupStatus | null,
+): boolean {
+	return isInstallSetupPageOpen(status);
+}
+
 export function resolveInstallSetupPath(
 	status: PublicInstallSetupStatus | null,
 ): string | null {

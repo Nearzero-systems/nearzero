@@ -382,8 +382,8 @@ export function renderZoneFile(input: ZoneFileInput): string {
 }
 
 export function writeZoneFileAtomic(zoneFilePath: string, contents: string) {
-	mkdirSync(path.dirname(zoneFilePath), { recursive: true });
+	mkdirSync(path.dirname(zoneFilePath), { recursive: true, mode: 0o755 });
 	const tempPath = `${zoneFilePath}.${process.pid}.${randomUUID()}.tmp`;
-	writeFileSync(tempPath, contents, "utf8");
+	writeFileSync(tempPath, contents, { encoding: "utf8", mode: 0o644 });
 	renameSync(tempPath, zoneFilePath);
 }

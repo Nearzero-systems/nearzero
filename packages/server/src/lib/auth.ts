@@ -19,7 +19,9 @@ import {
 	ensureFirstOwnerServerIp,
 } from "../services/install-domain-bootstrap";
 import {
+	getInstallSetupRow,
 	getSetupAdminEmail,
+	hasOwnerMember,
 	markInstallSetupClaimed,
 } from "../services/install-setup";
 import { getWebServerSettings } from "../services/web-server-settings";
@@ -104,6 +106,13 @@ async function getEffectiveRegistrationPolicy(): Promise<RegistrationPolicy> {
 }
 
 async function isBootstrapRegistrationClaimed() {
+	if (await hasOwnerMember()) return true;
+	try {
+		const row = await getInstallSetupRow();
+		if (row.phase === "claimed") return true;
+	} catch {
+		// Status stays unclaimed if the setup row cannot be read.
+	}
 	const policy = await getEffectiveRegistrationPolicy();
 	if (policy.mode !== "bootstrap" || !policy.adminEmail) {
 		return false;

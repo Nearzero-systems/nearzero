@@ -94,18 +94,26 @@ const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 </div>
 
 <script>
+	import { fetchInstallSetupStatus } from "@/lib/install-setup";
 	import { resolveInvitationTokenFromPage } from "@/lib/invitation-routes";
-	import { fetchRegistrationExperience } from "@/lib/registration-status";
+	import {
+		fetchRegistrationExperience,
+		resolveLoginRegistrationExperience,
+	} from "@/lib/registration-status";
 	import { bindAuthCredentialsFlow } from "@/scripts/auth-credentials-flow";
 
 	async function applyRegistrationPolicy(root: HTMLElement) {
 		if (root.dataset.registrationPolicyBound === "1") return;
 		root.dataset.registrationPolicyBound = "1";
-		const experience = await fetchRegistrationExperience(
+		const hasInvitation =
 			root.dataset.invitationFlow === "1" ||
-				Boolean(resolveInvitationTokenFromPage()),
-		);
+			Boolean(resolveInvitationTokenFromPage());
+		const [experience, setup] = await Promise.all([
+			fetchRegistrationExperience(hasInvitation),
+			fetchInstallSetupStatus(),
+		]);
 		if (!root.isConnected) return;
+		const resolved = resolveLoginRegistrationExperience(experience, setup);
 
 		const open = root.querySelector<HTMLElement>("[data-registration-open]");
 		const bootstrap = root.querySelector<HTMLElement>(
@@ -114,15 +122,9 @@ const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 		const closed = root.querySelector<HTMLElement>(
 			"[data-registration-closed]",
 		);
-		open?.classList.toggle("hidden", experience !== "open");
-		bootstrap?.classList.toggle(
-			"hidden",
-			experience !== "bootstrap_owner",
-		);
-		closed?.classList.toggle(
-			"hidden",
-			experience !== "invitation_required",
-		);
+		open?.classList.toggle("hidden", resolved !== "open");
+		bootstrap?.classList.toggle("hidden", resolved !== "bootstrap_owner");
+		closed?.classList.toggle("hidden", resolved !== "invitation_required");
 	}
 
 	function bindLogin() {

@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from "astro";
 import { sanitizeAuthCallbackPath } from "./lib/auth-callback-url";
 import { getSession } from "./lib/backendProxy";
 import {
+	isInstallSetupBlockingAuth,
 	isInstallSetupPageOpen,
 	resolveInstallSetupPath,
 } from "./lib/install-setup";
@@ -218,14 +219,20 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 	if (path === "/login" || path === "/register") {
 		const setupStatus = await fetchInstallSetupStatusServer(context.request);
-		if (
-			setupStatus?.required &&
-			setupStatus.canSubmit &&
-			!setupStatus.managementConfigured
-		) {
+		if (isInstallSetupBlockingAuth(setupStatus)) {
 			return context.redirect(
 				resolveInstallSetupPath(setupStatus) ?? "/setup?step=welcome",
 			);
+		}
+		// Domain setup finished but no owner yet: send sign-in to first-owner signup.
+		if (
+			path === "/login" &&
+			setupStatus &&
+			!setupStatus.bootstrapClaimed &&
+			(setupStatus.phase === "configured" ||
+				setupStatus.resumeStep === "register")
+		) {
+			return context.redirect("/register");
 		}
 	}
 

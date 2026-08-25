@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
 	extractSetupTokenFromHash,
+	isInstallSetupBlockingAuth,
 	isInstallSetupPageOpen,
 	parseInstallSetupStep,
 	resolveInstallSetupPath,
@@ -63,6 +64,18 @@ assert.equal(
 );
 assert.equal(
 	isInstallSetupPageOpen(
+		status({
+			phase: "configured",
+			canSubmit: false,
+			required: false,
+			resumeStep: "register",
+		}),
+	),
+	false,
+);
+assert.equal(isInstallSetupBlockingAuth(status()), true);
+assert.equal(
+	isInstallSetupBlockingAuth(
 		status({
 			phase: "configured",
 			canSubmit: false,

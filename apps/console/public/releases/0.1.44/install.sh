@@ -9,11 +9,12 @@ else
 fi
 
 if [[ "${NEARZERO_IMAGE+x}" == "x" ]]; then NEARZERO_IMAGE_WAS_SET=1; else NEARZERO_IMAGE_WAS_SET=0; fi
-NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.44}"
+NEARZERO_INSTALLER_CDN="${NEARZERO_INSTALLER_CDN:-https://cdn.nearzero.dev}"
+NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.45}"
 if [[ "${NEARZERO_MONITORING_IMAGE+x}" == "x" ]]; then NEARZERO_MONITORING_IMAGE_WAS_SET=1; else NEARZERO_MONITORING_IMAGE_WAS_SET=0; fi
-NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.44}"
+NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.45}"
 if [[ "${NEARZERO_SCHEDULE_IMAGE+x}" == "x" ]]; then NEARZERO_SCHEDULE_IMAGE_WAS_SET=1; else NEARZERO_SCHEDULE_IMAGE_WAS_SET=0; fi
-NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.44}"
+NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.45}"
 if [[ "${NEARZERO_DNS_IMAGE+x}" == "x" ]]; then NEARZERO_DNS_IMAGE_WAS_SET=1; else NEARZERO_DNS_IMAGE_WAS_SET=0; fi
 NEARZERO_DNS_IMAGE="${NEARZERO_DNS_IMAGE:-coredns/coredns:1.14.6}"
 if [[ "${NEARZERO_HEROKU_BUILDER_IMAGE+x}" == "x" ]]; then
@@ -262,6 +263,85 @@ write_file() {
 		die "Failed to install $path"
 	fi
 	rm -f "$tmp"
+}
+
+image_ref_tag() {
+	printf '%s\n' "${1##*:}"
+}
+
+is_official_nearzero_release_image() {
+	local ref="$1"
+	local name="${ref%:*}"
+	[[ "$name" =~ ^ghcr\.io/nearzero-systems/(nearzero|monitoring|schedule)$ ]]
+}
+
+resolve_preserved_release_image() {
+	local var_name="$1"
+	local was_set="$2"
+	local current_default="$3"
+	local existing="$4"
+
+	if [[ "$was_set" == "1" || -z "$existing" ]]; then
+		printf '%s\n' "$current_default"
+		return
+	fi
+	if ! is_official_nearzero_release_image "$existing"; then
+		printf '%s\n' "$existing"
+		return
+	fi
+
+	local existing_tag installer_tag
+	existing_tag="$(image_ref_tag "$existing")"
+	installer_tag="$(image_ref_tag "$current_default")"
+	if [[ "$(printf '%s\n' "$existing_tag" "$installer_tag" | sort -V | tail -1)" == "$installer_tag" && "$existing_tag" != "$installer_tag" ]]; then
+		printf 'nearzero: Upgrading %s from %s to %s\n' "$var_name" "$existing" "$current_default" >&2
+		printf '%s\n' "$current_default"
+		return
+	fi
+	printf '%s\n' "$existing"
+}
+
+repo_dns_init_source() {
+	if [[ -n "${BASH_SOURCE[0]:-}" && "${BASH_SOURCE[0]}" != "bash" && -f "${BASH_SOURCE[0]}" ]]; then
+		local candidate
+		candidate="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docker/dns-init.ts"
+		if [[ -f "$candidate" ]]; then
+			printf '%s\n' "$candidate"
+		fi
+	fi
+}
+
+write_dns_init_script() {
+	local dest="$INSTALL_DIR/dns-init.ts"
+	local source
+	source="$(repo_dns_init_source || true)"
+	if [[ -n "$source" ]]; then
+		if [[ "$DRY_RUN" == "1" ]]; then
+			mkdir -p "$(dirname "$dest")"
+			install -m 0644 "$source" "$dest"
+		else
+			run_sudo install -o root -g root -m 0644 "$source" "$dest"
+		fi
+		return
+	fi
+
+	local tmp sha_tmp expected actual
+	tmp="$(mktemp)"
+	sha_tmp="$(mktemp)"
+	trap 'rm -f "$tmp" "$sha_tmp"' RETURN
+	curl -fsSL "${NEARZERO_INSTALLER_CDN}/dns-init.ts" -o "$tmp"
+	curl -fsSL "${NEARZERO_INSTALLER_CDN}/dns-init.ts.sha256" -o "$sha_tmp"
+	expected="$(awk '{print $1}' "$sha_tmp")"
+	actual="$(sha256sum "$tmp" | awk '{print $1}')"
+	if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+		die "dns-init.ts checksum verification failed"
+	fi
+	if [[ "$DRY_RUN" == "1" ]]; then
+		mkdir -p "$(dirname "$dest")"
+		install -m 0644 "$tmp" "$dest"
+	else
+		run_sudo install -o root -g root -m 0644 "$tmp" "$dest"
+	fi
 }
 
 rand_hex() {
@@ -1021,7 +1101,7 @@ name: nearzero
 
 services:
   dns-init:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.44}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.45}
     profiles: ["managed-dns"]
     entrypoint: ["bun", "/app/dns-init.ts"]
     environment:
@@ -1031,6 +1111,7 @@ services:
       NEARZERO_MANAGED_DNS_SOA_EMAIL: ${NEARZERO_MANAGED_DNS_SOA_EMAIL:-}
       NEARZERO_PUBLIC_IP: ${NEARZERO_PUBLIC_IP:-}
     volumes:
+      - ./dns-init.ts:/app/dns-init.ts:ro
       - nearzero-data:/legacy-nearzero:ro
       - nearzero-dns:/etc/coredns
     read_only: true
@@ -1044,6 +1125,9 @@ services:
 
   dns:
     container_name: nearzero-dns
+    # CoreDNS >=1.11 runs as non-root and cannot reliably read root-owned
+    # volume files or bind :53 with NET_BIND_SERVICE alone on many hosts.
+    user: "0:0"
     image: ${NEARZERO_DNS_IMAGE:-coredns/coredns:1.14.6}
     profiles: ["managed-dns"]
     command: ["-conf", "/etc/coredns/Corefile"]
@@ -1065,7 +1149,7 @@ services:
     restart: unless-stopped
 
   platform:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.44}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.45}
     env_file:
       - path: .env
         required: false
@@ -1075,7 +1159,7 @@ services:
       NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
       NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
       NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
-      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.44}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.45}
       NEARZERO_ADMIN_EMAIL: ${NEARZERO_ADMIN_EMAIL:-}
       NEARZERO_REGISTRATION_MODE: ${NEARZERO_REGISTRATION_MODE:-bootstrap}
       NEARZERO_INSTALL_SETUP_TOKEN_HASH: ${NEARZERO_INSTALL_SETUP_TOKEN_HASH:-}
@@ -1100,7 +1184,7 @@ services:
 
   monitoring:
     container_name: nearzero-monitoring
-    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.44}
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.45}
     environment:
       METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
       HOST_SYS: /host/sys
@@ -1122,7 +1206,7 @@ services:
     restart: unless-stopped
 
   schedules:
-    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.44}
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.45}
     profiles: ["schedules"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
@@ -1274,9 +1358,9 @@ write_env() {
 	existing_metrics_cron="$(existing_env_value NEARZERO_METRICS_CRON)"
 	existing_startup_timeout_seconds="$(existing_env_value NEARZERO_STARTUP_TIMEOUT_SECONDS)"
 
-	if [[ "$NEARZERO_IMAGE_WAS_SET" == "0" && -n "$existing_nearzero_image" ]]; then NEARZERO_IMAGE="$existing_nearzero_image"; fi
-	if [[ "$NEARZERO_MONITORING_IMAGE_WAS_SET" == "0" && -n "$existing_monitoring_image" ]]; then NEARZERO_MONITORING_IMAGE="$existing_monitoring_image"; fi
-	if [[ "$NEARZERO_SCHEDULE_IMAGE_WAS_SET" == "0" && -n "$existing_schedule_image" ]]; then NEARZERO_SCHEDULE_IMAGE="$existing_schedule_image"; fi
+	NEARZERO_IMAGE="$(resolve_preserved_release_image NEARZERO_IMAGE "$NEARZERO_IMAGE_WAS_SET" "$NEARZERO_IMAGE" "$existing_nearzero_image")"
+	NEARZERO_MONITORING_IMAGE="$(resolve_preserved_release_image NEARZERO_MONITORING_IMAGE "$NEARZERO_MONITORING_IMAGE_WAS_SET" "$NEARZERO_MONITORING_IMAGE" "$existing_monitoring_image")"
+	NEARZERO_SCHEDULE_IMAGE="$(resolve_preserved_release_image NEARZERO_SCHEDULE_IMAGE "$NEARZERO_SCHEDULE_IMAGE_WAS_SET" "$NEARZERO_SCHEDULE_IMAGE" "$existing_schedule_image")"
 	if [[ "$NEARZERO_DNS_IMAGE_WAS_SET" == "0" && -n "$existing_dns_image" ]]; then NEARZERO_DNS_IMAGE="$existing_dns_image"; fi
 	if [[ "$POSTGRES_USER_WAS_SET" == "0" && -n "$existing_postgres_user" ]]; then POSTGRES_USER="$existing_postgres_user"; fi
 	if [[ "$POSTGRES_DB_WAS_SET" == "0" && -n "$existing_postgres_db" ]]; then POSTGRES_DB="$existing_postgres_db"; fi
@@ -1970,6 +2054,7 @@ main() {
 	configure_first_run
 	resolve_data_mode
 	run_sudo mkdir -p "$INSTALL_DIR"
+	write_dns_init_script
 	write_compose_base
 	write_env
 	sync_data_service_overlay
