@@ -138,7 +138,7 @@ if [[ "${NEARZERO_MANAGEMENT_BIND_ADDRESS+x}" == "x" ]]; then
 else
 	NEARZERO_MANAGEMENT_BIND_ADDRESS_WAS_SET=0
 fi
-NEARZERO_MANAGEMENT_BIND_ADDRESS="${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}"
+NEARZERO_MANAGEMENT_BIND_ADDRESS="${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}"
 if [[ "${NEARZERO_PLATFORM_PORT+x}" == "x" ]]; then NEARZERO_PLATFORM_PORT_WAS_SET=1; else NEARZERO_PLATFORM_PORT_WAS_SET=0; fi
 NEARZERO_PLATFORM_PORT="${NEARZERO_PLATFORM_PORT:-3000}"
 if [[ "${NEARZERO_CONSOLE_PORT+x}" == "x" ]]; then NEARZERO_CONSOLE_PORT_WAS_SET=1; else NEARZERO_CONSOLE_PORT_WAS_SET=0; fi
@@ -328,12 +328,13 @@ write_dns_init_script() {
 	local tmp sha_tmp expected actual
 	tmp="$(mktemp)"
 	sha_tmp="$(mktemp)"
-	trap 'rm -f "$tmp" "$sha_tmp"' RETURN
+	# Avoid RETURN traps: with `set -u` they can fire after locals are gone (curl|bash).
 	curl -fsSL "${NEARZERO_INSTALLER_CDN}/dns-init.ts" -o "$tmp"
 	curl -fsSL "${NEARZERO_INSTALLER_CDN}/dns-init.ts.sha256" -o "$sha_tmp"
 	expected="$(awk '{print $1}' "$sha_tmp")"
 	actual="$(sha256sum "$tmp" | awk '{print $1}')"
 	if [[ -z "$expected" || "$expected" != "$actual" ]]; then
+		rm -f "$tmp" "$sha_tmp"
 		die "dns-init.ts checksum verification failed"
 	fi
 	if [[ "$DRY_RUN" == "1" ]]; then
@@ -342,6 +343,7 @@ write_dns_init_script() {
 	else
 		run_sudo install -o root -g root -m 0644 "$tmp" "$dest"
 	fi
+	rm -f "$tmp" "$sha_tmp"
 }
 
 rand_hex() {
@@ -1171,8 +1173,8 @@ services:
       NEARZERO_PLATFORM_DOMAIN: ${NEARZERO_PLATFORM_DOMAIN:-}
       NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE: ${NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE:-false}
     ports:
-      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_PLATFORM_PORT:-3000}:3000"
-      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_CONSOLE_PORT:-4321}:4321"
+      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_PLATFORM_PORT:-3000}:3000"
+      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_CONSOLE_PORT:-4321}:4321"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - nearzero-data:/etc/nearzero
@@ -1475,9 +1477,9 @@ write_env() {
 	if [[ "$PUBLIC_BACKEND_URL_WAS_SET" == "1" ]]; then
 		[[ -n "$PUBLIC_BACKEND_URL" ]] || die "PUBLIC_BACKEND_URL must not be empty when explicitly supplied"
 		platform_url="${PUBLIC_BACKEND_URL%/}"
-	elif [[ -n "$management_hostname" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" ]]; then
+	elif [[ -n "$management_hostname" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "0.0.0.0" ]]; then
 		if [[ -z "$existing_platform_url" || "${existing_platform_url%/}" == "${existing_console_url%/}" ]] ||
-			{ [[ "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" ]] && url_matches_generated_host_port "$existing_platform_url" "$NEARZERO_PLATFORM_PORT" "$public_ip" "$private_ip" "$existing_public_ip"; }; then
+			{ [[ "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "0.0.0.0" ]] && url_matches_generated_host_port "$existing_platform_url" "$NEARZERO_PLATFORM_PORT" "$public_ip" "$private_ip" "$existing_public_ip"; }; then
 			platform_url="$console_url"
 		else
 			platform_url="${existing_platform_url%/}"
@@ -1487,7 +1489,7 @@ write_env() {
 	fi
 	if [[ "$BETTER_AUTH_URL_WAS_SET" == "1" ]]; then
 		better_auth_url="${BETTER_AUTH_URL%/}"
-	elif [[ -n "$management_hostname" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" || "$CONSOLE_URL_WAS_SET" == "1" ]]; then
+	elif [[ -n "$management_hostname" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "0.0.0.0" || "$CONSOLE_URL_WAS_SET" == "1" ]]; then
 		if [[ -z "$existing_better_auth_url" || "${existing_better_auth_url%/}" == "${existing_console_url%/}" ]] ||
 			url_matches_generated_host_port "$existing_better_auth_url" "$NEARZERO_CONSOLE_PORT" "$public_ip" "$private_ip" "$existing_public_ip"; then
 			better_auth_url="$console_url"
@@ -1499,7 +1501,7 @@ write_env() {
 	fi
 	if [[ "$PUBLIC_GIT_PROVIDER_BASE_URL_WAS_SET" == "1" ]]; then
 		git_provider_base_url="${PUBLIC_GIT_PROVIDER_BASE_URL%/}"
-	elif [[ -n "$management_hostname" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" || "$CONSOLE_URL_WAS_SET" == "1" ]]; then
+	elif [[ -n "$management_hostname" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "127.0.0.1" || "$NEARZERO_MANAGEMENT_BIND_ADDRESS" == "0.0.0.0" || "$CONSOLE_URL_WAS_SET" == "1" ]]; then
 		if [[ -z "$existing_git_provider_base_url" || "${existing_git_provider_base_url%/}" == "${existing_console_url%/}" ]] ||
 			url_matches_generated_host_port "$existing_git_provider_base_url" "$NEARZERO_CONSOLE_PORT" "$public_ip" "$private_ip" "$existing_public_ip"; then
 			git_provider_base_url="$console_url"
@@ -1745,8 +1747,10 @@ confirm_first_run_configuration() {
 	bind_address="$(existing_env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)"
 	if [[ -n "$management_hostname" ]]; then
 		management_url="$console_url"
-	else
+	elif [[ "$bind_address" == "127.0.0.1" ]]; then
 		management_url="http://127.0.0.1:${NEARZERO_CONSOLE_PORT} through SSH/VPN"
+	else
+		management_url="$console_url"
 	fi
 
 	log "Confirm first-run configuration:"
@@ -1983,7 +1987,7 @@ hostname_is_in_zone() {
 }
 
 print_next_steps() {
-	local management_hostname managed_dns_zone public_ip admin_email registration_mode console_url access_url setup_token_hash
+	local management_hostname managed_dns_zone public_ip admin_email registration_mode console_url access_url setup_token_hash bind_address setup_url
 	management_hostname="$(existing_env_value NEARZERO_MANAGEMENT_HOSTNAME)"
 	managed_dns_zone="$(existing_env_value NEARZERO_MANAGED_DNS_ZONE)"
 	public_ip="$(existing_env_value NEARZERO_PUBLIC_IP)"
@@ -1991,22 +1995,33 @@ print_next_steps() {
 	registration_mode="$(existing_env_value NEARZERO_REGISTRATION_MODE)"
 	setup_token_hash="$(existing_env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH)"
 	console_url="$(existing_env_value CONSOLE_URL)"
+	bind_address="$(existing_env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)"
 	if [[ -n "$management_hostname" ]]; then
 		access_url="$console_url"
-	else
+		setup_url="${console_url}/setup"
+	elif [[ "$bind_address" == "127.0.0.1" ]]; then
 		access_url="http://127.0.0.1:${NEARZERO_CONSOLE_PORT} (through the SSH/VPN path above)"
+		setup_url="http://127.0.0.1:${NEARZERO_CONSOLE_PORT}/setup"
+	else
+		access_url="$console_url"
+		setup_url="${console_url}/setup"
 	fi
 
 	if [[ -n "$INSTALL_SETUP_TOKEN_PLAINTEXT" || ( -n "$setup_token_hash" && -z "$management_hostname" ) ]]; then
 		log "Next steps (one-time browser setup):"
-		log "  1. Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private."
-		log "     - Open an SSH tunnel: ssh -L ${NEARZERO_CONSOLE_PORT}:127.0.0.1:${NEARZERO_CONSOLE_PORT} <user>@<server>"
+		if [[ "$bind_address" == "127.0.0.1" ]]; then
+			log "  1. Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private."
+			log "     - Open an SSH tunnel: ssh -L ${NEARZERO_CONSOLE_PORT}:127.0.0.1:${NEARZERO_CONSOLE_PORT} <user>@<server>"
+		else
+			log "  1. Open TCP ${NEARZERO_CONSOLE_PORT} (and ${NEARZERO_PLATFORM_PORT} if needed) in the host firewall / security group."
+			log "     - Console is bound on ${bind_address}:${NEARZERO_CONSOLE_PORT}."
+		fi
 		if [[ -n "$INSTALL_SETUP_TOKEN_PLAINTEXT" ]]; then
 			log "  2. Open the setup wizard once:"
-			log "     http://127.0.0.1:${NEARZERO_CONSOLE_PORT}/setup#token=${INSTALL_SETUP_TOKEN_PLAINTEXT}"
+			log "     ${setup_url}#token=${INSTALL_SETUP_TOKEN_PLAINTEXT}"
 			log "     This token is shown only now. It is not stored in plaintext."
 		else
-			log "  2. Open http://127.0.0.1:${NEARZERO_CONSOLE_PORT}/setup with the operator setup token generated at install time."
+			log "  2. Open ${setup_url} with the operator setup token generated at install time."
 		fi
 		log "  3. In the wizard, set the management hostname (required) and optional application zone, then create DNS A/NS records."
 		log "  4. Create the first owner account with the administrator email configured in the wizard."
@@ -2022,9 +2037,11 @@ print_next_steps() {
 		else
 			log "     - Create ${management_hostname} A ${public_ip} at its current DNS provider."
 		fi
-		log "     - Allow public TCP 80 and 443 for Nearzero-managed HTTPS. Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private."
-	else
+		log "     - Allow public TCP 80 and 443 for Nearzero-managed HTTPS. Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private after Traefik is live if desired."
+	elif [[ "$bind_address" == "127.0.0.1" ]]; then
 		log "     - Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private. Use an SSH/VPN path for first login, for example: ssh -L ${NEARZERO_CONSOLE_PORT}:127.0.0.1:${NEARZERO_CONSOLE_PORT} <user>@<server>"
+	else
+		log "     - Allow TCP ${NEARZERO_CONSOLE_PORT} (and ${NEARZERO_PLATFORM_PORT} if needed) to this host; console is at ${access_url}."
 	fi
 	if [[ -n "$managed_dns_zone" ]]; then
 		log "     - Allow TCP and UDP 53, then delegate ${managed_dns_zone} to ns1.${managed_dns_zone} and ns2.${managed_dns_zone}; point both nameserver glue/A records to ${public_ip}."

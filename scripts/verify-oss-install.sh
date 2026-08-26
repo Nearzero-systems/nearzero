@@ -221,15 +221,15 @@ grep -Fq 'install -o root -g root -m "$mode"' "$ROOT_DIR/scripts/install.sh" || 
 [[ "$(env_value NEARZERO_ADMIN_EMAIL)" == "owner@example.com" ]] || fail "bootstrap administrator email was not persisted"
 [[ "$(env_value NEARZERO_REGISTRATION_MODE)" == "bootstrap" ]] || fail "fresh install did not default to bootstrap registration"
 [[ "$(env_value NEARZERO_DATA_MODE)" == "local" ]] || fail "fresh install did not persist local data mode"
-[[ "$(env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)" == "127.0.0.1" ]] || fail "management ports must default to loopback"
+[[ "$(env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)" == "0.0.0.0" ]] || fail "management ports must default to all interfaces"
 [[ "$(env_value NEARZERO_PLATFORM_DOMAIN)" == "example.com" ]] || fail "platform domain was not normalized"
 [[ "$(env_value NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE)" == "false" ]] || fail "shared-edge routing must default to false"
 [[ "$(env_value NEARZERO_ALLOW_MONITORING_DOCKER_METADATA)" == "false" ]] || fail "Docker metadata monitoring must default to false"
 [[ "$(env_value NEARZERO_SSH_STRICT_HOST_KEY_CHECKING)" == "false" ]] || fail "SSH strict host-key mode must default to false until the trust store is seeded"
-[[ "$(env_value CONSOLE_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install did not publish the SSH-tunnel console origin"
-[[ "$(env_value BETTER_AUTH_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install did not use the console origin for auth"
-[[ "$(env_value PUBLIC_GIT_PROVIDER_BASE_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install did not use the console origin for Git callbacks"
-[[ "$(env_value PUBLIC_BACKEND_URL)" == "http://127.0.0.1:4321" ]] || fail "IP-only loopback install exposed an unreachable raw API origin"
+[[ "$(env_value CONSOLE_URL)" == "http://203.0.113.10:4321" ]] || fail "public bind install did not publish the public console origin"
+[[ "$(env_value BETTER_AUTH_URL)" == "http://203.0.113.10:4321" ]] || fail "public bind install did not use the console origin for auth"
+[[ "$(env_value PUBLIC_GIT_PROVIDER_BASE_URL)" == "http://203.0.113.10:4321" ]] || fail "public bind install did not use the console origin for Git callbacks"
+[[ "$(env_value PUBLIC_BACKEND_URL)" == "http://203.0.113.10:4321" ]] || fail "public bind install exposed a split API origin"
 case ",$(env_value COMPOSE_PROFILES)," in
 	*,managed-dns,*) ;;
 	*) fail "managed-dns profile was not activated" ;;
@@ -253,8 +253,8 @@ grep -Fq 'API_KEY: ${API_KEY:-}' "$INSTALL_DIR/docker-compose.prod.yml" ||
 	fail "schedules API key wiring is missing"
 grep -Fq 'NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE: ${NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE:-false}' "$INSTALL_DIR/docker-compose.prod.yml" ||
 	fail "shared-edge routing flag is not explicitly wired to the platform"
-grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_PLATFORM_PORT:-3000}:3000' "$INSTALL_DIR/docker-compose.prod.yml" || fail "platform port is not bound through the safe management address"
-grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-127.0.0.1}:${NEARZERO_CONSOLE_PORT:-4321}:4321' "$INSTALL_DIR/docker-compose.prod.yml" || fail "console port is not bound through the safe management address"
+grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_PLATFORM_PORT:-3000}:3000' "$INSTALL_DIR/docker-compose.prod.yml" || fail "platform port is not bound through the management address"
+grep -Fq '${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_CONSOLE_PORT:-4321}:4321' "$INSTALL_DIR/docker-compose.prod.yml" || fail "console port is not bound through the management address"
 grep -Fq 'entrypoint: ["bun", "/app/dns-init.ts"]' "$INSTALL_DIR/docker-compose.prod.yml" || fail "managed DNS bootstrap entrypoint is missing"
 grep -Fq './dns-init.ts:/app/dns-init.ts:ro' "$INSTALL_DIR/docker-compose.prod.yml" || fail "managed DNS bootstrap script mount is missing"
 grep -Fq 'user: "0:0"' "$INSTALL_DIR/docker-compose.prod.yml" || fail "CoreDNS must run as root to read installer-owned zone volume files"
@@ -455,7 +455,7 @@ mv "$legacy_url_dir/.env.old-urls" "$legacy_url_dir/.env"
 DRY_RUN=1 INSTALL_DIR="$legacy_url_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
 	"$ROOT_DIR/scripts/install.sh" >/dev/null
 for canonical_key in CONSOLE_URL BETTER_AUTH_URL PUBLIC_GIT_PROVIDER_BASE_URL PUBLIC_BACKEND_URL; do
-	[[ "$(env_value "$canonical_key" "$legacy_url_dir/.env")" == "http://127.0.0.1:4321" ]] || fail "legacy generated raw URL was not corrected to the loopback console origin"
+	[[ "$(env_value "$canonical_key" "$legacy_url_dir/.env")" == "http://203.0.113.10:4321" ]] || fail "legacy generated raw URL was not corrected to the public console origin"
 done
 
 guided_dir="$TEST_ROOT/guided-domain"
