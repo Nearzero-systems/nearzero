@@ -355,9 +355,9 @@ printf '%s\n' \
 	'NEARZERO_METRICS_TOKEN=0123456789abcdef0123456789abcdef' > "$upgrade_dir/.env"
 DRY_RUN=1 INSTALL_DIR="$upgrade_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
 	"$ROOT_DIR/scripts/install.sh" >/dev/null
-grep -Fxq 'NEARZERO_IMAGE=ghcr.io/nearzero-systems/nearzero:0.1.46' "$upgrade_dir/.env" ||
+grep -Fxq 'NEARZERO_IMAGE=ghcr.io/nearzero-systems/nearzero:0.1.47' "$upgrade_dir/.env" ||
 	fail "plain rerun did not upgrade a stale official NEARZERO_IMAGE"
-grep -Fxq 'NEARZERO_MONITORING_IMAGE=ghcr.io/nearzero-systems/monitoring:0.1.46' "$upgrade_dir/.env" ||
+grep -Fxq 'NEARZERO_MONITORING_IMAGE=ghcr.io/nearzero-systems/monitoring:0.1.47' "$upgrade_dir/.env" ||
 	fail "plain rerun did not upgrade a stale official NEARZERO_MONITORING_IMAGE"
 
 duplicate_env_dir="$TEST_ROOT/duplicate-custom-env"

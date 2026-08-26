@@ -10,11 +10,11 @@ fi
 
 if [[ "${NEARZERO_IMAGE+x}" == "x" ]]; then NEARZERO_IMAGE_WAS_SET=1; else NEARZERO_IMAGE_WAS_SET=0; fi
 NEARZERO_INSTALLER_CDN="${NEARZERO_INSTALLER_CDN:-https://cdn.nearzero.dev}"
-NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.46}"
+NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.47}"
 if [[ "${NEARZERO_MONITORING_IMAGE+x}" == "x" ]]; then NEARZERO_MONITORING_IMAGE_WAS_SET=1; else NEARZERO_MONITORING_IMAGE_WAS_SET=0; fi
-NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.46}"
+NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.47}"
 if [[ "${NEARZERO_SCHEDULE_IMAGE+x}" == "x" ]]; then NEARZERO_SCHEDULE_IMAGE_WAS_SET=1; else NEARZERO_SCHEDULE_IMAGE_WAS_SET=0; fi
-NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.46}"
+NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.47}"
 if [[ "${NEARZERO_DNS_IMAGE+x}" == "x" ]]; then NEARZERO_DNS_IMAGE_WAS_SET=1; else NEARZERO_DNS_IMAGE_WAS_SET=0; fi
 NEARZERO_DNS_IMAGE="${NEARZERO_DNS_IMAGE:-coredns/coredns:1.14.6}"
 if [[ "${NEARZERO_HEROKU_BUILDER_IMAGE+x}" == "x" ]]; then
@@ -759,16 +759,28 @@ resolve_data_mode() {
 	fi
 }
 
-generate_install_setup_token() {
-	# High-entropy token for the browser wizard. Only the SHA-256 hash is persisted.
+generate_install_setup_token_plaintext() {
+	local token
 	if command -v openssl >/dev/null 2>&1; then
-		INSTALL_SETUP_TOKEN_PLAINTEXT="$(openssl rand -base64 48 | tr -d '\n=/+' | head -c 43)"
+		# 24 random bytes are 192 bits. Converting standard base64 to base64url
+		# keeps the token intact in a URL fragment without truncating a pipeline.
+		token="$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '\r\n=')"
+	elif command -v od >/dev/null 2>&1; then
+		# `od` consumes a finite byte count, unlike `tr | head`, which can fail under
+		# pipefail and non-C locales after generating an otherwise valid token.
+		token="$(od -An -N24 -tx1 /dev/urandom | LC_ALL=C tr -d '[:space:]')"
 	else
-		INSTALL_SETUP_TOKEN_PLAINTEXT="$(tr -dc 'A-Za-z0-9_-' </dev/urandom | head -c 43)"
+		die "openssl or od is required to generate an install setup token"
 	fi
-	if [[ ${#INSTALL_SETUP_TOKEN_PLAINTEXT} -lt 32 ]]; then
+	if (( ${#token} < 32 || ${#token} > 256 )) || [[ "$token" == *[!A-Za-z0-9_-]* ]]; then
 		die "Failed to generate a secure install setup token"
 	fi
+	printf '%s\n' "$token"
+}
+
+generate_install_setup_token() {
+	# High-entropy token for the browser wizard. Only the SHA-256 hash is persisted.
+	INSTALL_SETUP_TOKEN_PLAINTEXT="$(generate_install_setup_token_plaintext)"
 	if command -v sha256sum >/dev/null 2>&1; then
 		NEARZERO_INSTALL_SETUP_TOKEN_HASH="$(printf '%s' "$INSTALL_SETUP_TOKEN_PLAINTEXT" | sha256sum | awk '{print $1}')"
 	elif command -v shasum >/dev/null 2>&1; then
@@ -1103,7 +1115,7 @@ name: nearzero
 
 services:
   dns-init:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.46}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.47}
     profiles: ["managed-dns"]
     entrypoint: ["bun", "/app/dns-init.ts"]
     environment:
@@ -1151,7 +1163,7 @@ services:
     restart: unless-stopped
 
   platform:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.46}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.47}
     env_file:
       - path: .env
         required: false
@@ -1161,7 +1173,7 @@ services:
       NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
       NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
       NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
-      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.46}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.47}
       NEARZERO_ADMIN_EMAIL: ${NEARZERO_ADMIN_EMAIL:-}
       NEARZERO_REGISTRATION_MODE: ${NEARZERO_REGISTRATION_MODE:-bootstrap}
       NEARZERO_INSTALL_SETUP_TOKEN_HASH: ${NEARZERO_INSTALL_SETUP_TOKEN_HASH:-}
@@ -1186,7 +1198,7 @@ services:
 
   monitoring:
     container_name: nearzero-monitoring
-    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.46}
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.47}
     environment:
       METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
       HOST_SYS: /host/sys
@@ -1208,7 +1220,7 @@ services:
     restart: unless-stopped
 
   schedules:
-    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.46}
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.47}
     profiles: ["schedules"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
@@ -1804,6 +1816,16 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/nearzero}"
 umask 077
 COMPOSE=(-f "$INSTALL_DIR/docker-compose.prod.yml")
 
+if [[ "${1:-}" == "setup-link" ]]; then
+	# A caller may invoke the helper with `bash -x`; disable tracing before any
+	# plaintext bootstrap credential exists.
+	set +x
+	if [[ "$(id -u)" -ne 0 ]]; then
+		echo "setup-link rotates a root-owned bootstrap credential; run: sudo nearzero setup-link" >&2
+		exit 1
+	fi
+fi
+
 installed_env_value() {
 	local key="$1"
 	awk -F= -v key="$key" '
@@ -1849,6 +1871,212 @@ docker_compose() {
 	docker compose "${COMPOSE[@]}" --env-file "$INSTALL_DIR/.env" "$@"
 }
 
+bootstrap_probe_url() {
+	local bind_address platform_port probe_host
+	if ! bind_address="$(installed_env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)"; then
+		echo "missing or duplicate NEARZERO_MANAGEMENT_BIND_ADDRESS in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+	if ! platform_port="$(installed_env_value NEARZERO_PLATFORM_PORT)"; then
+		echo "missing or duplicate NEARZERO_PLATFORM_PORT in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+	if [[ ! "$bind_address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] ||
+		[[ ! "$platform_port" =~ ^[0-9]+$ ]] ||
+		(( platform_port < 1 || platform_port > 65535 )); then
+		echo "invalid management bind address or platform port in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+	case "$bind_address" in
+		0.0.0.0 | 127.0.0.1) probe_host="127.0.0.1" ;;
+		*) probe_host="$bind_address" ;;
+	esac
+	printf 'http://%s:%s/api/install/bootstrap-status\n' "$probe_host" "$platform_port"
+}
+
+bootstrap_json_field_is() {
+	local json="$1"
+	local key="$2"
+	local expected="$3"
+	local marker tail
+	marker="\"${key}\":"
+	tail="${json#*"$marker"}"
+	[[ "$tail" != "$json" ]] || return 1
+	# Duplicate authorization fields are rejected instead of trusting the first.
+	[[ "$tail" != *"$marker"* ]] || return 1
+	case "$tail" in
+		"$expected,"* | "$expected}"*) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+bootstrap_setup_is_allowed() {
+	local probe_url="$1"
+	local response compact
+	response="$(curl --fail --silent --show-error --connect-timeout 3 --max-time 10 "$probe_url" 2>/dev/null)" || return 1
+	compact="$(printf '%s' "$response" | LC_ALL=C tr -d '[:space:]')"
+	[[ "$compact" == \{*\} ]] || return 1
+	bootstrap_json_field_is "$compact" service '"nearzero"' &&
+		bootstrap_json_field_is "$compact" community true &&
+		bootstrap_json_field_is "$compact" setupAllowed true &&
+		bootstrap_json_field_is "$compact" bootstrapClaimed false &&
+		bootstrap_json_field_is "$compact" nextSurface '"setup"'
+}
+
+generate_setup_link_token() {
+	local token
+	if command -v openssl >/dev/null 2>&1; then
+		token="$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '\r\n=')"
+	elif command -v od >/dev/null 2>&1; then
+		token="$(od -An -N24 -tx1 /dev/urandom | LC_ALL=C tr -d '[:space:]')"
+	else
+		echo "openssl or od is required to generate a setup link" >&2
+		return 1
+	fi
+	if (( ${#token} < 32 || ${#token} > 256 )) || [[ "$token" == *[!A-Za-z0-9_-]* ]]; then
+		echo "could not generate a secure setup token" >&2
+		return 1
+	fi
+	printf '%s\n' "$token"
+}
+
+hash_setup_link_token() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		printf '%s' "$1" | sha256sum | awk '{print $1}'
+	elif command -v shasum >/dev/null 2>&1; then
+		printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+	else
+		echo "sha256sum or shasum is required to rotate the setup link" >&2
+		return 1
+	fi
+}
+
+replace_setup_token_hash() {
+	local replacement="$1"
+	local env_file="$INSTALL_DIR/.env"
+	local temporary
+	if [[ ! -f "$env_file" || -L "$env_file" ]]; then
+		echo "$env_file must be a regular, non-symbolic-link file" >&2
+		return 1
+	fi
+	temporary="$(mktemp "$INSTALL_DIR/.env.setup.XXXXXX")"
+	if ! awk -F= -v replacement="$replacement" '
+		BEGIN { count = 0 }
+		$1 == "NEARZERO_INSTALL_SETUP_TOKEN_HASH" {
+			print "NEARZERO_INSTALL_SETUP_TOKEN_HASH=" replacement
+			count++
+			next
+		}
+		{ print }
+		END { if (count != 1) exit 42 }
+	' "$env_file" > "$temporary"; then
+		rm -f -- "$temporary"
+		echo "missing or duplicate NEARZERO_INSTALL_SETUP_TOKEN_HASH in $env_file" >&2
+		return 1
+	fi
+	chmod 0600 "$temporary"
+	if ! mv -f -- "$temporary" "$env_file"; then
+		rm -f -- "$temporary"
+		return 1
+	fi
+}
+
+restart_platform_for_setup_link() {
+	local timeout="$1"
+	local probe_url="$2"
+	local deadline container_id state status health
+	if ! docker_compose up -d --force-recreate --no-deps platform; then
+		return 1
+	fi
+	deadline=$((SECONDS + timeout))
+	while (( SECONDS < deadline )); do
+		container_id="$(docker_compose ps --all --quiet platform 2>/dev/null | head -n 1 || true)"
+		if [[ -z "$container_id" ]]; then
+			sleep 2
+			continue
+		fi
+		state="$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || true)"
+		status="${state%% *}"
+		health="${state#* }"
+		if [[ "$status" == "running" && ( "$health" == "healthy" || "$health" == "none" ) ]] &&
+			curl --fail --silent --show-error --connect-timeout 3 --max-time 10 "$probe_url" >/dev/null 2>&1; then
+			return 0
+		fi
+		if [[ "$status" == "exited" || "$status" == "dead" ]]; then
+			return 1
+		fi
+		sleep 2
+	done
+	return 1
+}
+
+rotate_setup_link() {
+	local probe_url old_hash token new_hash startup_timeout console_url setup_url
+	if ! probe_url="$(bootstrap_probe_url)"; then
+		return 1
+	fi
+	if ! bootstrap_setup_is_allowed "$probe_url"; then
+		echo "setup-link refused: this install is not an unclaimed bootstrap that currently allows setup" >&2
+		return 1
+	fi
+	if ! old_hash="$(installed_env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH)" ||
+		[[ ! "$old_hash" =~ ^[a-f0-9]{64}$ ]]; then
+		echo "missing or invalid NEARZERO_INSTALL_SETUP_TOKEN_HASH in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+	if ! startup_timeout="$(installed_env_value NEARZERO_STARTUP_TIMEOUT_SECONDS)" ||
+		[[ ! "$startup_timeout" =~ ^[0-9]+$ ]] || (( startup_timeout < 1 )); then
+		echo "missing or invalid NEARZERO_STARTUP_TIMEOUT_SECONDS in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+	if ! console_url="$(installed_env_value CONSOLE_URL)"; then
+		echo "missing or duplicate CONSOLE_URL in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+	case "$console_url" in
+		http://* | https://*) ;;
+		*) echo "invalid CONSOLE_URL in $INSTALL_DIR/.env; rerun the installer" >&2; return 1 ;;
+	esac
+	if [[ "$console_url" == *[[:space:]#?]* ]]; then
+		echo "invalid CONSOLE_URL in $INSTALL_DIR/.env; rerun the installer" >&2
+		return 1
+	fi
+
+	if ! token="$(generate_setup_link_token)" || ! new_hash="$(hash_setup_link_token "$token")"; then
+		token=""
+		return 1
+	fi
+	if [[ "$new_hash" == "$old_hash" ]]; then
+		token=""
+		echo "could not rotate the setup credential; run setup-link again" >&2
+		return 1
+	fi
+	if ! replace_setup_token_hash "$new_hash"; then
+		token=""
+		return 1
+	fi
+
+	if ! restart_platform_for_setup_link "$startup_timeout" "$probe_url" ||
+		! bootstrap_setup_is_allowed "$probe_url"; then
+		# Restore the last usable hash when the replacement platform does not become
+		# ready or setup authorization changed during the rotation.
+		if replace_setup_token_hash "$old_hash"; then
+			restart_platform_for_setup_link "$startup_timeout" "$probe_url" >/dev/null 2>&1 || true
+		else
+			echo "warning: could not restore the previous setup-token hash" >&2
+		fi
+		token=""
+		echo "setup-link failed; the previous credential was restored when possible and no new token was disclosed" >&2
+		return 1
+	fi
+
+	setup_url="${console_url%/}/setup"
+	printf '%s\n' "A new one-time setup link is ready. Any older setup link is now invalid."
+	printf '%s#token=%s\n' "$setup_url" "$token"
+	printf '%s\n' "The credential is only in the URL fragment above and is not stored in plaintext."
+	token=""
+}
+
 case "${1:-status}" in
 	status)
 		docker_compose ps
@@ -1859,6 +2087,9 @@ case "${1:-status}" in
 		;;
 	restart)
 		docker_compose restart
+		;;
+	setup-link)
+		rotate_setup_link
 		;;
 	update)
 		docker_compose pull
@@ -1896,7 +2127,7 @@ case "${1:-status}" in
 		docker_compose exec -T postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB" < "$file"
 		;;
 	*)
-		echo "usage: nearzero {status|logs|restart|update|backup-db|restore-db}" >&2
+		echo "usage: nearzero {status|logs|restart|setup-link|update|backup-db|restore-db}" >&2
 		exit 1
 		;;
 esac
@@ -2017,11 +2248,13 @@ print_next_steps() {
 			log "     - Console is bound on ${bind_address}:${NEARZERO_CONSOLE_PORT}."
 		fi
 		if [[ -n "$INSTALL_SETUP_TOKEN_PLAINTEXT" ]]; then
-			log "  2. Open the setup wizard once:"
-			log "     ${setup_url}#token=${INSTALL_SETUP_TOKEN_PLAINTEXT}"
-			log "     This token is shown only now. It is not stored in plaintext."
+			log "  2. Copy or click the exact one-time setup URL printed on the next line:"
+			printf '%s#token=%s\n' "$setup_url" "$INSTALL_SETUP_TOKEN_PLAINTEXT"
+			INSTALL_SETUP_TOKEN_PLAINTEXT=""
+			log "     The credential is only in the URL fragment. It is shown once and is not stored in plaintext."
 		else
-			log "  2. Open ${setup_url} with the operator setup token generated at install time."
+			log "  2. The original one-time setup credential is not recoverable from this host."
+			log "     If its link was lost, run 'sudo nearzero setup-link' to invalidate it and print a replacement."
 		fi
 		log "  3. In the wizard, set the management hostname (required) and optional application zone, then create DNS A/NS records."
 		log "  4. Create the first owner account with the administrator email configured in the wizard."

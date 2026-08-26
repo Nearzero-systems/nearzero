@@ -92,7 +92,7 @@ export const TRAEFIK_IMAGE = normalizeDockerImageReference(
 );
 export const TRAEFIK_SOCKET_PROXY_IMAGE = normalizeDockerImageReference(
 	process.env.TRAEFIK_SOCKET_PROXY_IMAGE ||
-		"ghcr.io/tecnativa/docker-socket-proxy:0.4.2",
+		"ghcr.io/tecnativa/docker-socket-proxy:v0.4.2",
 	"TRAEFIK_SOCKET_PROXY_IMAGE",
 );
 export const TRAEFIK_SOCKET_PROXY_NAME = "nearzero-docker-proxy";
