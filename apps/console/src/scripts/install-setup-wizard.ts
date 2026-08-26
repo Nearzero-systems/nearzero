@@ -54,6 +54,8 @@ type DnsRecord = {
 	type: "A" | "NS";
 	name: string;
 	value: string;
+	/** Cloudflare / CDN proxy must stay off for install DNS. */
+	proxy: "off";
 };
 
 const STEP_NAMES = [
@@ -521,14 +523,26 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		const ip = publicIp?.value.trim() || status.publicIp || "";
 		const records: DnsRecord[] = [];
 		if (currentDnsMode() !== "managed") {
-			records.push({ id: "management-a", type: "A", name: host, value: ip });
+			records.push({
+				id: "management-a",
+				type: "A",
+				name: host,
+				value: ip,
+				proxy: "off",
+			});
 			return records;
 		}
 		const zone = managedZone?.value.trim() || status.managedDnsZone || "";
 		const managementIsInsideZone =
 			Boolean(zone) && (host === zone || host.endsWith(`.${zone}`));
 		if (!managementIsInsideZone) {
-			records.push({ id: "management-a", type: "A", name: host, value: ip });
+			records.push({
+				id: "management-a",
+				type: "A",
+				name: host,
+				value: ip,
+				proxy: "off",
+			});
 		}
 		if (!zone) return records;
 		for (const nameserver of ["ns1", "ns2"] as const) {
@@ -537,6 +551,7 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 				type: "A",
 				name: `${nameserver}.${zone}`,
 				value: ip,
+				proxy: "off",
 			});
 		}
 		for (const nameserver of ["ns1", "ns2"] as const) {
@@ -545,6 +560,7 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 				type: "NS",
 				name: zone,
 				value: `${nameserver}.${zone}`,
+				proxy: "off",
 			});
 		}
 		return records;
@@ -565,7 +581,26 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 				code: true,
 				copyable: true,
 			});
+			const proxy = document.createElement("span");
+			proxy.className = "nz-install-setup__record-field";
+			const proxyLabel = document.createElement("small");
+			proxyLabel.textContent = "Proxy";
+			const proxyValue = document.createElement("span");
+			proxyValue.className =
+				"nz-install-setup__record-value nz-install-setup__proxy-off";
+			const proxyStrong = document.createElement("strong");
+			proxyStrong.textContent = "OFF · DNS only";
+			proxyValue.append(proxyStrong);
+			proxy.append(proxyLabel, proxyValue);
+			item.append(proxy);
 			dnsInstructions.append(item);
+		}
+		const help = root.querySelector<HTMLElement>("[data-setup-dns-help]");
+		if (help) {
+			help.textContent =
+				currentDnsMode() === "managed"
+					? "Cloudflare/CDN: set every A record to DNS only (grey cloud), never Proxied. Create ns1/ns2 A glue first, then the NS records. Parent-zone warnings that NS names are “overshadowed” are normal when glue A records exist. Open TCP 80/443 and UDP/TCP 53."
+					: "Cloudflare/CDN: set the console A record to DNS only (grey cloud), never Proxied. Open TCP 80/443.";
 		}
 	}
 

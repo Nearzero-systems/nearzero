@@ -11,10 +11,12 @@ import { inspectDnsDelegation } from "./dns";
 import { isPublicIpv4 } from "./domain-target";
 import {
 	getEffectiveManagedDnsSoaEmail,
+	getInstallManagementIdentity,
 	getPublicInstallSetupStatus,
 	getSetupAdminEmail,
+	type InstallSetupAccessCredential,
 	type PublicInstallSetupStatus,
-	verifyInstallSetupToken,
+	verifyInstallSetupAccessCredential,
 } from "./install-setup";
 
 const READINESS_RATE_LIMIT = 12;
@@ -23,7 +25,7 @@ const READINESS_RATE_BUCKET_LIMIT = 2_048;
 const READINESS_PROBE_TIMEOUT_MS = 4_000;
 const READINESS_TOTAL_TIMEOUT_MS = 10_000;
 const MAX_SETUP_TOKEN_LENGTH = 256;
-const MANAGEMENT_IDENTITY_PATH = "/api/install/setup-status";
+const MANAGEMENT_IDENTITY_PATH = "/api/install/bootstrap-status";
 const MANAGEMENT_IDENTITY_MAX_BYTES = 16 * 1024;
 
 type DnsDelegationInput = Parameters<typeof inspectDnsDelegation>[0];
@@ -52,7 +54,7 @@ export type InstallSetupReadinessState = {
 };
 
 export type InstallSetupReadinessDependencies = {
-	verifyToken: (token: string) => boolean;
+	verifyCredential: (credential: InstallSetupAccessCredential) => boolean;
 	loadState: () => Promise<InstallSetupReadinessState>;
 	resolveManagementAddresses: (
 		hostname: string,
@@ -257,7 +259,7 @@ function probeManagementHttps(
 }
 
 const defaultDependencies: InstallSetupReadinessDependencies = {
-	verifyToken: verifyInstallSetupToken,
+	verifyCredential: verifyInstallSetupAccessCredential,
 	loadState: loadInstallSetupReadinessState,
 	resolveManagementAddresses: (hostname) => resolve4(hostname),
 	probeManagementHttps,
@@ -322,7 +324,7 @@ function tlsFailureCode(error: unknown) {
 
 function assertNearzeroManagementIdentity(
 	response: InstallSetupHttpsProbeResponse,
-	hostname: string,
+	_hostname: string,
 ) {
 	if (
 		response.statusCode !== 200 ||
@@ -342,11 +344,13 @@ function assertNearzeroManagementIdentity(
 	}
 	const status = value as Record<string, unknown>;
 	if (
+		status.service !== "nearzero" ||
 		status.community !== true ||
-		status.managementHostname !== hostname ||
-		typeof status.setupTokenConfigured !== "boolean" ||
-		typeof status.phase !== "string" ||
-		!["pending", "configured", "operational"].includes(status.phase)
+		status.managementIdentity !== getInstallManagementIdentity(_hostname) ||
+		typeof status.setupAllowed !== "boolean" ||
+		typeof status.setupPending !== "boolean" ||
+		typeof status.bootstrapClaimed !== "boolean" ||
+		!["setup", "register", "login"].includes(String(status.nextSurface))
 	) {
 		throw new ManagementHttpsRouteError();
 	}
@@ -418,7 +422,7 @@ async function inspectManagementReadiness(
 		aRecordDiagnostic =
 			aRecordCode === "A_LOOKUP_TIMEOUT"
 				? "The public A-record lookup timed out. Check DNS again shortly."
-				: "The public A record could not be resolved yet. Confirm it at your DNS provider and retry.";
+				: "The public A record could not be resolved yet. Confirm the A record exists, wait for propagation, and if you use Cloudflare set Proxy to DNS only (grey cloud), not Proxied.";
 	}
 
 	const containsExpected = observedAddresses.includes(expectedAddress);
@@ -434,10 +438,10 @@ async function inspectManagementReadiness(
 			aRecordCode = "A_RECORD_MISMATCH";
 			aRecordDiagnostic =
 				observedAddresses.length === 0
-					? `Create an A record for ${hostname} pointing to ${expectedAddress}.`
+					? `Create an A record for ${hostname} pointing to ${expectedAddress}. If you use Cloudflare, set Proxy to DNS only (grey cloud), not Proxied.`
 					: containsExpected
 						? `Remove the other A records for ${hostname}; it should resolve only to ${expectedAddress}.`
-						: `Set the A record for ${hostname} to ${expectedAddress}.`;
+						: `Set the A record for ${hostname} to ${expectedAddress} only. If you use Cloudflare, turn Proxy OFF (DNS only / grey cloud)—Proxied returns Cloudflare IPs instead of your server.`;
 		}
 	}
 
@@ -635,7 +639,11 @@ async function inspectManagedDnsReadiness(
 }
 
 export async function getInstallSetupReadiness(
-	input: { token: string; clientKey?: string },
+	input: {
+		credential?: InstallSetupAccessCredential | null;
+		token?: string;
+		clientKey?: string;
+	},
 	dependencies: InstallSetupReadinessDependencies = defaultDependencies,
 ) {
 	const clientKey = (input.clientKey?.trim() || "anonymous").slice(0, 256);
@@ -647,11 +655,17 @@ export async function getInstallSetupReadiness(
 		);
 	}
 
-	const token = typeof input.token === "string" ? input.token.trim() : "";
+	const credential =
+		input.credential ??
+		(typeof input.token === "string"
+			? { kind: "token" as const, value: input.token.trim() }
+			: null);
 	if (
-		!token ||
-		token.length > MAX_SETUP_TOKEN_LENGTH ||
-		!dependencies.verifyToken(token)
+		!credential ||
+		!credential.value ||
+		(credential.kind === "token" &&
+			credential.value.length > MAX_SETUP_TOKEN_LENGTH) ||
+		!dependencies.verifyCredential(credential)
 	) {
 		throw new InstallSetupReadinessError(
 			"Invalid or expired setup token",

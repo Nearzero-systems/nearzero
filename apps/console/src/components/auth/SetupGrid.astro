@@ -362,7 +362,7 @@ const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 							</li>
 						</ol>
 						<p class={`nz-install-setup__record-help ${authMutedText}`} data-setup-dns-help>
-							Leave TCP 80/443 open. Nearzero DNS also needs UDP/TCP 53. Use DNS only, not a proxy.
+							Cloudflare/CDN: set every A record to DNS only (grey cloud), never Proxied. Create ns1/ns2 A glue first, then the NS records. Parent-zone warnings that NS names are “overshadowed” are normal when glue A records exist. Open TCP 80/443 and UDP/TCP 53.
 						</p>
 					</div>
 				</div>
