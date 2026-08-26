@@ -66,8 +66,8 @@ jobs:
       - name: Generate installer checksums
         run: |
           set -euo pipefail
-          sha256sum scripts/install.sh > scripts/install.sh.sha256
-          sha256sum docker/dns-init.ts > docker/dns-init.ts.sha256
+          (cd scripts && sha256sum install.sh > install.sh.sha256)
+          (cd docker && sha256sum dns-init.ts > dns-init.ts.sha256)
 
       - name: Install Wrangler CLI
         run: npm install -g wrangler@4.76.0
