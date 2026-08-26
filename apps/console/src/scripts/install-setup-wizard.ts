@@ -1,4 +1,4 @@
-import { authErrorMessage, authResendBtnClass } from "@/lib/auth-form-classes";
+import { authErrorMessage } from "@/lib/auth-form-classes";
 import {
 	extractSetupToken,
 	extractSetupTokenFromHash,
@@ -13,6 +13,7 @@ import {
 	type PublicInstallSetupReadiness,
 	type PublicInstallSetupStatus,
 	parseInstallSetupStep,
+	setupUrlWithoutToken,
 	type SetupCheckState,
 	suggestInstallDomains,
 	wizardStepsForStatus,
@@ -20,6 +21,22 @@ import {
 import { showToast } from "@/scripts/ui";
 
 type DnsMode = "managed" | "external";
+type SetupAccessState =
+	| "checking"
+	| "authorized"
+	| "missing"
+	| "invalid"
+	| "unavailable";
+
+class SetupSessionError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+		this.name = "SetupSessionError";
+	}
+}
 
 type Draft = {
 	baseDomain?: string;
@@ -105,13 +122,13 @@ function writeDraft(draft: Draft) {
 	localStorage.setItem(INSTALL_SETUP_DRAFT_KEY, JSON.stringify(draft));
 }
 
-function persistToken(token: string | null) {
-	if (!token) return;
-	sessionStorage.setItem(INSTALL_SETUP_TOKEN_KEY, token);
-}
-
-function readToken() {
-	return sessionStorage.getItem(INSTALL_SETUP_TOKEN_KEY)?.trim() || "";
+function clearLegacyStoredToken() {
+	try {
+		localStorage.removeItem(INSTALL_SETUP_TOKEN_KEY);
+		sessionStorage.removeItem(INSTALL_SETUP_TOKEN_KEY);
+	} catch {
+		// Storage can be unavailable in hardened browsers. The wizard never writes it.
+	}
 }
 
 function panel(root: HTMLElement, name: InstallSetupWizardStep) {
@@ -135,31 +152,90 @@ function appendRecordPart(
 	item: HTMLLIElement,
 	label: string,
 	value: string,
-	code = false,
+	options: { code?: boolean; copyable?: boolean } = {},
 ) {
 	const wrap = document.createElement("span");
+	wrap.className = "nz-install-setup__record-field";
 	const small = document.createElement("small");
 	small.textContent = label;
-	const content = document.createElement(code ? "code" : "strong");
+	const row = document.createElement("span");
+	row.className = "nz-install-setup__record-value";
+	const content = document.createElement(options.code ? "code" : "strong");
 	content.textContent = value;
-	wrap.append(small, content);
+	row.append(content);
+	if (options.copyable) {
+		row.append(createCopyIconButton(`Copy ${label.toLowerCase()}`, value));
+	}
+	wrap.append(small, row);
 	item.append(wrap);
 }
 
+function createCopyIconButton(ariaLabel: string, value: string) {
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "nz-install-setup__copy-icon";
+	button.setAttribute("aria-label", ariaLabel);
+	button.title = ariaLabel;
+	button.innerHTML =
+		'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>';
+	button.addEventListener("click", async () => {
+		try {
+			await writeClipboard(value);
+			showToast("Copied", "success");
+		} catch (error) {
+			showToast(
+				error instanceof Error ? error.message : "Could not copy",
+				"error",
+			);
+		}
+	});
+	return button;
+}
+
 async function writeClipboard(value: string) {
-	if (!navigator.clipboard?.writeText) {
+	if (navigator.clipboard?.writeText && window.isSecureContext) {
+		await navigator.clipboard.writeText(value);
+		return;
+	}
+	const textarea = document.createElement("textarea");
+	textarea.value = value;
+	textarea.setAttribute("readonly", "");
+	textarea.style.position = "fixed";
+	textarea.style.top = "0";
+	textarea.style.left = "0";
+	textarea.style.opacity = "0";
+	document.body.appendChild(textarea);
+	textarea.focus();
+	textarea.select();
+	textarea.setSelectionRange(0, textarea.value.length);
+	const ok = document.execCommand("copy");
+	textarea.remove();
+	if (!ok) {
 		throw new Error("Clipboard access is unavailable in this browser");
 	}
-	await navigator.clipboard.writeText(value);
 }
 
 export function bindInstallSetupWizard(root: HTMLElement) {
+	clearLegacyStoredToken();
 	const hashToken =
 		extractSetupTokenFromHash(window.location.hash) ||
-		extractSetupToken(
-			new URL(window.location.href).searchParams.get("token") || "",
-		);
-	if (hashToken) persistToken(hashToken);
+		null;
+	const queryToken = extractSetupToken(
+		new URL(window.location.href).searchParams.get("token") || "",
+	);
+	let pendingSetupToken = hashToken || queryToken;
+	let setupAccessState: SetupAccessState =
+		root.dataset.setupAuthorized === "true" &&
+		root.dataset.setupHasStatus === "true"
+			? "authorized"
+			: root.dataset.setupAccessError === "unavailable"
+				? "unavailable"
+				: pendingSetupToken
+					? "checking"
+					: "missing";
+	if (queryToken) {
+		history.replaceState(null, "", setupUrlWithoutToken(window.location.href));
+	}
 
 	let status = JSON.parse(
 		root.dataset.setupStatus || "{}",
@@ -192,6 +268,34 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	);
 	const title = root.querySelector<HTMLElement>("[data-setup-title]");
 	const subtitle = root.querySelector<HTMLElement>("[data-setup-subtitle]");
+	const accessHeading = root.querySelector<HTMLElement>(
+		"[data-setup-access-heading]",
+	);
+	const accessPanel = root.querySelector<HTMLElement>(
+		"[data-setup-access-panel]",
+	);
+	const accessTitle = root.querySelector<HTMLElement>(
+		"[data-setup-access-title]",
+	);
+	const accessMessage = root.querySelector<HTMLElement>(
+		"[data-setup-access-message]",
+	);
+	const accessActions = root.querySelector<HTMLElement>(
+		"[data-setup-access-actions]",
+	);
+	const wizard = root.querySelector<HTMLElement>("[data-setup-wizard]");
+	const wizardChrome = root.querySelector<HTMLElement>(
+		"[data-setup-wizard-chrome]",
+	);
+	const wizardActions = root.querySelector<HTMLElement>(
+		"[data-setup-wizard-actions]",
+	);
+	const unlockBtn = root.querySelector<HTMLButtonElement>(
+		"[data-setup-unlock]",
+	);
+	const unlockLabel = root.querySelector<HTMLElement>(
+		"[data-setup-unlock-label]",
+	);
 	const errorEl = root.querySelector<HTMLElement>("[data-setup-error]");
 	const backBtn = root.querySelector<HTMLButtonElement>("[data-setup-back]");
 	const nextBtn = root.querySelector<HTMLButtonElement>("[data-setup-next]");
@@ -265,9 +369,6 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	);
 	const zoneFields = root.querySelector<HTMLElement>(
 		"[data-setup-zone-fields]",
-	);
-	const setupTokenField = root.querySelector<HTMLElement>(
-		"[data-setup-token-field]",
 	);
 	const setupTokenInput = root.querySelector<HTMLInputElement>(
 		"[data-setup-token]",
@@ -412,7 +513,6 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			"[data-setup-review-ports]",
 			managed ? "TCP 80, 443 · UDP/TCP 53" : "TCP 80, 443",
 		);
-		syncSetupTokenField();
 	}
 
 	function recordsForConfiguration(): DnsRecord[] {
@@ -457,28 +557,14 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			const item = document.createElement("li");
 			item.dataset.setupDnsRecord = record.id;
 			appendRecordPart(item, "Type", record.type);
-			appendRecordPart(item, "Name", record.name, true);
-			appendRecordPart(item, "Value", record.value, true);
-			const button = document.createElement("button");
-			button.type = "button";
-			button.className = authResendBtnClass;
-			button.dataset.setupCopyRecord = record.id;
-			button.setAttribute("aria-label", `Copy ${record.type} record`);
-			button.textContent = "Copy";
-			button.addEventListener("click", async () => {
-				try {
-					await writeClipboard(
-						`${record.type}\t${record.name}\t${record.value}`,
-					);
-					showToast("DNS record copied", "success");
-				} catch (error) {
-					showToast(
-						error instanceof Error ? error.message : "Could not copy record",
-						"error",
-					);
-				}
+			appendRecordPart(item, "Name", record.name, {
+				code: true,
+				copyable: true,
 			});
-			item.append(button);
+			appendRecordPart(item, "Value", record.value, {
+				code: true,
+				copyable: true,
+			});
 			dnsInstructions.append(item);
 		}
 	}
@@ -495,8 +581,26 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		});
 		const body = await response.json().catch(() => null);
 		if (!response.ok) {
-			throw new Error(authErrorMessage(body, "Invalid or expired setup link"));
+			throw new SetupSessionError(
+				authErrorMessage(body, "Invalid or expired setup link"),
+				response.status,
+			);
 		}
+	}
+
+	async function validateSetupSession() {
+		const response = await fetch("/api/install/setup/session", {
+			method: "GET",
+			credentials: "same-origin",
+			headers: { accept: "application/json" },
+			cache: "no-store",
+		});
+		if (response.ok) return;
+		const body = await response.json().catch(() => null);
+		throw new SetupSessionError(
+			authErrorMessage(body, "Setup authorization is no longer valid"),
+			response.status,
+		);
 	}
 
 	function lockInput(
@@ -551,70 +655,149 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		captureDraft();
 	}
 
-	function currentSetupToken() {
-		return (
-			extractSetupToken(setupTokenInput?.value || "") ||
-			extractSetupTokenFromHash(window.location.hash) ||
-			extractSetupToken(
-				new URL(window.location.href).searchParams.get("token") || "",
-			) ||
-			readToken()
-		);
+	function clearCredentialFromAddressBar() {
+		history.replaceState(null, "", setupUrlWithoutToken(window.location.href));
 	}
 
-	let promptForSetupToken = false;
+	function renderSetupAccess() {
+		const authorized = setupAccessState === "authorized";
+		accessPanel?.classList.toggle("hidden", authorized);
+		accessActions?.classList.toggle("hidden", authorized);
+		wizard?.classList.toggle("hidden", !authorized);
+		wizardChrome?.classList.toggle("hidden", !authorized);
+		wizardChrome?.classList.toggle("flex", authorized);
+		wizardActions?.classList.toggle("hidden", !authorized);
+		wizardActions?.classList.toggle("flex", authorized);
+		title?.classList.toggle("hidden", !authorized);
+		accessHeading?.classList.toggle("hidden", authorized);
+		if (accessPanel) accessPanel.dataset.accessState = setupAccessState;
 
-	function syncSetupTokenField() {
-		setupTokenField?.classList.toggle("hidden", !promptForSetupToken);
+		const copy =
+			setupAccessState === "checking"
+				? {
+						title: "Verifying the installer link",
+						message:
+							"Nearzero is exchanging the one-time token for a protected browser session.",
+						button: "Verifying…",
+					}
+				: setupAccessState === "invalid"
+					? {
+							title: "This setup link is not valid",
+							message:
+								"The token is expired or belongs to another installation. Generate a new link on this server and try again.",
+							button: "Verify setup link",
+						}
+					: setupAccessState === "unavailable"
+						? {
+								title: "Nearzero could not verify the setup link",
+								message: pendingSetupToken
+									? "The server may still be starting. Your token remains in this tab; retry when Nearzero is ready."
+									: "The setup service is unavailable. Confirm Nearzero is running, then paste a newly generated setup link.",
+								button: pendingSetupToken ? "Retry verification" : "Verify setup link",
+							}
+						: {
+								title: "Use the one-time installer link",
+								message:
+									"This page is locked. Open the complete one-time URL generated by this Nearzero installation, or paste it below.",
+								button: "Verify setup link",
+							};
+		if (accessTitle) accessTitle.textContent = copy.title;
+		if (accessMessage) accessMessage.textContent = copy.message;
+		if (unlockLabel) unlockLabel.textContent = copy.button;
+		setButtonBusy(unlockBtn, setupAccessState === "checking");
+
+		if (!authorized) {
+			const url = new URL(window.location.href);
+			url.searchParams.delete("step");
+			history.replaceState(
+				null,
+				"",
+				`${url.pathname}${url.search}${url.hash}`,
+			);
+		}
 	}
 
-	const setupSessionPromise = (async () => {
-		const token = hashToken || readToken();
-		if (!token) return;
-		persistToken(token);
-		await exchangeSetupSession(token);
-		if (!hashToken) return;
-		const url = new URL(window.location.href);
-		url.hash = "";
-		history.replaceState(null, "", `${url.pathname}${url.search}`);
-	})();
-	setupSessionPromise.catch((error) => {
-		showError(error instanceof Error ? error.message : "Setup link is invalid");
-	});
-
-	const authorizedConfigurationPromise = setupSessionPromise
-		.then(async () => {
-			if (configured()) return;
-			const token = currentSetupToken();
-			const response = await fetch("/api/install/setup/readiness", {
-				method: "POST",
-				credentials: "same-origin",
-				headers: {
-					accept: "application/json",
-					...(token ? { "x-nearzero-setup-token": token } : {}),
-				},
-			});
-			if (!response.ok) return;
-			const body = (await response.json().catch(() => null)) as unknown;
-			if (isPublicInstallSetupReadiness(body)) {
-				applyAuthorizedConfiguration(body);
+	async function authorizeSetup(token: string) {
+		pendingSetupToken = token;
+		setupAccessState = "checking";
+		showError(null);
+		renderSetupAccess();
+		try {
+			await exchangeSetupSession(token);
+			pendingSetupToken = null;
+			clearCredentialFromAddressBar();
+			if (setupTokenInput) setupTokenInput.value = "";
+			window.location.reload();
+		} catch (error) {
+			if (error instanceof SetupSessionError && error.status === 403) {
+				pendingSetupToken = null;
+				clearCredentialFromAddressBar();
+				window.location.reload();
+				return;
 			}
-		})
-		.catch(() => {
-			// Submit and readiness endpoints still enforce installer locks. This
-			// background prefill is a convenience, never the authority boundary.
-		});
+			if (error instanceof SetupSessionError && error.status === 401) {
+				pendingSetupToken = null;
+				clearCredentialFromAddressBar();
+				if (setupTokenInput) setupTokenInput.value = "";
+				setupAccessState = "invalid";
+			} else {
+				setupAccessState = "unavailable";
+			}
+			renderSetupAccess();
+		}
+	}
+
+	async function requireAuthorizedSession() {
+		if (setupAccessState !== "authorized") {
+			renderSetupAccess();
+			return false;
+		}
+		try {
+			await validateSetupSession();
+			return true;
+		} catch (error) {
+			setupAccessState =
+				error instanceof SetupSessionError &&
+				(error.status === 401 || error.status === 403)
+					? "invalid"
+					: "unavailable";
+			renderSetupAccess();
+			return false;
+		}
+	}
+
+	if (setupAccessState === "authorized" && pendingSetupToken) {
+		pendingSetupToken = null;
+		clearCredentialFromAddressBar();
+	}
+
+	const authorizedConfigurationPromise =
+		setupAccessState === "authorized"
+			? (async () => {
+					if (configured() || !(await requireAuthorizedSession())) return;
+					const response = await fetch("/api/install/setup/readiness", {
+						method: "POST",
+						credentials: "same-origin",
+						headers: { accept: "application/json" },
+					});
+					if (!response.ok) return;
+					const body = (await response.json().catch(() => null)) as unknown;
+					if (isPublicInstallSetupReadiness(body)) {
+						applyAuthorizedConfiguration(body);
+					}
+				})().catch(() => {
+					// This prefill is optional; every action revalidates the signed session.
+				})
+			: Promise.resolve();
+
+	if (setupAccessState !== "authorized" && pendingSetupToken) {
+		void authorizeSetup(pendingSetupToken);
+	}
 
 	async function submitSetup() {
-		await setupSessionPromise;
+		if (!(await requireAuthorizedSession())) return false;
 		captureDraft();
-		const token = currentSetupToken();
-		if (token) {
-			persistToken(token);
-			await exchangeSetupSession(token);
-		}
 		const payload = {
-			...(token ? { token } : {}),
 			managementHostname: managementHostname?.value.trim() || "",
 			adminEmail: adminEmail?.value.trim() || "",
 			publicIp: publicIp?.value.trim() || undefined,
@@ -632,25 +815,19 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			headers: {
 				accept: "application/json",
 				"content-type": "application/json",
-				...(token ? { "x-nearzero-setup-token": token } : {}),
 			},
 			body: JSON.stringify(payload),
 		});
 		const body = await response.json().catch(() => null);
 		if (!response.ok) {
 			const message = authErrorMessage(body, "Failed to apply install setup");
-			if (
-				response.status === 401 ||
-				/setup link|setup token|setup payload/i.test(message)
-			) {
-				promptForSetupToken = true;
-				syncSetupTokenField();
-				setupTokenInput?.focus();
+			if (response.status === 401 || response.status === 403) {
+				setupAccessState = "invalid";
+				renderSetupAccess();
+				return false;
 			}
 			throw new Error(message);
 		}
-		promptForSetupToken = false;
-		syncSetupTokenField();
 		if (isPublicInstallSetupStatus(body)) {
 			status = body;
 			steps = wizardStepsForStatus(status);
@@ -658,6 +835,7 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		localStorage.removeItem(INSTALL_SETUP_DRAFT_KEY);
 		updateCanonicalLinks();
 		showToast("Domain configuration applied", "success");
+		return true;
 	}
 
 	function readinessLabel(state: SetupCheckState) {
@@ -791,21 +969,17 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 
 	async function checkReadiness(options: { quiet?: boolean } = {}) {
 		if (checkingReadiness) return;
+		if (!(await requireAuthorizedSession())) return;
 		checkingReadiness = true;
-		await setupSessionPromise;
 		setButtonBusy(checkBtn, true);
 		if (checkBtn) checkBtn.textContent = "Checking…";
 		if (!options.quiet) setVerifyView("readiness");
 		renderCheckingState();
 		try {
-			const token = currentSetupToken();
 			const response = await fetch("/api/install/setup/readiness", {
 				method: "POST",
 				credentials: "same-origin",
-				headers: {
-					accept: "application/json",
-					...(token ? { "x-nearzero-setup-token": token } : {}),
-				},
+				headers: { accept: "application/json" },
 			});
 			const body = await response.json().catch(() => null);
 			if (!response.ok) {
@@ -882,6 +1056,11 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	}
 
 	function render() {
+		renderSetupAccess();
+		if (setupAccessState !== "authorized") {
+			clearReadinessTimer();
+			return;
+		}
 		const step = steps[stepIndex] ?? "welcome";
 		for (const name of STEP_NAMES) {
 			const element = panel(root, name);
@@ -981,6 +1160,7 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		showError(null);
 		const step = steps[stepIndex] ?? "welcome";
 		try {
+			if (!(await requireAuthorizedSession())) return;
 			if (step === "management") await authorizedConfigurationPromise;
 			if (step === "management" && !validateManagement()) return;
 			if (step === "zone" && !validateZone()) return;
@@ -988,7 +1168,10 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 			if (step === "review") {
 				setButtonBusy(nextBtn, true);
 				if (nextLabel) nextLabel.textContent = "Configuring Nearzero…";
-				await submitSetup();
+				if (!(await submitSetup())) {
+					setButtonBusy(nextBtn, false);
+					return;
+				}
 				setButtonBusy(nextBtn, false);
 				stepIndex = steps.indexOf("verify");
 				readiness = null;
@@ -1016,7 +1199,8 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		}
 	}
 
-	backBtn?.addEventListener("click", () => {
+	backBtn?.addEventListener("click", async () => {
+		if (!(await requireAuthorizedSession())) return;
 		showError(null);
 		if (stepIndex > 0) {
 			stepIndex -= 1;
@@ -1025,6 +1209,18 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	});
 	nextBtn?.addEventListener("click", () => void goNext());
 	checkBtn?.addEventListener("click", () => void checkReadiness());
+	async function unlockSetup() {
+		const token =
+			pendingSetupToken || extractSetupToken(setupTokenInput?.value || "");
+		if (!token) {
+			setupAccessState = "missing";
+			renderSetupAccess();
+			setupTokenInput?.focus();
+			return;
+		}
+		await authorizeSetup(token);
+	}
+	unlockBtn?.addEventListener("click", () => void unlockSetup());
 	for (const tab of verifyTabs) {
 		tab.addEventListener("click", () => {
 			const view = tab.dataset.setupVerifyTab;
@@ -1066,8 +1262,15 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 	}
 	setupTokenInput?.addEventListener("input", () => {
 		const token = extractSetupToken(setupTokenInput.value);
-		if (token) persistToken(token);
+		pendingSetupToken = token;
+		setupAccessState = token ? "missing" : "missing";
 		showError(null);
+		renderSetupAccess();
+	});
+	setupTokenInput?.addEventListener("keydown", (event) => {
+		if (event.key !== "Enter") return;
+		event.preventDefault();
+		void unlockSetup();
 	});
 	for (const choice of [managedDnsMode, externalDnsMode]) {
 		choice?.addEventListener("change", () => {

@@ -13,11 +13,37 @@ import AuthButtonSpinner from "./AuthButtonSpinner.astro";
 import "../../styles/install-setup.css";
 
 interface Props {
-	status: PublicInstallSetupStatus;
+	status: PublicInstallSetupStatus | null;
 	initialStep?: string;
+	setupSessionAuthorized?: boolean;
+	initialAccessError?: "unavailable" | null;
 }
 
-const { status, initialStep = "welcome" } = Astro.props;
+const {
+	status: authorizedStatus,
+	initialStep = "welcome",
+	setupSessionAuthorized = false,
+	initialAccessError = null,
+} = Astro.props;
+const status: PublicInstallSetupStatus = authorizedStatus ?? {
+	required: true,
+	phase: "pending",
+	community: true,
+	bootstrapClaimed: false,
+	setupVerified: false,
+	setupTokenConfigured: true,
+	managementConfigured: false,
+	managementHostname: null,
+	adminEmailConfigured: false,
+	publicIp: null,
+	managedDnsEnabled: true,
+	managedDnsConfigured: false,
+	managedDnsZone: null,
+	managedDnsSkipped: false,
+	canSubmit: false,
+	resumeStep: "welcome",
+};
+const wizardAuthorized = setupSessionAuthorized && authorizedStatus !== null;
 const steps = wizardStepsForStatus(status);
 const hostnamePattern =
 	"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$";
@@ -50,19 +76,28 @@ const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 	data-setup-status={JSON.stringify(status)}
 	data-setup-steps={JSON.stringify(steps)}
 	data-initial-step={initialStep}
+	data-setup-authorized={wizardAuthorized ? "true" : "false"}
+	data-setup-has-status={authorizedStatus ? "true" : "false"}
+	data-setup-access-error={initialAccessError ?? ""}
 >
 	<AuthGrid variant="setup">
 		<div slot="c4" class="mx-auto flex h-full w-full max-w-[36rem] items-end justify-center pb-1 text-center">
 			<h1
 				id="nz-setup-title"
 				data-setup-title
-				class="font-display text-xl font-semibold tracking-tight text-[#111827] sm:text-2xl"
+				class:list={["font-display text-xl font-semibold tracking-tight text-[#111827] sm:text-2xl", !wizardAuthorized && "hidden"]}
 			>
 				Set up your Nearzero server
 			</h1>
+			<h1
+				data-setup-access-heading
+				class:list={["font-display text-xl font-semibold tracking-tight text-[#111827] sm:text-2xl", wizardAuthorized && "hidden"]}
+			>
+				Unlock first-time setup
+			</h1>
 		</div>
 
-		<div slot="c7" class="mx-auto flex h-full w-full max-w-[36rem] flex-col items-center justify-center gap-2 px-3 text-center">
+		<div slot="c7" data-setup-wizard-chrome class:list={["mx-auto h-full w-full max-w-[36rem] flex-col items-center justify-center gap-2 px-3 text-center", wizardAuthorized ? "flex" : "hidden"]}>
 			<div class="nz-install-setup__progress" aria-label="Setup progress">
 				<p class={`text-xs ${authMutedText}`} data-setup-progress>Step 1 of {steps.length}</p>
 				<div class="nz-install-setup__progress-track" aria-hidden="true">
@@ -80,6 +115,38 @@ const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 		</div>
 
 		<div slot="c10" class="mx-auto my-auto flex w-full max-w-[42rem] flex-col gap-3">
+			<section
+				data-setup-access-panel
+				data-access-state={initialAccessError ?? (wizardAuthorized ? "authorized" : "missing")}
+				class:list={["nz-install-setup__access", wizardAuthorized && "hidden"]}
+				aria-live="polite"
+			>
+				<div class="nz-install-setup__access-copy">
+					<strong data-setup-access-title>Use the one-time installer link</strong>
+					<p data-setup-access-message>
+						Setup stays locked until Nearzero verifies the token generated for this installation.
+					</p>
+				</div>
+				<div class="nz-install-setup__recovery">
+					<span>If the link is no longer visible, SSH to this host and run:</span>
+					<code>sudo nearzero setup-link</code>
+					<span>Open the complete one-time URL it prints, or paste it below.</span>
+				</div>
+				<label class="nz-install-setup__field">
+					<span>One-time setup URL or token</span>
+					<input
+						type="password"
+						autocomplete="off"
+						spellcheck="false"
+						placeholder="Paste the /setup#token=… URL"
+						class={authControlClass}
+						data-setup-token
+					/>
+					<small>The credential is exchanged for a protected browser session and is never saved in browser storage.</small>
+				</label>
+			</section>
+
+			<div data-setup-wizard class:list={["nz-install-setup__wizard", !wizardAuthorized && "hidden"]}>
 			<section data-setup-panel="welcome" class="nz-install-setup__panel flex">
 				<div class="nz-install-setup__intro">
 					<p class={`text-sm ${authMutedText}`}>This takes about a minute. Have these ready:</p>
@@ -252,18 +319,6 @@ const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 					<div><dt>First owner email</dt><dd data-setup-review-email>Not entered</dd></div>
 					<div><dt>Required ports</dt><dd data-setup-review-ports>TCP 80, 443 · UDP/TCP 53</dd></div>
 				</dl>
-				<label class="nz-install-setup__field hidden" data-setup-token-field>
-					<span>Installer setup link</span>
-					<input
-						type="text"
-						autocomplete="off"
-						spellcheck="false"
-						placeholder="Paste the /setup#token=… URL from the installer"
-						class={authControlClass}
-						data-setup-token
-					/>
-					<small>This page is missing the one-time setup token. Paste the installer URL or the token itself, then apply.</small>
-				</label>
 			</section>
 
 			<section data-setup-panel="verify" class="nz-install-setup__panel nz-install-setup__panel--verify hidden">
@@ -276,14 +331,34 @@ const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 					<div class="nz-install-setup__records" data-setup-dns-records>
 						<div class="nz-install-setup__section-heading">
 							<p class={authMutedText}>Add each record at your DNS provider.</p>
-							<button type="button" class={authResendBtnClass} data-setup-copy-dns>Copy all</button>
+							<button type="button" class="nz-install-setup__copy-icon" data-setup-copy-dns aria-label="Copy all DNS records" title="Copy all">
+								<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+							</button>
 						</div>
 						<ol class="nz-install-setup__record-list" data-setup-dns-instructions>
 							<li data-setup-dns-record="management-a">
-								<span><small>Type</small><strong>A</strong></span>
-								<span><small>Name</small><code data-setup-record-name>{managementHostname}</code></span>
-								<span><small>Value</small><code data-setup-record-value>{serverIp}</code></span>
-								<button type="button" class={authResendBtnClass} data-setup-copy-record="management-a" aria-label="Copy management A record">Copy</button>
+								<span class="nz-install-setup__record-field">
+									<small>Type</small>
+									<span class="nz-install-setup__record-value"><strong>A</strong></span>
+								</span>
+								<span class="nz-install-setup__record-field">
+									<small>Name</small>
+									<span class="nz-install-setup__record-value">
+										<code data-setup-record-name>{managementHostname}</code>
+										<button type="button" class="nz-install-setup__copy-icon" data-setup-copy-field="name" aria-label="Copy name" title="Copy name">
+											<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+										</button>
+									</span>
+								</span>
+								<span class="nz-install-setup__record-field">
+									<small>Value</small>
+									<span class="nz-install-setup__record-value">
+										<code data-setup-record-value>{serverIp}</code>
+										<button type="button" class="nz-install-setup__copy-icon" data-setup-copy-field="value" aria-label="Copy value" title="Copy value">
+											<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+										</button>
+									</span>
+								</span>
 							</li>
 						</ol>
 						<p class={`nz-install-setup__record-help ${authMutedText}`} data-setup-dns-help>
@@ -340,33 +415,42 @@ const setupActionClass = `${authBtnClass} max-w-[11rem]`;
 					Registration is limited to the owner email configured in this wizard.
 				</p>
 			</section>
+			</div>
 
 			<p class="nz-install-setup__error hidden" data-setup-error role="alert"></p>
 		</div>
 
 		<div slot="c16" class="mx-auto flex h-full w-full max-w-[36rem] items-center justify-center gap-2 px-3">
-			<button type="button" class={authResendBtnClass} data-setup-back>
-				Previous
-			</button>
-			<button
-				type="button"
-				class={setupActionClass}
-				data-setup-next
-				data-default-label="Continue"
-			>
+			<div data-setup-access-actions class:list={["w-full max-w-[18rem]", wizardAuthorized && "hidden"]}>
+				<button type="button" class={`${authBtnClass} w-full`} data-setup-unlock>
+					<AuthButtonSpinner />
+					<span data-setup-unlock-label>Verify setup link</span>
+				</button>
+			</div>
+			<div data-setup-wizard-actions class:list={["items-center justify-center gap-2", wizardAuthorized ? "flex" : "hidden"]}>
+				<button type="button" class={authResendBtnClass} data-setup-back>
+					Previous
+				</button>
+				<button
+					type="button"
+					class={setupActionClass}
+					data-setup-next
+					data-default-label="Continue"
+				>
 				<AuthButtonSpinner />
 				<span data-setup-next-label>Continue</span>
-			</button>
-			<button type="button" class={`${setupActionClass} hidden`} data-setup-check>
-				Check again
-			</button>
-			<a
-				href={registerUrl}
-				class={`${setupActionClass} hidden no-underline`}
-				data-setup-register
-			>
-				Create owner account
-			</a>
+				</button>
+				<button type="button" class={`${setupActionClass} hidden`} data-setup-check>
+					Check again
+				</button>
+				<a
+					href={registerUrl}
+					class={`${setupActionClass} hidden no-underline`}
+					data-setup-register
+				>
+					Create owner account
+				</a>
+			</div>
 		</div>
 	</AuthGrid>
 </div>
