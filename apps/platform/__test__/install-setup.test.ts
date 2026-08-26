@@ -152,6 +152,21 @@ describe("install setup fixed-value validation", () => {
 		).toMatchObject({ managementHostname: "nearzero.example.com" });
 	});
 
+	it("allows public-IP HTTP bootstrap URLs from an open management bind", () => {
+		expect(
+			resolveInstallSetupConfiguration(
+				{ ...setupRequest, publicIp: "13.61.19.252" },
+				{
+					env: {
+						CONSOLE_URL: "http://13.61.19.252:4321",
+						BETTER_AUTH_URL: "http://13.61.19.252:4321",
+						NEARZERO_PUBLIC_IP: "13.61.19.252",
+					},
+				},
+			),
+		).toMatchObject({ managementHostname: "nearzero.example.com" });
+	});
+
 	it("rejects changing the hostname left by a pending partial attempt", () => {
 		expect(() =>
 			resolveInstallSetupConfiguration(setupRequest, {

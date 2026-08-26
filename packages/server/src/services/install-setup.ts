@@ -333,6 +333,15 @@ function isLoopbackUrl(url: URL) {
 	);
 }
 
+/** Installer bootstrap origins (loopback or raw public IP HTTP) may be upgraded to HTTPS. */
+function isInstallerBootstrapOrigin(url: URL) {
+	if (url.protocol !== "http:") return false;
+	if (url.username || url.password) return false;
+	if (isLoopbackUrl(url)) return true;
+	const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+	return isPublicIpv4(hostname);
+}
+
 function assertConfiguredOriginMatches(
 	env: InstallSetupEnvironment,
 	variableName: "CONSOLE_URL" | "BETTER_AUTH_URL",
@@ -350,7 +359,7 @@ function assertConfiguredOriginMatches(
 			"CONFLICT",
 		);
 	}
-	if (isLoopbackUrl(url)) return;
+	if (isInstallerBootstrapOrigin(url)) return;
 
 	const isExactOrigin =
 		url.protocol === "https:" &&
