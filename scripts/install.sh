@@ -10,11 +10,11 @@ fi
 
 if [[ "${NEARZERO_IMAGE+x}" == "x" ]]; then NEARZERO_IMAGE_WAS_SET=1; else NEARZERO_IMAGE_WAS_SET=0; fi
 NEARZERO_INSTALLER_CDN="${NEARZERO_INSTALLER_CDN:-https://cdn.nearzero.dev}"
-NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.48}"
+NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.49}"
 if [[ "${NEARZERO_MONITORING_IMAGE+x}" == "x" ]]; then NEARZERO_MONITORING_IMAGE_WAS_SET=1; else NEARZERO_MONITORING_IMAGE_WAS_SET=0; fi
-NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.48}"
+NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.49}"
 if [[ "${NEARZERO_SCHEDULE_IMAGE+x}" == "x" ]]; then NEARZERO_SCHEDULE_IMAGE_WAS_SET=1; else NEARZERO_SCHEDULE_IMAGE_WAS_SET=0; fi
-NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.48}"
+NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.49}"
 if [[ "${NEARZERO_DNS_IMAGE+x}" == "x" ]]; then NEARZERO_DNS_IMAGE_WAS_SET=1; else NEARZERO_DNS_IMAGE_WAS_SET=0; fi
 NEARZERO_DNS_IMAGE="${NEARZERO_DNS_IMAGE:-coredns/coredns:1.14.6}"
 if [[ "${NEARZERO_HEROKU_BUILDER_IMAGE+x}" == "x" ]]; then
@@ -1115,7 +1115,7 @@ name: nearzero
 
 services:
   dns-init:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.48}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.49}
     profiles: ["managed-dns"]
     entrypoint: ["bun", "/app/dns-init.ts"]
     environment:
@@ -1163,7 +1163,7 @@ services:
     restart: unless-stopped
 
   platform:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.48}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.49}
     env_file:
       - path: .env
         required: false
@@ -1173,7 +1173,7 @@ services:
       NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
       NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
       NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
-      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.48}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.49}
       NEARZERO_ADMIN_EMAIL: ${NEARZERO_ADMIN_EMAIL:-}
       NEARZERO_REGISTRATION_MODE: ${NEARZERO_REGISTRATION_MODE:-bootstrap}
       NEARZERO_INSTALL_SETUP_TOKEN_HASH: ${NEARZERO_INSTALL_SETUP_TOKEN_HASH:-}
@@ -1198,7 +1198,7 @@ services:
 
   monitoring:
     container_name: nearzero-monitoring
-    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.48}
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.49}
     environment:
       METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
       HOST_SYS: /host/sys
@@ -1220,7 +1220,7 @@ services:
     restart: unless-stopped
 
   schedules:
-    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.48}
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.49}
     profiles: ["schedules"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
@@ -2218,7 +2218,7 @@ hostname_is_in_zone() {
 }
 
 print_next_steps() {
-	local management_hostname managed_dns_zone public_ip admin_email registration_mode console_url access_url setup_token_hash bind_address setup_url
+	local management_hostname managed_dns_zone public_ip admin_email registration_mode console_url access_url setup_token_hash bind_address setup_url setup_link_output setup_link_url
 	management_hostname="$(existing_env_value NEARZERO_MANAGEMENT_HOSTNAME)"
 	managed_dns_zone="$(existing_env_value NEARZERO_MANAGED_DNS_ZONE)"
 	public_ip="$(existing_env_value NEARZERO_PUBLIC_IP)"
@@ -2248,13 +2248,25 @@ print_next_steps() {
 			log "     - Console is bound on ${bind_address}:${NEARZERO_CONSOLE_PORT}."
 		fi
 		if [[ -n "$INSTALL_SETUP_TOKEN_PLAINTEXT" ]]; then
-			log "  2. Copy or click the exact one-time setup URL printed on the next line:"
+			log "  2. Open this one-time setup URL:"
 			printf '%s#token=%s\n' "$setup_url" "$INSTALL_SETUP_TOKEN_PLAINTEXT"
 			INSTALL_SETUP_TOKEN_PLAINTEXT=""
 			log "     The credential is only in the URL fragment. It is shown once and is not stored in plaintext."
+		elif [[ "$DRY_RUN" == "1" ]]; then
+			log "  2. A real install prints a one-time setup URL here."
 		else
-			log "  2. The original one-time setup credential is not recoverable from this host."
-			log "     If its link was lost, run 'sudo nearzero setup-link' to invalidate it and print a replacement."
+			log "  2. Creating a one-time setup URL..."
+			if setup_link_output="$("${SUDO[@]}" /usr/local/bin/nearzero setup-link)"; then
+				setup_link_url="$(printf '%s\n' "$setup_link_output" | awk '/^https?:\/\// { print; exit }')"
+				if [[ -n "$setup_link_url" ]]; then
+					printf '%s\n' "$setup_link_url"
+					log "     Open that URL in a browser. It is shown once and is not stored in plaintext."
+				else
+					printf '%s\n' "$setup_link_output"
+				fi
+			else
+				log "     Could not create a setup link. When the platform is healthy, run: sudo nearzero setup-link"
+			fi
 		fi
 		log "  3. In the wizard, set the management hostname (required) and optional application zone, then create DNS A/NS records."
 		log "  4. Create the first owner account with the administrator email configured in the wizard."

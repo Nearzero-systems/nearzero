@@ -13,6 +13,7 @@ export type PublicInstallSetupStatus = {
 	phase: "pending" | "configured" | "claimed" | "operational";
 	community: boolean;
 	bootstrapClaimed: boolean;
+	setupVerified: boolean;
 	setupTokenConfigured: boolean;
 	managementConfigured: boolean;
 	managementHostname: string | null;
@@ -24,6 +25,14 @@ export type PublicInstallSetupStatus = {
 	managedDnsSkipped: boolean;
 	canSubmit: boolean;
 	resumeStep: InstallSetupResumeStep;
+};
+
+export type PublicInstallBootstrapStatus = {
+	service: "nearzero";
+	community: boolean;
+	setupPending: boolean;
+	bootstrapClaimed: boolean;
+	nextSurface: "setup" | "register" | "login";
 };
 
 export const INSTALL_SETUP_STEPS = [
@@ -38,6 +47,7 @@ export const INSTALL_SETUP_STEPS = [
 export type InstallSetupWizardStep = (typeof INSTALL_SETUP_STEPS)[number];
 
 export const INSTALL_SETUP_DRAFT_KEY = "nz-install-setup-draft";
+/** Legacy key: clear it on load; raw setup credentials must not live in Web Storage. */
 export const INSTALL_SETUP_TOKEN_KEY = "nz-install-setup-token";
 export const INSTALL_SETUP_SESSION_COOKIE = "nearzero_install_setup_token";
 
@@ -70,11 +80,48 @@ export function isPublicInstallSetupStatus(
 		typeof status.required === "boolean" &&
 		typeof status.community === "boolean" &&
 		typeof status.bootstrapClaimed === "boolean" &&
+		typeof status.setupVerified === "boolean" &&
 		typeof status.setupTokenConfigured === "boolean" &&
 		typeof status.managementConfigured === "boolean" &&
 		typeof status.canSubmit === "boolean" &&
 		isInstallSetupResumeStep(status.resumeStep)
 	);
+}
+
+export function isPublicInstallBootstrapStatus(
+	value: unknown,
+): value is PublicInstallBootstrapStatus {
+	if (!value || typeof value !== "object") return false;
+	const status = value as Record<string, unknown>;
+	return (
+		status.service === "nearzero" &&
+		typeof status.community === "boolean" &&
+		typeof status.setupPending === "boolean" &&
+		typeof status.bootstrapClaimed === "boolean" &&
+		(status.nextSurface === "setup" ||
+			status.nextSurface === "register" ||
+			status.nextSurface === "login")
+	);
+}
+
+export function resolveInstallBootstrapPath(
+	status: PublicInstallBootstrapStatus | null,
+) {
+	if (!status) return null;
+	switch (status.nextSurface) {
+		case "setup":
+			return "/setup";
+		case "register":
+			return "/register";
+		case "login":
+			return "/login";
+	}
+}
+
+export function isInstallBootstrapBlockingAuth(
+	status: PublicInstallBootstrapStatus | null,
+) {
+	return status?.community === true && status.nextSurface === "setup";
 }
 
 export function parseInstallSetupStep(
@@ -91,14 +138,10 @@ export function isInstallSetupPageOpen(
 	status: PublicInstallSetupStatus | null,
 ): boolean {
 	if (!status?.setupTokenConfigured || status.bootstrapClaimed) return false;
-	if (
-		status.phase === "configured" ||
-		status.phase === "claimed" ||
-		status.phase === "operational"
-	) {
+	if (status.phase === "claimed" || status.phase === "operational") {
 		return false;
 	}
-	return status.phase === "pending";
+	return status.phase === "pending" || !status.setupVerified;
 }
 
 /** Login and signup stay closed until the one-time domain wizard has been applied. */
@@ -152,7 +195,7 @@ export async function fetchInstallSetupStatus(
 	fetchImpl: typeof fetch = fetch,
 ): Promise<PublicInstallSetupStatus | null> {
 	try {
-		const response = await fetchImpl("/api/install/setup-status", {
+		const response = await fetchImpl("/api/install/setup/status", {
 			method: "GET",
 			credentials: "same-origin",
 			headers: { accept: "application/json" },
@@ -161,6 +204,24 @@ export async function fetchInstallSetupStatus(
 		if (!response.ok) return null;
 		const value = (await response.json().catch(() => null)) as unknown;
 		return isPublicInstallSetupStatus(value) ? value : null;
+	} catch {
+		return null;
+	}
+}
+
+export async function fetchInstallBootstrapStatus(
+	fetchImpl: typeof fetch = fetch,
+): Promise<PublicInstallBootstrapStatus | null> {
+	try {
+		const response = await fetchImpl("/api/install/bootstrap-status", {
+			method: "GET",
+			credentials: "same-origin",
+			headers: { accept: "application/json" },
+			cache: "no-store",
+		});
+		if (!response.ok) return null;
+		const value = (await response.json().catch(() => null)) as unknown;
+		return isPublicInstallBootstrapStatus(value) ? value : null;
 	} catch {
 		return null;
 	}
@@ -207,6 +268,18 @@ export function extractSetupToken(value: string) {
 	}
 
 	return null;
+}
+
+/** Remove setup credentials without disturbing the current wizard step. */
+export function setupUrlWithoutToken(value: string) {
+	const url = new URL(value, "http://nearzero.local/setup");
+	url.searchParams.delete("token");
+	if (extractSetupTokenFromHash(url.hash)) {
+		const hash = new URLSearchParams(url.hash.slice(1));
+		hash.delete("token");
+		url.hash = hash.size > 0 ? `#${hash.toString()}` : "";
+	}
+	return `${url.pathname}${url.search}${url.hash}`;
 }
 
 export function wizardStepsForStatus(status: PublicInstallSetupStatus) {

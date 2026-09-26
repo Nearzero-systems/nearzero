@@ -1,4 +1,9 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+	createHash,
+	createHmac,
+	randomBytes,
+	timingSafeEqual,
+} from "node:crypto";
 import { db } from "@nearzero/server/db";
 import {
 	type ApiInstallSetupSubmit,
@@ -11,7 +16,7 @@ import {
 	normalizeDnsHostname,
 	normalizeDnsZoneName,
 } from "@nearzero/server/utils/dns/zone-file";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
 	getConfiguredPublicIp,
@@ -45,6 +50,12 @@ import {
 } from "./web-server-settings";
 
 const emailSchema = z.string().trim().email();
+const apiInstallSetupCredentialedSubmit = apiInstallSetupSubmit.extend({
+	token: apiInstallSetupSubmit.shape.token.optional(),
+});
+type InstallSetupCredentialedSubmit = z.infer<
+	typeof apiInstallSetupCredentialedSubmit
+>;
 
 type InstallSetupEnvironment = Record<string, string | undefined>;
 
@@ -57,24 +68,47 @@ export type ResolvedInstallSetupConfiguration = {
 	skipManagedDns: boolean;
 };
 
+export type InstallSetupAccessCredential = {
+	kind: "token" | "session";
+	value: string;
+};
+
+const INSTALL_SETUP_SESSION_VERSION = "v1";
+export const INSTALL_SETUP_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
+const INSTALL_SETUP_SESSION_CLOCK_SKEW_SECONDS = 60;
+const MAX_INSTALL_SETUP_SESSION_LENGTH = 512;
+
+export type PublicInstallBootstrapStatus = {
+	service: "nearzero";
+	community: boolean;
+	setupPending: boolean;
+	setupAllowed: boolean;
+	bootstrapClaimed: boolean;
+	nextSurface: "setup" | "register" | "login";
+	managementIdentity: string | null;
+};
+
 export function deriveInstallSetupLifecycle(input: {
 	community: boolean;
 	bootstrapClaimed: boolean;
 	setupTokenConfigured: boolean;
 	rowPhase: InstallSetupPhase;
+	setupVerified?: boolean;
 }) {
 	const phase: InstallSetupPhase = input.bootstrapClaimed
 		? "claimed"
 		: input.rowPhase;
+	const setupVerified = phase === "configured" && input.setupVerified === true;
 	const required =
 		input.community &&
 		!input.bootstrapClaimed &&
 		input.setupTokenConfigured &&
-		phase === "pending";
+		(phase === "pending" || (phase === "configured" && !setupVerified));
 	return {
 		phase,
 		required,
-		canSubmit: required,
+		canSubmit: required && phase === "pending",
+		setupVerified,
 	};
 }
 
@@ -93,6 +127,7 @@ export type PublicInstallSetupStatus = {
 	managedDnsZone: string | null;
 	managedDnsSkipped: boolean;
 	canSubmit: boolean;
+	setupVerified: boolean;
 	resumeStep:
 		| "welcome"
 		| "management"
@@ -107,6 +142,25 @@ const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function hashSetupToken(token: string) {
 	return createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+function setupSessionSigningKey(
+	env: Record<string, string | undefined> = process.env,
+) {
+	const setupTokenHash = getInstallSetupTokenHash(env);
+	if (!setupTokenHash) return null;
+	return createHash("sha256")
+		.update("nearzero-install-setup-session\0", "utf8")
+		.update(setupTokenHash, "utf8")
+		.digest();
+}
+
+function signSetupSession(
+	unsigned: string,
+	env: Record<string, string | undefined> = process.env,
+) {
+	const key = setupSessionSigningKey(env);
+	return key ? createHmac("sha256", key).update(unsigned, "utf8").digest("hex") : null;
 }
 
 export function generateInstallSetupToken() {
@@ -141,6 +195,88 @@ export function verifyInstallSetupToken(
 	}
 }
 
+export function createInstallSetupSessionToken(options: {
+	env?: Record<string, string | undefined>;
+	now?: number;
+	maxAgeSeconds?: number;
+} = {}) {
+	const nowSeconds = Math.floor((options.now ?? Date.now()) / 1_000);
+	const maxAgeSeconds =
+		options.maxAgeSeconds ?? INSTALL_SETUP_SESSION_MAX_AGE_SECONDS;
+	if (!Number.isSafeInteger(maxAgeSeconds) || maxAgeSeconds <= 0) return null;
+	const issuedAt = nowSeconds.toString(36);
+	const expiresAt = (nowSeconds + maxAgeSeconds).toString(36);
+	const nonce = randomBytes(18).toString("base64url");
+	const unsigned = `${INSTALL_SETUP_SESSION_VERSION}.${issuedAt}.${expiresAt}.${nonce}`;
+	const signature = signSetupSession(unsigned, options.env);
+	return signature ? `${unsigned}.${signature}` : null;
+}
+
+export function verifyInstallSetupSessionToken(
+	value: string,
+	options: {
+		env?: Record<string, string | undefined>;
+		now?: number;
+	} = {},
+) {
+	const candidate = value.trim();
+	if (!candidate || candidate.length > MAX_INSTALL_SETUP_SESSION_LENGTH) {
+		return false;
+	}
+	const parts = candidate.split(".");
+	if (parts.length !== 5 || parts[0] !== INSTALL_SETUP_SESSION_VERSION) {
+		return false;
+	}
+	const [version, issuedRaw, expiresRaw, nonce, signature] = parts;
+	if (
+		!version ||
+		!issuedRaw ||
+		!expiresRaw ||
+		!nonce ||
+		!/^[A-Za-z0-9_-]{24}$/.test(nonce) ||
+		!signature ||
+		!/^[a-f0-9]{64}$/.test(signature)
+	) {
+		return false;
+	}
+	const issuedAt = Number.parseInt(issuedRaw, 36);
+	const expiresAt = Number.parseInt(expiresRaw, 36);
+	const nowSeconds = Math.floor((options.now ?? Date.now()) / 1_000);
+	if (
+		!Number.isSafeInteger(issuedAt) ||
+		!Number.isSafeInteger(expiresAt) ||
+		expiresAt <= issuedAt ||
+		issuedAt > nowSeconds + INSTALL_SETUP_SESSION_CLOCK_SKEW_SECONDS ||
+		expiresAt <= nowSeconds
+	) {
+		return false;
+	}
+	const unsigned = `${version}.${issuedRaw}.${expiresRaw}.${nonce}`;
+	const expected = signSetupSession(unsigned, options.env);
+	if (!expected) return false;
+	try {
+		return timingSafeEqual(
+			Buffer.from(signature, "hex"),
+			Buffer.from(expected, "hex"),
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function verifyInstallSetupAccessCredential(
+	credential: InstallSetupAccessCredential | null | undefined,
+	options: {
+		env?: Record<string, string | undefined>;
+		now?: number;
+	} = {},
+) {
+	if (!credential) return false;
+	return credential.kind === "token"
+		? verifyInstallSetupToken(credential.value, options.env)
+		: verifyInstallSetupSessionToken(credential.value, options);
+}
+
 function consumeRateLimit(key: string, limit = 20, windowMs = 60_000) {
 	const now = Date.now();
 	const current = rateLimitBuckets.get(key);
@@ -151,6 +287,10 @@ function consumeRateLimit(key: string, limit = 20, windowMs = 60_000) {
 	if (current.count >= limit) return false;
 	current.count += 1;
 	return true;
+}
+
+export function consumeInstallSetupSessionExchangeRateLimit(clientKey: string) {
+	return consumeRateLimit(`setup-session:${clientKey}`, 12, 60_000);
 }
 
 /** Test helper */
@@ -201,9 +341,12 @@ export function resolveInstallSetupResumeStep(input: {
 	bootstrapClaimed: boolean;
 	managementConfigured: boolean;
 	phase: InstallSetupPhase;
+	setupVerified?: boolean;
 }): PublicInstallSetupStatus["resumeStep"] {
 	if (input.bootstrapClaimed || input.phase === "claimed") return "login";
-	if (input.phase === "configured") return "register";
+	if (input.phase === "configured") {
+		return input.setupVerified ? "register" : "verify";
+	}
 	if (!input.required) return "login";
 	// A pending row remains retryable even if an earlier attempt already wrote
 	// web-server settings before a later Traefik, DNS, or auth step failed.
@@ -236,11 +379,13 @@ export async function getPublicInstallSetupStatus(): Promise<PublicInstallSetupS
 	// Only the install_setup phase is a completion marker. Web settings are
 	// written before Traefik, DNS, and auth runtime configuration, so treating a
 	// hostname alone as completion can strand a failed install outside the wizard.
-	const { phase, required, canSubmit } = deriveInstallSetupLifecycle({
+	const { phase, required, canSubmit, setupVerified } =
+		deriveInstallSetupLifecycle({
 		community,
 		bootstrapClaimed,
 		setupTokenConfigured,
 		rowPhase: row.phase,
+		setupVerified: Boolean(row.configuredAt),
 	});
 
 	return {
@@ -259,14 +404,62 @@ export async function getPublicInstallSetupStatus(): Promise<PublicInstallSetupS
 		managedDnsZone,
 		managedDnsSkipped: row.managedDnsSkipped,
 		canSubmit,
+		setupVerified,
 		resumeStep: resolveInstallSetupResumeStep({
 			required:
 				required || (community && !bootstrapClaimed && setupTokenConfigured),
 			bootstrapClaimed,
 			managementConfigured,
 			phase,
+			setupVerified,
 		}),
 	};
+}
+
+export async function getPublicInstallBootstrapStatus(): Promise<PublicInstallBootstrapStatus> {
+	const status = await getPublicInstallSetupStatus();
+	const setupPending =
+		status.community &&
+		!status.bootstrapClaimed &&
+		(status.phase === "pending" ||
+			(status.phase === "configured" && !status.setupVerified));
+	const nextSurface: PublicInstallBootstrapStatus["nextSurface"] =
+		setupPending
+			? "setup"
+			: status.community &&
+				!status.bootstrapClaimed &&
+				status.phase === "configured" &&
+				status.setupVerified
+				? "register"
+				: "login";
+	return {
+		service: "nearzero",
+		community: status.community,
+		setupPending,
+		setupAllowed: setupPending,
+		bootstrapClaimed: status.bootstrapClaimed,
+		nextSurface,
+		managementIdentity: status.managementHostname
+			? getInstallManagementIdentity(status.managementHostname)
+			: null,
+	};
+}
+
+export function getInstallManagementIdentity(hostname: string) {
+	return createHash("sha256")
+		.update("nearzero-management\0", "utf8")
+		.update(normalizeDnsHostname(hostname, { requireFqdn: true }), "utf8")
+		.digest("hex");
+}
+
+export function isInstallSetupVerifiedForRegistration(input: {
+	phase: InstallSetupPhase;
+	configuredAt: Date | null;
+}) {
+	return (
+		(input.phase === "configured" || input.phase === "claimed") &&
+		input.configuredAt instanceof Date
+	);
 }
 
 export class InstallSetupError extends Error {
@@ -384,7 +577,7 @@ function assertConfiguredOriginMatches(
  * are changed.
  */
 export function resolveInstallSetupConfiguration(
-	parsed: ApiInstallSetupSubmit,
+	parsed: InstallSetupCredentialedSubmit,
 	options: {
 		env?: InstallSetupEnvironment;
 		persistedManagementHostname?: string | null;
@@ -614,7 +807,10 @@ export async function runInstallSetupSubmissionExclusive<T>(
 
 export async function submitInstallSetup(
 	rawInput: unknown,
-	options: { clientKey?: string } = {},
+	options: {
+		clientKey?: string;
+		credential?: InstallSetupAccessCredential | null;
+	} = {},
 ) {
 	const clientKey = options.clientKey ?? "anonymous";
 	if (!consumeRateLimit(`setup:${clientKey}`, 12, 60_000)) {
@@ -625,8 +821,11 @@ export async function submitInstallSetup(
 	}
 
 	return runInstallSetupSubmissionExclusive(async () => {
-		const parsed = apiInstallSetupSubmit.parse(rawInput);
-		if (!verifyInstallSetupToken(parsed.token)) {
+		const parsed = apiInstallSetupCredentialedSubmit.parse(rawInput);
+		const credential =
+			options.credential ??
+			(parsed.token ? { kind: "token" as const, value: parsed.token } : null);
+		if (!verifyInstallSetupAccessCredential(credential)) {
 			throw new InstallSetupError(
 				"Invalid or expired setup token",
 				"UNAUTHORIZED",
@@ -750,7 +949,9 @@ export async function submitInstallSetup(
 			.update(installSetup)
 			.set({
 				phase: "configured",
-				configuredAt,
+				// Configuration application and public readiness are separate. Keep
+				// registration closed until /setup/complete observes DNS + HTTPS ready.
+				configuredAt: null,
 				updatedAt: configuredAt,
 			})
 			.where(
@@ -766,6 +967,57 @@ export async function submitInstallSetup(
 
 		return getPublicInstallSetupStatus();
 	});
+}
+
+export async function completeInstallSetupAfterReadiness(readiness: {
+	ready: boolean;
+}) {
+	if (!readiness.ready) {
+		throw new InstallSetupError(
+			"DNS and HTTPS readiness must pass before install setup can complete",
+			"CONFLICT",
+		);
+	}
+	if (!isCommunityMode()) {
+		throw new InstallSetupError(
+			"Install setup is only available on Community editions",
+			"FORBIDDEN",
+		);
+	}
+	if (await hasOwnerMember()) {
+		throw new InstallSetupError(
+			"Install setup is no longer available after the first owner exists",
+			"FORBIDDEN",
+		);
+	}
+	const row = await getInstallSetupRow();
+	if (row.phase !== "configured") {
+		throw new InstallSetupError(
+			"Apply the setup configuration before completing readiness",
+			"CONFLICT",
+		);
+	}
+	if (row.configuredAt) return getPublicInstallSetupStatus();
+
+	const now = new Date();
+	const [completed] = await db
+		.update(installSetup)
+		.set({ configuredAt: now, updatedAt: now })
+		.where(
+			and(
+				eq(installSetup.id, row.id),
+				eq(installSetup.phase, "configured"),
+				isNull(installSetup.configuredAt),
+			),
+		)
+		.returning({ id: installSetup.id });
+	if (!completed) {
+		throw new InstallSetupError(
+			"Install setup readiness changed while this request was processed",
+			"CONFLICT",
+		);
+	}
+	return getPublicInstallSetupStatus();
 }
 
 export async function markInstallSetupClaimed(ownerEmail: string) {

@@ -2,11 +2,14 @@ import type { MiddlewareHandler } from "astro";
 import { sanitizeAuthCallbackPath } from "./lib/auth-callback-url";
 import { getSession } from "./lib/backendProxy";
 import {
-	isInstallSetupBlockingAuth,
-	isInstallSetupPageOpen,
-	resolveInstallSetupPath,
+	isInstallBootstrapBlockingAuth,
+	isLoopbackHostname,
+	resolveInstallBootstrapPath,
 } from "./lib/install-setup";
-import { fetchInstallSetupStatusServer } from "./lib/install-setup-server";
+import {
+	fetchInstallBootstrapStatusServer,
+	fetchInstallSetupStatusServer,
+} from "./lib/install-setup-server";
 import { parseInvitationCallback } from "./lib/invitation-routes";
 import {
 	invitationPathFromToken,
@@ -41,6 +44,13 @@ export const ORG_DASHBOARD_REWRITE_HEADER = "x-nearzero-org-dashboard-rewrite";
 
 function isOrgDashboardRewrite(request: Request) {
 	return request.headers.get(ORG_DASHBOARD_REWRITE_HEADER) === "1";
+}
+
+function isRawIpHostname(hostname: string) {
+	const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+	if (isLoopbackHostname(host)) return true;
+	if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
+	return host.includes(":");
 }
 
 function dashboardPathForOrganization(
@@ -182,18 +192,10 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				),
 			);
 		}
-		const setupStatus = await fetchInstallSetupStatusServer(context.request);
-		const setupPath = resolveInstallSetupPath(setupStatus);
+		const setupStatus = await fetchInstallBootstrapStatusServer();
+		const setupPath = resolveInstallBootstrapPath(setupStatus);
 		if (setupPath && setupPath !== "/login") {
 			return context.redirect(setupPath);
-		}
-		if (
-			setupStatus &&
-			!setupStatus.bootstrapClaimed &&
-			setupStatus.managementConfigured &&
-			setupStatus.adminEmailConfigured
-		) {
-			return context.redirect("/register");
 		}
 		return context.redirect("/login");
 	}
@@ -209,28 +211,49 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				),
 			);
 		}
-		const setupStatus = await fetchInstallSetupStatusServer(context.request);
-		if (!isInstallSetupPageOpen(setupStatus)) {
-			return context.redirect(
-				resolveInstallSetupPath(setupStatus) ?? "/login",
-			);
+		const setupStatus = await fetchInstallBootstrapStatusServer();
+		if (setupStatus && setupStatus.nextSurface !== "setup") {
+			return context.redirect(`/${setupStatus.nextSurface}`);
 		}
 	}
 
 	if (path === "/login" || path === "/register") {
-		const setupStatus = await fetchInstallSetupStatusServer(context.request);
-		if (isInstallSetupBlockingAuth(setupStatus)) {
-			return context.redirect(
-				resolveInstallSetupPath(setupStatus) ?? "/setup?step=welcome",
+		const [setupStatus, installStatus] = await Promise.all([
+			fetchInstallBootstrapStatusServer(),
+			fetchInstallSetupStatusServer(context.request),
+		]);
+		if (isInstallBootstrapBlockingAuth(setupStatus)) {
+			return context.redirect("/setup");
+		}
+		// After DNS/HTTPS is verified, prefer the management domain over :4321/IP.
+		const managementHostname = installStatus?.managementHostname?.trim();
+		if (
+			managementHostname &&
+			installStatus?.setupVerified &&
+			isRawIpHostname(context.url.hostname)
+		) {
+			const target = new URL(
+				`${context.url.pathname}${context.url.search}`,
+				`https://${managementHostname}`,
 			);
+			return context.redirect(target.toString());
+		}
+		const inviteToken =
+			context.url.searchParams.get("token")?.trim() || "";
+		// First owner already exists: /register without an invite is login.
+		if (
+			path === "/register" &&
+			!inviteToken &&
+			(setupStatus?.bootstrapClaimed ||
+				setupStatus?.nextSurface === "login" ||
+				installStatus?.bootstrapClaimed)
+		) {
+			return context.redirect("/login");
 		}
 		// Domain setup finished but no owner yet: send sign-in to first-owner signup.
 		if (
 			path === "/login" &&
-			setupStatus &&
-			!setupStatus.bootstrapClaimed &&
-			(setupStatus.phase === "configured" ||
-				setupStatus.resumeStep === "register")
+			setupStatus?.nextSurface === "register"
 		) {
 			return context.redirect("/register");
 		}

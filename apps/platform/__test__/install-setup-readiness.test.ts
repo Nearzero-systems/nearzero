@@ -7,12 +7,14 @@ import {
 	type InstallSetupReadinessError,
 	type InstallSetupReadinessState,
 } from "@nearzero/server/services/install-setup-readiness";
+import { getInstallManagementIdentity } from "@nearzero/server/services/install-setup";
 import { describe, expect, it, vi } from "vitest";
 import {
 	handleInstallSetup,
 	INSTALL_SETUP_JSON_BODY_LIMIT_BYTES,
 	InstallSetupBodyTooLargeError,
 	installSetupClientKey,
+	installSetupRequestCredential,
 	installSetupRequestIsHttps,
 	installSetupRequestToken,
 	installSetupSessionCookie,
@@ -37,6 +39,7 @@ const READY_STATE: InstallSetupReadinessState = {
 		managedDnsZone: "apps.example.com",
 		managedDnsSkipped: false,
 		canSubmit: false,
+		setupVerified: true,
 		resumeStep: "register",
 	},
 	adminEmail: "owner@example.com",
@@ -58,10 +61,13 @@ function readyHttpsResponse(
 		statusCode: 200,
 		contentType: "application/json; charset=utf-8",
 		body: JSON.stringify({
+			service: "nearzero",
 			community: true,
-			phase: "configured",
-			setupTokenConfigured: true,
-			managementHostname: hostname,
+			setupPending: true,
+			setupAllowed: true,
+			bootstrapClaimed: false,
+			nextSurface: "setup",
+			managementIdentity: getInstallManagementIdentity(hostname),
 		}),
 	};
 }
@@ -70,7 +76,9 @@ function dependencies(
 	overrides: Partial<InstallSetupReadinessDependencies> = {},
 ): InstallSetupReadinessDependencies {
 	return {
-		verifyToken: (token) => token === "valid-setup-token",
+		verifyCredential: (credential) =>
+			credential.kind === "token" &&
+			credential.value === "valid-setup-token",
 		loadState: async () => READY_STATE,
 		resolveManagementAddresses: vi.fn(async () => ["8.8.8.8"]),
 		probeManagementHttps: vi.fn(async () => readyHttpsResponse()),
@@ -337,31 +345,32 @@ describe("token-authorized install readiness", () => {
 describe("install setup session cookie", () => {
 	it("is HttpOnly, strict, scoped, and secure only on HTTPS", () => {
 		const plain = installSetupSessionCookie("token/value", false);
-		expect(plain).toContain("nearzero_install_setup_token=token%2Fvalue");
+		expect(plain).toContain("nearzero_install_setup_session=token%2Fvalue");
 		expect(plain).toContain("Max-Age=86400");
 		expect(plain).toContain("Path=/");
+		expect(plain).not.toContain("Path=/api/install/setup");
 		expect(plain).toContain("HttpOnly");
 		expect(plain).toContain("SameSite=Strict");
 		expect(plain).not.toContain("Secure");
 		expect(installSetupSessionCookie("token", true)).toContain("Secure");
 	});
 
-	it("prefers the explicit header and otherwise reads the scoped cookie", () => {
+	it("reads the setup session from the cookie sent with the setup page", () => {
 		expect(
 			installSetupRequestToken({
 				headers: {
-					cookie: "nearzero_install_setup_token=cookie-token",
+					cookie: "nearzero_install_setup_session=cookie-token",
 					"x-nearzero-setup-token": "header-token",
 				},
 			}),
 		).toBe("header-token");
 		expect(
-			installSetupRequestToken({
+			installSetupRequestCredential({
 				headers: {
-					cookie: "other=1; nearzero_install_setup_token=cookie%2Ftoken",
+					cookie: "other=1; nearzero_install_setup_session=cookie%2Ftoken",
 				},
 			}),
-		).toBe("cookie/token");
+		).toEqual({ kind: "session", value: "cookie/token" });
 	});
 
 	it("explains a missing setup token instead of a generic payload error", () => {
@@ -383,19 +392,18 @@ describe("install setup session cookie", () => {
 		);
 	});
 
-	it("injects the HttpOnly session token into setup submission", () => {
+	it("does not copy the setup session cookie into the JSON body", () => {
 		expect(
 			installSetupSubmitPayload(
 				{ managementHostname: "nearzero.example.com" },
 				{
 					headers: {
-						cookie: "nearzero_install_setup_token=session-token",
+						cookie: "nearzero_install_setup_session=session-token",
 					},
 				},
 			),
 		).toEqual({
 			managementHostname: "nearzero.example.com",
-			token: "session-token",
 		});
 	});
 

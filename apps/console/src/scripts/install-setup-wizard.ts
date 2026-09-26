@@ -1250,12 +1250,28 @@ export function bindInstallSetupWizard(root: HTMLElement) {
 		if (!token) {
 			setupAccessState = "missing";
 			renderSetupAccess();
+			if ((setupTokenInput?.value || "").trim()) {
+				showError(
+					"Paste the setup URL from the installer, including /setup#token=.",
+				);
+				if (accessMessage) {
+					accessMessage.textContent =
+						"That text does not include a setup token. Paste the full line printed by the installer.";
+				}
+			}
 			setupTokenInput?.focus();
 			return;
 		}
 		await authorizeSetup(token);
 	}
 	unlockBtn?.addEventListener("click", () => void unlockSetup());
+	setupTokenInput?.addEventListener("paste", () => {
+		window.setTimeout(() => {
+			if (extractSetupToken(setupTokenInput?.value || "")) {
+				void unlockSetup();
+			}
+		}, 0);
+	});
 	for (const tab of verifyTabs) {
 		tab.addEventListener("click", () => {
 			const view = tab.dataset.setupVerifyTab;

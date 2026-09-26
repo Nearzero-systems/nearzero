@@ -133,6 +133,9 @@ describe("install setup console helpers", () => {
 		expect(extractSetupToken("setup-token-value-1234")).toBe(
 			"setup-token-value-1234",
 		);
+		expect(
+			extractSetupToken("/setup#token=l2os8xMUxFj0475NOLD2AXGYeCWjT_j5"),
+		).toBe("l2os8xMUxFj0475NOLD2AXGYeCWjT_j5");
 		expect(extractSetupToken("not-a-token")).toBeNull();
 	});
 

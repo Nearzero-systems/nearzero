@@ -5,17 +5,13 @@ import Base from "@/layouts/Base.astro";
 import { getSession } from "@/lib/backendProxy";
 import { pageTitle } from "@/lib/branding";
 import {
-	extractSetupToken,
-	INSTALL_SETUP_SESSION_COOKIE,
 	isInstallSetupPageOpen,
-	isLoopbackHostname,
 	parseInstallSetupStep,
-	resolveInstallSetupPath,
 } from "@/lib/install-setup";
 import {
+	fetchInstallBootstrapStatusServer,
 	fetchInstallSetupStatusServer,
-	resolveLoopbackInstallSetupToken,
-	verifyInstallSetupSessionToken,
+	hasInstallSetupSessionServer,
 } from "@/lib/install-setup-server";
 
 const session = await getSession(Astro.request);
@@ -23,34 +19,18 @@ if (session?.user) {
 	return Astro.redirect("/dashboard/agent");
 }
 
-const status = await fetchInstallSetupStatusServer(Astro.request);
-if (!status || !isInstallSetupPageOpen(status)) {
-	Astro.cookies.delete(INSTALL_SETUP_SESSION_COOKIE, { path: "/" });
-	return Astro.redirect(resolveInstallSetupPath(status) ?? "/login");
+const bootstrap = await fetchInstallBootstrapStatusServer();
+if (bootstrap && bootstrap.nextSurface !== "setup") {
+	return Astro.redirect(`/${bootstrap.nextSurface}`);
 }
 
-const queryToken = extractSetupToken(Astro.url.searchParams.get("token") || "");
-const existingSetupCookie = Astro.cookies.get(INSTALL_SETUP_SESSION_COOKIE)
-	?.value;
-const loopbackToken =
-	!queryToken && !existingSetupCookie && isLoopbackHostname(Astro.url.hostname)
-		? resolveLoopbackInstallSetupToken()
-		: null;
-const sessionToken = queryToken || loopbackToken;
-if (sessionToken && (await verifyInstallSetupSessionToken(sessionToken))) {
-	Astro.cookies.set(INSTALL_SETUP_SESSION_COOKIE, sessionToken, {
-		path: "/",
-		httpOnly: true,
-		sameSite: "strict",
-		maxAge: 60 * 60 * 24,
-		secure: Astro.url.protocol === "https:",
-	});
-	if (queryToken) {
-		const next = new URL(Astro.url);
-		next.searchParams.delete("token");
-		return Astro.redirect(`${next.pathname}${next.search}`);
-	}
-}
+const setupSessionAuthorized = await hasInstallSetupSessionServer(Astro.request);
+const status = setupSessionAuthorized
+	? await fetchInstallSetupStatusServer(Astro.request)
+	: null;
+const wizardAuthorized = Boolean(
+	setupSessionAuthorized && status && isInstallSetupPageOpen(status),
+);
 
 const requested = parseInstallSetupStep(Astro.url.searchParams.get("step"));
 const requestedPendingStep =
@@ -62,13 +42,25 @@ const requestedPendingStep =
 		: null;
 const initialStep =
 	requestedPendingStep ??
-	(status.resumeStep === "welcome" ||
-	status.resumeStep === "management" ||
-	status.resumeStep === "zone"
+	(status?.resumeStep === "welcome" ||
+	status?.resumeStep === "management" ||
+	status?.resumeStep === "zone" ||
+	status?.resumeStep === "review" ||
+	status?.resumeStep === "verify" ||
+	status?.resumeStep === "done"
 		? status.resumeStep
 		: "welcome");
+const initialAccessError =
+	bootstrap === null || (setupSessionAuthorized && !status)
+		? "unavailable"
+		: null;
 ---
 
 <Base title={pageTitle("Setup")} forceLightTheme>
-	<SetupGrid status={status} initialStep={initialStep} />
+	<SetupGrid
+		status={status}
+		initialStep={initialStep}
+		setupSessionAuthorized={wizardAuthorized}
+		initialAccessError={initialAccessError}
+	/>
 </Base>

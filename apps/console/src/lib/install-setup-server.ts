@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { BACKEND_URL } from "@/lib/branding";
 import {
 	extractSetupToken,
+	isPublicInstallBootstrapStatus,
 	isPublicInstallSetupStatus,
+	type PublicInstallBootstrapStatus,
 	type PublicInstallSetupStatus,
 } from "@/lib/install-setup";
 
@@ -51,16 +53,17 @@ export function resolveLoopbackInstallSetupToken(
 	return null;
 }
 
-export async function verifyInstallSetupSessionToken(token: string) {
+export async function hasInstallSetupSessionServer(request: Request) {
 	try {
 		const backend = BACKEND_URL.replace(/\/$/, "");
 		const response = await fetch(`${backend}/api/install/setup/session`, {
-			method: "POST",
+			method: "GET",
 			headers: {
 				accept: "application/json",
-				"content-type": "application/json",
+				...(request.headers.get("cookie")
+					? { cookie: request.headers.get("cookie")! }
+					: {}),
 			},
-			body: JSON.stringify({ token }),
 			cache: "no-store",
 		});
 		return response.ok;
@@ -74,7 +77,7 @@ export async function fetchInstallSetupStatusServer(
 ): Promise<PublicInstallSetupStatus | null> {
 	try {
 		const backend = BACKEND_URL.replace(/\/$/, "");
-		const response = await fetch(`${backend}/api/install/setup-status`, {
+		const response = await fetch(`${backend}/api/install/setup/status`, {
 			method: "GET",
 			headers: {
 				accept: "application/json",
@@ -87,6 +90,22 @@ export async function fetchInstallSetupStatusServer(
 		if (!response.ok) return null;
 		const value = (await response.json().catch(() => null)) as unknown;
 		return isPublicInstallSetupStatus(value) ? value : null;
+	} catch {
+		return null;
+	}
+}
+
+export async function fetchInstallBootstrapStatusServer(): Promise<PublicInstallBootstrapStatus | null> {
+	try {
+		const backend = BACKEND_URL.replace(/\/$/, "");
+		const response = await fetch(`${backend}/api/install/bootstrap-status`, {
+			method: "GET",
+			headers: { accept: "application/json" },
+			cache: "no-store",
+		});
+		if (!response.ok) return null;
+		const value = (await response.json().catch(() => null)) as unknown;
+		return isPublicInstallBootstrapStatus(value) ? value : null;
 	} catch {
 		return null;
 	}

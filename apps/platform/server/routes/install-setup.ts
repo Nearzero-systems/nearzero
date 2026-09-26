@@ -1,9 +1,17 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import {
+	completeInstallSetupAfterReadiness,
+	consumeInstallSetupSessionExchangeRateLimit,
+	createInstallSetupSessionToken,
+	getPublicInstallBootstrapStatus,
 	getPublicInstallSetupStatus,
+	type InstallSetupAccessCredential,
 	InstallSetupError,
+	INSTALL_SETUP_SESSION_MAX_AGE_SECONDS,
 	submitInstallSetup,
+	verifyInstallSetupAccessCredential,
+	verifyInstallSetupSessionToken,
 	verifyInstallSetupToken,
 } from "@nearzero/server/services/install-setup";
 import {
@@ -12,9 +20,9 @@ import {
 } from "@nearzero/server/services/install-setup-readiness";
 import { ZodError } from "zod";
 
-export const INSTALL_SETUP_SESSION_COOKIE = "nearzero_install_setup_token";
+export const INSTALL_SETUP_SESSION_COOKIE = "nearzero_install_setup_session";
+const LEGACY_INSTALL_SETUP_TOKEN_COOKIE = "nearzero_install_setup_token";
 export const INSTALL_SETUP_JSON_BODY_LIMIT_BYTES = 16 * 1024;
-const INSTALL_SETUP_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 const MAX_SETUP_TOKEN_LENGTH = 256;
 const MAX_CLIENT_ADDRESS_LENGTH = 128;
 const MAX_FORWARDED_FOR_LENGTH = 2_048;
@@ -171,12 +179,19 @@ export function installSetupRequestToken(
 		req.headers["x-nearzero-setup-token"],
 	)?.trim();
 	if (headerToken) return headerToken;
-	return (
-		cookieValue(
-			headerValue(req.headers.cookie),
-			INSTALL_SETUP_SESSION_COOKIE,
-		)?.trim() || null
-	);
+	return headerToken || null;
+}
+
+export function installSetupRequestCredential(
+	req: Pick<IncomingMessage, "headers">,
+): InstallSetupAccessCredential | null {
+	const token = installSetupRequestToken(req);
+	if (token) return { kind: "token", value: token };
+	const session = cookieValue(
+		headerValue(req.headers.cookie),
+		INSTALL_SETUP_SESSION_COOKIE,
+	)?.trim();
+	return session ? { kind: "session", value: session } : null;
 }
 
 export function installSetupRequestIsHttps(
@@ -196,12 +211,21 @@ export function installSetupSessionCookie(token: string, secure: boolean) {
 	const attributes = [
 		`${INSTALL_SETUP_SESSION_COOKIE}=${encodeURIComponent(token)}`,
 		`Max-Age=${INSTALL_SETUP_SESSION_MAX_AGE_SECONDS}`,
+		// The browser must send this on GET /setup, not only on the setup API.
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Strict",
 	];
 	if (secure) attributes.push("Secure");
 	return attributes.join("; ");
+}
+
+export function clearInstallSetupSessionCookies(secure: boolean) {
+	const secureAttribute = secure ? "; Secure" : "";
+	return [
+		`${INSTALL_SETUP_SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict${secureAttribute}`,
+		`${LEGACY_INSTALL_SETUP_TOKEN_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict${secureAttribute}`,
+	];
 }
 
 export function installSetupSubmitPayload(
@@ -263,19 +287,157 @@ function readinessErrorStatus(error: InstallSetupReadinessError) {
 				: 504;
 }
 
+export type InstallSetupRouteDependencies = {
+	getBootstrapStatus: typeof getPublicInstallBootstrapStatus;
+	getStatus: typeof getPublicInstallSetupStatus;
+	getReadiness: typeof getInstallSetupReadiness;
+	submit: typeof submitInstallSetup;
+	complete: typeof completeInstallSetupAfterReadiness;
+	verifyToken: typeof verifyInstallSetupToken;
+	verifySession: typeof verifyInstallSetupSessionToken;
+	verifyCredential: typeof verifyInstallSetupAccessCredential;
+	createSession: typeof createInstallSetupSessionToken;
+	consumeSessionExchange: typeof consumeInstallSetupSessionExchangeRateLimit;
+};
+
+const defaultRouteDependencies: InstallSetupRouteDependencies = {
+	getBootstrapStatus: getPublicInstallBootstrapStatus,
+	getStatus: getPublicInstallSetupStatus,
+	getReadiness: getInstallSetupReadiness,
+	submit: submitInstallSetup,
+	complete: completeInstallSetupAfterReadiness,
+	verifyToken: verifyInstallSetupToken,
+	verifySession: verifyInstallSetupSessionToken,
+	verifyCredential: verifyInstallSetupAccessCredential,
+	createSession: createInstallSetupSessionToken,
+	consumeSessionExchange: consumeInstallSetupSessionExchangeRateLimit,
+};
+
+function clearInstallSetupSession(
+	req: Pick<IncomingMessage, "headers" | "socket">,
+	res: ServerResponse,
+) {
+	res.setHeader(
+		"set-cookie",
+		clearInstallSetupSessionCookies(installSetupRequestIsHttps(req)),
+	);
+}
+
+function unauthorizedInstallSetup(
+	req: Pick<IncomingMessage, "headers" | "socket">,
+	res: ServerResponse,
+) {
+	clearInstallSetupSession(req, res);
+	return json(res, 401, {
+		message: "A valid installer setup token or setup session is required",
+		code: "UNAUTHORIZED",
+	});
+}
+
+async function authorizeInstallSetupRequest(
+	req: IncomingMessage,
+	res: ServerResponse,
+	dependencies: InstallSetupRouteDependencies,
+) {
+	const credential = installSetupRequestCredential(req);
+	if (!credential || !dependencies.verifyCredential(credential)) {
+		unauthorizedInstallSetup(req, res);
+		return null;
+	}
+	const status = await dependencies.getStatus();
+	if (!status.community) {
+		clearInstallSetupSession(req, res);
+		json(res, 403, {
+			message: "Install setup is only available on Community editions",
+			code: "FORBIDDEN",
+		});
+		return null;
+	}
+	if (status.bootstrapClaimed || status.phase === "operational") {
+		clearInstallSetupSession(req, res);
+		json(res, 403, {
+			message:
+				"Install setup is no longer available after the first owner exists",
+			code: "FORBIDDEN",
+		});
+		return null;
+	}
+	return { credential, status };
+}
+
 export async function handleInstallSetup(
 	req: IncomingMessage,
 	res: ServerResponse,
+	overrides: Partial<InstallSetupRouteDependencies> = {},
 ) {
+	const dependencies = { ...defaultRouteDependencies, ...overrides };
 	const pathname = (req.url ?? "/").split("?")[0] ?? "/";
 	const method = (req.method ?? "GET").toUpperCase();
+	const declaredLength = Number(headerValue(req.headers["content-length"]));
+	if (
+		Number.isFinite(declaredLength) &&
+		declaredLength > INSTALL_SETUP_JSON_BODY_LIMIT_BYTES
+	) {
+		req.resume();
+		return json(res, 413, {
+			message: "Install setup request body is too large",
+			code: "PAYLOAD_TOO_LARGE",
+		});
+	}
 
-	if (pathname === "/api/install/setup-status" && method === "GET") {
+	if (
+		(pathname === "/api/install/bootstrap-status" ||
+			pathname === "/api/install/setup-status") &&
+		method === "GET"
+	) {
 		try {
-			return json(res, 200, await getPublicInstallSetupStatus());
+			return json(res, 200, await dependencies.getBootstrapStatus());
+		} catch (error) {
+			console.error("install bootstrap status failed:", error);
+			return json(res, 500, {
+				message: "Failed to load install bootstrap status",
+			});
+		}
+	}
+
+	if (pathname === "/api/install/setup/status" && method === "GET") {
+		try {
+			const authorized = await authorizeInstallSetupRequest(
+				req,
+				res,
+				dependencies,
+			);
+			if (!authorized) return;
+			return json(res, 200, authorized.status);
 		} catch (error) {
 			console.error("install setup status failed:", error);
 			return json(res, 500, { message: "Failed to load install setup status" });
+		}
+	}
+
+	if (pathname === "/api/install/setup/session" && method === "GET") {
+		try {
+			const session = cookieValue(
+				headerValue(req.headers.cookie),
+				INSTALL_SETUP_SESSION_COOKIE,
+			)?.trim();
+			if (!session || !dependencies.verifySession(session)) {
+				return unauthorizedInstallSetup(req, res);
+			}
+			const status = await dependencies.getStatus();
+			if (!status.community || status.bootstrapClaimed) {
+				clearInstallSetupSession(req, res);
+				return json(res, 403, {
+					message: "Install setup is no longer available",
+					code: "FORBIDDEN",
+				});
+			}
+			return json(res, 200, { ok: true });
+		} catch (error) {
+			console.error("install setup session check failed:", error);
+			return json(res, 500, {
+				message: "Failed to check install setup session",
+			});
 		}
 	}
 
@@ -283,40 +445,50 @@ export async function handleInstallSetup(
 		try {
 			const body = await readInstallSetupJsonBody(req);
 			const token = typeof body?.token === "string" ? body.token.trim() : "";
+			const clientKey = installSetupClientKey(req);
+			if (!dependencies.consumeSessionExchange(clientKey)) {
+				res.setHeader("retry-after", "60");
+				return json(res, 429, {
+					message: "Too many setup token attempts. Try again in a minute.",
+					code: "RATE_LIMITED",
+				});
+			}
 			if (
 				!token ||
 				token.length > MAX_SETUP_TOKEN_LENGTH ||
-				!verifyInstallSetupToken(token)
+				!dependencies.verifyToken(token)
 			) {
-				return json(res, 401, {
-					message: "Invalid or expired setup token",
-					code: "UNAUTHORIZED",
-				});
+				return unauthorizedInstallSetup(req, res);
 			}
-			const status = await getPublicInstallSetupStatus();
+			const status = await dependencies.getStatus();
 			if (!status.community) {
+				clearInstallSetupSession(req, res);
 				return json(res, 403, {
 					message: "Install setup is only available on Community editions",
 					code: "FORBIDDEN",
 				});
 			}
 			if (status.bootstrapClaimed || status.phase === "operational") {
+				clearInstallSetupSession(req, res);
 				return json(res, 403, {
 					message:
 						"Install setup is no longer available after the first owner exists",
 					code: "FORBIDDEN",
 				});
 			}
-			if (status.phase === "configured") {
-				return json(res, 403, {
-					message:
-						"Install setup is no longer available after domain setup is complete",
-					code: "FORBIDDEN",
-				});
+			const session = dependencies.createSession();
+			if (!session) {
+				throw new Error("Install setup session signing key is unavailable");
 			}
 			res.setHeader(
 				"set-cookie",
-				installSetupSessionCookie(token, installSetupRequestIsHttps(req)),
+				[
+					installSetupSessionCookie(
+						session,
+						installSetupRequestIsHttps(req),
+					),
+					clearInstallSetupSessionCookies(installSetupRequestIsHttps(req))[1]!,
+				],
 			);
 			return json(res, 200, { ok: true });
 		} catch (error) {
@@ -330,8 +502,14 @@ export async function handleInstallSetup(
 
 	if (pathname === "/api/install/setup/readiness" && method === "POST") {
 		try {
-			const readiness = await getInstallSetupReadiness({
-				token: installSetupRequestToken(req) ?? "",
+			const authorized = await authorizeInstallSetupRequest(
+				req,
+				res,
+				dependencies,
+			);
+			if (!authorized) return;
+			const readiness = await dependencies.getReadiness({
+				credential: authorized.credential,
 				clientKey: installSetupClientKey(req),
 			});
 			return json(res, 200, readiness);
@@ -350,15 +528,64 @@ export async function handleInstallSetup(
 		}
 	}
 
+	if (pathname === "/api/install/setup/complete" && method === "POST") {
+		try {
+			const authorized = await authorizeInstallSetupRequest(
+				req,
+				res,
+				dependencies,
+			);
+			if (!authorized) return;
+			const readiness = await dependencies.getReadiness({
+				credential: authorized.credential,
+				clientKey: installSetupClientKey(req),
+			});
+			if (!readiness.ready) {
+				return json(res, 409, {
+					message:
+						"DNS and HTTPS readiness must pass before first-owner registration opens",
+					code: "SETUP_NOT_READY",
+					readiness,
+				});
+			}
+			return json(res, 200, await dependencies.complete(readiness));
+		} catch (error) {
+			if (error instanceof InstallSetupReadinessError) {
+				if (error.code === "RATE_LIMITED") res.setHeader("retry-after", "60");
+				return json(res, readinessErrorStatus(error), {
+					message: error.message,
+					code: error.code,
+				});
+			}
+			if (error instanceof InstallSetupError) {
+				const status =
+					error.code === "FORBIDDEN"
+						? 403
+						: error.code === "UNAUTHORIZED"
+							? 401
+							: 409;
+				return json(res, status, { message: error.message, code: error.code });
+			}
+			console.error("install setup completion failed:", error);
+			return json(res, 500, { message: "Failed to complete install setup" });
+		}
+	}
+
 	if (pathname === "/api/install/setup" && method === "POST") {
 		try {
+			const authorized = await authorizeInstallSetupRequest(
+				req,
+				res,
+				dependencies,
+			);
+			if (!authorized) return;
 			const body = await readInstallSetupJsonBody(req);
 			if (!body) {
 				return json(res, 400, { message: "Invalid JSON body" });
 			}
-			const submitBody = installSetupSubmitPayload(body, req);
-			const status = await submitInstallSetup(submitBody, {
+			const status = await dependencies.submit(body, {
 				clientKey: installSetupClientKey(req),
+				credential: authorized.credential,
 			});
 			return json(res, 200, status);
 		} catch (error) {
