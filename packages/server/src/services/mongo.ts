@@ -6,7 +6,6 @@ import {
 	compose,
 	mongo,
 } from "@nearzero/server/db/schema";
-import { generatePassword } from "@nearzero/server/templates";
 import {
 	appendDatabaseDeploymentLog,
 	createDatabaseServiceDeployment,
@@ -15,6 +14,7 @@ import {
 } from "@nearzero/server/services/database-deployment";
 import { findEnvironmentById } from "@nearzero/server/services/environment";
 import { findProjectById } from "@nearzero/server/services/project";
+import { generatePassword } from "@nearzero/server/templates";
 import { buildMongo } from "@nearzero/server/utils/databases/mongo";
 import {
 	pullImage,
@@ -24,6 +24,7 @@ import { execAsyncRemote } from "@nearzero/server/utils/process/execAsync";
 import { TRPCError } from "@trpc/server";
 import { eq, getTableColumns } from "drizzle-orm";
 import type { z } from "zod";
+import { dockerPullCommand } from "../utils/docker/image-reference";
 import { validUniqueServerAppName } from "./project";
 
 export type Mongo = typeof mongo.$inferSelect;
@@ -163,7 +164,9 @@ export const deployMongo = async (
 	// records when a deploy is triggered twice in quick succession (e.g. the
 	// auto-deploy on create plus a manual deploy click).
 	if (await hasInProgressDatabaseDeployment(mongoId)) {
-		onData?.("A deployment is already in progress for this service; skipping duplicate.");
+		onData?.(
+			"A deployment is already in progress for this service; skipping duplicate.",
+		);
 		return mongo;
 	}
 
@@ -208,7 +211,7 @@ export const deployMongo = async (
 		if (mongo.serverId) {
 			await execAsyncRemote(
 				mongo.serverId,
-				`docker pull ${mongo.dockerImage}`,
+				dockerPullCommand(mongo.dockerImage),
 				(line) => {
 					void emit(String(line));
 				},
@@ -239,9 +242,7 @@ export const deployMongo = async (
 		// MongoDB service reports WHY it never stabilized (e.g. SIGILL on a CPU
 		// without AVX, or an OOM kill) instead of a bare failure.
 		if (error instanceof SwarmServiceStabilityError && error.diagnostics) {
-			await emit(
-				"MongoDB did not stabilize after deployment. Diagnostics:",
-			);
+			await emit("MongoDB did not stabilize after deployment. Diagnostics:");
 			await emit(error.diagnostics);
 		}
 		const message = `Error: ${error instanceof Error ? error.message : error}`;

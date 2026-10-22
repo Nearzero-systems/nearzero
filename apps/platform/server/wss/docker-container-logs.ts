@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { findServerById, validateRequest } from "@nearzero/server";
+import { canAccessLocalContainer } from "@nearzero/server/services/instance-access";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import { createSshHostVerification } from "@nearzero/server/utils/servers/ssh-host-verification";
 import { spawn } from "node-pty";
@@ -97,18 +98,18 @@ export const setupDockerContainerLogsWebSocketServer = (
 					return;
 				}
 
-					if (!server.sshKeyId) return;
-					const client = new Client();
-					const hostVerification = createSshHostVerification(server);
-					client
-						.once("ready", () => {
-							try {
-								hostVerification.commit();
-							} catch {
-								client.end();
-								ws.close();
-								return;
-							}
+				if (!server.sshKeyId) return;
+				const client = new Client();
+				const hostVerification = createSshHostVerification(server);
+				client
+					.once("ready", () => {
+						try {
+							hostVerification.commit();
+						} catch {
+							client.end();
+							ws.close();
+							return;
+						}
 						const baseCommand = `docker ${runType === "swarm" ? "service" : "container"} logs --timestamps ${
 							runType === "swarm" ? "--raw" : ""
 						} --tail ${tail} ${
@@ -144,22 +145,38 @@ export const setupDockerContainerLogsWebSocketServer = (
 						console.error("SSH connection error:", err);
 						ws.send(`SSH error: ${err.message}`);
 						clearInterval(pingInterval);
-						ws.close(); // Cierra el WebSocket si hay un error con SSH
+						ws.close(); // Close the WebSocket when the SSH connection fails
 						client.end();
 					})
 					.connect({
 						host: server.ipAddress,
 						port: server.port,
-							username: server.username,
-							privateKey: server.sshKey?.privateKey,
-							hostVerifier: hostVerification.hostVerifier,
-							readyTimeout: 30_000,
-						});
+						username: server.username,
+						privateKey: server.sshKey?.privateKey,
+						hostVerifier: hostVerification.hostVerifier,
+						readyTimeout: 30_000,
+					});
 				ws.on("close", () => {
 					clearInterval(pingInterval);
 					client.end();
 				});
 			} else {
+				if (
+					!(await canAccessLocalContainer(
+						{
+							user,
+							session: { activeOrganizationId: session.activeOrganizationId },
+						},
+						containerId,
+						runType === "swarm" ? "service" : "container",
+					))
+				) {
+					// The local host is shared by every organization: only allow
+					// containers that belong to a service the caller can access.
+					clearInterval(pingInterval);
+					ws.close(4003, "You don't have access to this container");
+					return;
+				}
 				const shell = getShell();
 				const baseCommand = `docker ${runType === "swarm" ? "service" : "container"} logs --timestamps ${
 					runType === "swarm" ? "--raw" : ""

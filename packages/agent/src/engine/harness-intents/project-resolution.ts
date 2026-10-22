@@ -3,14 +3,18 @@ export type ProjectSummary = {
 	name: string;
 };
 
-const DELETE_VERB =
-	/\b(remove|delete|drop|destroy|get rid of|eliminate|clear)\b/i;
+const DELETE_VERB = /\b(remove|delete|drop|destroy|get rid of|eliminate)\b/i;
+
+const NEGATED_REQUEST =
+	/\b(?:don'?t|do not|never|not|without|shouldn'?t|keep)\b/i;
 
 const SERVICE_SCOPED_TARGETS =
-	/\b(services?|deployment|environment|container|database|redis|postgres|mysql|mongo|application|compose|log|server|domain|key)\b/i;
+	/\b(services?|deployments?|environments?|containers?|databases?|redis|postgres|mysql|mongo|applications?|apps?|compose|logs?|servers?|domains?|keys?|volumes?|backups?|branch(?:es)?|cache|env(?:ironment)? var(?:iable)?s?)\b/i;
+
+const PROJECT_WORD = /\bprojects?\b/i;
 
 const DELETE_PREFIX =
-	/^(?:can you|could you|please|would you|can u|could u)?\s*(?:remove|delete|drop|destroy|get rid of|eliminate|clear)\s+(?:the\s+)?(?:project\s+)?/i;
+	/^(?:can you|could you|please|would you|can u|could u)?\s*(?:remove|delete|drop|destroy|get rid of|eliminate)\s+(?:the\s+)?(?:project\s+)?/i;
 
 const MAX_SHORT_HINT_WORDS = 4;
 
@@ -18,15 +22,49 @@ export function hasDeleteVerb(text: string) {
 	return DELETE_VERB.test(text.trim());
 }
 
-/** Projects whose names appear in user text (longest name first). */
+function escapeRegExp(value: string) {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function projectNamePattern(name: string) {
+	// Whole-name match: "api" must not match inside "rapid" or "api-gateway".
+	return new RegExp(
+		`(?<![a-z0-9_-])${escapeRegExp(name.toLowerCase())}(?![a-z0-9_-])`,
+		"g",
+	);
+}
+
+/**
+ * Projects whose full names appear in user text (longest name first). A
+ * shorter name that only occurs inside a longer matched name is not counted.
+ */
 export function findProjectsMentionedInText(
 	projects: ProjectSummary[],
 	text: string,
 ): ProjectSummary[] {
-	const normalized = text.toLowerCase();
-	return projects
-		.filter((project) => normalized.includes(project.name.toLowerCase()))
+	let remaining = text.toLowerCase();
+	const mentioned: ProjectSummary[] = [];
+	const byLength = [...projects]
+		.filter((project) => project.name.trim())
 		.sort((a, b) => b.name.length - a.name.length);
+	for (const project of byLength) {
+		const pattern = projectNamePattern(project.name);
+		if (pattern.test(remaining)) {
+			mentioned.push(project);
+			remaining = remaining.replace(projectNamePattern(project.name), (match) =>
+				" ".repeat(match.length),
+			);
+		}
+	}
+	return mentioned;
+}
+
+function textWithoutProjectNames(text: string, projects: ProjectSummary[]) {
+	let remaining = text.toLowerCase();
+	for (const project of projects) {
+		remaining = remaining.replace(projectNamePattern(project.name), " ");
+	}
+	return remaining;
 }
 
 function cleanShortHint(value: string | undefined) {
@@ -38,7 +76,10 @@ function cleanShortHint(value: string | undefined) {
 			"",
 		)
 		.replace(/\s+and\s+(?:the\s+)?project(?:\s+as well|\s+too)?\s*$/i, "")
-		.replace(/\s+(?:for me|from nearzero|from the dashboard|in nearzero)\s*$/i, "")
+		.replace(
+			/\s+(?:for me|from nearzero|from the dashboard|in nearzero)\s*$/i,
+			"",
+		)
 		.replace(/^(?:the\s+)?project\s+/i, "")
 		.replace(/\s+project$/i, "")
 		.trim();
@@ -51,7 +92,7 @@ function extractShortDeleteHint(text: string): string | null {
 	if (!hasDeleteVerb(trimmed)) return null;
 
 	const match = trimmed.match(
-		/(?:can you|could you|please|would you)?\s*(?:remove|delete|drop|destroy|get rid of|eliminate|clear)\s+(?:the\s+)?(?:project\s+)?(.+?)(?:\s+project)?\s*[.?!]*$/i,
+		/(?:can you|could you|please|would you)?\s*(?:remove|delete|drop|destroy|get rid of|eliminate)\s+(?:the\s+)?(?:project\s+)?(.+?)(?:\s+project)?\s*[.?!]*$/i,
 	);
 	const raw = cleanShortHint(match?.[1] ?? trimmed.replace(DELETE_PREFIX, ""));
 	if (!raw) return null;
@@ -60,10 +101,7 @@ function extractShortDeleteHint(text: string): string | null {
 	return raw;
 }
 
-function isServiceOnlyDeleteIntent(
-	text: string,
-	mentioned: ProjectSummary[],
-) {
+function isServiceOnlyDeleteIntent(text: string, mentioned: ProjectSummary[]) {
 	if (mentioned.length > 0) return false;
 	return SERVICE_SCOPED_TARGETS.test(text);
 }
@@ -80,10 +118,9 @@ function matchProjectByShortHint(projects: ProjectSummary[], hint: string) {
 	const partial = projects.filter((project) =>
 		project.name.toLowerCase().includes(needle),
 	);
-	if (partial.length === 1) {
-		return { kind: "match" as const, project: partial[0]! };
-	}
-	if (partial.length > 1) {
+	// A partial name is never enough to delete: ask the user to confirm the
+	// full name instead (an exact-name request then deletes it).
+	if (partial.length >= 1) {
 		return {
 			kind: "ambiguous" as const,
 			names: partial.map((project) => project.name),
@@ -103,9 +140,17 @@ export function resolveProjectForDelete(
 	projects: ProjectSummary[],
 ): ResolveProjectForDeleteResult {
 	if (!hasDeleteVerb(text)) return { kind: "skip" };
+	// Leave negated or conditional phrasing ("don't delete web") to the model.
+	if (NEGATED_REQUEST.test(text)) return { kind: "skip" };
 
 	const mentioned = findProjectsMentionedInText(projects, text);
 	if (mentioned.length === 1) {
+		// "delete the redis service in shop" targets a service, not project
+		// "shop": only delete when the project itself is the object.
+		const rest = textWithoutProjectNames(text, mentioned);
+		if (SERVICE_SCOPED_TARGETS.test(rest) && !PROJECT_WORD.test(rest)) {
+			return { kind: "skip" };
+		}
 		return { kind: "match", project: mentioned[0]! };
 	}
 	if (mentioned.length > 1) {

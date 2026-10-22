@@ -1,7 +1,4 @@
 import { readFileSync } from "node:fs";
-import { toConsoleCallbackUrl } from "../../../console/src/lib/auth-callback-url";
-import { rewriteAuthRedirectLocation } from "../../../console/src/lib/auth-redirect";
-import { sessionCookieName } from "../../../console/src/lib/auth-session-cookie";
 import {
 	getAuthOtpAccountError,
 	resolveAuthOtpIntent,
@@ -12,6 +9,9 @@ import {
 	resolveConsoleUrl,
 } from "@nearzero/server/lib/public-url";
 import { describe, expect, it } from "vitest";
+import { toConsoleCallbackUrl } from "../../../console/src/lib/auth-callback-url";
+import { rewriteAuthRedirectLocation } from "../../../console/src/lib/auth-redirect";
+import { sessionCookieName } from "../../../console/src/lib/auth-session-cookie";
 
 describe("OTP authentication intent", () => {
 	it("defaults missing or invalid intent to login", () => {
@@ -97,10 +97,7 @@ describe("console session cookie compatibility", () => {
 describe("console auth callback URLs", () => {
 	it("resolves relative dashboard paths to the console origin", () => {
 		expect(
-			toConsoleCallbackUrl(
-				"/dashboard/agent",
-				"https://app.nearzero.test",
-			),
+			toConsoleCallbackUrl("/dashboard/agent", "https://app.nearzero.test"),
 		).toBe("https://app.nearzero.test/dashboard/agent");
 	});
 
@@ -157,7 +154,10 @@ describe("auth redirect rewriting", () => {
 describe("console auth proxy contract", () => {
 	it("sends invitation context and wires email/password auth", () => {
 		const credentialsFlow = readFileSync(
-			new URL("../../../console/src/scripts/auth-credentials-flow.ts", import.meta.url),
+			new URL(
+				"../../../console/src/scripts/auth-credentials-flow.ts",
+				import.meta.url,
+			),
 			"utf8",
 		);
 		const proxy = readFileSync(
@@ -165,7 +165,10 @@ describe("console auth proxy contract", () => {
 			"utf8",
 		);
 		const sessionCookie = readFileSync(
-			new URL("../../../console/src/lib/auth-session-cookie.ts", import.meta.url),
+			new URL(
+				"../../../console/src/lib/auth-session-cookie.ts",
+				import.meta.url,
+			),
 			"utf8",
 		);
 		const authRoute = readFileSync(
@@ -173,11 +176,17 @@ describe("console auth proxy contract", () => {
 			"utf8",
 		);
 		const loginGrid = readFileSync(
-			new URL("../../../console/src/components/auth/LoginGrid.astro", import.meta.url),
+			new URL(
+				"../../../console/src/components/auth/LoginGrid.astro",
+				import.meta.url,
+			),
 			"utf8",
 		);
 		const registerGrid = readFileSync(
-			new URL("../../../console/src/components/auth/RegisterGrid.astro", import.meta.url),
+			new URL(
+				"../../../console/src/components/auth/RegisterGrid.astro",
+				import.meta.url,
+			),
 			"utf8",
 		);
 		const invitationRoutes = readFileSync(
@@ -190,19 +199,29 @@ describe("console auth proxy contract", () => {
 		);
 
 		expect(credentialsFlow).toContain("createNearzeroCredentialSession");
-		expect(credentialsFlow).not.toContain("authClient.signIn.email");
+		// Password sign-in goes through adopt-credential; better-auth sign-in is
+		// only the second-factor hand-off for accounts with 2FA enabled.
+		expect(credentialsFlow.match(/authClient\.signIn\.email/g)?.length).toBe(1);
+		expect(credentialsFlow).toContain(
+			'credentialSession.code === "two_factor_required"',
+		);
+		expect(credentialsFlow).toContain("authClient.twoFactor.verifyTotp");
 		expect(credentialsFlow).toContain("authClient.signUp.email");
 		expect(credentialsFlow).toContain("nearzero-adopt-credential");
-		expect(credentialsFlow).toContain('credentialSession.code === "account_exists"');
-		expect(credentialsFlow).toContain('credentialSession.code !== "no_account"');
+		expect(credentialsFlow).toContain(
+			'credentialSession.code === "account_exists"',
+		);
+		expect(credentialsFlow).toContain(
+			'credentialSession.code !== "no_account"',
+		);
 		expect(credentialsFlow).toContain("x-nearzero-token");
 		expect(authConfig).toContain("emailAndPassword");
 		expect(authConfig).not.toContain("emailOTP");
 		expect(authRoute).toContain("handleCredentialSession");
 		expect(authRoute).toContain("verifyStoredPassword");
 		expect(authRoute).toContain("bcrypt.compare");
-		expect(authRoute).toContain("code: \"no_account\"");
-		expect(authRoute).toContain("code: \"invalid_credentials\"");
+		expect(authRoute).toContain('code: "no_account"');
+		expect(authRoute).toContain('code: "invalid_credentials"');
 		expect(authRoute).toContain('code: "password_recovery_required"');
 		expect(authRoute).not.toContain("adoptMissingCredential");
 		expect(proxy).toContain('request.headers.get("x-nearzero-token")');

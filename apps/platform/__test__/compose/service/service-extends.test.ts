@@ -43,11 +43,11 @@ test("Add suffix to service names with extends (string) in compose file", () => 
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);
@@ -55,12 +55,12 @@ test("Add suffix to service names with extends (string) in compose file", () => 
 		"myapi:latest",
 	);
 
-	// Verificar que el nombre en extends tiene el prefijo
+	// Check that the name in extends has the prefix
 	expect(actualComposeData.services?.[`web-${suffix}`]?.extends).toBe(
 		`base_service-${suffix}`,
 	);
 
-	// Verificar que el servicio `base_service` también tiene el prefijo
+	// Check that the `base_service` service also has the prefix
 	expect(actualComposeData.services).toHaveProperty(`base_service-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("base_service");
 	expect(actualComposeData.services?.[`base_service-${suffix}`]?.image).toBe(
@@ -103,11 +103,11 @@ test("Add suffix to service names with extends (object) in compose file", () => 
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);
@@ -115,13 +115,13 @@ test("Add suffix to service names with extends (object) in compose file", () => 
 		"myapi:latest",
 	);
 
-	// Verificar que el nombre en extends.service tiene el prefijo
+	// Check that the name in extends.service has the prefix
 	const webExtends = actualComposeData.services?.[`web-${suffix}`]?.extends;
 	if (typeof webExtends !== "string") {
 		expect(webExtends?.service).toBe(`base_service-${suffix}`);
 	}
 
-	// Verificar que el servicio `base_service` también tiene el prefijo
+	// Check that the `base_service` service also has the prefix
 	expect(actualComposeData.services).toHaveProperty(`base_service-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("base_service");
 	expect(actualComposeData.services?.[`base_service-${suffix}`]?.image).toBe(

@@ -1,19 +1,4 @@
 ---
-import { resolveInstallSetupPath } from "@/lib/install-setup";
-import { fetchInstallSetupStatusServer } from "@/lib/install-setup-server";
-
-const setupStatus = await fetchInstallSetupStatusServer(Astro.request);
-const setupPath = resolveInstallSetupPath(setupStatus);
-if (setupPath && setupPath !== "/login") {
-	return Astro.redirect(setupPath);
-}
-if (
-	setupStatus &&
-	!setupStatus.bootstrapClaimed &&
-	setupStatus.managementConfigured &&
-	setupStatus.adminEmailConfigured
-) {
-	return Astro.redirect("/register");
-}
+// The middleware sends signed-in users to their dashboard first.
 return Astro.redirect("/login");
 ---

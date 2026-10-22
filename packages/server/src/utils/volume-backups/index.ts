@@ -5,6 +5,10 @@ export * from "./utils";
 import { volumeBackups } from "@nearzero/server/db/schema";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/index";
+import {
+	resolveVolumeBackupServerId,
+	runsOnExternalJobsService,
+} from "../../services/job-placement";
 import { scheduleVolumeBackup } from "./utils";
 
 export const initVolumeBackupsCronJobs = async () => {
@@ -25,11 +29,22 @@ export const initVolumeBackupsCronJobs = async () => {
 					},
 				},
 				compose: true,
+				postgres: { columns: { serverId: true } },
+				mysql: { columns: { serverId: true } },
+				mariadb: { columns: { serverId: true } },
+				mongo: { columns: { serverId: true } },
+				redis: { columns: { serverId: true } },
+				libsql: { columns: { serverId: true } },
 			},
 		});
 
 		console.log(`Initializing ${volumeBackupsResult.length} volume backups`);
 		for (const volumeBackup of volumeBackupsResult) {
+			if (
+				runsOnExternalJobsService(resolveVolumeBackupServerId(volumeBackup))
+			) {
+				continue;
+			}
 			scheduleVolumeBackup(volumeBackup.volumeBackupId);
 			console.log(
 				`Initialized volume backup: ${volumeBackup.name} ${volumeBackup.serviceType} ✅`,

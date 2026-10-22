@@ -1,0 +1,74 @@
+---
+import LandingGap from "./LandingGap.astro";
+
+interface Props {
+	kicker?: string;
+	headingId?: string;
+	id?: string;
+	compact?: boolean;
+	bodyClass?: string;
+	label?: string;
+	gapAfter?: boolean;
+}
+
+const {
+	kicker = "Nearzero",
+	headingId,
+	id,
+	compact = false,
+	bodyClass = "",
+	label,
+	gapAfter = true,
+} = Astro.props;
+
+const rowCount = compact ? 1 : 2;
+const sideCols = [1, 2, 11, 12];
+const sideTiles = [];
+for (let row = 1; row <= rowCount; row += 1) {
+	for (const col of sideCols) {
+		sideTiles.push({ row, col });
+	}
+}
+---
+
+<section
+	class:list={["nz-land-board", compact && "nz-land-board--compact"]}
+	id={id}
+	aria-labelledby={headingId}
+	aria-label={compact && !headingId ? label : undefined}
+>
+	{
+		compact && headingId && label && (
+			<h2 class="nz-vh" id={headingId}>
+				{label}
+			</h2>
+		)
+	}
+	<div class="nz-land-board__grid">
+		{
+			sideTiles.map((tile) => (
+				<div
+					class="nz-land-board__tile nz-land-board__tile--side"
+					aria-hidden="true"
+					style={`--nz-c:${tile.col};--nz-r:${tile.row}`}
+				/>
+			))
+		}
+		{
+			!compact && (
+				<>
+					<div class="nz-land-board__visual" aria-hidden="true">
+						<span class="nz-kicker">{kicker}</span>
+					</div>
+					<header class="nz-land-board__intro">
+						<slot name="intro" />
+					</header>
+				</>
+			)
+		}
+		<div class:list={["nz-land-board__body", bodyClass]}>
+			<slot />
+		</div>
+	</div>
+</section>
+{gapAfter && <LandingGap />}

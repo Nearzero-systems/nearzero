@@ -71,6 +71,10 @@ export async function runProjectDeleteHarness(input: {
 
 	if (resolved.kind === "skip") return null;
 	if (resolved.kind === "ambiguous") {
+		if (resolved.names.length === 1) {
+			const [name] = resolved.names;
+			return `Did you mean **${name}**? To delete it, say "delete ${name}".`;
+		}
 		return `Multiple projects match: ${resolved.names.join(", ")}. Which one should I delete?`;
 	}
 	if (resolved.kind === "explicitMiss") {
@@ -89,13 +93,17 @@ export async function runProjectDeleteHarness(input: {
 		// Permission or not found — let deleteDevProjectForAgent surface the error.
 	}
 
-	const resourcePolicy = await checkHarnessPolicy(actor, "agent.project.delete", {
-		resourceType: "project",
-		resourceId: project.projectId,
-		resourceName: project.name,
-		projectId: project.projectId,
-		isProduction,
-	});
+	const resourcePolicy = await checkHarnessPolicy(
+		actor,
+		"agent.project.delete",
+		{
+			resourceType: "project",
+			resourceId: project.projectId,
+			resourceName: project.name,
+			projectId: project.projectId,
+			isProduction,
+		},
+	);
 	if (!resourcePolicy.allowed) return resourcePolicy.reply;
 
 	const toolCallId = `harness-delete-${project.projectId}`;

@@ -17,6 +17,7 @@ import {
 	getEditionFeatureLabel,
 	isEditionFeatureEnabled,
 } from "@nearzero/server/services/edition-policy";
+import { isInstanceAdministrator } from "@nearzero/server/services/instance-access";
 import { sanitizePublicErrorMessage } from "@nearzero/server/services/operational-log";
 import { checkPermission } from "@nearzero/server/services/permission";
 import type { OpenApiMeta } from "@nearzero/trpc-openapi";
@@ -217,6 +218,32 @@ export const adminProcedure = t.procedure.use(({ ctx, next }) => {
 			session: ctx.session,
 			user: ctx.user,
 			// session: { ...ctx.session, user: ctx.user },
+		},
+	});
+});
+
+/**
+ * Instance administrator procedure
+ *
+ * For operations on resources shared by every organization on the
+ * installation (the local Docker host, the control-plane Traefik, Redis,
+ * the deployment queue). Every user owns a personal organization, so an
+ * owner/admin role in the active organization is not enough here.
+ */
+export const instanceAdminProcedure = t.procedure.use(async ({ ctx, next }) => {
+	if (!ctx.session || !ctx.user) {
+		throw new TRPCError({ code: "UNAUTHORIZED" });
+	}
+	if (!(await isInstanceAdministrator(ctx.user.id))) {
+		throw new TRPCError({
+			code: "UNAUTHORIZED",
+			message: "Only instance administrators can perform this action.",
+		});
+	}
+	return next({
+		ctx: {
+			session: ctx.session,
+			user: ctx.user,
 		},
 	});
 });

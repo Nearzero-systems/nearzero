@@ -1,5 +1,10 @@
 import type http from "node:http";
-import { findServerById, getRemoteDocker, validateRequest } from "@nearzero/server";
+import {
+	findServerById,
+	getRemoteDocker,
+	validateRequest,
+} from "@nearzero/server";
+import { canAccessLocalContainer } from "@nearzero/server/services/instance-access";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import { WebSocketServer } from "ws";
 import { isValidContainerId, isValidShell } from "./utils";
@@ -78,6 +83,19 @@ export const setupDockerContainerTerminalWebSocketServer = (
 					ws.close();
 					return;
 				}
+			} else if (
+				!(await canAccessLocalContainer(
+					{
+						user,
+						session: { activeOrganizationId: session.activeOrganizationId },
+					},
+					containerId,
+				))
+			) {
+				// The local host is shared by every organization: only allow
+				// containers that belong to a service the caller can access.
+				ws.close(4003, "You don't have access to this container");
+				return;
 			}
 
 			const dockerClient = await getRemoteDocker(serverId || null);
@@ -110,10 +128,9 @@ export const setupDockerContainerTerminalWebSocketServer = (
 
 			ws.on("message", (message) => {
 				try {
-					const command =
-						Buffer.isBuffer(message) ?
-							message.toString("utf8")
-						:	String(message);
+					const command = Buffer.isBuffer(message)
+						? message.toString("utf8")
+						: String(message);
 					stream.write(command);
 				} catch (error) {
 					const errorMessage =

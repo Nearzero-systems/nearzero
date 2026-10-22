@@ -11,6 +11,7 @@ import { execAsyncRemote } from "@nearzero/server/utils/process/execAsync";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
+import { dockerPullCommand } from "../utils/docker/image-reference";
 import { validUniqueServerAppName } from "./project";
 
 export type Redis = typeof redis.$inferSelect;
@@ -110,7 +111,7 @@ export const deployRedis = async (
 		if (redis.serverId) {
 			await execAsyncRemote(
 				redis.serverId,
-				`docker pull ${redis.dockerImage}`,
+				dockerPullCommand(redis.dockerImage),
 				onData,
 			);
 		} else {

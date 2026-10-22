@@ -1,11 +1,23 @@
-import { buildConsoleSessionSetCookie } from "./auth-session-cookie";
 import { rewriteAuthRedirectLocation } from "./auth-redirect";
+import { buildConsoleSessionSetCookie } from "./auth-session-cookie";
 import { BACKEND_URL } from "./branding";
 
-const AUTH_SESSION_BOOTSTRAP_PREFIXES = [
+/** Credential submissions are proxied without the browser's cookies/origin. */
+const AUTH_CREDENTIAL_PREFIXES = [
 	"/sign-in/email",
 	"/sign-up/email",
 	"/nearzero-adopt-credential",
+] as const;
+
+/**
+ * Responses that carry a fresh session token the console must bind to its own
+ * host. Second-factor verification needs the browser's two-factor cookie, so
+ * it keeps browser credentials but still establishes the console session.
+ */
+const AUTH_SESSION_BOOTSTRAP_PREFIXES = [
+	...AUTH_CREDENTIAL_PREFIXES,
+	"/two-factor/verify-totp",
+	"/two-factor/verify-backup-code",
 ] as const;
 
 /** Split a joined Set-Cookie header without breaking Expires commas. */
@@ -17,7 +29,11 @@ function splitSetCookieHeader(setCookie: string): string[] {
 		if (setCookie[i] !== ",") continue;
 		let j = i + 1;
 		while (j < setCookie.length && setCookie[j] === " ") j++;
-		while (j < setCookie.length && setCookie[j] !== "=" && setCookie[j] !== ";") {
+		while (
+			j < setCookie.length &&
+			setCookie[j] !== "=" &&
+			setCookie[j] !== ";"
+		) {
 			j++;
 		}
 		if (j < setCookie.length && setCookie[j] === "=") {
@@ -49,14 +65,19 @@ function rewriteSetCookieForConsole(value: string) {
 
 function shouldBootstrapConsoleSession(pathWithQuery: string) {
 	const path = pathWithQuery.split("?")[0] ?? pathWithQuery;
-	return AUTH_SESSION_BOOTSTRAP_PREFIXES.some((prefix) => path.endsWith(prefix));
+	return AUTH_SESSION_BOOTSTRAP_PREFIXES.some((prefix) =>
+		path.endsWith(prefix),
+	);
+}
+
+function isCredentialSubmission(pathWithQuery: string) {
+	const path = pathWithQuery.split("?")[0] ?? pathWithQuery;
+	return AUTH_CREDENTIAL_PREFIXES.some((prefix) => path.endsWith(prefix));
 }
 
 export function shouldRelayUpstreamCookies(pathWithQuery: string) {
 	const path = pathWithQuery.split("?")[0] ?? pathWithQuery;
-	return (
-		path.startsWith("/api/auth") || path === "/api/install/setup/session"
-	);
+	return path.startsWith("/api/auth");
 }
 
 async function maybeAppendConsoleSessionCookie(
@@ -68,7 +89,10 @@ async function maybeAppendConsoleSessionCookie(
 	if (!pathWithQuery.startsWith("/api/auth") || !upstream.ok) return;
 	if (!shouldBootstrapConsoleSession(pathWithQuery)) return;
 
-	const body = (await upstream.clone().json().catch(() => null)) as {
+	const body = (await upstream
+		.clone()
+		.json()
+		.catch(() => null)) as {
 		token?: unknown;
 	} | null;
 	const token = typeof body?.token === "string" ? body.token : null;
@@ -146,14 +170,12 @@ function forwardHeaders(
 	const origin = request.headers.get("origin");
 	const referer = request.headers.get("referer");
 	const invitationToken = request.headers.get("x-nearzero-token");
-	const setupToken = request.headers.get("x-nearzero-setup-token");
 	const stripBrowserCredentials = options?.stripBrowserCredentials ?? false;
 	return {
 		...(cookie && !stripBrowserCredentials ? { cookie } : {}),
 		...(origin && !stripBrowserCredentials ? { origin } : {}),
 		...(referer && !stripBrowserCredentials ? { referer } : {}),
 		...(invitationToken ? { "x-nearzero-token": invitationToken } : {}),
-		...(setupToken ? { "x-nearzero-setup-token": setupToken } : {}),
 		...(request.headers.get("content-type")
 			? { "content-type": request.headers.get("content-type")! }
 			: {}),
@@ -288,7 +310,7 @@ export async function proxyBackendAuth(
 		? authPathWithQuery
 		: `/${authPathWithQuery}`;
 	const extra: Record<string, string> = {};
-	const stripBrowserCredentials = shouldBootstrapConsoleSession(path);
+	const stripBrowserCredentials = isCredentialSubmission(path);
 	if (stripBrowserCredentials) {
 		extra.origin = new URL(getBackendUpstreamUrl()).origin;
 		extra.referer = `${extra.origin}/`;

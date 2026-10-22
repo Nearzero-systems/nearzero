@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { IncomingMessage } from "node:http";
 import { apiKey } from "@better-auth/api-key";
 import { sso } from "@better-auth/sso";
@@ -19,8 +20,6 @@ import {
 	ensureFirstOwnerServerIp,
 } from "../services/install-domain-bootstrap";
 import {
-	getInstallSetupRow,
-	getSetupAdminEmail,
 	hasOwnerMember,
 	markInstallSetupClaimed,
 } from "../services/install-setup";
@@ -41,8 +40,6 @@ import {
 import {
 	buildPublicRegistrationStatus,
 	decideRegistration,
-	mergeRegistrationPolicyAdminEmail,
-	type RegistrationPolicy,
 	registrationDecisionMessage,
 	resolveRegistrationPolicy,
 } from "./registration-policy";
@@ -95,39 +92,23 @@ async function ensurePersonalOrganizationForUser(
 }
 
 const AUTH_EMAIL_PATHS = new Set(["/sign-in/email", "/sign-up/email"]);
-const baseRegistrationPolicy = resolveRegistrationPolicy();
+const registrationPolicy = resolveRegistrationPolicy();
 
-async function getEffectiveRegistrationPolicy(): Promise<RegistrationPolicy> {
-	const setupAdminEmail = await getSetupAdminEmail();
-	return mergeRegistrationPolicyAdminEmail(
-		baseRegistrationPolicy,
-		setupAdminEmail,
-	);
-}
+/**
+ * Set only while `nearzero create-owner` runs in its own CLI process on the
+ * server. Web requests never enter this scope, so they cannot skip the
+ * registration policy.
+ */
+const trustedOwnerCreation = new AsyncLocalStorage<true>();
 
-async function isBootstrapRegistrationClaimed() {
-	if (await hasOwnerMember()) return true;
-	try {
-		const row = await getInstallSetupRow();
-		if (row.phase === "claimed") return true;
-	} catch {
-		// Status stays unclaimed if the setup row cannot be read.
-	}
-	const policy = await getEffectiveRegistrationPolicy();
-	if (policy.mode !== "bootstrap" || !policy.adminEmail) {
-		return false;
-	}
-	const configuredAdmin = await db.query.user.findFirst({
-		where: emailEquals(schema.user.email, policy.adminEmail),
-		columns: { id: true },
-	});
-	return Boolean(configuredAdmin);
+function isTrustedOwnerCreation() {
+	return trustedOwnerCreation.getStore() === true;
 }
 
 export async function getPublicRegistrationStatus() {
 	return buildPublicRegistrationStatus(
-		await getEffectiveRegistrationPolicy(),
-		await isBootstrapRegistrationClaimed(),
+		registrationPolicy,
+		await hasOwnerMember(),
 	);
 }
 
@@ -227,6 +208,12 @@ function createAuthRuntime() {
 	const useLocalAuthCookies =
 		process.env.NODE_ENV !== "production" ||
 		(authBaseUrl?.startsWith("http://") ?? false);
+	// Origin/CSRF checks protect cookie-bearing auth requests, e.g. from apps
+	// deployed on sibling subdomains that SameSite=Lax treats as same-site.
+	// Operators can opt out only explicitly.
+	const authOriginCheckDisabled =
+		process.env.NEARZERO_AUTH_DISABLE_ORIGIN_CHECK?.trim().toLowerCase() ===
+		"true";
 
 	return betterAuth({
 		database: drizzleAdapter(db, {
@@ -250,7 +237,7 @@ function createAuthRuntime() {
 			? {
 					advanced: {
 						useSecureCookies: false,
-						disableOriginCheck: true,
+						disableOriginCheck: authOriginCheckDisabled,
 						defaultCookieAttributes: {
 							sameSite: "lax",
 							secure: false,
@@ -262,7 +249,7 @@ function createAuthRuntime() {
 			: {
 					advanced: {
 						useSecureCookies: true,
-						disableOriginCheck: true,
+						disableOriginCheck: authOriginCheckDisabled,
 						...(sharedCookieDomain
 							? {
 									crossSubDomainCookies: {
@@ -407,26 +394,19 @@ function createAuthRuntime() {
 						if (context?.path !== "/sign-up/email") {
 							return;
 						}
-
-						const policy = await getEffectiveRegistrationPolicy();
-						if (policy.mode === "bootstrap" && !policy.adminEmail) {
-							throw new APIError("FORBIDDEN", {
-								message:
-									"Finish the one-time domain setup before creating the first owner account.",
-							});
+						if (isTrustedOwnerCreation()) {
+							return { data: normalizedUser };
 						}
+
 						const decision = decideRegistration({
-							policy,
-							email: _user.email,
+							policy: registrationPolicy,
 							hasValidInvitation: false,
-							bootstrapClaimed: await isBootstrapRegistrationClaimed(),
+							ownerExists: await hasOwnerMember(),
 						});
 						const policyMessage = registrationDecisionMessage(decision);
 						if (policyMessage) {
 							throw new APIError("FORBIDDEN", { message: policyMessage });
 						}
-						// A normalized unique email makes concurrent bootstrap attempts for the
-						// configured administrator converge on one database row.
 						return { data: normalizedUser };
 					},
 					after: async (user, context) => {
@@ -518,6 +498,8 @@ function createAuthRuntime() {
 						};
 					},
 					after: async (session) => {
+						// Creating the owner on the server is not a sign-in.
+						if (isTrustedOwnerCreation()) return;
 						const orgId = (
 							session as typeof session & { activeOrganizationId?: string }
 						).activeOrganizationId;
@@ -673,6 +655,22 @@ export type AuthType = typeof _auth;
 export const auth: AuthType = _auth;
 
 /**
+ * Create an email/password account through Better Auth with the registration
+ * policy bypassed. Only the server-side `nearzero create-owner` command calls
+ * this; it runs the normal user hooks, so the first owner still gets its
+ * personal organization and managed-DNS adoption.
+ */
+export async function signUpTrustedOwner(input: {
+	email: string;
+	password: string;
+	name: string;
+}) {
+	return trustedOwnerCreation.run(true, () =>
+		currentAuthRuntime.api.signUpEmail({ body: input }),
+	);
+}
+
+/**
  * Rebuild Better Auth after first-run setup changes the durable public origin.
  * `auth` remains referentially stable, so Node adapters and service imports keep
  * dispatching through the newly created runtime without a process restart.
@@ -801,6 +799,15 @@ export const validateRequest = async (request: IncomingMessage) => {
 				},
 			});
 
+			// A key is scoped to one organization; once its owner leaves that
+			// organization the key must stop granting any access there.
+			if (!member) {
+				return {
+					session: null,
+					user: null,
+				};
+			}
+
 			const userFromDb = apiKeyRecord.user as typeof apiKeyRecord.user & {
 				firstName: string;
 				lastName: string;
@@ -809,7 +816,7 @@ export const validateRequest = async (request: IncomingMessage) => {
 			const mockSession = {
 				session: {
 					userId: apiKeyRecord.user.id,
-					activeOrganizationId: organizationId || "",
+					activeOrganizationId: organizationId,
 				},
 				user: {
 					id: userFromDb.id,
@@ -820,8 +827,8 @@ export const validateRequest = async (request: IncomingMessage) => {
 					createdAt: userFromDb.createdAt,
 					updatedAt: userFromDb.updatedAt,
 					twoFactorEnabled: userFromDb.twoFactorEnabled,
-					role: member?.role || "member",
-					ownerId: member?.organization.ownerId || apiKeyRecord.user.id,
+					role: member.role || "member",
+					ownerId: member.organization.ownerId,
 					enableEnterpriseFeatures: userFromDb.enableEnterpriseFeatures,
 					isValidEnterpriseLicense: userFromDb.isValidEnterpriseLicense,
 				},

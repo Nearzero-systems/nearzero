@@ -267,7 +267,7 @@ export function processEnvVars(
 			if (typeof env === "string") {
 				return processValue(env, variables, schema);
 			}
-			// Si es un objeto, asumimos que es un par clave-valor
+			// An object is assumed to be a key-value pair
 			if (typeof env === "object" && env !== null) {
 				const keys = Object.keys(env);
 				if (keys.length > 0) {

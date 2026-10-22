@@ -79,15 +79,17 @@ export const updateJob = async (job: QueueJob) => {
 export const cancelJobs = async (backups: BackupScheduleList) => {
 	for (const backup of backups) {
 		if (backup.enabled) {
+			// The job lives in exactly one scheduler (see job-placement), but the
+			// list may not carry the server relation: cancel in both, both no-op
+			// when the job is absent.
 			if (process.env.JOBS_URL) {
 				await removeJob({
 					cronSchedule: backup.schedule,
 					backupId: backup.backupId,
 					type: "backup",
 				});
-			} else {
-				removeScheduleBackup(backup.backupId);
 			}
+			removeScheduleBackup(backup.backupId);
 		}
 	}
 };

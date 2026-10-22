@@ -17,12 +17,12 @@ nc -vz <server-ip> 2376`;
 
 <MarketingLayout
 	kind="article"
-	title="Connect remote servers to Nearzero"
-	description="Prepare secure remote application servers, verify SSH identity, configure Traefik ingress, and keep management and Swarm ports private."
+	title="Add remote Linux servers to Nearzero"
+	description="Keep the control plane on one host, add another VPS over SSH, and send public traffic to Traefik on that box. Keep Docker and management ports private."
 >
 	<DocsShell
-		title="Connect and secure remote servers"
-		summary="Give Nearzero a stable workload host without turning its management plane, Docker API, or internal routing components into public services."
+		title="Add another VPS. Send traffic straight to it."
+		summary="Keep Nearzero on one host. Connect a Linux server over SSH. Public traffic hits Traefik on that box. Keep Docker and management ports private."
 		activePath={publicSiteLinks.remoteServers}
 		toc={[
 			{ href: "#prepare", label: "Prepare the host" },
@@ -39,8 +39,8 @@ nc -vz <server-ip> 2376`;
 			<h2>Prepare the workload host</h2>
 			<p>
 				Use a dedicated Linux server with a stable public IPv4 address. Create a
-				dedicated SSH account for Nearzero setup, restrict its inbound SSH source,
-				and treat its Docker and passwordless privilege access as root-equivalent.
+				dedicated SSH account for Nearzero, restrict inbound SSH, and treat Docker
+				access as root-equivalent.
 			</p>
 			<div class="nz-doc-feature-list">
 				<div><strong>Stable address</strong><p>Managed A records target the server selected for each service. Avoid an address that changes without coordinated DNS updates.</p></div>
@@ -52,7 +52,7 @@ nc -vz <server-ip> 2376`;
 
 		<section id="connect" class="nz-doc-section">
 			<span class="nz-doc-section__index">02</span>
-			<h2>Connect the server through Nearzero</h2>
+			<h2>Connect it in Nearzero</h2>
 			<ol class="nz-doc-steps">
 				<li><span>01</span><div><strong>Create or select an SSH key</strong><p>Open Settings → Servers → SSH keys and place the displayed public key in the remote account’s <code>authorized_keys</code>.</p></div></li>
 				<li><span>02</span><div><strong>Add the server</strong><p>Provide its stable public IP or hostname, SSH port, dedicated user, and the correct key.</p></div></li>
@@ -67,7 +67,7 @@ nc -vz <server-ip> 2376`;
 
 		<section id="network" class="nz-doc-section">
 			<span class="nz-doc-section__index">03</span>
-			<h2>Apply a narrow network policy</h2>
+			<h2>Open only what Traefik needs</h2>
 			<div class="nz-doc-table-wrap">
 				<table>
 					<thead><tr><th>Traffic</th><th>Scope</th><th>Why</th></tr></thead>
@@ -88,7 +88,7 @@ nc -vz <server-ip> 2376`;
 
 		<section id="trust" class="nz-doc-section">
 			<span class="nz-doc-section__index">04</span>
-			<h2>Understand the Traefik and Docker boundary</h2>
+			<h2>Traefik and Docker stay private</h2>
 			<DocCallout title="Docker access is a host-administrator capability" tone="critical">
 				<p>The generated Traefik stack uses an internal socket proxy with write operations denied, but access to Docker discovery metadata can still expose container and service details. A compromised socket-proxy process remains host-root-equivalent.</p>
 			</DocCallout>
@@ -103,8 +103,8 @@ nc -vz <server-ip> 2376`;
 
 		<section id="verify" class="nz-doc-section">
 			<span class="nz-doc-section__index">05</span>
-			<h2>Verify from outside the server</h2>
-			<p>Test through the same public path your users will take. Re-run these checks after setup, firewall changes, cloud-network changes, and every reboot.</p>
+			<h2>Check from outside the server</h2>
+			<p>Use the same public path your users will take. Re-run after setup, firewall changes, and every reboot.</p>
 			<DocCode code={verifyCode} label="external verification" />
 			<DocCallout title="A failed connection to a private port is the expected result" tone="note">
 				<p>Use an approved network scanner or provider tool in production. The sample commands illustrate the desired boundary; they do not replace a complete infrastructure review.</p>

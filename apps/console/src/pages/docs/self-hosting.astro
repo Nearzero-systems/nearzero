@@ -6,7 +6,24 @@ import DocsShell from "@/components/marketing/DocsShell.astro";
 import MarketingLayout from "@/layouts/MarketingLayout.astro";
 import { publicSiteLinks } from "@/lib/public-site";
 
-const quickInstallCode = `curl -fsSL https://cdn.nearzero.dev/install.sh | bash`;
+const quickInstallCode =
+	"curl -fsSL https://cdn.nearzero.dev/install.sh | sudo bash";
+
+const installOutput = `  Create your admin account
+  Email: you@company.com
+  Password (8+ characters):
+  Confirm password:
+
+  ✓ Saved the configuration in /opt/nearzero
+  ✓ Docker is installed
+  ✓ Downloaded Nearzero
+  ✓ Nearzero is running
+  ✓ Created your admin account
+
+  Nearzero is ready.
+
+    Open      http://203.0.113.10:4321
+    Sign in   you@company.com`;
 
 const installCode = `(set -Eeuo pipefail
 tmp="$(mktemp -d)"
@@ -19,15 +36,14 @@ curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \\
   --output "$tmp/install.sh.sha256" "$base_url/install.sh.sha256"
 
 (cd "$tmp" && sha256sum --check install.sh.sha256)
-bash "$tmp/install.sh"
+sudo bash "$tmp/install.sh"
 )`;
 
-const unattendedCode = `NEARZERO_NONINTERACTIVE=true \\
-NEARZERO_MANAGEMENT_HOSTNAME=nearzero.example.com \\
-NEARZERO_MANAGED_DNS_ZONE=apps.example.com \\
-NEARZERO_MANAGED_DNS_SOA_EMAIL=admin@example.com \\
-NEARZERO_ADMIN_EMAIL=admin@example.com \\
-bash install.sh`;
+const unattendedCode = `curl -fsSL https://cdn.nearzero.dev/install.sh | sudo \\
+  NEARZERO_ADMIN_EMAIL=admin@example.com \\
+  NEARZERO_MANAGEMENT_HOSTNAME=nearzero.example.com \\
+  NEARZERO_MANAGED_DNS_ZONE=apps.example.com \\
+  bash`;
 
 const dnsCheckCode = `# Parent/public delegation
 dig +short NS apps.example.com
@@ -42,44 +58,82 @@ curl --fail --show-error --head https://nearzero.example.com`;
 const externalServicesCode = `IFS= read -r -s -p "Database URL: " DATABASE_URL; printf '\\n'
 IFS= read -r -s -p "Redis URL: " REDIS_URL; printf '\\n'
 export NEARZERO_DATA_MODE=external DATABASE_URL REDIS_URL
-bash install.sh
+sudo --preserve-env=NEARZERO_DATA_MODE,DATABASE_URL,REDIS_URL bash install.sh
 unset NEARZERO_DATA_MODE DATABASE_URL REDIS_URL`;
 
 const operationsCode = `sudo nearzero status
 sudo nearzero logs platform
 sudo nearzero restart
 sudo nearzero update  # pulls the image references already configured
+sudo nearzero reset-password  # new password for any account
+sudo nearzero create-owner    # only if the installer did not create the admin
 
 # Local Postgres installations only
 sudo install -d -m 0700 /var/backups/nearzero
 sudo nearzero backup-db /var/backups/nearzero/control-plane.sql
 sudo nearzero restore-db /path/to/verified-backup.sql`;
+const uninstallBackupCode = `sudo install -d -m 0700 /var/backups/nearzero
+sudo nearzero backup-db /var/backups/nearzero/control-plane.sql`;
+
+const uninstallCode = `sudo bash -s <<'NEARZERO_UNINSTALL'
+set -Euo pipefail
+command -v docker >/dev/null 2>&1 || { echo "Docker is not installed: nothing to remove."; exit 1; }
+echo "1/6 Stopping the Nearzero control plane"
+docker ps -aq --filter label=com.docker.compose.project=nearzero | xargs -r docker rm -f >/dev/null
+docker rm -f nearzero-traefik nearzero-docker-proxy nearzero-monitoring nearzero-dns >/dev/null 2>&1 || true
+echo "2/6 Removing apps and databases deployed by Nearzero"
+if [ "$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)" = "active" ]; then
+  docker service ls -q | xargs -r docker service rm >/dev/null
+  docker swarm leave --force >/dev/null
+fi
+docker ps -aq --filter label=com.docker.swarm.service.id | xargs -r docker rm -f >/dev/null
+for project in $(docker ps -a --format '{{.Label "com.docker.compose.project"}} {{.Label "com.docker.compose.project.working_dir"}}' | awk '$2 ~ "^/etc/nearzero/compose/" { print $1 }' | sort -u); do
+  docker ps -aq --filter "label=com.docker.compose.project=\${project}" | xargs -r docker rm -f >/dev/null
+done
+echo "3/6 Removing Nearzero networks"
+docker network rm nearzero-network nearzero-traefik-control >/dev/null 2>&1 || true
+docker network prune --force >/dev/null
+echo "4/6 Deleting all unused Docker volumes (Nearzero data, app and database volumes)"
+docker volume prune --all --force >/dev/null 2>&1 || docker volume prune --force >/dev/null
+echo "5/6 Deleting unused images and build cache"
+docker image prune --all --force >/dev/null
+docker builder prune --all --force >/dev/null 2>&1 || true
+echo "6/6 Deleting Nearzero files"
+rm -rf /opt/nearzero /etc/nearzero /usr/local/bin/nearzero
+echo
+echo "Left over (all should be empty):"
+echo "  containers: $(docker ps -aq | wc -l | tr -d ' ')"
+echo "  volumes:    $(docker volume ls -q | wc -l | tr -d ' ')"
+echo "  swarm:      $(docker info --format '{{.Swarm.LocalNodeState}}')"
+echo "  files:      $(ls -d /opt/nearzero /etc/nearzero /usr/local/bin/nearzero 2>/dev/null | tr '\\n' ' ')"
+NEARZERO_UNINSTALL`;
 ---
 
 <MarketingLayout
 	kind="article"
-	title="Self-host Nearzero Community — Installation and operations"
-	description="Securely install Nearzero Community with a verified release, configure local or managed data services, and operate backups and updates."
+	title="Install Nearzero on a Linux VPS"
+	description="Install Nearzero with one command, sign in with the admin account the installer creates, then add your domain from the dashboard. You still patch and size the VPS."
 >
 	<DocsShell
-		title="Self-host Nearzero Community"
-		summary="Install a checksum-verified release, give the control plane one management hostname, delegate a separate application zone to built-in CoreDNS, and finish the first-owner checks before deploying."
+		title="Install Nearzero on a Linux VPS"
+		summary="Run one command, sign in, then add your domain from the dashboard. You still patch, back up, and size the host."
 		activePath={publicSiteLinks.selfHosting}
 		toc={[
 			{ href: "#prerequisites", label: "Prerequisites" },
-			{ href: "#install", label: "Verified install" },
-			{ href: "#domain-first", label: "Domain-first setup" },
-			{ href: "#first-owner", label: "First owner" },
+			{ href: "#install", label: "Install" },
+			{ href: "#domain", label: "Add your domain" },
+			{ href: "#first-deploy", label: "Sign in and deploy" },
 			{ href: "#configure", label: "Data services" },
 			{ href: "#secure-access", label: "Secure access" },
-			{ href: "#operate", label: "Operate and recover" },
+			{ href: "#operate", label: "Status and backups" },
+			{ href: "#remove", label: "Remove or reinstall" },
 		]}
 		previous={{ href: publicSiteLinks.architecture, label: "Architecture" }}
 		next={{ href: publicSiteLinks.remoteServers, label: "Remote servers" }}
 	>
 		<section id="prerequisites" class="nz-doc-section">
 			<span class="nz-doc-section__index">01</span>
-			<h2>Prepare a dedicated Linux host</h2>
+			<h2>Use a dedicated Linux host</h2>
 			<p>
 				Run the installer as root or as a user with <code>sudo</code>. Nearzero can
 				install Docker on supported Linux distributions. If Docker Compose is
@@ -93,9 +147,9 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 						<tr><td>Host</td><td>A dedicated Linux server with a stable public IPv4 address and root or sudo access.</td></tr>
 						<tr><td>Tools</td><td><code>curl</code>, CA certificates, and <code>sha256sum</code>. Docker may be installed by the script.</td></tr>
 						<tr><td>Storage</td><td>Persistent space for images, application builds, Postgres, Redis, DNS zones, and backups.</td></tr>
-						<tr><td>Domain</td><td>A domain you control. The browser setup wizard asks for a management hostname such as <code>nearzero.example.com</code> and an optional application zone such as <code>apps.example.com</code>.</td></tr>
+						<tr><td>Domain</td><td>Optional at install time. Add a management hostname such as <code>nearzero.example.com</code> from the dashboard whenever you are ready.</td></tr>
 						<tr><td>Firewall</td><td>TCP 80 and 443 for Traefik/HTTPS; TCP and UDP 53 when using built-in authoritative DNS; SSH restricted to administrator addresses.</td></tr>
-						<tr><td>Email</td><td>The exact first-owner email from the setup wizard. It is also the default Let's Encrypt and DNS SOA contact.</td></tr>
+						<tr><td>Admin account</td><td>The email and password you will sign in with. The installer asks for them; the email is also the default Let's Encrypt and DNS SOA contact.</td></tr>
 					</tbody>
 				</table>
 			</div>
@@ -107,93 +161,92 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 		<section id="install" class="nz-doc-section">
 			<span class="nz-doc-section__index">02</span>
 			<h2>Install Nearzero Community</h2>
-			<p>
-				Quick start on a fresh Linux host (root or sudo). The script installs Docker
-				when needed, pulls the published images, and prints a one-time setup URL.
-			</p>
+			<p>Run one command on the server:</p>
 			<DocCode code={quickInstallCode} />
 			<p>
-				For production, prefer the checksum-verified path below. It downloads the
-				installer and its SHA-256 into a temporary directory and refuses to run if
-				either download or verification fails.
+				It asks for your admin email and a password, installs Docker when needed,
+				starts Nearzero, and creates your account. There is no setup link or token:
+				the admin account only comes from the server, so nobody who reaches the
+				console first can claim it.
+			</p>
+			<DocCode code={installOutput} label="installer output" />
+			<p>Open the address it prints and sign in. If the page does not load, allow inbound TCP 4321 in the server firewall or cloud security group. Run the same command again to upgrade; it keeps your settings and data and asks nothing.</p>
+
+			<h3>Verify the installer first</h3>
+			<p>
+				To check the script before it runs as root, download it with its SHA-256 and
+				run it only if the check passes:
 			</p>
 			<DocCode code={installCode} />
-			<DocCallout title="Prefer checksum verification for production hosts" tone="warning">
-				<p>Keeping the script as a file gives the SHA-256 check a concrete artifact to verify before privileged execution.</p>
-			</DocCallout>
 			<DocCallout title="The checksum is an integrity check, not an independent signature" tone="note">
 				<p>The installer and checksum are published from the same HTTPS origin. Verification detects a mismatch or corrupted download, but it does not provide a separate signing trust path. Review the verified script before executing it.</p>
 			</DocCallout>
-			<p>For a reproducible installation, replace the base URL with <code>https://nearzero.dev/releases/&lt;published-version&gt;</code>. Versioned installer artifacts are immutable; the unversioned URL tracks the current verified release.</p>
+			<p>For a reproducible installation, replace the base URL with <code>https://cdn.nearzero.dev/releases/&lt;published-version&gt;</code>. Versioned installer artifacts are immutable; the unversioned URL tracks the current verified release.</p>
 
 			<h3>What the default installation creates</h3>
 			<ul>
-				<li>Nearzero platform and console on loopback host ports 3000 and 4321, with public management traffic handled by Traefik on 80 and 443. Without a hostname, all generated public/auth callback URLs use the tunnel-safe console origin at <code>http://127.0.0.1:4321</code>.</li>
+				<li>Nearzero platform and console on host ports 3000 and 4321 (bound to <code>0.0.0.0</code> for the first sign-in), with public management traffic handled by Traefik on 80 and 443 once you add a domain. Without a hostname, generated public/auth callback URLs use <code>http://&lt;server-ip&gt;:4321</code>, or <code>http://127.0.0.1:4321</code> when the raw ports are bound to loopback.</li>
 				<li>Local PostgreSQL and Redis services with persistent Docker volumes.</li>
 				<li>Loopback-only host monitoring on port 4500.</li>
 				<li>Authoritative-only CoreDNS on TCP and UDP port 53, enabled by default and never used as a recursive resolver.</li>
-				<li>A temporary pre-signup DNS zone, when configured, so delegation can be prepared before the first owner claims the installation.</li>
-				<li>A mode-0600 configuration file under <code>/opt/nearzero/.env</code> and a <code>nearzero</code> operations helper.</li>
+				<li>A mode-0600 configuration file under <code>/opt/nearzero/.env</code>, the install log in <code>/opt/nearzero/install.log</code>, and a <code>nearzero</code> operations helper.</li>
 			</ul>
 		</section>
 
-		<section id="domain-first" class="nz-doc-section">
+		<section id="domain" class="nz-doc-section">
 			<span class="nz-doc-section__index">03</span>
-			<h2>Give management and applications separate DNS names</h2>
+			<h2>Add your domain</h2>
 			<p>
-				After install, open the one-time setup URL printed by the installer
-				(SSH tunnel to <code>http://127.0.0.1:4321/setup#token=…</code>). The
-				wizard collects two names with different jobs:
+				After signing in, open <strong>Settings → About Nearzero</strong> and configure a
+				domain. Nearzero keeps two names with different jobs:
 			</p>
 			<div class="nz-doc-option-grid">
-				<div><code>nearzero.example.com</code><p>The required management hostname. It is the one HTTPS origin for the console, proxied API and WebSockets, authentication, and Git OAuth callbacks.</p></div>
-				<div><code>apps.example.com</code><p>The optional application zone when managed DNS is enabled. Nearzero writes authoritative service and preview A records here, including records that target selected remote servers.</p></div>
+				<div><code>nearzero.example.com</code><p>The management hostname. It is the one HTTPS origin for the console, proxied API and WebSockets, authentication, and Git OAuth callbacks. Traefik and Let's Encrypt are configured for it.</p></div>
+				<div><code>apps.example.com</code><p>An optional application zone when managed DNS is enabled. Nearzero writes authoritative service and preview A records here, including records that target selected remote servers.</p></div>
 			</div>
-			<p>With a management hostname, Traefik and Let's Encrypt are configured for that hostname. Noninteractive installs may still set <code>NEARZERO_MANAGEMENT_HOSTNAME</code>, <code>NEARZERO_ADMIN_EMAIL</code>, and <code>NEARZERO_MANAGED_DNS_ZONE</code> to skip the wizard.</p>
 			<DocCallout title="Do not reuse NEARZERO_PLATFORM_DOMAIN for built-in DNS" tone="warning">
-				<p><code>NEARZERO_PLATFORM_DOMAIN</code> describes an independently operated wildcard/shared edge. It neither creates a CoreDNS zone nor routes remote-server traffic. The guided installer uses <code>NEARZERO_MANAGED_DNS_ZONE</code> instead.</p>
+				<p><code>NEARZERO_PLATFORM_DOMAIN</code> describes an independently operated wildcard/shared edge. It neither creates a CoreDNS zone nor routes remote-server traffic. Use <code>NEARZERO_MANAGED_DNS_ZONE</code> for the application zone instead.</p>
 			</DocCallout>
 
 			<h3>Records to create at the parent DNS provider</h3>
 			<ol>
 				<li>Create an A record for the management hostname pointing to the Nearzero host's public IPv4 address.</li>
-				<li>Create registrar glue/host A records for <code>ns1.apps.example.com</code> and <code>ns2.apps.example.com</code>, both pointing to that control-plane IP. The default pair is one failure domain, not DNS redundancy.</li>
+				<li>For an application zone, create registrar glue/host A records for <code>ns1.apps.example.com</code> and <code>ns2.apps.example.com</code>, both pointing to that control-plane IP. The default pair is one failure domain, not DNS redundancy.</li>
 				<li>Delegate <code>apps.example.com</code> with NS records for those two nameservers.</li>
 				<li>Allow TCP 80/443 and TCP+UDP 53 through the host firewall, cloud firewall, and any NAT device.</li>
 			</ol>
-			<p>The bootstrap zone exists before signup. After the first owner is created, Nearzero adopts it into that organization, preserves a management A record when it lies inside the zone, republishes it from Postgres, and selects it for new projects' default environments.</p>
 			<DocCode code={dnsCheckCode} label="external readiness checks" />
 			<DocCallout title="Published, delegated, and authoritative are separate checks" tone="note">
 				<p>The dashboard reports the zone as ready only when CoreDNS has published it, public resolvers return the expected NS records, and the control-plane IP answers an authoritative SOA query. DNS propagation can delay the second check.</p>
 			</DocCallout>
 
-			<h3>Unattended equivalent</h3>
-			<p>Automation must provide both names and the first-owner email explicitly. Nearzero detects the public IP, or you can set a publicly routable <code>NEARZERO_PUBLIC_IP</code> when detection is wrong. Private, shared, loopback, link-local, documentation, benchmark, multicast, and reserved ranges are rejected. The names are persisted and preserved on a normal rerun; changing either one requires a migration and is rejected by the installer.</p>
+			<h3>Unattended install with domains</h3>
+			<p>Automation can set both names and the admin email up front. Without a terminal, the installer generates the admin password and prints it once; add <code>NEARZERO_ADMIN_PASSWORD</code> to choose it. Nearzero detects the public IP, or you can set a publicly routable <code>NEARZERO_PUBLIC_IP</code> when detection is wrong. Private, shared, loopback, link-local, documentation, benchmark, multicast, and reserved ranges are rejected. The names are persisted and preserved on a normal rerun; changing either one requires a migration and is rejected by the installer.</p>
 			<DocCode code={unattendedCode} label="non-interactive first run" />
 		</section>
 
-		<section id="first-owner" class="nz-doc-section">
+		<section id="first-deploy" class="nz-doc-section">
 			<span class="nz-doc-section__index">04</span>
-			<h2>Claim the first owner, then verify readiness</h2>
+			<h2>Sign in and deploy</h2>
 			<ul class="nz-doc-checklist">
-				<li><span>1</span><div><strong>Open the management hostname over HTTPS.</strong><p>Do not submit credentials to raw public ports 3000 or 4321. Traefik requests the Let's Encrypt certificate after the hostname is seeded.</p></div></li>
-				<li><span>2</span><div><strong>Register with the exact installer email.</strong><p>Fresh production Community installs use bootstrap registration. Only the configured administrator may create the first owner; ordinary signup becomes invite-only afterward.</p></div></li>
-				<li><span>3</span><div><strong>Finish the setup panel.</strong><p>Nearzero shows the management origin and the CoreDNS publish, delegation, and authoritative checks with the exact nameservers to copy.</p></div></li>
-				<li><span>4</span><div><strong>Create a project and deploy.</strong><p>The new project's default environment inherits the adopted application zone, so generated app and preview names receive per-server A records automatically.</p></div></li>
+				<li><span>1</span><div><strong>Sign in with the admin account.</strong><p>Use the email and password you gave the installer. Forgot it? Run <code>sudo nearzero reset-password</code> on the server.</p></div></li>
+				<li><span>2</span><div><strong>Add your domain.</strong><p>Once the management hostname serves HTTPS, sign in there instead of the raw port 4321.</p></div></li>
+				<li><span>3</span><div><strong>Invite your team.</strong><p>Web signup stays closed on a fresh install; teammates join through invitation links.</p></div></li>
+				<li><span>4</span><div><strong>Create a project and deploy.</strong><p>A project's default environment inherits the adopted application zone, so generated app and preview names receive per-server A records automatically.</p></div></li>
 			</ul>
-			<p>Invited users can register in bootstrap and invite-only modes after an owner exists. A first installer run rejects <code>invite_only</code> because nobody could issue the first invitation. To intentionally run public account creation, set <code>NEARZERO_REGISTRATION_MODE=open</code>; do not use it as the production default. A public management hostname always requires a valid administrator or SOA/ACME contact, even without a managed application zone.</p>
+			<p>Fresh installs use <code>NEARZERO_REGISTRATION_MODE=bootstrap</code>: the admin account is created on the server, and everyone else needs an invitation. If the installer could not create it, run <code>sudo nearzero create-owner</code>. To intentionally allow public account creation, set <code>NEARZERO_REGISTRATION_MODE=open</code>; do not use it as the production default.</p>
 		</section>
 
 		<section id="configure" class="nz-doc-section">
 			<span class="nz-doc-section__index">05</span>
-			<h2>Choose local or managed data services</h2>
+			<h2>Local or external Postgres and Redis</h2>
 			<p>
 				With no database settings, the installer provisions local Postgres and
 				Redis. To use external services, select external mode and provide both URLs. Read credentials
 				without terminal echo so they do not become shell arguments or history.
 			</p>
 			<DocCode code={externalServicesCode} label="secure shell input" />
-			<p>The installer persists <code>NEARZERO_DATA_MODE=local|external</code>; a plain rerun preserves that mode and the stored URLs. It rejects partial URL input and implicit mode changes. To return to bundled services, unset both URL variables and run <code>NEARZERO_DATA_MODE=local bash install.sh</code>. Use provider-required TLS, percent-encode credentials inside connection URLs, and remember that the generated mode-0600 environment file is still privileged plaintext available to host administrators.</p>
+			<p>The installer persists <code>NEARZERO_DATA_MODE=local|external</code>; a plain rerun preserves that mode and the stored URLs. It rejects partial URL input and implicit mode changes. To return to bundled services, unset both URL variables and run <code>sudo NEARZERO_DATA_MODE=local bash install.sh</code>. Use provider-required TLS, percent-encode credentials inside connection URLs, and remember that the generated mode-0600 environment file is still privileged plaintext available to host administrators.</p>
 			<p>A plain rerun also preserves the Postgres identity, published ports, metrics settings, startup timeout, release image references, and additional single-line <code>KEY=value</code> integration settings unless you explicitly override a generated variable. Custom assignments are copied without being sourced or printed. Malformed lines or duplicate keys stop the rerun so configuration and secrets cannot be silently discarded.</p>
 
 			<div class="nz-doc-option-grid">
@@ -201,28 +254,28 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 				<div><code>NEARZERO_DNS_BIND_ADDRESS</code><p>Choose the host address used by CoreDNS. Public resolvers still require destination port 53.</p></div>
 				<div><code>NEARZERO_PUBLIC_IP</code><p>Override automatic detection with the publicly routable IPv4 address when the host is behind one-to-one NAT or detection is wrong.</p></div>
 				<div><code>NEARZERO_MANAGEMENT_HOSTNAME</code><p>Set the public console hostname. The installer derives the HTTPS auth, trusted-origin, and Git callback settings together.</p></div>
-				<div><code>NEARZERO_MANAGED_DNS_ZONE</code><p>Stage the authoritative application zone that the first owner adopts. This is separate from the console hostname.</p></div>
-				<div><code>NEARZERO_ADMIN_EMAIL</code><p>Choose the only email allowed to claim a fresh bootstrap installation.</p></div>
-				<div><code>NEARZERO_MANAGEMENT_BIND_ADDRESS</code><p>Raw ports default to <code>127.0.0.1</code>. Use <code>0.0.0.0</code> only on a protected VPN/private network.</p></div>
+				<div><code>NEARZERO_MANAGED_DNS_ZONE</code><p>Stage the authoritative application zone that the admin's organization adopts. This is separate from the console hostname.</p></div>
+				<div><code>NEARZERO_ADMIN_EMAIL</code><p>The admin account email for installs without a terminal. Add <code>NEARZERO_ADMIN_PASSWORD</code> to choose the password; otherwise one is generated and printed once.</p></div>
+				<div><code>NEARZERO_MANAGEMENT_BIND_ADDRESS</code><p>Raw ports default to <code>0.0.0.0</code> for the first sign-in. Set <code>127.0.0.1</code> to keep them off the network and use an SSH tunnel instead.</p></div>
 				<div><code>NEARZERO_PLATFORM_PORT</code><p>Change the published platform API port. The container continues listening internally on 3000.</p></div>
-				<div><code>NEARZERO_CONSOLE_PORT</code><p>Change the loopback console port. Public HTTPS remains on Traefik port 443.</p></div>
+				<div><code>NEARZERO_CONSOLE_PORT</code><p>Change the raw console port. Public HTTPS remains on Traefik port 443.</p></div>
 				<div><code>NEARZERO_SSH_STRICT_HOST_KEY_CHECKING=true</code><p>Require pre-seeded remote-server fingerprints instead of trust on first use.</p></div>
 			</div>
 		</section>
 
 		<section id="secure-access" class="nz-doc-section">
 			<span class="nz-doc-section__index">06</span>
-			<h2>Publish only a protected management endpoint</h2>
-			<DocCallout title="Raw API and console ports are loopback-only by default" tone="critical">
-				<p>Public users should reach the configured hostname through Traefik on 80/443. Never expose ports 3000 or 4321 as plaintext Internet endpoints. Restrict SSH to administrative source ranges and never publish the Docker socket.</p>
+			<h2>Do not expose raw API and console ports</h2>
+			<DocCallout title="Close the raw API and console ports after setup" tone="critical">
+				<p>Ports 3000 and 4321 are published on all interfaces by default so the first sign-in works directly. Once the configured hostname serves HTTPS through Traefik on 80/443, block both raw ports at your firewall (or bind them to <code>127.0.0.1</code>); never leave them as plaintext Internet endpoints. Restrict SSH to administrative source ranges and never publish the Docker socket.</p>
 			</DocCallout>
 			<div class="nz-doc-table-wrap">
 				<table>
 					<thead><tr><th>Port</th><th>Role</th><th>Recommended exposure</th></tr></thead>
 					<tbody>
 						<tr><td>80 + 443/TCP</td><td>Traefik HTTP redirect, ACME, console HTTPS, and local workloads</td><td>Public when using the configured management hostname or hosting public services.</td></tr>
-						<tr><td>3000/TCP</td><td>Raw platform API</td><td>Loopback by default. Private VPN override only.</td></tr>
-						<tr><td>4321/TCP</td><td>Raw console</td><td>Loopback by default. Private VPN override only.</td></tr>
+						<tr><td>3000/TCP</td><td>Raw platform API</td><td>Published for the first sign-in; firewall after HTTPS works, or bind to loopback.</td></tr>
+						<tr><td>4321/TCP</td><td>Raw console</td><td>Published for the first sign-in; firewall after HTTPS works, or bind to loopback.</td></tr>
 						<tr><td>53/TCP + UDP</td><td>Authoritative DNS</td><td>Public only when this host serves delegated managed zones.</td></tr>
 						<tr><td>4500/TCP</td><td>Monitoring</td><td>Loopback only; the generated Compose file already binds it to 127.0.0.1.</td></tr>
 					</tbody>
@@ -232,7 +285,7 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 
 		<section id="operate" class="nz-doc-section">
 			<span class="nz-doc-section__index">07</span>
-			<h2>Operate, update, and recover</h2>
+			<h2>Status, updates, backups</h2>
 			<DocCode code={operationsCode} label="operations helper" />
 			<p>
 				The built-in backup and restore commands support the installer-managed
@@ -250,6 +303,24 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 				<li><span>2</span><div><strong>Pin the release you intend to run.</strong><p>Confirm all companion image tags exist before changing image references.</p></div></li>
 				<li><span>3</span><div><strong>Test restoration.</strong><p>A backup is useful only after a successful restore has been rehearsed on an isolated host.</p></div></li>
 				<li><span>4</span><div><strong>Recheck the perimeter.</strong><p>Verify management, DNS, and workload ports externally after updates and host reboots.</p></div></li>
+			</ul>
+		</section>
+
+		<section id="remove" class="nz-doc-section">
+			<span class="nz-doc-section__index">08</span>
+			<h2>Remove or reinstall Nearzero</h2>
+			<DocCallout title="This deletes everything Nearzero deployed on the server" tone="critical">
+				<p>The control plane, its database, every app, database and Compose project, their volumes and data, unused images and build cache, <code>/opt/nearzero</code>, <code>/etc/nearzero</code> and the <code>nearzero</code> helper. It assumes the server is dedicated to Nearzero. Docker itself stays installed. Nothing can be recovered afterwards.</p>
+			</DocCallout>
+			<p>With the installer-managed Postgres, keep a copy of the control-plane database first:</p>
+			<DocCode code={uninstallBackupCode} label="backup first" />
+			<p>Then remove Nearzero with one command. It prints what is left at the end; every line should be empty or <code>inactive</code>.</p>
+			<DocCode code={uninstallCode} label="remove Nearzero" />
+			<p>To install again, run the <a href="#install">install command</a>. It is a fresh first install: it asks for the admin email and password again.</p>
+			<ul>
+				<li>With <code>NEARZERO_DATA_MODE=external</code>, the command does not touch your external Postgres and Redis. Empty that database and Redis before reinstalling with the same URLs, or the old installation comes back.</li>
+				<li>Remote servers you added keep their own Traefik, monitoring and apps. Run the same command on each one to remove them.</li>
+				<li>Reinstalling with the same management hostname requests new Let's Encrypt certificates. Let's Encrypt issues at most 5 certificates for the same hostnames per week, so avoid repeated reinstalls in a short time.</li>
 			</ul>
 		</section>
 	</DocsShell>

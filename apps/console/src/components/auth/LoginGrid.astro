@@ -1,11 +1,11 @@
 ---
-import AuthGrid from "./AuthGrid.astro";
-import AuthButtonSpinner from "./AuthButtonSpinner.astro";
 import {
 	authBtnClass,
 	authControlClass,
 	authMutedText,
 } from "@/lib/auth-form-classes";
+import AuthButtonSpinner from "./AuthButtonSpinner.astro";
+import AuthGrid from "./AuthGrid.astro";
 
 interface Props {
 	callbackUrl: string;
@@ -35,14 +35,13 @@ const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 			<h1 class="font-display text-2xl font-semibold tracking-tight text-[#111827] sm:text-3xl">Welcome to Nearzero</h1>
 		</div>
 		<div slot="c7" class="mx-auto flex h-full w-full max-w-[30rem] items-center justify-center px-3 text-center">
-			<p class={`text-sm ${authMutedText}`} data-registration-open>
+			<p class={`hidden text-sm ${authMutedText}`} data-registration-open>
 				Don't have an account?{" "}
 				<a href={registerHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Sign up</a>
 			</p>
-			<p class={`hidden text-sm ${authMutedText}`} data-registration-bootstrap>
-				Setting up Nearzero for the first time?{" "}
-				<a href={registerHref} class="font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">Create the first owner account</a>{" "}
-				with the administrator email configured during installation.
+			<p class={`hidden text-sm ${authMutedText}`} data-registration-owner-required>
+				No admin account yet. On the server, run{" "}
+				<code class="whitespace-nowrap rounded bg-[#f3f4f6] px-1.5 py-0.5 font-mono text-[0.8125rem] text-[#111827]">sudo nearzero create-owner</code>
 			</p>
 			<p class={`hidden text-sm ${authMutedText}`} data-registration-closed>
 				New accounts require an invitation from a workspace owner.
@@ -78,6 +77,21 @@ const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 						class={authControlClass}
 					/>
 				</label>
+				<label class="hidden flex-col gap-1 text-sm font-medium text-[#111827]" data-auth-2fa-field>
+					<span>Authentication code</span>
+					<input
+						type="text"
+						name="code"
+						data-auth-2fa-input
+						autocomplete="one-time-code"
+						spellcheck="false"
+						placeholder="6-digit code or backup code"
+						class={authControlClass}
+					/>
+					<span class={`text-xs font-normal ${authMutedText}`}>
+						Enter the code from your authenticator app, or one of your backup codes.
+					</span>
+				</label>
 			</form>
 			<button
 				type="submit"
@@ -94,12 +108,8 @@ const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 </div>
 
 <script>
-	import { fetchInstallSetupStatus } from "@/lib/install-setup";
 	import { resolveInvitationTokenFromPage } from "@/lib/invitation-routes";
-	import {
-		fetchRegistrationExperience,
-		resolveLoginRegistrationExperience,
-	} from "@/lib/registration-status";
+	import { fetchRegistrationExperience } from "@/lib/registration-status";
 	import { bindAuthCredentialsFlow } from "@/scripts/auth-credentials-flow";
 
 	async function applyRegistrationPolicy(root: HTMLElement) {
@@ -108,22 +118,18 @@ const hasInvitation = Boolean(registerUrl.searchParams.get("token"));
 		const hasInvitation =
 			root.dataset.invitationFlow === "1" ||
 			Boolean(resolveInvitationTokenFromPage());
-		const [experience, setup] = await Promise.all([
-			fetchRegistrationExperience(hasInvitation),
-			fetchInstallSetupStatus(),
-		]);
+		const resolved = await fetchRegistrationExperience(hasInvitation);
 		if (!root.isConnected) return;
-		const resolved = resolveLoginRegistrationExperience(experience, setup);
 
 		const open = root.querySelector<HTMLElement>("[data-registration-open]");
-		const bootstrap = root.querySelector<HTMLElement>(
-			"[data-registration-bootstrap]",
+		const ownerRequired = root.querySelector<HTMLElement>(
+			"[data-registration-owner-required]",
 		);
 		const closed = root.querySelector<HTMLElement>(
 			"[data-registration-closed]",
 		);
 		open?.classList.toggle("hidden", resolved !== "open");
-		bootstrap?.classList.toggle("hidden", resolved !== "bootstrap_owner");
+		ownerRequired?.classList.toggle("hidden", resolved !== "owner_required");
 		closed?.classList.toggle("hidden", resolved !== "invitation_required");
 	}
 

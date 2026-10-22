@@ -20,7 +20,7 @@ func (db *DB) InitContainerMetricsTable() error {
 		return fmt.Errorf("error creating container_metrics table: %v", err)
 	}
 
-	// Crear índices para mejorar el rendimiento
+	// Create indexes to speed up lookups
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_container_metrics_timestamp ON container_metrics(timestamp)`)
 	if err != nil {
 		return fmt.Errorf("error creating timestamp index: %v", err)

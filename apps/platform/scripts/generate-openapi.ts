@@ -72,12 +72,13 @@ async function generateOpenAPI() {
 				"Complete API documentation for Nearzero - Deploy applications, manage databases, and orchestrate your infrastructure. This API allows you to programmatically manage all aspects of your Nearzero instance.",
 			version: "1.0.0",
 			contact: {
-				name: "Nearzero Team",
+				name: "Nearzero Systems",
 				url: "https://nearzero.dev",
+				email: "contact@nearzero.dev",
 			},
 			license: {
-				name: "Apache 2.0",
-				url: "https://github.com/Nearzero-systems/nearzero/blob/main/LICENSE",
+				name: "Apache-2.0",
+				url: "https://github.com/Nearzero-systems/nearzero/blob/main/LICENSE.MD",
 			},
 		};
 

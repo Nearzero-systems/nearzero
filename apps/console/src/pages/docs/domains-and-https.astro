@@ -14,12 +14,12 @@ curl --fail --show-error --head https://api.apps.example.com`;
 
 <MarketingLayout
 	kind="article"
-	title="Managed DNS and HTTPS with Nearzero"
-	description="Delegate an authoritative subzone to Nearzero CoreDNS, route each service to its selected server, and issue HTTPS certificates through Traefik."
+	title="Point Nearzero domains at the server that runs the app"
+	description="Delegate a managed zone to CoreDNS or bring your own hostname. Traefik and Let's Encrypt terminate HTTPS on the selected server when ports 80 and 443 are open."
 >
 	<DocsShell
-		title="Route managed domains to the right server"
-		summary="Use an environment-bound authoritative zone for direct multi-server routing, then let Traefik terminate HTTPS on the server that actually runs each service."
+		title="Point the hostname at the server that runs the app"
+		summary="Delegate a managed zone to CoreDNS, or bring your own DNS. Traefik terminates HTTPS on the selected server when ports 80 and 443 are open."
 		activePath={publicSiteLinks.domainsAndHttps}
 		toc={[
 			{ href: "#models", label: "Domain models" },
@@ -33,7 +33,7 @@ curl --fail --show-error --head https://api.apps.example.com`;
 	>
 		<section id="models" class="nz-doc-section">
 			<span class="nz-doc-section__index">01</span>
-			<h2>Choose the routing model deliberately</h2>
+			<h2>Pick how DNS reaches the server</h2>
 			<div class="nz-doc-card-grid nz-doc-card-grid--three">
 				<div class="nz-doc-card is-recommended"><span>Recommended</span><h3>Environment-bound zone</h3><p>Nearzero writes a distinct authoritative A record for each service, pointing directly to its selected local or remote server.</p><strong>Best for multi-server routing</strong></div>
 				<div class="nz-doc-card"><span>Shared edge</span><h3>Platform apex</h3><p>A wildcard hostname can work only when an independently configured shared edge can route every generated hostname to the correct server.</p><strong>Requires external routing</strong></div>
@@ -46,7 +46,7 @@ curl --fail --show-error --head https://api.apps.example.com`;
 
 		<section id="delegate" class="nz-doc-section">
 			<span class="nz-doc-section__index">02</span>
-			<h2>Delegate a dedicated application subzone</h2>
+			<h2>Delegate an application subzone</h2>
 			<ol class="nz-doc-steps">
 				<li><span>01</span><div><strong>Keep port 53 on the control-plane host</strong><p>Allow both TCP and UDP from public resolvers. Remote application servers do not run authoritative Nearzero DNS.</p></div></li>
 				<li><span>02</span><div><strong>Create the zone in Settings → DNS</strong><p>A dedicated subzone such as <code>apps.example.com</code> limits the blast radius for existing apex mail and other records.</p></div></li>
@@ -60,10 +60,9 @@ curl --fail --show-error --head https://api.apps.example.com`;
 			<span class="nz-doc-section__index">03</span>
 			<h2>Bind the zone to an environment</h2>
 			<p>
-				Under Project → Domains, select the managed zone and an optional prefix.
+				Under Project → Domains, pick the managed zone and an optional prefix.
 				When a service needs a domain, Nearzero creates the hostname, writes an A
-				record for the IP of its selected server, and keeps the Traefik route in
-				sync.
+				record for that server’s IP, and keeps the Traefik route in sync.
 			</p>
 			<figure class="nz-doc-flow">
 				<figcaption class="nz-visually-hidden">Managed DNS request flow from CoreDNS to the selected server and Traefik.</figcaption>
@@ -80,7 +79,7 @@ curl --fail --show-error --head https://api.apps.example.com`;
 
 		<section id="https" class="nz-doc-section">
 			<span class="nz-doc-section__index">04</span>
-			<h2>Meet the certificate prerequisites</h2>
+			<h2>What Let's Encrypt needs</h2>
 			<ul class="nz-doc-checklist">
 				<li><span>1</span><div><strong>Resolve to the selected server.</strong><p>The public A record must match the address receiving the request.</p></div></li>
 				<li><span>2</span><div><strong>Allow TCP 80.</strong><p>Traefik uses it for HTTP-01 validation and redirects.</p></div></li>
@@ -92,7 +91,7 @@ curl --fail --show-error --head https://api.apps.example.com`;
 
 		<section id="production" class="nz-doc-section">
 			<span class="nz-doc-section__index">05</span>
-			<h2>Plan for production DNS limitations</h2>
+			<h2>Production DNS limits</h2>
 			<DocCallout title="One control-plane host is one authoritative DNS failure domain" tone="warning">
 				<p>Default <code>ns1</code> and <code>ns2</code> names pointing to the same machine do not provide redundancy. Critical zones need a genuinely independent secondary authority or secondary-DNS service.</p>
 			</DocCallout>

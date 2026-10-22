@@ -8,12 +8,12 @@ import { publicSiteLinks } from "@/lib/public-site";
 
 <MarketingLayout
 	kind="article"
-	title="Nearzero Agent safety and permission boundaries"
-	description="Understand what the Nearzero infrastructure Agent can inspect, how server-side policy limits actions, and how to handle credentials safely."
+	title="Nearzero Agent — it can see your infra. Production writes start off."
+	description="The Agent can read deploys, logs, domains, and servers. It can only change what your role and workspace policy allow. Production writes stay off until an administrator turns that gate on."
 >
 	<DocsShell
-		title="Give the Agent context without unlimited authority"
-		summary="Nearzero’s Agent works through scoped infrastructure tools, server-side permissions, and administrator-controlled production policy. Treat model access and infrastructure access as separate decisions."
+		title="The Agent can see your infra. It cannot change production until you turn that on."
+		summary="It reads deploys, logs, domains, and servers through scoped tools. Mutations need your role, administrator policy, and a production gate that starts off."
 		activePath={publicSiteLinks.agentSafety}
 		toc={[
 			{ href: "#model", label: "Operating model" },
@@ -27,12 +27,11 @@ import { publicSiteLinks } from "@/lib/public-site";
 	>
 		<section id="model" class="nz-doc-section">
 			<span class="nz-doc-section__index">01</span>
-			<h2>A bounded observe → act → verify loop</h2>
+			<h2>Observe, then act, then verify</h2>
 			<p>
-				The Agent can inspect Nearzero context such as projects, environments,
-				services, deployments, runtime status, logs, domains, servers, and Git
-				metadata. It uses structured platform tools and their returned results to
-				choose the next step.
+				The Agent can read projects, environments, services, deploys, logs,
+				domains, servers, and Git metadata. It calls structured Nearzero tools
+				and uses the returned result for the next step.
 			</p>
 			<figure class="nz-doc-flow">
 				<figcaption class="nz-visually-hidden">The Agent observes context, acts through a scoped tool, and verifies the returned result.</figcaption>
@@ -42,18 +41,17 @@ import { publicSiteLinks } from "@/lib/public-site";
 				<i aria-hidden="true">→</i>
 				<div><small>Verify</small><strong>Use the result</strong><span>Never invent success</span></div>
 			</figure>
-			<DocCallout title="Nearzero does not promise unrestricted autonomy" tone="note">
-				<p>The Agent is designed as a deployment copilot. It does not imply background execution, universal source-code inspection, or authority outside the tools and organization context Nearzero provides.</p>
+			<DocCallout title="This is not unrestricted autonomy" tone="note">
+				<p>The Agent is a deployment copilot. It does not run in the background, inspect arbitrary source, or act outside the tools and organization Nearzero provides.</p>
 			</DocCallout>
 		</section>
 
 		<section id="permissions" class="nz-doc-section">
 			<span class="nz-doc-section__index">02</span>
-			<h2>Enforcement happens on the server</h2>
+			<h2>The server enforces policy, not the model</h2>
 			<p>
-				Workspace role checks and Agent action policies are evaluated by Nearzero,
-				not left to the model. Production mutations start disabled through the
-				organization setting and must be enabled deliberately by an administrator.
+				Role checks and Agent action policies run in Nearzero. Production writes
+				start disabled. An administrator has to turn that gate on.
 			</p>
 			<div class="nz-doc-table-wrap">
 				<table>
@@ -66,14 +64,14 @@ import { publicSiteLinks } from "@/lib/public-site";
 					</tbody>
 				</table>
 			</div>
-			<DocCallout title="Enabling production actions is a workspace authority decision" tone="critical">
+			<DocCallout title="Turning on production writes is an admin decision" tone="critical">
 				<p>Do it only after reviewing organization roles, server access, Git providers, connected model credentials, and recovery procedures.</p>
 			</DocCallout>
 		</section>
 
 		<section id="secrets" class="nz-doc-section">
 			<span class="nz-doc-section__index">03</span>
-			<h2>Use secure handoffs for credentials</h2>
+			<h2>Do not paste secrets into chat</h2>
 			<p>
 				Do not paste API keys, tokens, passwords, private keys, or secret-bearing
 				commands into Agent chat. Nearzero uses dedicated UI handoffs for service
@@ -89,7 +87,7 @@ import { publicSiteLinks } from "@/lib/public-site";
 
 		<section id="builds" class="nz-doc-section">
 			<span class="nz-doc-section__index">04</span>
-			<h2>Build-secret transport is not a sandbox</h2>
+			<h2>Build secrets are not a sandbox</h2>
 			<p>
 				Generated build phases keep configured values out of ordinary command
 				arguments and use BuildKit secret mounts where supported. Durable logs are
@@ -109,7 +107,7 @@ import { publicSiteLinks } from "@/lib/public-site";
 
 		<section id="checklist" class="nz-doc-section">
 			<span class="nz-doc-section__index">05</span>
-			<h2>Administrator readiness checklist</h2>
+			<h2>Before you enable the Agent on production</h2>
 			<ul class="nz-doc-checklist">
 				<li><span>✓</span><div><strong>Roles match actual responsibilities.</strong><p>Only trusted operators can mutate production or deploy privileged Compose workloads.</p></div></li>
 				<li><span>✓</span><div><strong>Model access is organization-scoped.</strong><p>Use the intended BYOK provider and rotate its key through the settings flow.</p></div></li>

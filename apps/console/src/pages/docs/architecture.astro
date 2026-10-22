@@ -9,13 +9,13 @@ import { publicSiteLinks } from "@/lib/public-site";
 
 <MarketingLayout
 	kind="article"
-	title="Nearzero architecture — Control plane on your servers"
-	description="How Nearzero sits between Console, Agent, and API intents and the Linux servers you bring — with Docker, Traefik, DNS, and policy-gated automation."
+	title="Nearzero architecture — Your servers run the apps"
+	description="Nearzero is the control plane. Docker, Traefik, and databases run on Linux servers you operate — the same host or remote boxes you add over SSH."
 	breadcrumbLabel="Architecture"
 >
 	<DocsShell
-		title="Architecture: bring your servers"
-		summary="Nearzero is a self-hosted control plane. Operators and optional Agents send intents through one API; workloads run on the local host or remote Linux servers you connect over SSH."
+		title="Your servers run the apps. Nearzero is the control plane."
+		summary="Install Nearzero on a Linux host. Console, API, and the Agent all call one guarded API. Docker, Traefik, and databases run on that host — or on remote servers you add over SSH."
 		activePath={publicSiteLinks.architecture}
 		toc={[
 			{ href: "#model", label: "Operating model" },
@@ -30,40 +30,38 @@ import { publicSiteLinks } from "@/lib/public-site";
 			<span class="nz-doc-section__index">01</span>
 			<h2>Operating model</h2>
 			<p>
-				Nearzero separates <strong>control plane</strong> duties from
-				<strong>workload hosts</strong>. The control plane keeps projects,
-				environments, deployments, domains, RBAC, and Agent policy together. Your
-				servers run Docker workloads, Traefik ingress, and the data services you
-				place on them.
+				The <strong>control plane</strong> keeps projects, environments, deploys,
+				domains, RBAC, and Agent policy together. <strong>Workload hosts</strong>
+				run Docker, Traefik, and the databases you place on them. That can be
+				the same machine, or another VPS you connect over SSH.
 			</p>
 			<div class="nz-doc-feature-list">
 				<div>
 					<strong>Control-plane host</strong>
 					<p>
-						Runs the Nearzero platform, console, monitoring, schedule jobs, and
-						optional authoritative CoreDNS.
+						Runs Nearzero: console, monitoring, schedule jobs, and optional
+						CoreDNS.
 					</p>
 				</div>
 				<div>
 					<strong>Workload servers</strong>
 					<p>
-						Local host and/or remote Linux nodes connected over SSH. Each service
-						targets an explicit server for routing and DNS.
+						This host, or remote Linux nodes over SSH. Each service targets one
+						server for routing and DNS.
 					</p>
 				</div>
 				<div>
 					<strong>Intents</strong>
 					<p>
-						Console, CLI/API, and the optional Agent all call the same guarded
-						surface — production Agent mutations stay off until an admin enables
-						them.
+						Console, CLI/API, and the Agent all call the same API. Production
+						Agent writes stay off until an administrator turns that gate on.
 					</p>
 				</div>
 				<div>
 					<strong>Your infrastructure</strong>
 					<p>
-						Nearzero does not replace your cloud account. It coordinates deploy
-						state on hosts you already operate.
+						Nearzero does not replace your cloud account. It deploys onto hosts
+						you already pay for.
 					</p>
 				</div>
 			</div>
@@ -73,10 +71,9 @@ import { publicSiteLinks } from "@/lib/public-site";
 			<span class="nz-doc-section__index">02</span>
 			<h2>Control-plane diagram</h2>
 			<p>
-				Intents enter on the left. Nearzero applies deterministic deploy paths,
-				guardrails, audit, and access control in the center. Execution lands on
-				<strong>your servers</strong> on the right — not a catalog of third-party
-				SaaS tools.
+				You send an intent on the left. Nearzero applies deploy paths, policy,
+				and access control in the center. The work lands on <strong>your
+				servers</strong> on the right.
 			</p>
 			<div class="nz-doc-diagram-wrap">
 				<ControlPlaneDiagram compact />
@@ -86,11 +83,10 @@ import { publicSiteLinks } from "@/lib/public-site";
 		<section id="boundaries" class="nz-doc-section">
 			<span class="nz-doc-section__index">03</span>
 			<h2>Trust boundaries</h2>
-			<DocCallout title="Keep management surfaces private" tone="critical">
+			<DocCallout title="Do not put the control plane on the public internet as plain HTTP" tone="critical">
 				<p>
-					Control-plane HTTP ports are not a public product edge. Put TLS and
-					access control in front of them, or bind them to a management network,
-					before production use.
+					Ports 3000 and 4321 are not a public product edge. Put TLS in front of
+					them, or bind them to a management network, before production use.
 				</p>
 			</DocCallout>
 			<div class="nz-doc-feature-list">
@@ -112,8 +108,8 @@ import { publicSiteLinks } from "@/lib/public-site";
 					<strong>Agent scope</strong>
 					<p>
 						The Agent cannot invent privileged paths. It uses scoped tools under
-						user RBAC and org policy — including blocks like destructive
-						production actions when those policies deny them.
+						your role and org policy. Production writes stay off until you enable
+						them.
 					</p>
 				</div>
 			</div>
@@ -126,25 +122,25 @@ import { publicSiteLinks } from "@/lib/public-site";
 				<a class="nz-doc-card" href={publicSiteLinks.selfHosting}>
 					<span>01</span>
 					<h3>Self-host Nearzero</h3>
-					<p>Install a verified release and establish backups and updates.</p>
+					<p>Install with one command, sign in, then add your domain.</p>
 					<strong>Open guide →</strong>
 				</a>
 				<a class="nz-doc-card" href={publicSiteLinks.remoteServers}>
 					<span>02</span>
 					<h3>Connect remote servers</h3>
-					<p>Add SSH hosts, verify trust, and open only the ports Traefik needs.</p>
+					<p>Add a Linux VPS over SSH. Send public traffic to Traefik on that box.</p>
 					<strong>Open guide →</strong>
 				</a>
 				<a class="nz-doc-card" href={publicSiteLinks.domainsAndHttps}>
 					<span>03</span>
 					<h3>Domains and HTTPS</h3>
-					<p>Delegate zones or external hostnames and let Traefik terminate TLS.</p>
+					<p>Point the hostname at the server that runs the app.</p>
 					<strong>Open guide →</strong>
 				</a>
 				<a class="nz-doc-card" href={publicSiteLinks.agentSafety}>
 					<span>04</span>
 					<h3>Agent safety</h3>
-					<p>Understand permissions, secrets, and production write gates.</p>
+					<p>The Agent can see your infra. Production writes start off.</p>
 					<strong>Open guide →</strong>
 				</a>
 			</div>
@@ -155,11 +151,8 @@ import { publicSiteLinks } from "@/lib/public-site";
 <style is:global>
 	.nz-doc-diagram-wrap {
 		margin-top: 20px;
-		overflow-x: auto;
-		padding-bottom: 4px;
-	}
-
-	.nz-doc-diagram-wrap .nz-cp-diagram {
-		min-width: min(100%, 920px);
+		max-width: 100%;
+		min-width: 0;
+		overflow: hidden;
 	}
 </style>

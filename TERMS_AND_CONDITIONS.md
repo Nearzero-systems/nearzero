@@ -2,7 +2,7 @@
 
 **Nearzero core** is a free and open-source solution intended as an alternative to established cloud platforms like Vercel and Netlify.
 
-The Nearzero team endeavors to mitigate potential defects and issues through stringent testing and adherence to principles of clean coding. Nearzero is provided "AS IS" without any warranties, express or implied. Refer to the [License](https://github.com/Nearzero-systems/nearzero/blob/main/LICENSE) for details on permissions and restrictions.
+The Nearzero team endeavors to mitigate potential defects and issues through stringent testing and adherence to principles of clean coding. Nearzero is provided "AS IS" without any warranties, express or implied. Refer to the [License](https://github.com/Nearzero-systems/nearzero/blob/main/LICENSE.MD) for details on permissions and restrictions.
 
 
 ### Description of Service:

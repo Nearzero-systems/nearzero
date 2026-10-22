@@ -1,8 +1,6 @@
 import { relations } from "drizzle-orm";
 import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
 import { nanoid } from "nanoid";
-import { z } from "zod";
 
 export const INSTALL_SETUP_PHASES = [
 	"pending",
@@ -13,8 +11,10 @@ export const INSTALL_SETUP_PHASES = [
 export type InstallSetupPhase = (typeof INSTALL_SETUP_PHASES)[number];
 
 /**
- * Singleton row for the Community first-run domain wizard.
- * The one-time setup token is never stored here — only its env hash is checked.
+ * Singleton row describing the first-run state of a self-hosted install.
+ * The owner account is created on the server (`nearzero create-owner`), so the
+ * row only records when ownership was claimed. The zone columns are kept so
+ * installs set up with the retired browser wizard keep their DNS settings.
  */
 export const installSetup = pgTable("install_setup", {
 	id: text("id")
@@ -36,45 +36,3 @@ export const installSetup = pgTable("install_setup", {
 });
 
 export const installSetupRelations = relations(installSetup, () => ({}));
-
-const createSchema = createInsertSchema(installSetup, {
-	id: z.string().min(1),
-	phase: z.enum(INSTALL_SETUP_PHASES),
-});
-
-export const apiInstallSetupSubmit = z.object({
-	token: z.string().min(16).max(256),
-	managementHostname: z
-		.string()
-		.trim()
-		.toLowerCase()
-		.min(4)
-		.max(253)
-		.refine(
-			(value) =>
-				/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(
-					value,
-				),
-			"Enter a valid public hostname, for example nearzero.example.com",
-		),
-	adminEmail: z.string().trim().email(),
-	publicIp: z
-		.string()
-		.trim()
-		.regex(/^(?:\d{1,3}\.){3}\d{1,3}$/, "Enter a valid IPv4 address")
-		.optional(),
-	managedDnsZone: z
-		.string()
-		.trim()
-		.toLowerCase()
-		.min(4)
-		.max(253)
-		.optional()
-		.nullable(),
-	managedDnsSoaEmail: z.string().trim().email().optional().nullable(),
-	skipManagedDns: z.boolean().optional(),
-});
-
-export type ApiInstallSetupSubmit = z.infer<typeof apiInstallSetupSubmit>;
-
-export const apiInstallSetupInsert = createSchema.partial();

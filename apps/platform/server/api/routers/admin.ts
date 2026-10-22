@@ -3,12 +3,12 @@ import {
 	setupWebMonitoring,
 	updateWebServerSettings,
 } from "@nearzero/server";
-import { TRPCError } from "@trpc/server";
+import { toPublicWebServerSettings } from "@/server/api/utils/public-web-server-settings";
 import { apiUpdateWebServerMonitoring } from "@/server/db/schema";
-import { adminProcedure, createTRPCRouter } from "../trpc";
+import { createTRPCRouter, instanceAdminProcedure } from "../trpc";
 
 export const adminRouter = createTRPCRouter({
-	setupMonitoring: adminProcedure
+	setupMonitoring: instanceAdminProcedure
 		.input(apiUpdateWebServerMonitoring)
 		.mutation(async ({ input }) => {
 			try {
@@ -39,7 +39,7 @@ export const adminRouter = createTRPCRouter({
 
 				await setupWebMonitoring();
 				const settings = await getWebServerSettings();
-				return settings;
+				return toPublicWebServerSettings(settings);
 			} catch (error) {
 				throw error;
 			}

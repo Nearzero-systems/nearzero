@@ -1,9 +1,9 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
-import { docsNavigation } from "@/lib/public-site";
+import GitHubMark from "@/components/marketing/GitHubMark.astro";
+import NearzeroMark from "@/components/NearzeroMark.astro";
+import { docsNavigationGroups, publicSiteLinks } from "@/lib/public-site";
 import "@/styles/public-docs.css";
-import MarketingFooter from "./MarketingFooter.astro";
-import MarketingHeader from "./MarketingHeader.astro";
 
 interface TocItem {
 	href: string;
@@ -18,89 +18,194 @@ interface Props {
 	toc?: TocItem[];
 	previous?: { href: string; label: string };
 	next?: { href: string; label: string };
+	showSignIn?: boolean;
 }
 
 const {
 	title,
 	summary,
-	eyebrow = "Nearzero documentation",
 	activePath,
 	toc = [],
 	previous,
 	next,
+	showSignIn = true,
 } = Astro.props;
+
+const outline = toc;
 ---
 
-<div class="nz-marketing nz-docs-site">
-	<MarketingHeader active="docs" />
+<div class="nz-docs-app">
+	<header class="nz-docs-topbar">
+		<div class="nz-docs-topbar__inner">
+			<button
+				type="button"
+				class="nz-docs-topbar__menu"
+				aria-label="Open documentation menu"
+				aria-expanded="false"
+				aria-controls="nz-docs-rail"
+				data-docs-menu
+			>
+				<span></span><span></span>
+			</button>
 
-	<main id="main-content" class="nz-docs-main">
-		<header class="nz-docs-hero">
-			<div class="nz-container">
-				<nav class="nz-breadcrumbs" aria-label="Breadcrumb">
-					<a href="/docs">Docs</a>
-					{activePath !== "/docs" && <><span aria-hidden="true">/</span><span>{title}</span></>}
-				</nav>
-				<span class="nz-kicker">{eyebrow}</span>
+			<a class="nz-docs-brand" href={publicSiteLinks.home} aria-label="Nearzero home">
+				<span class="nz-docs-brand__mark" aria-hidden="true">
+					<NearzeroMark size={18} />
+				</span>
+				<span>Nearzero</span>
+			</a>
+
+			<nav class="nz-docs-topbar__links" aria-label="Documentation">
+				<a href={publicSiteLinks.docs} aria-current="page">Docs</a>
+				<a href={publicSiteLinks.compare}>Compare</a>
+			</nav>
+
+			<div class="nz-docs-topbar__actions">
+				{
+					showSignIn && (
+						<a class="nz-docs-topbar__signin" href={publicSiteLinks.signIn}>Sign in</a>
+					)
+				}
+				<a
+					class="nz-button nz-button--star text-xs px-2 py-1"
+					href={publicSiteLinks.github}
+					target="_blank"
+					rel="noreferrer"
+					aria-label="Star Nearzero on GitHub"
+				>
+					<GitHubMark size={12} />
+					Star us
+				</a>
+			</div>
+		</div>
+	</header>
+
+	<div class="nz-docs-shell">
+		<aside class="nz-docs-rail" id="nz-docs-rail" aria-label="Documentation sections">
+			{
+				docsNavigationGroups.map((group) => (
+					<details class="nz-docs-rail__group" open>
+						<summary>
+							<span>{group.label}</span>
+							<i aria-hidden="true"></i>
+						</summary>
+						<nav>
+							{group.items.map((item) => (
+								<a
+									href={item.href}
+									class:list={{ "is-active": activePath === item.href }}
+									aria-current={activePath === item.href ? "page" : undefined}
+								>
+									{item.label}
+								</a>
+							))}
+						</nav>
+					</details>
+				))
+			}
+		</aside>
+
+		<main id="main-content" class="nz-docs-page">
+			<header class="nz-docs-page__header">
 				<h1>{title}</h1>
 				<p>{summary}</p>
-			</div>
-		</header>
+			</header>
 
-		<div class="nz-container nz-docs-layout">
-			<aside class="nz-docs-sidebar" aria-label="Documentation sections">
-				<strong>Documentation</strong>
-				<nav>
-					{
-						docsNavigation.map((item) => (
-							<a
-								href={item.href}
-								class:list={{ "is-active": activePath === item.href }}
-								aria-current={activePath === item.href ? "page" : undefined}
-							>
-								<span>{item.label}</span>
-								<small>{item.description}</small>
-							</a>
-						))
-					}
-				</nav>
-			</aside>
-
-			<article class="nz-doc-article">
+			<article class="nz-docs-article">
 				<slot />
 
 				{
 					(previous || next) && (
-						<nav class="nz-doc-pager" aria-label="Adjacent documentation">
+						<nav class="nz-docs-pager" aria-label="Adjacent documentation">
 							{previous ? (
-								<a href={previous.href}>
+								<a class="nz-docs-pager__prev" href={previous.href}>
 									<small>Previous</small>
-									<strong>← {previous.label}</strong>
+									<strong>{previous.label}</strong>
 								</a>
-							) : <span />}
+							) : (
+								<span></span>
+							)}
 							{next && (
-								<a href={next.href} class="is-next">
-									<small>Next</small>
-									<strong>{next.label} →</strong>
+								<a class="nz-docs-pager__next" href={next.href}>
+									<small>Next page</small>
+									<strong>{next.label}</strong>
 								</a>
 							)}
 						</nav>
 					)
 				}
 			</article>
+		</main>
 
-			{
-				toc.length > 0 && (
-					<aside class="nz-docs-toc" aria-label="On this page">
-						<strong>On this page</strong>
-						<nav>
-							{toc.map((item) => <a href={item.href}>{item.label}</a>)}
-						</nav>
-					</aside>
-				)
-			}
-		</div>
-	</main>
-
-	<MarketingFooter />
+		{
+			outline.length > 0 && (
+				<aside class="nz-docs-outline" aria-label="On this page">
+					<strong>On this page</strong>
+					<nav>
+						{outline.map((item) => (
+							<a href={item.href}>{item.label}</a>
+						))}
+					</nav>
+				</aside>
+			)
+		}
+	</div>
 </div>
+
+<script>
+	const menu = document.querySelector("[data-docs-menu]");
+	const rail = document.getElementById("nz-docs-rail");
+
+	if (menu instanceof HTMLButtonElement && rail instanceof HTMLElement) {
+		const close = () => {
+			rail.classList.remove("is-open");
+			menu.setAttribute("aria-expanded", "false");
+			document.body.classList.remove("nz-docs-menu-open");
+		};
+
+		menu.addEventListener("click", () => {
+			const open = !rail.classList.contains("is-open");
+			rail.classList.toggle("is-open", open);
+			menu.setAttribute("aria-expanded", String(open));
+			document.body.classList.toggle("nz-docs-menu-open", open);
+		});
+
+		rail.addEventListener("click", (event) => {
+			if (event.target instanceof HTMLAnchorElement) close();
+		});
+
+		window.addEventListener("keydown", (event) => {
+			if (event.key === "Escape") close();
+		});
+	}
+
+	const outlineLinks = [...document.querySelectorAll(".nz-docs-outline a")].filter(
+		(link): link is HTMLAnchorElement => link instanceof HTMLAnchorElement,
+	);
+	const headings = outlineLinks
+		.map((link) => document.querySelector(link.hash))
+		.filter((node): node is HTMLElement => node instanceof HTMLElement);
+
+	if (outlineLinks.length && headings.length && "IntersectionObserver" in window) {
+		const setActive = (id: string) => {
+			for (const link of outlineLinks) {
+				link.classList.toggle("is-active", link.hash === `#${id}`);
+			}
+		};
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				const visible = entries
+					.filter((entry) => entry.isIntersecting)
+					.sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+				if (visible?.target instanceof HTMLElement && visible.target.id) {
+					setActive(visible.target.id);
+				}
+			},
+			{ rootMargin: "-20% 0px -65% 0px", threshold: [0, 0.25, 1] },
+		);
+
+		for (const heading of headings) observer.observe(heading);
+		setActive(headings[0].id);
+	}
+</script>

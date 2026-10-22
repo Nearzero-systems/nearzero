@@ -1,9 +1,6 @@
 import type http from "node:http";
-import {
-	execAsync,
-	findServerById,
-	validateRequest,
-} from "@nearzero/server";
+import { execAsync, findServerById, validateRequest } from "@nearzero/server";
+import { isInstanceAdministrator } from "@nearzero/server/services/instance-access";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import { createSshHostVerification } from "@nearzero/server/utils/servers/ssh-host-verification";
 import { publicIpv4, publicIpv6 } from "public-ip";
@@ -104,6 +101,16 @@ export const setupTerminalWebSocketServer = (
 				return;
 			}
 
+			// The local host is shared by every organization; a host shell is
+			// root-equivalent, so only instance administrators may open one.
+			if (!(await isInstanceAdministrator(user.id))) {
+				ws.close(
+					4003,
+					"Only instance administrators can open a host terminal.",
+				);
+				return;
+			}
+
 			const port = Number(url.searchParams.get("port"));
 			const username = url.searchParams.get("username");
 
@@ -160,6 +167,14 @@ export const setupTerminalWebSocketServer = (
 				return;
 			}
 
+			if (user.role !== "owner" && user.role !== "admin") {
+				ws.close(
+					4003,
+					"Only organization owners and admins can open a server terminal.",
+				);
+				return;
+			}
+
 			const { ipAddress: host, port, username, sshKey, sshKeyId } = server;
 
 			if (!sshKeyId) {
@@ -174,30 +189,30 @@ export const setupTerminalWebSocketServer = (
 			};
 		}
 
-			const conn = new Client();
-			const hostVerification = createSshHostVerification({
-				ipAddress: String(connectionDetails.host),
-				port: Number(connectionDetails.port ?? 22),
-			});
-			connectionDetails.hostVerifier = hostVerification.hostVerifier;
-			connectionDetails.readyTimeout = 30_000;
+		const conn = new Client();
+		const hostVerification = createSshHostVerification({
+			ipAddress: String(connectionDetails.host),
+			port: Number(connectionDetails.port ?? 22),
+		});
+		connectionDetails.hostVerifier = hostVerification.hostVerifier;
+		connectionDetails.readyTimeout = 30_000;
 		let _stdout = "";
 		let _stderr = "";
 
 		ws.send("Connecting...\n");
 
-			conn
-				.once("ready", () => {
-					try {
-						hostVerification.commit();
-					} catch (error) {
-						ws.send(
-							`${error instanceof Error ? error.message : "SSH host verification failed"}\n`,
-						);
-						conn.end();
-						ws.close();
-						return;
-					}
+		conn
+			.once("ready", () => {
+				try {
+					hostVerification.commit();
+				} catch (error) {
+					ws.send(
+						`${error instanceof Error ? error.message : "SSH host verification failed"}\n`,
+					);
+					conn.end();
+					ws.close();
+					return;
+				}
 				// Clear terminal content once connected
 				ws.send("\x1bc");
 

@@ -1,11 +1,11 @@
+import { AgentHarnessError } from "@nearzero/server/services/agent-harness-errors";
 import { describe, expect, it, vi } from "vitest";
 import {
-	resolveProjectForDelete,
 	findProjectsMentionedInText,
 	hasDeleteVerb,
+	resolveProjectForDelete,
 } from "../../../../packages/agent/src/engine/harness-intents/project-resolution";
 import { checkHarnessPolicy } from "../../../../packages/agent/src/engine/harness-policy";
-import { AgentHarnessError } from "@nearzero/server/services/agent-harness-errors";
 
 const catalog = [
 	{ projectId: "p1", name: "Torchflow-test-1779915699839" },
@@ -40,22 +40,79 @@ describe("project delete resolution", () => {
 		).toEqual({ kind: "skip" });
 	});
 
-	it("matches short hints against catalog partial names", () => {
-		const result = resolveProjectForDelete("can you remove torchflow", catalog);
-		expect(result.kind).toBe("match");
-		if (result.kind === "match") {
-			expect(result.project.projectId).toBe("p1");
-		}
+	it("asks to confirm partial names instead of deleting", () => {
+		expect(
+			resolveProjectForDelete("can you remove torchflow", catalog),
+		).toEqual({
+			kind: "ambiguous",
+			names: ["Torchflow-test-1779915699839"],
+		});
+		expect(
+			resolveProjectForDelete(
+				"please remove the project torchflow for me",
+				catalog,
+			),
+		).toEqual({ kind: "ambiguous", names: ["Torchflow-test-1779915699839"] });
 	});
 
 	it("matches explicit delete phrasing", () => {
-		expect(resolveProjectForDelete("delete hypeframe project", catalog)).toEqual({
+		expect(
+			resolveProjectForDelete("delete hypeframe project", catalog),
+		).toEqual({
 			kind: "match",
 			project: { projectId: "p2", name: "Hypeframe" },
 		});
 		expect(
-			resolveProjectForDelete("please remove the project torchflow for me", catalog).kind,
+			resolveProjectForDelete(
+				"please remove the project torchflow-test-1779915699839 for me",
+				catalog,
+			).kind,
 		).toBe("match");
+	});
+
+	it("does not delete a project when a service inside it is the target", () => {
+		expect(
+			resolveProjectForDelete("delete the redis service in hypeframe", catalog),
+		).toEqual({ kind: "skip" });
+		expect(
+			resolveProjectForDelete(
+				"remove the old deployments from hypeframe",
+				catalog,
+			),
+		).toEqual({ kind: "skip" });
+	});
+
+	it("skips negated requests", () => {
+		expect(resolveProjectForDelete("don't delete hypeframe", catalog)).toEqual({
+			kind: "skip",
+		});
+		expect(
+			resolveProjectForDelete("delete everything but keep hypeframe", catalog),
+		).toEqual({ kind: "skip" });
+	});
+
+	it("matches whole project names only", () => {
+		expect(
+			resolveProjectForDelete("delete the rapid project", [
+				{ projectId: "a", name: "api" },
+				{ projectId: "b", name: "rapid" },
+			]),
+		).toEqual({ kind: "match", project: { projectId: "b", name: "rapid" } });
+		expect(
+			findProjectsMentionedInText(
+				[{ projectId: "a", name: "api" }],
+				"delete the rapid project",
+			),
+		).toEqual([]);
+	});
+
+	it("does not treat clearing logs or caches as a project delete", () => {
+		expect(resolveProjectForDelete("clear the logs", catalog)).toEqual({
+			kind: "skip",
+		});
+		expect(resolveProjectForDelete("remove the build cache", catalog)).toEqual({
+			kind: "skip",
+		});
 	});
 
 	it("returns explicitMiss only for short unknown hints", () => {
@@ -68,7 +125,7 @@ describe("project delete resolution", () => {
 
 	it("returns ambiguous when multiple catalog names appear in text", () => {
 		const result = resolveProjectForDelete(
-			"delete hypeframe project",
+			"delete hype and hypeframe projects",
 			[
 				{ projectId: "a", name: "Hype" },
 				{ projectId: "b", name: "Hypeframe" },
@@ -77,15 +134,21 @@ describe("project delete resolution", () => {
 		expect(result.kind).toBe("ambiguous");
 	});
 
-	it("orders mentioned projects by longest name first", () => {
-		const mentioned = findProjectsMentionedInText(
-			[
-				{ projectId: "a", name: "Hype" },
-				{ projectId: "b", name: "Hypeframe" },
-			],
-			"delete hypeframe project",
-		);
-		expect(mentioned.map((p) => p.name)).toEqual(["Hypeframe", "Hype"]);
+	it("prefers the longest full name over a shorter name inside it", () => {
+		const projects = [
+			{ projectId: "a", name: "Hype" },
+			{ projectId: "b", name: "Hypeframe" },
+		];
+		expect(
+			findProjectsMentionedInText(projects, "delete hypeframe project").map(
+				(p) => p.name,
+			),
+		).toEqual(["Hypeframe"]);
+		expect(
+			findProjectsMentionedInText(projects, "hypeframe and hype").map(
+				(p) => p.name,
+			),
+		).toEqual(["Hypeframe", "Hype"]);
 	});
 
 	it("detects delete verbs", () => {

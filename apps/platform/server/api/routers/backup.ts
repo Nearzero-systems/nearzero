@@ -27,6 +27,10 @@ import {
 	updateBackupById,
 } from "@nearzero/server";
 import { findDestinationById } from "@nearzero/server/services/destination";
+import {
+	resolveBackupServerId,
+	runsOnExternalJobsService,
+} from "@nearzero/server/services/job-placement";
 import { sanitizePublicErrorMessage } from "@nearzero/server/services/operational-log";
 import {
 	checkPermission,
@@ -146,33 +150,14 @@ export const backupRouter = createTRPCRouter({
 				const backup = await findBackupById(newBackup.backupId);
 
 				if (backup.enabled) {
-					if (process.env.JOBS_URL) {
-						const databaseType = backup.databaseType;
-						let serverId = "";
-						if (databaseType === "postgres" && backup.postgres?.serverId) {
-							serverId = backup.postgres.serverId;
-						} else if (databaseType === "mysql" && backup.mysql?.serverId) {
-							serverId = backup.mysql.serverId;
-						} else if (databaseType === "mongo" && backup.mongo?.serverId) {
-							serverId = backup.mongo.serverId;
-						} else if (databaseType === "mariadb" && backup.mariadb?.serverId) {
-							serverId = backup.mariadb.serverId;
-						} else if (databaseType === "libsql" && backup.libsql?.serverId) {
-							serverId = backup.libsql.serverId;
-						} else if (
-							backup.backupType === "compose" &&
-							backup.compose?.serverId
-						) {
-							serverId = backup.compose.serverId;
-						}
-						if (serverId) {
-							const remoteServer = await findServerById(serverId);
-							if (remoteServer.serverStatus === "inactive") {
-								throw new TRPCError({
-									code: "NOT_FOUND",
-									message: "Server is inactive",
-								});
-							}
+					const serverId = resolveBackupServerId(backup);
+					if (runsOnExternalJobsService(serverId)) {
+						const remoteServer = await findServerById(serverId as string);
+						if (remoteServer.serverStatus === "inactive") {
+							throw new TRPCError({
+								code: "NOT_FOUND",
+								message: "Server is inactive",
+							});
 						}
 						await schedule({
 							cronSchedule: backup.schedule,
@@ -261,7 +246,7 @@ export const backupRouter = createTRPCRouter({
 					ctx.session.activeOrganizationId,
 				);
 
-				if (process.env.JOBS_URL) {
+				if (runsOnExternalJobsService(resolveBackupServerId(backup))) {
 					if (backup.enabled) {
 						await updateJob({
 							cronSchedule: backup.schedule,
@@ -325,7 +310,7 @@ export const backupRouter = createTRPCRouter({
 
 				const value = await removeBackupById(input.backupId);
 				if (value) {
-					if (process.env.JOBS_URL) {
+					if (runsOnExternalJobsService(resolveBackupServerId(backup))) {
 						await removeJob({
 							backupId: input.backupId,
 							cronSchedule: value.schedule,

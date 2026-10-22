@@ -43,7 +43,7 @@ test("Add suffix to networks in services and root (combined case)", () => {
 
 	const suffix = generateRandomHash();
 
-	// Prefijo para redes definidas en el root
+	// Prefix networks defined at the root
 	if (composeData.networks) {
 		composeData.networks = addSuffixToNetworksRoot(
 			composeData.networks,
@@ -51,7 +51,7 @@ test("Add suffix to networks in services and root (combined case)", () => {
 		);
 	}
 
-	// Prefijo para redes definidas en los servicios
+	// Prefix networks defined in services
 	if (composeData.services) {
 		composeData.services = addSuffixToServiceNetworks(
 			composeData.services,
@@ -61,7 +61,7 @@ test("Add suffix to networks in services and root (combined case)", () => {
 
 	const actualComposeData = { ...composeData };
 
-	// Verificar redes en root
+	// Check root networks
 	expect(actualComposeData.networks).toHaveProperty(`frontend-${suffix}`);
 	expect(actualComposeData.networks).toHaveProperty(`backend-${suffix}`);
 	expect(actualComposeData.networks).not.toHaveProperty("frontend");
@@ -75,7 +75,7 @@ test("Add suffix to networks in services and root (combined case)", () => {
 		`backend-${suffix}`,
 	);
 
-	// Caso 2: Objeto con aliases
+	// Case 2: object with aliases
 	const apiNetworks = actualComposeData.services?.api?.networks as {
 		[key: string]: { aliases?: string[] };
 	};
@@ -83,7 +83,7 @@ test("Add suffix to networks in services and root (combined case)", () => {
 	expect(apiNetworks?.[`frontend-${suffix}`]?.aliases).toContain("api");
 	expect(apiNetworks).not.toHaveProperty("frontend");
 
-	// Caso 3: Objeto con redes simples
+	// Case 3: object with plain networks
 	const redisNetworks = actualComposeData.services?.redis?.networks;
 	expect(redisNetworks).toHaveProperty(`backend-${suffix}`);
 	expect(redisNetworks).not.toHaveProperty("backend");

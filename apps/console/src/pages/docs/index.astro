@@ -10,27 +10,27 @@ const guideCards = docsNavigation.slice(1);
 
 <MarketingLayout
 	kind="article"
-	title="Nearzero documentation — Self-host and deploy"
-	description="Learn how to install Nearzero Community, connect remote servers, deploy applications and data services, and configure DNS, HTTPS, and secure operations."
+	title="Nearzero docs — Install the control plane on your VPS"
+	description="Install Nearzero on a Linux VPS, add remote servers, route domains with Traefik and Let's Encrypt, and use an Agent that cannot change production until you turn that on."
 >
 	<DocsShell
-		title="Operate Nearzero on infrastructure you control"
-		summary="Practical, security-conscious guides for installing the Community edition and taking applications from Git to HTTPS across local and remote servers."
+		title="Install Nearzero. Then take Git to HTTPS."
+		summary="These guides put the control plane on a Linux VPS you operate, then connect servers, domains, and a locked-down Agent."
 		activePath={publicSiteLinks.docs}
 		toc={[
-			{ href: "#choose-a-path", label: "Choose a path" },
-			{ href: "#deployment-model", label: "Deployment model" },
-			{ href: "#security-baseline", label: "Security baseline" },
+			{ href: "#choose-a-path", label: "Start here" },
+			{ href: "#deployment-model", label: "How it runs" },
+			{ href: "#security-baseline", label: "Lock it down" },
 		]}
 		next={{ href: publicSiteLinks.architecture, label: "Architecture" }}
 	>
 		<section id="choose-a-path" class="nz-doc-section">
 			<span class="nz-doc-section__index">01</span>
-			<h2>Choose the guide that matches your next step</h2>
+			<h2>Start with the control plane</h2>
 			<p class="nz-doc-lede">
-				Start with the control plane, then connect workload servers and
-				configure public routing. Use the security guides before exposing
-				management services or enabling automation.
+				Install Nearzero on a dedicated Linux host. Then add workload servers
+				and public hostnames. Read the security notes before you expose
+				management ports or turn the Agent on for production.
 			</p>
 
 			<div class="nz-doc-card-grid">
@@ -49,12 +49,12 @@ const guideCards = docsNavigation.slice(1);
 
 		<section id="deployment-model" class="nz-doc-section">
 			<span class="nz-doc-section__index">02</span>
-			<h2>Understand the deployment model</h2>
+			<h2>Your servers run the apps</h2>
 			<p>
-				Nearzero separates the control plane from the servers that run your
-				applications. A single-server installation can host both roles. As you
-				grow, remote servers receive workloads while the control plane keeps
-				project, deployment, DNS, and policy context together.
+				Nearzero is the control plane. Docker, Traefik, and databases run on
+				Linux you operate. One host can do both jobs. When you add another VPS,
+				workloads move there. Projects, deploys, DNS, and Agent policy stay on
+				the control plane.
 			</p>
 
 			<figure class="nz-doc-flow">
@@ -67,10 +67,10 @@ const guideCards = docsNavigation.slice(1);
 			</figure>
 
 			<div class="nz-doc-feature-list">
-				<div><strong>Control-plane host</strong><p>Runs the Nearzero platform, console, monitoring, and optional authoritative CoreDNS service.</p></div>
-				<div><strong>Remote application servers</strong><p>Run Traefik and the workloads assigned to them. They do not run Nearzero authoritative DNS.</p></div>
-				<div><strong>Managed zones</strong><p>Turn an environment and service selection into an A record targeting the selected server.</p></div>
-				<div><strong>Infrastructure Agent</strong><p>Works through scoped Nearzero tools, user RBAC, and administrator-controlled per-action policy; production mutations start disabled.</p></div>
+				<div><strong>Control-plane host</strong><p>Runs Nearzero: console, API, monitoring, and optional CoreDNS.</p></div>
+				<div><strong>Workload servers</strong><p>Run Traefik and the apps you place on them. They do not run Nearzero DNS.</p></div>
+				<div><strong>Managed zones</strong><p>Nearzero writes an A record to the server selected for that service.</p></div>
+				<div><strong>Agent</strong><p>Can read deploys, logs, and servers. Production writes stay off until you turn that gate on.</p></div>
 			</div>
 			<p>
 				<a class="nz-text-link" href={publicSiteLinks.architecture}>
@@ -81,8 +81,8 @@ const guideCards = docsNavigation.slice(1);
 
 		<section id="security-baseline" class="nz-doc-section">
 			<span class="nz-doc-section__index">03</span>
-			<h2>Use a secure baseline before exposing anything</h2>
-			<DocCallout title="The installer does not terminate TLS for the control-plane ports" tone="critical">
+			<h2>Lock the management plane down first</h2>
+			<DocCallout title="The installer does not put TLS on ports 3000 and 4321" tone="critical">
 				<p>
 					Ports 3000 and 4321 are plain HTTP. Keep them on a management network,
 					behind a VPN or firewall, or publish them only through an authenticated

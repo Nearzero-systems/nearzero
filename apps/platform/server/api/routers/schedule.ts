@@ -12,6 +12,11 @@ import {
 	updateScheduleSchema,
 } from "@nearzero/server/db/schema/schedule";
 import { runCommand } from "@nearzero/server/index";
+import { isInstanceAdministrator } from "@nearzero/server/services/instance-access";
+import {
+	resolveScheduleServerId,
+	runsOnExternalJobsService,
+} from "@nearzero/server/services/job-placement";
 import {
 	checkPermission,
 	checkServicePermissionAndAccess,
@@ -77,6 +82,19 @@ export const scheduleRouter = createTRPCRouter({
 					}
 				}
 
+				// Host-level schedules run shell commands on the shared local
+				// host, so an owner/admin role in the active organization is not enough.
+				if (
+					scheduleType === "nearzero-server" &&
+					!(await isInstanceAdministrator(ctx.user.id))
+				) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message:
+							"Only instance administrators can manage host-level schedules.",
+					});
+				}
+
 				if (scheduleType === "server" && input.serverId) {
 					const targetServer = await findServerById(input.serverId);
 					if (
@@ -108,12 +126,12 @@ export const scheduleRouter = createTRPCRouter({
 			const newSchedule = await createSchedule(input);
 
 			if (newSchedule?.enabled) {
-				if (process.env.JOBS_URL) {
-					schedule({
+				if (runsOnExternalJobsService(runtimeServerId)) {
+					await schedule({
 						scheduleId: newSchedule.scheduleId,
 						type: "schedule",
 						cronSchedule: newSchedule.cronExpression,
-						timezone: newSchedule.timezone,
+						timezone: newSchedule.timezone ?? undefined,
 					});
 				} else {
 					scheduleJob(newSchedule);
@@ -159,6 +177,19 @@ export const scheduleRouter = createTRPCRouter({
 					}
 				}
 
+				// Host-level schedules run shell commands on the shared local
+				// host, so an owner/admin role in the active organization is not enough.
+				if (
+					existingSchedule.scheduleType === "nearzero-server" &&
+					!(await isInstanceAdministrator(ctx.user.id))
+				) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message:
+							"Only instance administrators can manage host-level schedules.",
+					});
+				}
+
 				if (
 					existingSchedule.scheduleType === "server" &&
 					existingSchedule.serverId
@@ -187,13 +218,15 @@ export const scheduleRouter = createTRPCRouter({
 			}
 			const updatedSchedule = await updateSchedule(input);
 
-			if (process.env.JOBS_URL) {
+			if (
+				runsOnExternalJobsService(resolveScheduleServerId(existingSchedule))
+			) {
 				if (updatedSchedule?.enabled) {
-					schedule({
+					await schedule({
 						scheduleId: updatedSchedule.scheduleId,
 						type: "schedule",
 						cronSchedule: updatedSchedule.cronExpression,
-						timezone: updatedSchedule.timezone,
+						timezone: updatedSchedule.timezone ?? undefined,
 					});
 				} else {
 					await removeJob({
@@ -248,6 +281,19 @@ export const scheduleRouter = createTRPCRouter({
 					}
 				}
 
+				// Host-level schedules run shell commands on the shared local
+				// host, so an owner/admin role in the active organization is not enough.
+				if (
+					scheduleItem.scheduleType === "nearzero-server" &&
+					!(await isInstanceAdministrator(ctx.user.id))
+				) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message:
+							"Only instance administrators can manage host-level schedules.",
+					});
+				}
+
 				if (scheduleItem.scheduleType === "server" && scheduleItem.serverId) {
 					const targetServer = await findServerById(scheduleItem.serverId);
 					if (
@@ -273,7 +319,7 @@ export const scheduleRouter = createTRPCRouter({
 			}
 			await deleteSchedule(input.scheduleId);
 
-			if (process.env.JOBS_URL) {
+			if (runsOnExternalJobsService(resolveScheduleServerId(scheduleItem))) {
 				await removeJob({
 					cronSchedule: scheduleItem.cronExpression,
 					scheduleId: scheduleItem.scheduleId,
@@ -435,6 +481,19 @@ export const scheduleRouter = createTRPCRouter({
 								"Only owners and admins can manage server-level schedules.",
 						});
 					}
+				}
+
+				// Host-level schedules run shell commands on the shared local
+				// host, so an owner/admin role in the active organization is not enough.
+				if (
+					scheduleItem.scheduleType === "nearzero-server" &&
+					!(await isInstanceAdministrator(ctx.user.id))
+				) {
+					throw new TRPCError({
+						code: "FORBIDDEN",
+						message:
+							"Only instance administrators can manage host-level schedules.",
+					});
 				}
 
 				if (scheduleItem.scheduleType === "server" && scheduleItem.serverId) {

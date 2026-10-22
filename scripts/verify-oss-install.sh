@@ -194,8 +194,8 @@ if grep -R -Fq 'PUBLIC_METRICS_TOKEN' "$ROOT_DIR/apps/console/src" "$ROOT_DIR/ap
 	fail "monitoring credentials must not be exposed through a PUBLIC_ browser variable"
 fi
 
-# Fresh unattended installs use bootstrap registration and must name the only
-# email allowed to claim the first owner account.
+# Unattended installs name the admin account; the installer creates it on the
+# server once the platform is running, never through web signup.
 export NEARZERO_ADMIN_EMAIL=owner@example.com
 
 run_installer() {
@@ -355,9 +355,9 @@ printf '%s\n' \
 	'NEARZERO_METRICS_TOKEN=0123456789abcdef0123456789abcdef' > "$upgrade_dir/.env"
 DRY_RUN=1 INSTALL_DIR="$upgrade_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
 	"$ROOT_DIR/scripts/install.sh" >/dev/null
-grep -Fxq 'NEARZERO_IMAGE=ghcr.io/nearzero-systems/nearzero:0.1.49' "$upgrade_dir/.env" ||
+grep -Fxq 'NEARZERO_IMAGE=ghcr.io/nearzero-systems/nearzero:0.1.50' "$upgrade_dir/.env" ||
 	fail "plain rerun did not upgrade a stale official NEARZERO_IMAGE"
-grep -Fxq 'NEARZERO_MONITORING_IMAGE=ghcr.io/nearzero-systems/monitoring:0.1.49' "$upgrade_dir/.env" ||
+grep -Fxq 'NEARZERO_MONITORING_IMAGE=ghcr.io/nearzero-systems/monitoring:0.1.50' "$upgrade_dir/.env" ||
 	fail "plain rerun did not upgrade a stale official NEARZERO_MONITORING_IMAGE"
 
 duplicate_env_dir="$TEST_ROOT/duplicate-custom-env"
@@ -424,6 +424,49 @@ FAKE_RESTORE_CAPTURE="$restore_capture" \
 "$preserve_dir/nearzero" restore-db "$restore_input" >/dev/null
 grep -Fq -- 'psql -U preserved_user preserved_db' "$backup_args" || fail "restore helper did not use the installed Postgres identity"
 grep -Fxq 'verified restore input' "$restore_capture" || fail "restore helper did not stream the selected input file"
+
+owner_fake_bin="$TEST_ROOT/owner-fake-bin"
+owner_args="$TEST_ROOT/owner-docker-args"
+owner_stdin="$TEST_ROOT/owner-docker-stdin"
+mkdir -p "$owner_fake_bin"
+printf '%s\n' \
+	'#!/usr/bin/env sh' \
+	'printf "%s\n" "$*" >> "$FAKE_DOCKER_ARGS"' \
+	'case "$*" in' \
+	'  *"owner.mjs status"*) cat > /dev/null; if [ -n "${FAKE_OWNER:-}" ]; then printf "%s\n" "$FAKE_OWNER"; exit 0; fi; exit 3 ;;' \
+	'  *"owner.mjs create"*|*"owner.mjs reset-password"*) cat > "$FAKE_DOCKER_STDIN"; head -n 1 "$FAKE_DOCKER_STDIN" ;;' \
+	'esac' > "$owner_fake_bin/docker"
+chmod 0755 "$owner_fake_bin/docker"
+grep -Fq 'create-owner' "$preserve_dir/nearzero" || fail "operations helper has no create-owner command"
+"$preserve_dir/nearzero" help | grep -Fq 'reset-password' || fail "operations helper help does not list reset-password"
+if [[ "$(id -u)" == "0" ]]; then
+	: > "$owner_args"
+	printf 'Owner@Example.com\ncorrect-horse-battery\n' |
+		PATH="$owner_fake_bin:$PATH" INSTALL_DIR="$preserve_dir" \
+		FAKE_DOCKER_ARGS="$owner_args" FAKE_DOCKER_STDIN="$owner_stdin" \
+		"$preserve_dir/nearzero" create-owner >/dev/null || fail "create-owner failed on a server without an owner"
+	grep -Fq 'exec -T platform node dist/owner.mjs create' "$owner_args" || fail "create-owner did not call the owner CLI"
+	[[ "$(sed -n 2p "$owner_stdin")" == "correct-horse-battery" ]] || fail "create-owner did not pass the password over stdin"
+	if grep -Fq 'correct-horse-battery' "$owner_args"; then
+		fail "create-owner passed the password as a process argument"
+	fi
+	if printf 'other@example.com\ncorrect-horse-battery\n' |
+		PATH="$owner_fake_bin:$PATH" INSTALL_DIR="$preserve_dir" FAKE_OWNER=owner@example.com \
+		FAKE_DOCKER_ARGS="$owner_args" FAKE_DOCKER_STDIN="$owner_stdin" \
+		"$preserve_dir/nearzero" create-owner >/dev/null 2>&1; then
+		fail "create-owner replaced an existing owner"
+	fi
+	: > "$owner_stdin"
+	printf '\nnew-password-123\n' |
+		PATH="$owner_fake_bin:$PATH" INSTALL_DIR="$preserve_dir" FAKE_OWNER=owner@example.com \
+		FAKE_DOCKER_ARGS="$owner_args" FAKE_DOCKER_STDIN="$owner_stdin" \
+		"$preserve_dir/nearzero" reset-password >/dev/null || fail "reset-password failed"
+	[[ "$(sed -n 1p "$owner_stdin")" == "owner@example.com" ]] || fail "reset-password did not default to the owner email"
+else
+	if PATH="$owner_fake_bin:$PATH" INSTALL_DIR="$preserve_dir" "$preserve_dir/nearzero" create-owner </dev/null >/dev/null 2>&1; then
+		fail "create-owner ran without root"
+	fi
+fi
 
 split_url_dir="$TEST_ROOT/split-public-urls"
 DRY_RUN=1 \
@@ -630,30 +673,63 @@ case ",$(env_value COMPOSE_PROFILES)," in
 esac
 
 invalid_dir="$TEST_ROOT/invalid"
-wizard_dir="$TEST_ROOT/browser-setup"
+no_admin_dir="$TEST_ROOT/no-admin-email"
 DRY_RUN=1 \
-	INSTALL_DIR="$wizard_dir" \
+	INSTALL_DIR="$no_admin_dir" \
 	NEARZERO_PUBLIC_IP=203.0.113.10 \
 	NEARZERO_ADMIN_EMAIL= \
-	NEARZERO_MANAGEMENT_HOSTNAME= \
-	NEARZERO_MANAGED_DNS_ZONE= \
 	NEARZERO_REGISTRATION_MODE=bootstrap \
-	"$ROOT_DIR/scripts/install.sh" >/dev/null || fail "browser-deferred bootstrap setup was rejected"
-[[ "$(env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH "$wizard_dir/.env")" =~ ^[a-f0-9]{64}$ ]] ||
-	fail "browser setup token hash was not persisted"
-[[ -z "$(env_value NEARZERO_ADMIN_EMAIL "$wizard_dir/.env")" ]] ||
-	fail "browser-deferred setup should leave admin email empty for the wizard"
-[[ -z "$(env_value NEARZERO_MANAGEMENT_HOSTNAME "$wizard_dir/.env")" ]] ||
-	fail "browser-deferred setup should leave management hostname empty for the wizard"
+	"$ROOT_DIR/scripts/install.sh" >/dev/null || fail "bootstrap install without an admin email was rejected"
+[[ -z "$(env_value NEARZERO_ADMIN_EMAIL "$no_admin_dir/.env")" ]] ||
+	fail "install without an admin email invented one"
+if grep -q 'INSTALL_SETUP_TOKEN' "$no_admin_dir/.env" "$no_admin_dir/docker-compose.prod.yml"; then
+	fail "installer still writes a browser setup token"
+fi
+
+# Installs from the retired browser-setup flow drop the token on rerun.
+printf '%s\n' "NEARZERO_INSTALL_SETUP_TOKEN_HASH=$(printf 'a%.0s' {1..64})" >> "$no_admin_dir/.env"
+DRY_RUN=1 INSTALL_DIR="$no_admin_dir" NEARZERO_PUBLIC_IP=203.0.113.10 \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null || fail "rerun of a browser-setup install failed"
+if grep -q 'INSTALL_SETUP_TOKEN' "$no_admin_dir/.env"; then
+	fail "rerun kept the retired browser setup token"
+fi
+
+DRY_RUN=1 \
+	INSTALL_DIR="$TEST_ROOT/fresh-invite-only" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_REGISTRATION_MODE=invite_only \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1 ||
+	fail "invite-only registration was rejected even though the owner is created on the server"
 
 if DRY_RUN=1 \
 	INSTALL_DIR="$invalid_dir" \
 	NEARZERO_PUBLIC_IP=203.0.113.10 \
 	NEARZERO_ADMIN_EMAIL= \
-	NEARZERO_INSTALL_SETUP_TOKEN_HASH=not-a-hash \
-	NEARZERO_REGISTRATION_MODE=bootstrap \
+	NEARZERO_ADMIN_PASSWORD=correct-horse-battery \
 	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
-	fail "invalid install setup token hash was accepted"
+	fail "an admin password without an admin email was accepted"
+fi
+if DRY_RUN=1 \
+	INSTALL_DIR="$invalid_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_ADMIN_PASSWORD=short \
+	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
+	fail "an admin password shorter than 8 characters was accepted"
+fi
+password_dir="$TEST_ROOT/admin-password"
+admin_password_marker='admin-password-marker-must-stay-secret'
+if ! password_output="$(
+	DRY_RUN=1 \
+	INSTALL_DIR="$password_dir" \
+	NEARZERO_PUBLIC_IP=203.0.113.10 \
+	NEARZERO_ADMIN_PASSWORD="$admin_password_marker" \
+	"$ROOT_DIR/scripts/install.sh" 2>&1
+)"; then
+	fail "install with an admin email and password failed"
+fi
+[[ "$password_output" != *"$admin_password_marker"* ]] || fail "the admin password appeared in installer output"
+if grep -R -F -q "$admin_password_marker" "$password_dir"; then
+	fail "the admin password was written to disk"
 fi
 
 if DRY_RUN=1 \
@@ -662,15 +738,6 @@ if DRY_RUN=1 \
 	NEARZERO_REGISTRATION_MODE=unknown \
 	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
 	fail "invalid registration mode was accepted"
-fi
-
-if DRY_RUN=1 \
-	INSTALL_DIR="$TEST_ROOT/fresh-invite-only" \
-	NEARZERO_PUBLIC_IP=203.0.113.10 \
-	NEARZERO_ADMIN_EMAIL= \
-	NEARZERO_REGISTRATION_MODE=invite_only \
-	"$ROOT_DIR/scripts/install.sh" >/dev/null 2>&1; then
-	fail "invite-only registration was accepted with a fresh local database"
 fi
 
 if DRY_RUN=1 \

@@ -10,11 +10,11 @@ fi
 
 if [[ "${NEARZERO_IMAGE+x}" == "x" ]]; then NEARZERO_IMAGE_WAS_SET=1; else NEARZERO_IMAGE_WAS_SET=0; fi
 NEARZERO_INSTALLER_CDN="${NEARZERO_INSTALLER_CDN:-https://cdn.nearzero.dev}"
-NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.49}"
+NEARZERO_IMAGE="${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.50}"
 if [[ "${NEARZERO_MONITORING_IMAGE+x}" == "x" ]]; then NEARZERO_MONITORING_IMAGE_WAS_SET=1; else NEARZERO_MONITORING_IMAGE_WAS_SET=0; fi
-NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.49}"
+NEARZERO_MONITORING_IMAGE="${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.50}"
 if [[ "${NEARZERO_SCHEDULE_IMAGE+x}" == "x" ]]; then NEARZERO_SCHEDULE_IMAGE_WAS_SET=1; else NEARZERO_SCHEDULE_IMAGE_WAS_SET=0; fi
-NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.49}"
+NEARZERO_SCHEDULE_IMAGE="${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.50}"
 if [[ "${NEARZERO_DNS_IMAGE+x}" == "x" ]]; then NEARZERO_DNS_IMAGE_WAS_SET=1; else NEARZERO_DNS_IMAGE_WAS_SET=0; fi
 NEARZERO_DNS_IMAGE="${NEARZERO_DNS_IMAGE:-coredns/coredns:1.14.6}"
 if [[ "${NEARZERO_HEROKU_BUILDER_IMAGE+x}" == "x" ]]; then
@@ -114,13 +114,13 @@ else
 	NEARZERO_REGISTRATION_MODE_WAS_SET=0
 fi
 NEARZERO_REGISTRATION_MODE="${NEARZERO_REGISTRATION_MODE:-bootstrap}"
-if [[ "${NEARZERO_INSTALL_SETUP_TOKEN_HASH+x}" == "x" ]]; then
-	NEARZERO_INSTALL_SETUP_TOKEN_HASH_WAS_SET=1
-else
-	NEARZERO_INSTALL_SETUP_TOKEN_HASH_WAS_SET=0
-fi
-NEARZERO_INSTALL_SETUP_TOKEN_HASH="${NEARZERO_INSTALL_SETUP_TOKEN_HASH:-}"
-INSTALL_SETUP_TOKEN_PLAINTEXT=""
+# The admin password only travels to the platform over stdin. It is never
+# written to disk or passed on to child processes.
+ADMIN_PASSWORD="${NEARZERO_ADMIN_PASSWORD:-}"
+unset NEARZERO_ADMIN_PASSWORD
+ADMIN_PASSWORD_GENERATED=0
+OWNER_EMAIL=""
+OWNER_STATUS=""
 if [[ "${NEARZERO_PLATFORM_DOMAIN+x}" == "x" ]]; then
 	NEARZERO_PLATFORM_DOMAIN_WAS_SET=1
 else
@@ -187,7 +187,9 @@ API_KEY="${API_KEY:-}"
 SKIP_DOCKER_INSTALL="${SKIP_DOCKER_INSTALL:-}"
 DRY_RUN="${DRY_RUN:-}"
 NEARZERO_NONINTERACTIVE="${NEARZERO_NONINTERACTIVE:-false}"
-INTERACTIVE_FIRST_RUN=0
+NEARZERO_VERBOSE="${NEARZERO_VERBOSE:-false}"
+INSTALL_LOG=/dev/null
+CURRENT_STEP=""
 if [[ "${CONSOLE_URL+x}" == "x" ]]; then
 	CONSOLE_URL_WAS_SET=1
 else
@@ -222,27 +224,94 @@ else
 	SUDO=(sudo)
 fi
 
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+	STYLE_BOLD=$'\033[1m'
+	STYLE_DIM=$'\033[2m'
+	STYLE_GREEN=$'\033[32m'
+	STYLE_RED=$'\033[31m'
+	STYLE_RESET=$'\033[0m'
+else
+	STYLE_BOLD=""
+	STYLE_DIM=""
+	STYLE_GREEN=""
+	STYLE_RED=""
+	STYLE_RESET=""
+fi
+
 log() {
-	printf 'nearzero: %s\n' "$*"
+	end_step_line
+	printf '  %s\n' "$*"
+}
+
+# Long-running steps show one line that turns into a check mark when done.
+step_start() {
+	CURRENT_STEP="$*"
+	if [[ -t 1 ]] && ! is_enabled "$NEARZERO_VERBOSE"; then
+		printf '  %s…%s %s' "$STYLE_DIM" "$STYLE_RESET" "$*"
+	else
+		printf '  … %s\n' "$*"
+		CURRENT_STEP=""
+	fi
+}
+
+end_step_line() {
+	if [[ -n "$CURRENT_STEP" ]]; then
+		printf '\r\033[K'
+		CURRENT_STEP=""
+	fi
+}
+
+step_done() {
+	end_step_line
+	printf '  %s✓%s %s\n' "$STYLE_GREEN" "$STYLE_RESET" "$*"
 }
 
 die() {
-	printf 'nearzero: %s\n' "$*" >&2
+	end_step_line
+	printf '\n  %s✗ %s%s\n' "$STYLE_RED" "$*" "$STYLE_RESET" >&2
 	exit 1
 }
 
-run() {
-	log "+ $*"
-	if [[ "$DRY_RUN" != "1" ]]; then
-		"$@"
+# Show the end of the install log, then stop.
+die_with_log() {
+	end_step_line
+	printf '\n  %s✗ %s%s\n' "$STYLE_RED" "$*" "$STYLE_RESET" >&2
+	if [[ "$INSTALL_LOG" != /dev/null && -s "$INSTALL_LOG" ]]; then
+		printf '\n  Last lines of %s:\n' "$INSTALL_LOG" >&2
+		tail -n 25 "$INSTALL_LOG" | sed 's/^/    /' >&2
+	fi
+	printf '\n  Fix the problem above, then run the same install command again.\n' >&2
+	exit 1
+}
+
+# Command output goes to the install log; NEARZERO_VERBOSE=true shows it.
+run_sudo() {
+	if [[ "$DRY_RUN" == "1" ]]; then
+		printf '  + %s\n' "${SUDO[*]:+${SUDO[*]} }$*"
+		return 0
+	fi
+	if is_enabled "$NEARZERO_VERBOSE"; then
+		printf '  + %s\n' "${SUDO[*]:+${SUDO[*]} }$*"
+		"${SUDO[@]}" "$@"
+		return
+	fi
+	if ! "${SUDO[@]}" "$@" >>"$INSTALL_LOG" 2>&1; then
+		die_with_log "This command failed: $*"
 	fi
 }
 
-run_sudo() {
-	log "+ ${SUDO[*]} $*"
-	if [[ "$DRY_RUN" != "1" ]]; then
-		"${SUDO[@]}" "$@"
-	fi
+start_install_log() {
+	[[ "$DRY_RUN" == "1" ]] && return 0
+	INSTALL_LOG="$(mktemp "${TMPDIR:-/tmp}/nearzero-install.XXXXXX")"
+	chmod 0600 "$INSTALL_LOG"
+}
+
+# Keep the log of the last successful install next to the configuration.
+keep_install_log() {
+	[[ "$DRY_RUN" == "1" || "$INSTALL_LOG" == /dev/null ]] && return 0
+	"${SUDO[@]}" install -o root -g root -m 0600 "$INSTALL_LOG" "$INSTALL_DIR/install.log" 2>/dev/null || true
+	rm -f "$INSTALL_LOG"
+	INSTALL_LOG=/dev/null
 }
 
 write_file() {
@@ -294,7 +363,7 @@ resolve_preserved_release_image() {
 	existing_tag="$(image_ref_tag "$existing")"
 	installer_tag="$(image_ref_tag "$current_default")"
 	if [[ "$(printf '%s\n' "$existing_tag" "$installer_tag" | sort -V | tail -1)" == "$installer_tag" && "$existing_tag" != "$installer_tag" ]]; then
-		printf 'nearzero: Upgrading %s from %s to %s\n' "$var_name" "$existing" "$current_default" >&2
+		printf '  Upgrading %s from %s to %s\n' "$var_name" "$existing" "$current_default" >&2
 		printf '%s\n' "$current_default"
 		return
 	fi
@@ -351,7 +420,8 @@ rand_hex() {
 	if command -v openssl >/dev/null 2>&1; then
 		openssl rand -hex "$bytes"
 	else
-		tr -dc 'a-f0-9' < /dev/urandom | head -c "$((bytes * 2))"
+		# `od` reads a fixed byte count; `tr | head` dies of SIGPIPE under pipefail.
+		od -An -N"$bytes" -tx1 /dev/urandom | LC_ALL=C tr -d '[:space:]'
 	fi
 }
 
@@ -476,33 +546,87 @@ is_enabled() {
 	esac
 }
 
+# Prompts use /dev/tty, so they work when the script itself arrives on stdin
+# (`curl ... | sudo bash`).
 can_prompt() {
-	[[ -t 0 && -t 1 ]] && ! is_enabled "$NEARZERO_NONINTERACTIVE"
+	[[ "$DRY_RUN" != "1" ]] && ! is_enabled "$NEARZERO_NONINTERACTIVE" && (exec </dev/tty) 2>/dev/null
 }
 
-prompt_value() {
+tty_read() {
 	local variable_name="$1"
 	local message="$2"
 	local reply=""
-	printf '%s' "$message"
-	if ! IFS= read -r reply; then
-		die "Interactive input ended before first-run configuration was complete; rerun with the documented environment variables"
-	fi
+	printf '%s' "$message" >/dev/tty
+	IFS= read -r reply </dev/tty || die "Input ended before the admin account was entered"
 	printf -v "$variable_name" '%s' "$reply"
 }
 
-prompt_value_with_default() {
+tty_read_secret() {
 	local variable_name="$1"
 	local message="$2"
-	local default_value="$3"
-	local value=""
-	if [[ -n "$default_value" ]]; then
-		prompt_value value "$message [$default_value]: "
-		value="${value:-$default_value}"
-	else
-		prompt_value value "$message: "
+	local reply=""
+	printf '%s' "$message" >/dev/tty
+	if ! IFS= read -rs reply </dev/tty; then
+		printf '\n' >/dev/tty
+		die "Input ended before the admin account was entered"
 	fi
-	printf -v "$variable_name" '%s' "$value"
+	printf '\n' >/dev/tty
+	printf -v "$variable_name" '%s' "$reply"
+}
+
+trim() {
+	local value="$1"
+	value="${value#"${value%%[![:space:]]*}"}"
+	value="${value%"${value##*[![:space:]]}"}"
+	printf '%s' "$value"
+}
+
+validate_admin_password() {
+	if (( ${#ADMIN_PASSWORD} < 8 || ${#ADMIN_PASSWORD} > 128 )); then
+		die "NEARZERO_ADMIN_PASSWORD must be 8 to 128 characters"
+	fi
+	if [[ "$ADMIN_PASSWORD" == *$'\n'* || "$ADMIN_PASSWORD" == *$'\r'* ]]; then
+		die "NEARZERO_ADMIN_PASSWORD must not contain line breaks"
+	fi
+}
+
+# Ask for the admin account. $1 is an email to offer as the default.
+prompt_admin_account() {
+	local suggested="${1:-}"
+	local email=""
+	local password=""
+	local confirm=""
+	end_step_line
+	printf '\n  %sCreate your admin account%s\n' "$STYLE_BOLD" "$STYLE_RESET" >/dev/tty
+	while [[ -z "$email" ]]; do
+		if [[ -n "$suggested" ]]; then
+			tty_read email "  Email [$suggested]: "
+			email="${email:-$suggested}"
+		else
+			tty_read email "  Email: "
+		fi
+		email="$(trim "$email" | tr '[:upper:]' '[:lower:]')"
+		if ! email="$(normalize_admin_email "$email" 2>/dev/null)" || [[ -z "$email" ]]; then
+			printf '  Enter a valid email address, like you@company.com.\n' >/dev/tty
+			email=""
+		fi
+	done
+	while true; do
+		tty_read_secret password "  Password (8+ characters): "
+		if (( ${#password} < 8 || ${#password} > 128 )); then
+			printf '  Use 8 to 128 characters.\n' >/dev/tty
+			continue
+		fi
+		tty_read_secret confirm "  Confirm password: "
+		if [[ "$password" == "$confirm" ]]; then
+			break
+		fi
+		printf "  The passwords don't match. Try again.\n" >/dev/tty
+	done
+	printf '\n' >/dev/tty
+	NEARZERO_ADMIN_EMAIL="$email"
+	NEARZERO_ADMIN_EMAIL_WAS_SET=1
+	ADMIN_PASSWORD="$password"
 }
 
 validate_boolean() {
@@ -759,101 +883,20 @@ resolve_data_mode() {
 	fi
 }
 
-generate_install_setup_token_plaintext() {
-	local token
-	if command -v openssl >/dev/null 2>&1; then
-		# 24 random bytes are 192 bits. Converting standard base64 to base64url
-		# keeps the token intact in a URL fragment without truncating a pipeline.
-		token="$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '\r\n=')"
-	elif command -v od >/dev/null 2>&1; then
-		# `od` consumes a finite byte count, unlike `tr | head`, which can fail under
-		# pipefail and non-C locales after generating an otherwise valid token.
-		token="$(od -An -N24 -tx1 /dev/urandom | LC_ALL=C tr -d '[:space:]')"
-	else
-		die "openssl or od is required to generate an install setup token"
-	fi
-	if (( ${#token} < 32 || ${#token} > 256 )) || [[ "$token" == *[!A-Za-z0-9_-]* ]]; then
-		die "Failed to generate a secure install setup token"
-	fi
-	printf '%s\n' "$token"
-}
-
-generate_install_setup_token() {
-	# High-entropy token for the browser wizard. Only the SHA-256 hash is persisted.
-	INSTALL_SETUP_TOKEN_PLAINTEXT="$(generate_install_setup_token_plaintext)"
-	if command -v sha256sum >/dev/null 2>&1; then
-		NEARZERO_INSTALL_SETUP_TOKEN_HASH="$(printf '%s' "$INSTALL_SETUP_TOKEN_PLAINTEXT" | sha256sum | awk '{print $1}')"
-	elif command -v shasum >/dev/null 2>&1; then
-		NEARZERO_INSTALL_SETUP_TOKEN_HASH="$(printf '%s' "$INSTALL_SETUP_TOKEN_PLAINTEXT" | shasum -a 256 | awk '{print $1}')"
-	else
-		die "sha256sum or shasum is required to hash the install setup token"
-	fi
-	NEARZERO_INSTALL_SETUP_TOKEN_HASH_WAS_SET=1
-}
-
 configure_first_run() {
 	validate_boolean "NEARZERO_NONINTERACTIVE" "$NEARZERO_NONINTERACTIVE"
+	validate_boolean "NEARZERO_VERBOSE" "$NEARZERO_VERBOSE"
+	if [[ -n "$ADMIN_PASSWORD" ]]; then
+		validate_admin_password
+		[[ -n "$NEARZERO_ADMIN_EMAIL" ]] || die "NEARZERO_ADMIN_PASSWORD needs NEARZERO_ADMIN_EMAIL"
+	fi
 	if [[ -e "$INSTALL_DIR/.env" ]]; then
 		return
 	fi
 	NEARZERO_REGISTRATION_MODE="$(normalize_registration_mode "$NEARZERO_REGISTRATION_MODE")"
-	if ! can_prompt; then
-		log "Non-interactive first run; using supplied environment variables and safe defaults"
-		# Browser wizard token is generated when domains/admin are deferred to the UI.
-		if [[ -z "$NEARZERO_MANAGEMENT_HOSTNAME" && -z "$NEARZERO_ADMIN_EMAIL" && -z "$NEARZERO_INSTALL_SETUP_TOKEN_HASH" ]]; then
-			generate_install_setup_token
-		fi
-		return
-	fi
-	INTERACTIVE_FIRST_RUN=1
-
-	log "First-run infrastructure choices"
-	if [[ "$NEARZERO_ENABLE_MANAGED_DNS_WAS_SET" == "0" ]]; then
-		local enable_dns_answer="Y"
-		prompt_value_with_default enable_dns_answer \
-			"Enable Nearzero managed DNS on UDP/TCP 53? [Y/n]" \
-			"Y"
-		case "${enable_dns_answer,,}" in
-			n|no|false|0) NEARZERO_ENABLE_MANAGED_DNS=false ;;
-			*) NEARZERO_ENABLE_MANAGED_DNS=true ;;
-		esac
-		NEARZERO_ENABLE_MANAGED_DNS_WAS_SET=1
-	fi
-
-	# Domain hostnames and admin email are collected in the browser wizard when
-	# the operator did not already supply them. Keep non-empty env overrides.
-	if [[ "$NEARZERO_MANAGEMENT_HOSTNAME_WAS_SET" == "1" && -n "$NEARZERO_MANAGEMENT_HOSTNAME" ]]; then
-		NEARZERO_MANAGEMENT_HOSTNAME="$(normalize_management_hostname "$NEARZERO_MANAGEMENT_HOSTNAME")"
-	else
-		NEARZERO_MANAGEMENT_HOSTNAME=""
-		NEARZERO_MANAGEMENT_HOSTNAME_WAS_SET=0
-	fi
-	if is_enabled "$NEARZERO_ENABLE_MANAGED_DNS"; then
-		if [[ "$NEARZERO_MANAGED_DNS_ZONE_WAS_SET" == "1" && -n "$NEARZERO_MANAGED_DNS_ZONE" ]]; then
-			NEARZERO_MANAGED_DNS_ZONE="$(normalize_managed_dns_zone "$NEARZERO_MANAGED_DNS_ZONE")"
-		else
-			NEARZERO_MANAGED_DNS_ZONE=""
-			NEARZERO_MANAGED_DNS_ZONE_WAS_SET=0
-		fi
-	else
-		NEARZERO_MANAGED_DNS_ZONE=""
-	fi
-	if [[ "$NEARZERO_ADMIN_EMAIL_WAS_SET" == "1" && -n "$NEARZERO_ADMIN_EMAIL" ]]; then
-		NEARZERO_ADMIN_EMAIL="$(normalize_admin_email "$NEARZERO_ADMIN_EMAIL")"
-	else
-		NEARZERO_ADMIN_EMAIL=""
-		NEARZERO_ADMIN_EMAIL_WAS_SET=0
-	fi
-	if [[ "$NEARZERO_MANAGED_DNS_SOA_EMAIL_WAS_SET" == "0" && -n "$NEARZERO_ADMIN_EMAIL" ]]; then
-		NEARZERO_MANAGED_DNS_SOA_EMAIL="$NEARZERO_ADMIN_EMAIL"
-		NEARZERO_MANAGED_DNS_SOA_EMAIL_WAS_SET=1
-	fi
-
-	if [[ -z "$NEARZERO_MANAGEMENT_HOSTNAME" || -z "$NEARZERO_ADMIN_EMAIL" ]]; then
-		if [[ -z "$NEARZERO_INSTALL_SETUP_TOKEN_HASH" ]]; then
-			generate_install_setup_token
-			log "Browser setup will collect the management hostname and administrator email"
-		fi
+	# Ask before the long download so the rest of the install runs unattended.
+	if [[ -z "$ADMIN_PASSWORD" ]] && can_prompt; then
+		prompt_admin_account "$NEARZERO_ADMIN_EMAIL"
 	fi
 }
 
@@ -976,14 +1019,13 @@ Self-hosted Platform as a Service · Community Edition
 EOF
 }
 
-announce_install() {
-	log "Installing Nearzero into $INSTALL_DIR"
-}
-
 ensure_sudo() {
-	if [[ "$(id -u)" != "0" && ${#SUDO[@]} -gt 0 ]] && ! command -v sudo >/dev/null 2>&1; then
-		die "sudo is required when not running as root"
+	if [[ "$(id -u)" == "0" || "$DRY_RUN" == "1" ]]; then
+		return
 	fi
+	command -v sudo >/dev/null 2>&1 || die "Run the installer as root: curl -fsSL https://cdn.nearzero.dev/install.sh | sudo bash"
+	# Ask for the sudo password now rather than in the middle of a step.
+	sudo -v || die "Nearzero needs root access. Run: curl -fsSL https://cdn.nearzero.dev/install.sh | sudo bash"
 }
 
 ensure_docker() {
@@ -991,6 +1033,7 @@ ensure_docker() {
 		return
 	fi
 	if command -v docker >/dev/null 2>&1; then
+		step_done "Docker is installed"
 		return
 	fi
 	if [[ "$SKIP_DOCKER_INSTALL" == "1" || "$SKIP_DOCKER_INSTALL" == "true" ]]; then
@@ -1002,7 +1045,7 @@ ensure_docker() {
 	local os_id="${ID:-}"
 	local os_like=" ${ID_LIKE:-} "
 
-	log "Installing Docker from a signed package repository"
+	step_start "Installing Docker"
 	case "$os_id" in
 		ubuntu | debian | raspbian)
 			command -v apt-get >/dev/null 2>&1 || die "apt-get is required to install Docker on $os_id"
@@ -1059,8 +1102,9 @@ ensure_docker() {
 	elif command -v service >/dev/null 2>&1; then
 		run_sudo service docker start
 	else
-		log "Docker was installed; start the Docker daemon before continuing if it is not already running"
+		log "Docker was installed; start the Docker daemon if it is not already running"
 	fi
+	step_done "Installed Docker"
 }
 
 ensure_docker_compose() {
@@ -1088,6 +1132,7 @@ ensure_docker_compose() {
 	esac
 
 	command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required to verify Docker Compose"
+	step_start "Installing Docker Compose"
 	local compose_asset="docker-compose-linux-${compose_arch}"
 	local compose_url="https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_BOOTSTRAP_VERSION}/${compose_asset}"
 	local compose_tmp
@@ -1107,6 +1152,7 @@ ensure_docker_compose() {
 	run_sudo install -m 0755 "$compose_tmp" /usr/local/lib/docker/cli-plugins/docker-compose
 	rm -f "$compose_tmp"
 	"${SUDO[@]}" docker compose version >/dev/null 2>&1 || die "Verified Docker Compose installation failed"
+	step_done "Installed Docker Compose"
 }
 
 write_compose_base() {
@@ -1115,7 +1161,7 @@ name: nearzero
 
 services:
   dns-init:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.49}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.50}
     profiles: ["managed-dns"]
     entrypoint: ["bun", "/app/dns-init.ts"]
     environment:
@@ -1163,7 +1209,7 @@ services:
     restart: unless-stopped
 
   platform:
-    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.49}
+    image: ${NEARZERO_IMAGE:-ghcr.io/nearzero-systems/nearzero:0.1.50}
     env_file:
       - path: .env
         required: false
@@ -1173,10 +1219,9 @@ services:
       NEARZERO_METRICS_URL: ${NEARZERO_METRICS_URL:-http://monitoring:${NEARZERO_METRICS_PORT:-4500}/metrics}
       NEARZERO_METRICS_TOKEN: ${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}
       NEARZERO_METRICS_PORT: ${NEARZERO_METRICS_PORT:-4500}
-      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.49}
+      NEARZERO_MONITORING_IMAGE: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.50}
       NEARZERO_ADMIN_EMAIL: ${NEARZERO_ADMIN_EMAIL:-}
       NEARZERO_REGISTRATION_MODE: ${NEARZERO_REGISTRATION_MODE:-bootstrap}
-      NEARZERO_INSTALL_SETUP_TOKEN_HASH: ${NEARZERO_INSTALL_SETUP_TOKEN_HASH:-}
       NEARZERO_ENABLE_MANAGED_DNS: ${NEARZERO_ENABLE_MANAGED_DNS:-true}
       NEARZERO_MANAGEMENT_HOSTNAME: ${NEARZERO_MANAGEMENT_HOSTNAME:-}
       NEARZERO_MANAGED_DNS_ZONE: ${NEARZERO_MANAGED_DNS_ZONE:-}
@@ -1198,7 +1243,7 @@ services:
 
   monitoring:
     container_name: nearzero-monitoring
-    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.49}
+    image: ${NEARZERO_MONITORING_IMAGE:-ghcr.io/nearzero-systems/monitoring:0.1.50}
     environment:
       METRICS_CONFIG: '{"server":{"type":"Nearzero","refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"port":${NEARZERO_METRICS_PORT:-4500},"token":"${NEARZERO_METRICS_TOKEN:?NEARZERO_METRICS_TOKEN is required}","urlCallback":"${NEARZERO_METRICS_CALLBACK_URL:-http://platform:3000/api/trpc/notification.receiveNotification}","retentionDays":${NEARZERO_METRICS_RETENTION_DAYS:-2},"cronJob":"${NEARZERO_METRICS_CRON:-0 0 * * *}","thresholds":{"cpu":0,"memory":0}},"containers":{"refreshRate":${NEARZERO_METRICS_REFRESH_SECONDS:-5},"services":{"include":[],"exclude":[]}}}'
       HOST_SYS: /host/sys
@@ -1220,7 +1265,7 @@ services:
     restart: unless-stopped
 
   schedules:
-    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.49}
+    image: ${NEARZERO_SCHEDULE_IMAGE:-ghcr.io/nearzero-systems/schedule:0.1.50}
     profiles: ["schedules"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
@@ -1313,7 +1358,7 @@ sync_data_service_overlay() {
 write_env() {
 	local host private_ip console_url platform_url desired_console_url postgres_password auth_secret local_redis_url metrics_token trusted_origins preserved_custom_env
 	local better_auth_url git_provider_base_url platform_domain compose_profiles management_hostname managed_dns_zone managed_dns_soa_email
-	local public_ip admin_email registration_mode install_setup_token_hash
+	local public_ip admin_email registration_mode
 	local platform_domain_shared_edge jobs_url api_key
 	local existing_auth_secret existing_postgres_password existing_metrics_token existing_database_url existing_redis_url
 	local existing_console_url existing_platform_url existing_better_auth_url existing_git_provider_base_url existing_trusted_origins
@@ -1442,20 +1487,6 @@ write_env() {
 		registration_mode="open"
 	else
 		registration_mode="bootstrap"
-	fi
-	if [[ "$NEARZERO_INSTALL_SETUP_TOKEN_HASH_WAS_SET" == "1" ]]; then
-		install_setup_token_hash="$(printf '%s' "$NEARZERO_INSTALL_SETUP_TOKEN_HASH" | tr '[:upper:]' '[:lower:]')"
-	else
-		install_setup_token_hash="$(existing_env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH | tr '[:upper:]' '[:lower:]')"
-	fi
-	if [[ -n "$install_setup_token_hash" && ! "$install_setup_token_hash" =~ ^[a-f0-9]{64}$ ]]; then
-		die "NEARZERO_INSTALL_SETUP_TOKEN_HASH must be a 64-character lowercase hex SHA-256 digest"
-	fi
-	if [[ "$registration_mode" == "bootstrap" && -z "$admin_email" && -z "$install_setup_token_hash" ]]; then
-		die "NEARZERO_ADMIN_EMAIL is required when NEARZERO_REGISTRATION_MODE=bootstrap unless a browser setup token hash is configured"
-	fi
-	if ! installed_file_exists "$INSTALL_DIR/.env" && [[ "$registration_mode" == "invite_only" ]]; then
-		die "NEARZERO_REGISTRATION_MODE=invite_only cannot be used on a first installer run because ownership has not been established; use bootstrap"
 	fi
 	if [[ ( -n "$management_hostname" || -n "$managed_dns_zone" ) && -z "$public_ip" ]]; then
 		die "NEARZERO_PUBLIC_IP is required when configuring public management or managed DNS; automatic public-IP detection failed"
@@ -1664,7 +1695,6 @@ write_env() {
 	validate_dotenv_unquoted_value "NEARZERO_MANAGED_DNS_SOA_EMAIL" "$managed_dns_soa_email"
 	validate_dotenv_unquoted_value "NEARZERO_ADMIN_EMAIL" "$admin_email"
 	validate_dotenv_unquoted_value "NEARZERO_REGISTRATION_MODE" "$registration_mode"
-	validate_dotenv_unquoted_value "NEARZERO_INSTALL_SETUP_TOKEN_HASH" "$install_setup_token_hash"
 	validate_dotenv_unquoted_value "NEARZERO_DATA_MODE" "$NEARZERO_DATA_MODE"
 	validate_dotenv_unquoted_value "NEARZERO_PLATFORM_DOMAIN" "$platform_domain"
 	validate_dotenv_unquoted_value "NEARZERO_METRICS_TOKEN" "$metrics_token"
@@ -1698,7 +1728,6 @@ NEARZERO_MANAGED_DNS_ZONE=${managed_dns_zone}
 NEARZERO_MANAGED_DNS_SOA_EMAIL=${managed_dns_soa_email}
 NEARZERO_ADMIN_EMAIL=${admin_email}
 NEARZERO_REGISTRATION_MODE=${registration_mode}
-NEARZERO_INSTALL_SETUP_TOKEN_HASH=${install_setup_token_hash}
 NEARZERO_DATA_MODE=${NEARZERO_DATA_MODE}
 NEARZERO_PLATFORM_DOMAIN=${platform_domain}
 NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE=${platform_domain_shared_edge}
@@ -1746,54 +1775,6 @@ ${preserved_custom_env}
 EOF
 }
 
-confirm_first_run_configuration() {
-	[[ "$INTERACTIVE_FIRST_RUN" == "1" ]] || return 0
-	local management_hostname managed_dns_zone public_ip admin_email registration_mode data_mode console_url bind_address management_url answer
-	management_hostname="$(existing_env_value NEARZERO_MANAGEMENT_HOSTNAME)"
-	managed_dns_zone="$(existing_env_value NEARZERO_MANAGED_DNS_ZONE)"
-	public_ip="$(existing_env_value NEARZERO_PUBLIC_IP)"
-	admin_email="$(existing_env_value NEARZERO_ADMIN_EMAIL)"
-	registration_mode="$(existing_env_value NEARZERO_REGISTRATION_MODE)"
-	data_mode="$(existing_env_value NEARZERO_DATA_MODE)"
-	console_url="$(existing_env_value CONSOLE_URL)"
-	bind_address="$(existing_env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)"
-	if [[ -n "$management_hostname" ]]; then
-		management_url="$console_url"
-	elif [[ "$bind_address" == "127.0.0.1" ]]; then
-		management_url="http://127.0.0.1:${NEARZERO_CONSOLE_PORT} through SSH/VPN"
-	else
-		management_url="$console_url"
-	fi
-
-	log "Confirm first-run configuration:"
-	log "  Management URL: ${management_url}"
-	log "  Managed application zone: ${managed_dns_zone:-not configured}"
-	log "  Server public IPv4: ${public_ip:-not detected}"
-	log "  First-owner/admin email: ${admin_email:-not configured}"
-	log "  Registration mode: ${registration_mode}"
-	log "  Data services: ${data_mode}"
-	if [[ "$bind_address" == "127.0.0.1" ]]; then
-		log "  Raw management ports: loopback-only on ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT}"
-	else
-		log "  Raw management ports: ${bind_address}:${NEARZERO_PLATFORM_PORT} and ${bind_address}:${NEARZERO_CONSOLE_PORT} (explicit override; firewall from the public Internet)"
-	fi
-	while true; do
-		prompt_value answer "Continue with these values? [Y/n]: "
-		case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
-		"" | y | yes) return ;;
-		n | no)
-			if [[ "$DRY_RUN" == "1" ]]; then
-				rm -f "$INSTALL_DIR/.env" "$INSTALL_DIR/docker-compose.prod.yml" "$INSTALL_DIR/docker-compose.local-db.yml"
-			else
-				"${SUDO[@]}" rm -f "$INSTALL_DIR/.env" "$INSTALL_DIR/docker-compose.prod.yml" "$INSTALL_DIR/docker-compose.local-db.yml"
-			fi
-			die "Installation cancelled before Docker changes; rerun the installer to enter corrected values"
-			;;
-		*) log "Enter yes or no." ;;
-		esac
-	done
-}
-
 prepare_monitoring_storage() {
 	if [[ "$DRY_RUN" == "1" ]]; then
 		log "dry run: not creating /etc/nearzero/monitoring/monitoring.db"
@@ -1816,15 +1797,35 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/nearzero}"
 umask 077
 COMPOSE=(-f "$INSTALL_DIR/docker-compose.prod.yml")
 
-if [[ "${1:-}" == "setup-link" ]]; then
-	# A caller may invoke the helper with `bash -x`; disable tracing before any
-	# plaintext bootstrap credential exists.
-	set +x
-	if [[ "$(id -u)" -ne 0 ]]; then
-		echo "setup-link rotates a root-owned bootstrap credential; run: sudo nearzero setup-link" >&2
-		exit 1
-	fi
-fi
+usage() {
+	cat <<'USAGE'
+usage: nearzero <command>
+
+  status            Show the Nearzero services
+  logs [service]    Follow service logs
+  restart           Restart Nearzero
+  update            Pull the configured images and restart
+  create-owner      Create the admin account (first install only)
+  reset-password    Set a new password for an account
+  backup-db [file]  Dump the bundled Postgres database
+  restore-db file   Restore a dump into the bundled Postgres database
+USAGE
+}
+
+case "${1:-status}" in
+	help | -h | --help)
+		usage
+		exit 0
+		;;
+	create-owner | reset-password)
+		# Never trace while a password is in memory, even under `bash -x`.
+		set +x
+		if [[ "$(id -u)" -ne 0 ]]; then
+			echo "run: sudo nearzero ${1}" >&2
+			exit 1
+		fi
+		;;
+esac
 
 installed_env_value() {
 	local key="$1"
@@ -1871,210 +1872,83 @@ docker_compose() {
 	docker compose "${COMPOSE[@]}" --env-file "$INSTALL_DIR/.env" "$@"
 }
 
-bootstrap_probe_url() {
-	local bind_address platform_port probe_host
-	if ! bind_address="$(installed_env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)"; then
-		echo "missing or duplicate NEARZERO_MANAGEMENT_BIND_ADDRESS in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
-	if ! platform_port="$(installed_env_value NEARZERO_PLATFORM_PORT)"; then
-		echo "missing or duplicate NEARZERO_PLATFORM_PORT in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
-	if [[ ! "$bind_address" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] ||
-		[[ ! "$platform_port" =~ ^[0-9]+$ ]] ||
-		(( platform_port < 1 || platform_port > 65535 )); then
-		echo "invalid management bind address or platform port in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
-	case "$bind_address" in
-		0.0.0.0 | 127.0.0.1) probe_host="127.0.0.1" ;;
-		*) probe_host="$bind_address" ;;
-	esac
-	printf 'http://%s:%s/api/install/bootstrap-status\n' "$probe_host" "$platform_port"
+# `compose exec` forwards stdin even with -T; callers that do not pass
+# credentials must redirect it so the lookup cannot swallow their input.
+owner_cli() {
+	docker_compose exec -T platform node dist/owner.mjs "$@"
 }
 
-bootstrap_json_field_is() {
-	local json="$1"
-	local key="$2"
-	local expected="$3"
-	local marker tail
-	marker="\"${key}\":"
-	tail="${json#*"$marker"}"
-	[[ "$tail" != "$json" ]] || return 1
-	# Duplicate authorization fields are rejected instead of trusting the first.
-	[[ "$tail" != *"$marker"* ]] || return 1
-	case "$tail" in
-		"$expected,"* | "$expected}"*) return 0 ;;
-		*) return 1 ;;
-	esac
+console_url() {
+	installed_env_value CONSOLE_URL 2>/dev/null || true
 }
 
-bootstrap_setup_is_allowed() {
-	local probe_url="$1"
-	local response compact
-	response="$(curl --fail --silent --show-error --connect-timeout 3 --max-time 10 "$probe_url" 2>/dev/null)" || return 1
-	compact="$(printf '%s' "$response" | LC_ALL=C tr -d '[:space:]')"
-	[[ "$compact" == \{*\} ]] || return 1
-	bootstrap_json_field_is "$compact" service '"nearzero"' &&
-		bootstrap_json_field_is "$compact" community true &&
-		bootstrap_json_field_is "$compact" setupAllowed true &&
-		bootstrap_json_field_is "$compact" bootstrapClaimed false &&
-		bootstrap_json_field_is "$compact" nextSurface '"setup"'
-}
-
-generate_setup_link_token() {
-	local token
-	if command -v openssl >/dev/null 2>&1; then
-		token="$(openssl rand -base64 24 | tr '+/' '-_' | tr -d '\r\n=')"
-	elif command -v od >/dev/null 2>&1; then
-		token="$(od -An -N24 -tx1 /dev/urandom | LC_ALL=C tr -d '[:space:]')"
+# Read an email and a new password. From a terminal this prompts; otherwise
+# it reads the email and the password from the first two lines of stdin.
+read_account() {
+	local default_email="${1:-}"
+	local email="" password="" confirm=""
+	if [[ ! -t 0 ]]; then
+		IFS= read -r email || true
+		IFS= read -r password || true
+		ACCOUNT_EMAIL="${email:-$default_email}"
+		ACCOUNT_PASSWORD="$password"
+		return
+	fi
+	if [[ -n "$default_email" ]]; then
+		IFS= read -rp "Email [$default_email]: " email
+		email="${email:-$default_email}"
 	else
-		echo "openssl or od is required to generate a setup link" >&2
-		return 1
+		IFS= read -rp "Email: " email
 	fi
-	if (( ${#token} < 32 || ${#token} > 256 )) || [[ "$token" == *[!A-Za-z0-9_-]* ]]; then
-		echo "could not generate a secure setup token" >&2
-		return 1
-	fi
-	printf '%s\n' "$token"
-}
-
-hash_setup_link_token() {
-	if command -v sha256sum >/dev/null 2>&1; then
-		printf '%s' "$1" | sha256sum | awk '{print $1}'
-	elif command -v shasum >/dev/null 2>&1; then
-		printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
-	else
-		echo "sha256sum or shasum is required to rotate the setup link" >&2
-		return 1
-	fi
-}
-
-replace_setup_token_hash() {
-	local replacement="$1"
-	local env_file="$INSTALL_DIR/.env"
-	local temporary
-	if [[ ! -f "$env_file" || -L "$env_file" ]]; then
-		echo "$env_file must be a regular, non-symbolic-link file" >&2
-		return 1
-	fi
-	temporary="$(mktemp "$INSTALL_DIR/.env.setup.XXXXXX")"
-	if ! awk -F= -v replacement="$replacement" '
-		BEGIN { count = 0 }
-		$1 == "NEARZERO_INSTALL_SETUP_TOKEN_HASH" {
-			print "NEARZERO_INSTALL_SETUP_TOKEN_HASH=" replacement
-			count++
-			next
-		}
-		{ print }
-		END { if (count != 1) exit 42 }
-	' "$env_file" > "$temporary"; then
-		rm -f -- "$temporary"
-		echo "missing or duplicate NEARZERO_INSTALL_SETUP_TOKEN_HASH in $env_file" >&2
-		return 1
-	fi
-	chmod 0600 "$temporary"
-	if ! mv -f -- "$temporary" "$env_file"; then
-		rm -f -- "$temporary"
-		return 1
-	fi
-}
-
-restart_platform_for_setup_link() {
-	local timeout="$1"
-	local probe_url="$2"
-	local deadline container_id state status health
-	if ! docker_compose up -d --force-recreate --no-deps platform; then
-		return 1
-	fi
-	deadline=$((SECONDS + timeout))
-	while (( SECONDS < deadline )); do
-		container_id="$(docker_compose ps --all --quiet platform 2>/dev/null | head -n 1 || true)"
-		if [[ -z "$container_id" ]]; then
-			sleep 2
+	while true; do
+		IFS= read -rsp "Password (8+ characters): " password
+		echo
+		if (( ${#password} < 8 || ${#password} > 128 )); then
+			echo "Use 8 to 128 characters."
 			continue
 		fi
-		state="$(docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || true)"
-		status="${state%% *}"
-		health="${state#* }"
-		if [[ "$status" == "running" && ( "$health" == "healthy" || "$health" == "none" ) ]] &&
-			curl --fail --silent --show-error --connect-timeout 3 --max-time 10 "$probe_url" >/dev/null 2>&1; then
-			return 0
-		fi
-		if [[ "$status" == "exited" || "$status" == "dead" ]]; then
-			return 1
-		fi
-		sleep 2
+		IFS= read -rsp "Confirm password: " confirm
+		echo
+		[[ "$password" == "$confirm" ]] && break
+		echo "The passwords don't match. Try again."
 	done
-	return 1
+	ACCOUNT_EMAIL="$email"
+	ACCOUNT_PASSWORD="$password"
 }
 
-rotate_setup_link() {
-	local probe_url old_hash token new_hash startup_timeout console_url setup_url
-	if ! probe_url="$(bootstrap_probe_url)"; then
+create_owner() {
+	local existing status url
+	if existing="$(owner_cli status </dev/null)"; then
+		echo "This server already has an owner: $existing" >&2
+		echo "Forgot the password? Run: sudo nearzero reset-password" >&2
+		return 1
+	else
+		status=$?
+	fi
+	if (( status != 3 )); then
+		echo "Nearzero is not running. Start it with: sudo nearzero restart" >&2
 		return 1
 	fi
-	if ! bootstrap_setup_is_allowed "$probe_url"; then
-		echo "setup-link refused: this install is not an unclaimed bootstrap that currently allows setup" >&2
+	read_account "$(installed_env_value NEARZERO_ADMIN_EMAIL 2>/dev/null || true)"
+	if ! existing="$(printf '%s\n%s\n' "$ACCOUNT_EMAIL" "$ACCOUNT_PASSWORD" | owner_cli create)"; then
+		ACCOUNT_PASSWORD=""
 		return 1
 	fi
-	if ! old_hash="$(installed_env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH)" ||
-		[[ ! "$old_hash" =~ ^[a-f0-9]{64}$ ]]; then
-		echo "missing or invalid NEARZERO_INSTALL_SETUP_TOKEN_HASH in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
-	if ! startup_timeout="$(installed_env_value NEARZERO_STARTUP_TIMEOUT_SECONDS)" ||
-		[[ ! "$startup_timeout" =~ ^[0-9]+$ ]] || (( startup_timeout < 1 )); then
-		echo "missing or invalid NEARZERO_STARTUP_TIMEOUT_SECONDS in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
-	if ! console_url="$(installed_env_value CONSOLE_URL)"; then
-		echo "missing or duplicate CONSOLE_URL in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
-	case "$console_url" in
-		http://* | https://*) ;;
-		*) echo "invalid CONSOLE_URL in $INSTALL_DIR/.env; rerun the installer" >&2; return 1 ;;
-	esac
-	if [[ "$console_url" == *[[:space:]#?]* ]]; then
-		echo "invalid CONSOLE_URL in $INSTALL_DIR/.env; rerun the installer" >&2
-		return 1
-	fi
+	ACCOUNT_PASSWORD=""
+	url="$(console_url)"
+	echo "Admin account created. Sign in${url:+ at $url} as $existing"
+}
 
-	if ! token="$(generate_setup_link_token)" || ! new_hash="$(hash_setup_link_token "$token")"; then
-		token=""
+reset_password() {
+	local owner_email account_email
+	owner_email="$(owner_cli status </dev/null 2>/dev/null || true)"
+	read_account "$owner_email"
+	if ! account_email="$(printf '%s\n%s\n' "$ACCOUNT_EMAIL" "$ACCOUNT_PASSWORD" | owner_cli reset-password)"; then
+		ACCOUNT_PASSWORD=""
 		return 1
 	fi
-	if [[ "$new_hash" == "$old_hash" ]]; then
-		token=""
-		echo "could not rotate the setup credential; run setup-link again" >&2
-		return 1
-	fi
-	if ! replace_setup_token_hash "$new_hash"; then
-		token=""
-		return 1
-	fi
-
-	if ! restart_platform_for_setup_link "$startup_timeout" "$probe_url" ||
-		! bootstrap_setup_is_allowed "$probe_url"; then
-		# Restore the last usable hash when the replacement platform does not become
-		# ready or setup authorization changed during the rotation.
-		if replace_setup_token_hash "$old_hash"; then
-			restart_platform_for_setup_link "$startup_timeout" "$probe_url" >/dev/null 2>&1 || true
-		else
-			echo "warning: could not restore the previous setup-token hash" >&2
-		fi
-		token=""
-		echo "setup-link failed; the previous credential was restored when possible and no new token was disclosed" >&2
-		return 1
-	fi
-
-	setup_url="${console_url%/}/setup"
-	printf '%s\n' "A new one-time setup link is ready. Any older setup link is now invalid."
-	printf '%s#token=%s\n' "$setup_url" "$token"
-	printf '%s\n' "The credential is only in the URL fragment above and is not stored in plaintext."
-	token=""
+	ACCOUNT_PASSWORD=""
+	echo "Password updated for $account_email. Its other sessions were signed out."
 }
 
 case "${1:-status}" in
@@ -2088,8 +1962,11 @@ case "${1:-status}" in
 	restart)
 		docker_compose restart
 		;;
-	setup-link)
-		rotate_setup_link
+	create-owner)
+		create_owner
+		;;
+	reset-password)
+		reset_password
 		;;
 	update)
 		docker_compose pull
@@ -2127,45 +2004,71 @@ case "${1:-status}" in
 		docker_compose exec -T postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB" < "$file"
 		;;
 	*)
-		echo "usage: nearzero {status|logs|restart|setup-link|update|backup-db|restore-db}" >&2
+		usage >&2
 		exit 1
 		;;
 esac
 HELPER
 }
 
-start_stack() {
-	local compose_args=(-f "$INSTALL_DIR/docker-compose.prod.yml")
-	local compose_command=("${SUDO[@]}" docker compose "${compose_args[@]}" --env-file "$INSTALL_DIR/.env")
+compose() {
+	local compose_files=(-f "$INSTALL_DIR/docker-compose.prod.yml")
 	if [[ "$USE_LOCAL_SERVICES" == "1" ]]; then
-		compose_args+=(-f "$INSTALL_DIR/docker-compose.local-db.yml")
-		compose_command=("${SUDO[@]}" docker compose "${compose_args[@]}" --env-file "$INSTALL_DIR/.env")
+		compose_files+=(-f "$INSTALL_DIR/docker-compose.local-db.yml")
 	fi
+	"${SUDO[@]}" docker compose "${compose_files[@]}" --env-file "$INSTALL_DIR/.env" "$@"
+}
+
+# Run a command with its output in the install log (or on screen when verbose).
+quietly() {
+	if is_enabled "$NEARZERO_VERBOSE"; then
+		"$@"
+	else
+		"$@" >>"$INSTALL_LOG" 2>&1
+	fi
+}
+
+show_startup_failure() {
+	end_step_line
+	{
+		printf '\n  Service state:\n'
+		compose ps --all 2>&1 | sed 's/^/    /' || true
+		printf '\n  Recent service logs:\n'
+		compose logs --no-color --tail 60 2>&1 | sed 's/^/    /' || true
+	} >&2
+}
+
+start_stack() {
 	if [[ "$DRY_RUN" == "1" ]]; then
 		log "dry run: not starting Docker services"
 		return
 	fi
 	if ! is_enabled "$NEARZERO_ENABLE_MANAGED_DNS"; then
 		if "${SUDO[@]}" docker container inspect nearzero-dns >/dev/null 2>&1; then
-			log "Managed DNS disabled; removing the Nearzero CoreDNS container while preserving its volume"
+			# The CoreDNS volume is kept so managed DNS can be turned back on.
 			"${SUDO[@]}" docker container rm -f nearzero-dns >/dev/null
 		fi
 	fi
-	log "Pulling Nearzero images..."
-	"${compose_command[@]}" pull
-	log "Starting Nearzero and waiting up to ${NEARZERO_STARTUP_TIMEOUT_SECONDS}s for readiness..."
-	if "${compose_command[@]}" up --help 2>/dev/null | grep -q -- '--wait-timeout'; then
-		if ! "${compose_command[@]}" up -d --force-recreate --wait --wait-timeout "$NEARZERO_STARTUP_TIMEOUT_SECONDS" --remove-orphans; then
-			log "Startup failed. Current service state:"
-			"${compose_command[@]}" ps --all >&2 || true
-			log "Recent service logs:"
-			"${compose_command[@]}" logs --no-color --tail 100 >&2 || true
-			die "Nearzero did not become ready; fix the reported service error and rerun the installer"
+	step_start "Downloading Nearzero (a few minutes on a new server)"
+	if ! quietly compose pull; then
+		die_with_log "Could not download the Nearzero images. Check this server's internet connection."
+	fi
+	step_done "Downloaded Nearzero"
+
+	step_start "Starting Nearzero"
+	if compose up --help 2>/dev/null | grep -q -- '--wait-timeout'; then
+		if ! quietly compose up -d --force-recreate --wait --wait-timeout "$NEARZERO_STARTUP_TIMEOUT_SECONDS" --remove-orphans; then
+			show_startup_failure
+			die "Nearzero did not start. The logs above show why; fix it and run the install command again."
 		fi
+		step_done "Nearzero is running"
 		return
 	fi
 
-	"${compose_command[@]}" up -d --force-recreate --remove-orphans
+	if ! quietly compose up -d --force-recreate --remove-orphans; then
+		show_startup_failure
+		die "Nearzero did not start. The logs above show why; fix it and run the install command again."
+	fi
 	local services=(platform monitoring)
 	if [[ "$USE_LOCAL_SERVICES" == "1" ]]; then
 		services+=(postgres redis)
@@ -2181,7 +2084,7 @@ start_stack() {
 	while (( SECONDS < deadline )); do
 		all_ready=1
 		for service in "${services[@]}"; do
-			container_id="$("${compose_command[@]}" ps --all --quiet "$service" 2>/dev/null | head -n 1 || true)"
+			container_id="$(compose ps --all --quiet "$service" 2>/dev/null | head -n 1 || true)"
 			if [[ -z "$container_id" ]]; then
 				all_ready=0
 				continue
@@ -2198,139 +2101,129 @@ start_stack() {
 			fi
 		done
 		if [[ "$all_ready" == "1" ]]; then
+			step_done "Nearzero is running"
 			return
 		fi
 		sleep 2
 	done
 
-	log "Startup readiness timed out. Current service state:"
-	"${compose_command[@]}" ps --all >&2 || true
-	log "Recent service logs:"
-	"${compose_command[@]}" logs --no-color --tail 100 >&2 || true
-	die "Nearzero did not become ready within ${NEARZERO_STARTUP_TIMEOUT_SECONDS}s; fix the reported service error and rerun the installer"
+	show_startup_failure
+	die "Nearzero did not start within ${NEARZERO_STARTUP_TIMEOUT_SECONDS}s. The logs above show why; fix it and run the install command again."
 }
 
-hostname_is_in_zone() {
-	local hostname="$1"
-	local zone="$2"
-	[[ -n "$hostname" && -n "$zone" ]] &&
-		[[ "$hostname" == "$zone" || "$hostname" == *."$zone" ]]
+# Create the admin account once the platform is up. Accounts are only ever
+# created here or with `nearzero create-owner`, never from the web.
+ensure_owner_account() {
+	local existing status output
+	[[ "$DRY_RUN" == "1" ]] && return 0
+	if existing="$(compose exec -T platform node dist/owner.mjs status </dev/null 2>>"$INSTALL_LOG")"; then
+		OWNER_EMAIL="${existing##*$'\n'}"
+		OWNER_STATUS="exists"
+		ADMIN_PASSWORD=""
+		return
+	else
+		status=$?
+	fi
+	if (( status != 3 )); then
+		OWNER_STATUS="unknown"
+		ADMIN_PASSWORD=""
+		return
+	fi
+	if [[ -z "$ADMIN_PASSWORD" ]]; then
+		if can_prompt; then
+			prompt_admin_account "${NEARZERO_ADMIN_EMAIL:-$(existing_env_value NEARZERO_ADMIN_EMAIL)}"
+		elif [[ -n "$NEARZERO_ADMIN_EMAIL" ]]; then
+			ADMIN_PASSWORD="$(rand_hex 12)"
+			ADMIN_PASSWORD_GENERATED=1
+		else
+			OWNER_STATUS="missing"
+			return
+		fi
+	fi
+	step_start "Creating your admin account"
+	if output="$(printf '%s\n%s\n' "$NEARZERO_ADMIN_EMAIL" "$ADMIN_PASSWORD" |
+		compose exec -T platform node dist/owner.mjs create 2>&1)"; then
+		OWNER_EMAIL="${output##*$'\n'}"
+		OWNER_STATUS="created"
+		step_done "Created your admin account"
+	else
+		OWNER_STATUS="failed"
+		ADMIN_PASSWORD_GENERATED=0
+		log "Could not create the admin account: ${output##*$'\n'}"
+	fi
+	if [[ "$ADMIN_PASSWORD_GENERATED" != "1" ]]; then
+		ADMIN_PASSWORD=""
+	fi
 }
 
-print_next_steps() {
-	local management_hostname managed_dns_zone public_ip admin_email registration_mode console_url access_url setup_token_hash bind_address setup_url setup_link_output setup_link_url
+print_summary() {
+	local console_url management_hostname managed_dns_zone public_ip bind_address console_port
+	if [[ "$DRY_RUN" == "1" ]]; then
+		log "dry run: wrote the configuration to $INSTALL_DIR"
+		return
+	fi
+	console_url="$(existing_env_value CONSOLE_URL)"
 	management_hostname="$(existing_env_value NEARZERO_MANAGEMENT_HOSTNAME)"
 	managed_dns_zone="$(existing_env_value NEARZERO_MANAGED_DNS_ZONE)"
 	public_ip="$(existing_env_value NEARZERO_PUBLIC_IP)"
-	admin_email="$(existing_env_value NEARZERO_ADMIN_EMAIL)"
-	registration_mode="$(existing_env_value NEARZERO_REGISTRATION_MODE)"
-	setup_token_hash="$(existing_env_value NEARZERO_INSTALL_SETUP_TOKEN_HASH)"
-	console_url="$(existing_env_value CONSOLE_URL)"
 	bind_address="$(existing_env_value NEARZERO_MANAGEMENT_BIND_ADDRESS)"
-	if [[ -n "$management_hostname" ]]; then
-		access_url="$console_url"
-		setup_url="${console_url}/setup"
-	elif [[ "$bind_address" == "127.0.0.1" ]]; then
-		access_url="http://127.0.0.1:${NEARZERO_CONSOLE_PORT} (through the SSH/VPN path above)"
-		setup_url="http://127.0.0.1:${NEARZERO_CONSOLE_PORT}/setup"
-	else
-		access_url="$console_url"
-		setup_url="${console_url}/setup"
-	fi
+	console_port="$(existing_env_value NEARZERO_CONSOLE_PORT)"
+	console_port="${console_port:-4321}"
 
-	if [[ -n "$INSTALL_SETUP_TOKEN_PLAINTEXT" || ( -n "$setup_token_hash" && -z "$management_hostname" ) ]]; then
-		log "Next steps (one-time browser setup):"
-		if [[ "$bind_address" == "127.0.0.1" ]]; then
-			log "  1. Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private."
-			log "     - Open an SSH tunnel: ssh -L ${NEARZERO_CONSOLE_PORT}:127.0.0.1:${NEARZERO_CONSOLE_PORT} <user>@<server>"
-		else
-			log "  1. Open TCP ${NEARZERO_CONSOLE_PORT} (and ${NEARZERO_PLATFORM_PORT} if needed) in the host firewall / security group."
-			log "     - Console is bound on ${bind_address}:${NEARZERO_CONSOLE_PORT}."
-		fi
-		if [[ -n "$INSTALL_SETUP_TOKEN_PLAINTEXT" ]]; then
-			log "  2. Open this one-time setup URL:"
-			printf '%s#token=%s\n' "$setup_url" "$INSTALL_SETUP_TOKEN_PLAINTEXT"
-			INSTALL_SETUP_TOKEN_PLAINTEXT=""
-			log "     The credential is only in the URL fragment. It is shown once and is not stored in plaintext."
-		elif [[ "$DRY_RUN" == "1" ]]; then
-			log "  2. A real install prints a one-time setup URL here."
-		else
-			log "  2. Creating a one-time setup URL..."
-			if setup_link_output="$("${SUDO[@]}" /usr/local/bin/nearzero setup-link)"; then
-				setup_link_url="$(printf '%s\n' "$setup_link_output" | awk '/^https?:\/\// { print; exit }')"
-				if [[ -n "$setup_link_url" ]]; then
-					printf '%s\n' "$setup_link_url"
-					log "     Open that URL in a browser. It is shown once and is not stored in plaintext."
-				else
-					printf '%s\n' "$setup_link_output"
-				fi
-			else
-				log "     Could not create a setup link. When the platform is healthy, run: sudo nearzero setup-link"
+	printf '\n  %s%sNearzero is ready.%s\n\n' "$STYLE_BOLD" "$STYLE_GREEN" "$STYLE_RESET"
+	printf '    Open      %s%s%s\n' "$STYLE_BOLD" "$console_url" "$STYLE_RESET"
+	case "$OWNER_STATUS" in
+		created | exists)
+			printf '    Sign in   %s\n' "$OWNER_EMAIL"
+			if [[ "$ADMIN_PASSWORD_GENERATED" == "1" ]]; then
+				printf '    Password  %s  (shown once; change it after you sign in)\n' "$ADMIN_PASSWORD"
 			fi
-		fi
-		log "  3. In the wizard, set the management hostname (required) and optional application zone, then create DNS A/NS records."
-		log "  4. Create the first owner account with the administrator email configured in the wizard."
-		log "  5. Run 'nearzero status', test externally, and create a protected backup before the first production deployment."
-		return
-	fi
+			;;
+		*)
+			printf '    Then      create your admin account: sudo nearzero create-owner\n'
+			;;
+	esac
+	ADMIN_PASSWORD=""
+	printf '\n'
 
-	log "Next steps (the management hostname and application DNS zone are separate):"
-	log "  1. Finish DNS and firewall setup."
 	if [[ -n "$management_hostname" ]]; then
-		if hostname_is_in_zone "$management_hostname" "$managed_dns_zone"; then
-			log "     - The bootstrap zone already contains ${management_hostname} A ${public_ip}; complete the application-zone delegation below before opening the console."
-		else
-			log "     - Create ${management_hostname} A ${public_ip} at its current DNS provider."
-		fi
-		log "     - Allow public TCP 80 and 443 for Nearzero-managed HTTPS. Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private after Traefik is live if desired."
+		log "Point ${management_hostname} to ${public_ip:-this server} with a DNS A record and allow inbound TCP 80 and 443."
 	elif [[ "$bind_address" == "127.0.0.1" ]]; then
-		log "     - Keep raw ports ${NEARZERO_PLATFORM_PORT} and ${NEARZERO_CONSOLE_PORT} private. Use an SSH/VPN path for first login, for example: ssh -L ${NEARZERO_CONSOLE_PORT}:127.0.0.1:${NEARZERO_CONSOLE_PORT} <user>@<server>"
+		log "The console only listens on this server. From your computer, run"
+		log "  ssh -L ${console_port}:127.0.0.1:${console_port} <user>@<this-server>"
+		log "and open http://127.0.0.1:${console_port}."
 	else
-		log "     - Allow TCP ${NEARZERO_CONSOLE_PORT} (and ${NEARZERO_PLATFORM_PORT} if needed) to this host; console is at ${access_url}."
+		log "Page won't load? Allow inbound TCP ${console_port} in your firewall or cloud security group."
 	fi
 	if [[ -n "$managed_dns_zone" ]]; then
-		log "     - Allow TCP and UDP 53, then delegate ${managed_dns_zone} to ns1.${managed_dns_zone} and ns2.${managed_dns_zone}; point both nameserver glue/A records to ${public_ip}."
+		log "Delegate ${managed_dns_zone} to ns1.${managed_dns_zone} and ns2.${managed_dns_zone} (glue ${public_ip}) and allow TCP and UDP 53."
 	fi
-
-	log "  2. Claim the first owner account."
-	if [[ "$registration_mode" == "bootstrap" ]]; then
-		log "     - Open ${access_url} and register exactly ${admin_email}. After that claim, registration becomes invite-only."
-	elif [[ "$registration_mode" == "invite_only" ]]; then
-		log "     - Registration is invite-only; use an existing owner or invitation to open ${access_url}."
-	else
-		log "     - Registration is open at ${access_url}; change NEARZERO_REGISTRATION_MODE after creating the intended owners."
+	if [[ -z "$management_hostname" ]]; then
+		log "Add your domain with HTTPS any time in Settings → About Nearzero."
 	fi
-
-	if [[ -n "$managed_dns_zone" ]]; then
-		log "  3. In Settings -> DNS, review ${managed_dns_zone} and verify public delegation/authoritative answers. New projects inherit it automatically; bind it under Project -> Domains only for existing or other environments."
-	else
-		log "  3. Add a dedicated application zone in Settings -> DNS before requesting Nearzero-managed hostnames."
-	fi
-	log "  4. Run 'nearzero status', test externally, and create a protected backup before the first production deployment."
+	printf '\n'
 }
 
 main() {
 	print_banner
 	ensure_sudo
-	announce_install
 	configure_first_run
+	start_install_log
 	resolve_data_mode
 	run_sudo mkdir -p "$INSTALL_DIR"
 	write_dns_init_script
 	write_compose_base
 	write_env
 	sync_data_service_overlay
-	if [[ "$NEARZERO_DATA_MODE" == "external" ]]; then
-		log "Using external database and Redis services"
-	fi
-	confirm_first_run_configuration
 	prepare_monitoring_storage
 	write_helper
+	step_done "Saved the configuration in $INSTALL_DIR"
 	ensure_docker
 	ensure_docker_compose
 	start_stack
-	log "Installed Nearzero in $INSTALL_DIR"
-	print_next_steps
+	ensure_owner_account
+	keep_install_log
+	print_summary
 }
 
 main "$@"

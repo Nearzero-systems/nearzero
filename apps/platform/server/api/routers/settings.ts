@@ -49,6 +49,7 @@ import {
 	writeTraefikSetup,
 } from "@nearzero/server";
 import { db } from "@nearzero/server/db";
+import { isInstanceAdministrator } from "@nearzero/server/services/instance-access";
 import { checkPermission } from "@nearzero/server/services/permission";
 import { generateOpenApiDocument } from "@nearzero/trpc-openapi";
 import { TRPCError } from "@trpc/server";
@@ -57,6 +58,7 @@ import { scheduledJobs, scheduleJob } from "node-schedule";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
 import { audit } from "@/server/api/utils/audit";
+import { toPublicWebServerSettings } from "@/server/api/utils/public-web-server-settings";
 import {
 	apiAssignDomain,
 	apiEnableDashboard,
@@ -77,11 +79,13 @@ import { appRouter } from "../root";
 import {
 	adminProcedure,
 	createTRPCRouter,
+	instanceAdminProcedure,
 	protectedProcedure,
 	publicProcedure,
 } from "../trpc";
 
 type OrganizationContext = {
+	user: { id: string };
 	session: { activeOrganizationId?: string | null };
 };
 
@@ -89,7 +93,17 @@ const assertSettingsServerAccess = async (
 	ctx: OrganizationContext,
 	serverId?: string,
 ) => {
-	if (!serverId) return null;
+	if (!serverId) {
+		// Without a serverId these routes act on the local host, which every
+		// organization shares, so an active-organization role is not enough.
+		if (!(await isInstanceAdministrator(ctx.user.id))) {
+			throw new TRPCError({
+				code: "UNAUTHORIZED",
+				message: "Only instance administrators can manage the local host.",
+			});
+		}
+		return null;
+	}
 	const targetServer = await findServerById(serverId);
 	if (
 		!ctx.session.activeOrganizationId ||
@@ -104,9 +118,9 @@ const assertSettingsServerAccess = async (
 export const settingsRouter = createTRPCRouter({
 	getWebServerSettings: protectedProcedure.query(async () => {
 		const settings = await getWebServerSettings();
-		return settings;
+		return toPublicWebServerSettings(settings);
 	}),
-	reloadServer: adminProcedure.mutation(async ({ ctx }) => {
+	reloadServer: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		await reloadDockerResource("nearzero", undefined, packageInfo.version);
 		await audit(ctx, {
 			action: "reload",
@@ -115,7 +129,7 @@ export const settingsRouter = createTRPCRouter({
 		});
 		return true;
 	}),
-	cleanRedis: adminProcedure.mutation(async ({ ctx }) => {
+	cleanRedis: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		const { stdout: containerId } = await execAsync(
 			`docker ps --filter "name=nearzero-redis" --filter "status=running" -q | head -n 1`,
 		);
@@ -134,7 +148,7 @@ export const settingsRouter = createTRPCRouter({
 		});
 		return true;
 	}),
-	reloadRedis: adminProcedure.mutation(async ({ ctx }) => {
+	reloadRedis: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		await reloadDockerResource("nearzero-redis");
 		await audit(ctx, {
 			action: "reload",
@@ -143,7 +157,7 @@ export const settingsRouter = createTRPCRouter({
 		});
 		return true;
 	}),
-	cleanAllDeploymentQueue: adminProcedure.mutation(async ({ ctx }) => {
+	cleanAllDeploymentQueue: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		const result = cleanAllDeploymentQueue();
 		await audit(ctx, {
 			action: "update",
@@ -277,7 +291,7 @@ export const settingsRouter = createTRPCRouter({
 			});
 			return result;
 		}),
-	cleanMonitoring: adminProcedure.mutation(async ({ ctx }) => {
+	cleanMonitoring: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		const { MONITORING_PATH } = paths();
 		await recreateDirectory(MONITORING_PATH);
 		await audit(ctx, {
@@ -287,10 +301,10 @@ export const settingsRouter = createTRPCRouter({
 		});
 		return true;
 	}),
-	getDockerDiskUsage: adminProcedure.query(async () => {
+	getDockerDiskUsage: instanceAdminProcedure.query(async () => {
 		return getDockerDiskUsage();
 	}),
-	saveSSHPrivateKey: adminProcedure
+	saveSSHPrivateKey: instanceAdminProcedure
 		.input(apiSaveSSHKey)
 		.mutation(async ({ input, ctx }) => {
 			await updateWebServerSettings({
@@ -303,7 +317,7 @@ export const settingsRouter = createTRPCRouter({
 			});
 			return true;
 		}),
-	assignDomainServer: adminProcedure
+	assignDomainServer: instanceAdminProcedure
 		.input(apiAssignDomain)
 		.mutation(async ({ input, ctx }) => {
 			if (
@@ -344,7 +358,7 @@ export const settingsRouter = createTRPCRouter({
 			});
 			return settings;
 		}),
-	cleanSSHPrivateKey: adminProcedure.mutation(async ({ ctx }) => {
+	cleanSSHPrivateKey: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		await updateWebServerSettings({
 			sshPrivateKey: null,
 		});
@@ -433,12 +447,12 @@ export const settingsRouter = createTRPCRouter({
 			return true;
 		}),
 
-	readTraefikConfig: adminProcedure.query(() => {
+	readTraefikConfig: instanceAdminProcedure.query(() => {
 		const traefikConfig = readMainConfig();
 		return traefikConfig;
 	}),
 
-	updateTraefikConfig: adminProcedure
+	updateTraefikConfig: instanceAdminProcedure
 		.input(apiTraefikConfig)
 		.mutation(async ({ input, ctx }) => {
 			writeMainConfig(input.traefikConfig);
@@ -450,11 +464,11 @@ export const settingsRouter = createTRPCRouter({
 			return true;
 		}),
 
-	readWebServerTraefikConfig: adminProcedure.query(() => {
+	readWebServerTraefikConfig: instanceAdminProcedure.query(() => {
 		const traefikConfig = readConfig("nearzero");
 		return traefikConfig;
 	}),
-	updateWebServerTraefikConfig: adminProcedure
+	updateWebServerTraefikConfig: instanceAdminProcedure
 		.input(apiTraefikConfig)
 		.mutation(async ({ input, ctx }) => {
 			writeConfig("nearzero", input.traefikConfig);
@@ -466,12 +480,12 @@ export const settingsRouter = createTRPCRouter({
 			return true;
 		}),
 
-	readMiddlewareTraefikConfig: adminProcedure.query(() => {
+	readMiddlewareTraefikConfig: instanceAdminProcedure.query(() => {
 		const traefikConfig = readConfig("middlewares");
 		return traefikConfig;
 	}),
 
-	updateMiddlewareTraefikConfig: adminProcedure
+	updateMiddlewareTraefikConfig: instanceAdminProcedure
 		.input(apiTraefikConfig)
 		.mutation(async ({ input, ctx }) => {
 			writeConfig("middlewares", input.traefikConfig);
@@ -485,7 +499,7 @@ export const settingsRouter = createTRPCRouter({
 	getUpdateData: protectedProcedure.mutation(async () => {
 		return await getUpdateData(packageInfo.version);
 	}),
-	updateServer: adminProcedure.mutation(async ({ ctx }) => {
+	updateServer: instanceAdminProcedure.mutation(async ({ ctx }) => {
 		const data = await getUpdateData(packageInfo.version);
 		if (data.updateAvailable) {
 			void spawnAsync("docker", [
@@ -556,7 +570,7 @@ export const settingsRouter = createTRPCRouter({
 		const settings = await getWebServerSettings();
 		return settings?.serverIp || "";
 	}),
-	updateServerIp: adminProcedure
+	updateServerIp: instanceAdminProcedure
 		.input(
 			z.object({
 				serverIp: z.string(),
@@ -694,7 +708,7 @@ export const settingsRouter = createTRPCRouter({
 			return ports.some((port) => port.targetPort === 8080);
 		}),
 
-	readStatsLogs: protectedProcedure
+	readStatsLogs: instanceAdminProcedure
 		.meta({
 			openapi: {
 				path: "/read-stats-logs",
@@ -720,7 +734,7 @@ export const settingsRouter = createTRPCRouter({
 
 			return parsedConfig;
 		}),
-	readStats: adminProcedure
+	readStats: instanceAdminProcedure
 		.meta({
 			openapi: {
 				path: "/read-stats",
@@ -760,7 +774,7 @@ export const settingsRouter = createTRPCRouter({
 
 		return !!parsedConfig?.accessLog?.filePath;
 	}),
-	toggleRequests: protectedProcedure
+	toggleRequests: instanceAdminProcedure
 		.input(
 			z.object({
 				enable: z.boolean(),
@@ -834,7 +848,7 @@ export const settingsRouter = createTRPCRouter({
 	getEditionManifest: publicProcedure.query(async () =>
 		getEdition().getManifest(),
 	),
-	checkInfrastructureHealth: adminProcedure.query(async () => {
+	checkInfrastructureHealth: instanceAdminProcedure.query(async () => {
 		const [postgres, redis, traefik] = await Promise.all([
 			checkPostgresHealth(),
 			checkRedisHealth(),
@@ -969,7 +983,7 @@ export const settingsRouter = createTRPCRouter({
 			const ports = await readPorts("nearzero-traefik", input?.serverId);
 			return ports;
 		}),
-	updateLogCleanup: protectedProcedure
+	updateLogCleanup: instanceAdminProcedure
 		.input(
 			z.object({
 				cronExpression: z.string().nullable(),

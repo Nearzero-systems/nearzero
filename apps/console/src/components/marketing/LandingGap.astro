@@ -1,0 +1,12 @@
+---
+const sideCols = [1, 2, 11, 12];
+---
+
+<div class="nz-land-gap" aria-hidden="true">
+	{
+		sideCols.map((col) => (
+			<div class="nz-land-gap__tile" style={`--nz-c:${col}`} />
+		))
+	}
+	<div class="nz-land-gap__mid"></div>
+</div>

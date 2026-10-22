@@ -39,10 +39,10 @@ test("Add suffix to service names in compose file", () => {
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que los nombres de los servicios han cambiado correctamente
+	// Check that the service names changed correctly
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).toHaveProperty(`api-${suffix}`);
-	// Verificar que las claves originales no existen
+	// Check that the original keys are gone
 	expect(actualComposeData.services).not.toHaveProperty("web");
 	expect(actualComposeData.services).not.toHaveProperty("api");
 });

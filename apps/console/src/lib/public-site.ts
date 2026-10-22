@@ -20,7 +20,6 @@ export const publicSiteLinks = {
 	compare: "/compare",
 	compareVercel: "/compare/vercel",
 	compareCoolify: "/compare/coolify",
-	compareDokploy: "/compare/dokploy",
 	compareNetlify: "/compare/netlify",
 	selfHosting: "/docs/self-hosting",
 	architecture: "/docs/architecture",
@@ -38,25 +37,22 @@ export const comparisonNavigation = [
 		href: publicSiteLinks.compareVercel,
 		competitor: "Vercel",
 		label: "Nearzero vs Vercel",
-		description: "Compare deployment workflows and infrastructure control",
+		description:
+			"No Docker host. No database on your VPS. Nearzero runs both on Linux you own.",
 	},
 	{
 		href: publicSiteLinks.compareCoolify,
 		competitor: "Coolify",
 		label: "Nearzero vs Coolify",
-		description: "Compare self-hosting, domains, and operations",
-	},
-	{
-		href: publicSiteLinks.compareDokploy,
-		competitor: "Dokploy",
-		label: "Nearzero vs Dokploy",
-		description: "Compare server management and deployment workflows",
+		description:
+			"Placement, optional CoreDNS, and a locked-down Agent — not experimental multi-server.",
 	},
 	{
 		href: publicSiteLinks.compareNetlify,
 		competitor: "Netlify",
 		label: "Nearzero vs Netlify",
-		description: "Compare application delivery and infrastructure ownership",
+		description:
+			"Netlify is an edge for sites. Nearzero is a control plane for your VPS.",
 	},
 ] as const;
 
@@ -64,32 +60,57 @@ export const docsNavigation = [
 	{
 		href: publicSiteLinks.docs,
 		label: "Documentation home",
-		description: "Choose the right deployment path",
+		description: "Install the control plane, then take Git to HTTPS",
 	},
 	{
 		href: publicSiteLinks.architecture,
 		label: "Architecture",
-		description: "Control plane, your servers, and guardrails",
+		description: "Your servers run the apps. Nearzero is the control plane.",
 	},
 	{
 		href: publicSiteLinks.selfHosting,
 		label: "Self-host Nearzero",
-		description: "Install, update, back up, and restore",
+		description: "Install with one command, sign in, add your domain",
 	},
 	{
 		href: publicSiteLinks.remoteServers,
 		label: "Remote servers",
-		description: "Connect and secure workload hosts",
+		description: "Add a Linux VPS and send traffic straight to it",
 	},
 	{
 		href: publicSiteLinks.domainsAndHttps,
 		label: "Domains and HTTPS",
-		description: "Delegate DNS and route with Traefik",
+		description: "Point the hostname at the server that runs the app",
 	},
 	{
 		href: publicSiteLinks.agentSafety,
 		label: "Agent safety",
-		description: "Understand permissions and secret boundaries",
+		description: "It can see your infra. Production writes start off.",
+	},
+] as const;
+
+export const docsNavigationGroups = [
+	{
+		id: "start",
+		label: "Getting started",
+		items: [
+			{ href: publicSiteLinks.docs, label: "Introduction" },
+			{ href: publicSiteLinks.architecture, label: "Architecture" },
+			{ href: publicSiteLinks.selfHosting, label: "Self-host Nearzero" },
+		],
+	},
+	{
+		id: "operate",
+		label: "Operate",
+		items: [
+			{ href: publicSiteLinks.remoteServers, label: "Remote servers" },
+			{ href: publicSiteLinks.domainsAndHttps, label: "Domains and HTTPS" },
+		],
+	},
+	{
+		id: "agent",
+		label: "Agent",
+		items: [{ href: publicSiteLinks.agentSafety, label: "Agent safety" }],
 	},
 ] as const;
 
@@ -101,27 +122,105 @@ export const publicFooterGroups = [
 			{ label: "Remote servers", href: publicSiteLinks.remoteServers },
 			{ label: "Domains and HTTPS", href: publicSiteLinks.domainsAndHttps },
 			{ label: "Agent safety", href: publicSiteLinks.agentSafety },
-			{ label: "Sign in", href: publicSiteLinks.signIn },
 		],
 	},
 	{
-		title: "Resources",
+		title: "Documentation",
 		links: [
-			{ label: "Documentation", href: publicSiteLinks.docs },
-			{ label: "Compare", href: publicSiteLinks.compare },
+			{ label: "Overview", href: publicSiteLinks.docs },
+			{ label: "Self-hosting", href: publicSiteLinks.selfHosting },
+		],
+	},
+	{
+		title: "Compare",
+		links: [
+			{ label: "All comparisons", href: publicSiteLinks.compare },
+			{ label: "vs Vercel", href: publicSiteLinks.compareVercel },
+			{ label: "vs Coolify", href: publicSiteLinks.compareCoolify },
+			{ label: "vs Netlify", href: publicSiteLinks.compareNetlify },
+		],
+	},
+	{
+		title: "Help",
+		links: [
 			{ label: "GitHub", href: publicSiteLinks.github },
 			{ label: "Issues", href: publicSiteLinks.issues },
 			{ label: "Support", href: publicSiteLinks.support },
 		],
 	},
+] as const;
+
+export const publicFaqGroups = [
 	{
-		title: "Get started",
-		links: [
-			{ label: "Install Nearzero", href: publicSiteLinks.selfHosting },
-			{ label: "Architecture", href: publicSiteLinks.architecture },
-			{ label: "Remote servers", href: publicSiteLinks.remoteServers },
-			{ label: "Managed DNS", href: publicSiteLinks.domainsAndHttps },
-			{ label: "Agent safety", href: publicSiteLinks.agentSafety },
+		title: "General",
+		items: [
+			{
+				question: "What is Nearzero?",
+				answer:
+					"Nearzero is open-source software you install on your own Linux server. You use it to deploy apps and databases to that server, or to other servers you add.",
+			},
+			{
+				question: "Is Nearzero a self-hosted Vercel alternative?",
+				answer:
+					"Yes, if you want to deploy from Git on machines you own. You still run those machines. Nearzero does not give you Vercel’s global CDN.",
+			},
+			{
+				question: "Is Nearzero free and open source?",
+				answer:
+					"Yes. You can self-host the Community edition for free. You still pay for your VPS, storage, and domain.",
+			},
+			{
+				question: "How is Nearzero different from Coolify?",
+				answer:
+					"Both run on your VPS. Nearzero keeps apps, databases, extra servers, optional DNS, HTTPS, and a locked-down Agent in one control plane.",
+			},
+		],
+	},
+	{
+		title: "Platform",
+		items: [
+			{
+				question: "How do I install Nearzero on a VPS?",
+				answer:
+					"Use a dedicated Linux VPS. Download the installer, check the SHA-256 checksum, read the script, then run it. Finish setup on your own HTTPS admin URL.",
+			},
+			{
+				question: "What applications and databases can I deploy?",
+				answer:
+					"Most container apps, including Node, Python, Go, PHP, and Ruby. Databases include Postgres, MySQL, MariaDB, MongoDB, Redis, and libSQL. Docker Compose works too.",
+			},
+			{
+				question:
+					"Does Nearzero support custom domains and Let’s Encrypt HTTPS?",
+				answer:
+					"Yes. Point your domain at the server. Nearzero uses Traefik and Let’s Encrypt. Ports 80 and 443 need to be open.",
+			},
+			{
+				question: "Can Nearzero deploy to remote servers?",
+				answer:
+					"Yes. Keep Nearzero on one server, add other Linux servers over SSH, and pick where each app runs. Public traffic can go straight to that server.",
+			},
+		],
+	},
+	{
+		title: "Operations",
+		items: [
+			{
+				question: "Can the Agent change production without permission?",
+				answer:
+					"No. The Agent can read logs and project state, but it can only make a change if your account is allowed to. Production changes stay off until you turn that on.",
+			},
+			{
+				question: "Do I still have to manage the servers myself?",
+				answer:
+					"Yes. You still patch, back up, and size the VPS. Nearzero builds, deploys, and routes. You keep the servers healthy.",
+			},
 		],
 	},
 ] as const;
+
+export type PublicFaq = { question: string; answer: string };
+
+export const publicFaqs: PublicFaq[] = publicFaqGroups.flatMap(
+	(group): readonly PublicFaq[] => group.items,
+);

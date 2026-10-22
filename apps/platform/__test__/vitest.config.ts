@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	test: {
-		include: ["__test__/**/*.test.ts"], // Incluir solo los archivos de test en el directorio __test__
+		include: ["__test__/**/*.test.ts"], // Only test files under __test__
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",

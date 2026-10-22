@@ -1,27 +1,15 @@
-# React Email Starter
+# Nearzero email templates
 
-A live preview right in your browser so you don't need to keep sending real emails during development.
+React Email templates for Nearzero notifications (build results, backups,
+Docker cleanup, restarts) and account emails (invitations, verification).
 
-## Getting Started
+## Preview
 
-First, install the dependencies:
-
-```sh
-npm install
-# or
-yarn
-```
-
-Then, run the development server:
-
-```sh
+```bash
+bun install
 bun run dev
-# or
-yarn dev
 ```
 
-Open [localhost:3000](http://localhost:3000) with your browser to see the result.
-
-## License
-
-MIT License
+Open [http://localhost:3000](http://localhost:3000) to preview the templates.
+Shared images live in `emails/static/`; templates load the logo from the
+public GitHub repository so it renders in every email client.

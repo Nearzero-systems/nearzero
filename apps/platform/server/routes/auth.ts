@@ -2,14 +2,14 @@ import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { buffer } from "node:stream/consumers";
 import { db } from "@nearzero/server/db";
-import { account, session, user } from "@nearzero/server/db/schema";
+import { account, member, session, user } from "@nearzero/server/db/schema";
 import { auth, getPublicRegistrationStatus } from "@nearzero/server/index";
 import { normalizeAuthEmail } from "@nearzero/server/lib/auth-email-policy";
 import { emailEquals } from "@nearzero/server/lib/email-identity";
 import bcrypt from "bcrypt";
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { toNodeHandler } from "better-auth/node";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 const authHandler = toNodeHandler(auth.handler);
 
@@ -41,10 +41,18 @@ async function readJsonBody(req: IncomingMessage) {
 async function createSessionForUser(req: IncomingMessage, userId: string) {
 	const now = new Date();
 	const token = randomBytes(32).toString("hex");
+	// Same choice as better-auth's session.create.before hook, which a direct
+	// insert bypasses: the default membership, else the newest one.
+	const defaultMembership = await db.query.member.findFirst({
+		where: eq(member.userId, userId),
+		orderBy: [desc(member.isDefault), desc(member.createdAt)],
+		columns: { organizationId: true },
+	});
 	await db.insert(session).values({
 		id: randomBytes(16).toString("hex"),
 		token,
 		userId,
+		activeOrganizationId: defaultMembership?.organizationId ?? null,
 		createdAt: now,
 		updatedAt: now,
 		expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
@@ -56,6 +64,59 @@ async function createSessionForUser(req: IncomingMessage, userId: string) {
 	});
 	return token;
 }
+
+const CREDENTIAL_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_CREDENTIAL_FAILURES_PER_EMAIL = 10;
+const credentialFailures = new Map<
+	string,
+	{ count: number; resetAt: number }
+>();
+
+/**
+ * This route checks passwords outside better-auth, so it carries its own
+ * brute-force limit. Requests reach it through the console proxy, which does
+ * not forward a trustworthy client address, so failures are counted per email.
+ */
+function isCredentialLoginThrottled(email: string, now = Date.now()) {
+	const entry = credentialFailures.get(email);
+	if (!entry) return false;
+	if (entry.resetAt <= now) {
+		credentialFailures.delete(email);
+		return false;
+	}
+	return entry.count >= MAX_CREDENTIAL_FAILURES_PER_EMAIL;
+}
+
+function recordCredentialFailure(email: string, now = Date.now()) {
+	const entry = credentialFailures.get(email);
+	if (!entry || entry.resetAt <= now) {
+		credentialFailures.set(email, {
+			count: 1,
+			resetAt: now + CREDENTIAL_FAILURE_WINDOW_MS,
+		});
+	} else {
+		entry.count += 1;
+	}
+	if (credentialFailures.size > 10_000) {
+		for (const [key, value] of credentialFailures) {
+			if (value.resetAt <= now) credentialFailures.delete(key);
+		}
+	}
+}
+
+let timingEqualizerHash: Promise<string> | null = null;
+
+/** Spend the same hashing work when no account exists, so timing does not reveal it. */
+async function equalizeMissingAccountTiming(password: string) {
+	timingEqualizerHash ??= hashPassword(randomBytes(16).toString("hex"));
+	await verifyStoredPassword(await timingEqualizerHash, password);
+}
+
+const INVALID_CREDENTIALS = {
+	ok: false,
+	code: "invalid_credentials",
+	message: "Invalid email or password.",
+} as const;
 
 async function verifyStoredPassword(hash: string, password: string) {
 	if (hash.includes(":")) {
@@ -89,6 +150,14 @@ async function handleCredentialSession(
 	}
 
 	const normalizedEmail = normalizeAuthEmail(email);
+	if (intent === "login" && isCredentialLoginThrottled(normalizedEmail)) {
+		return authState(res, {
+			ok: false,
+			code: "too_many_attempts",
+			message:
+				"Too many failed sign-in attempts. Wait a few minutes and try again.",
+		});
+	}
 	const existingUser = await db.query.user.findFirst({
 		where: emailEquals(user.email, normalizedEmail),
 		columns: {
@@ -96,17 +165,23 @@ async function handleCredentialSession(
 			email: true,
 			firstName: true,
 			image: true,
+			twoFactorEnabled: true,
+			banned: true,
+			banExpires: true,
 		},
 	});
 	if (!existingUser) {
-		return authState(res, {
-			ok: false,
-			code: "no_account",
-			message:
-				intent === "signup"
-					? "Create this account with the normal signup flow."
-					: "No account exists for this email yet. Sign up first.",
-		});
+		if (intent === "signup") {
+			return authState(res, {
+				ok: false,
+				code: "no_account",
+				message: "Create this account with the normal signup flow.",
+			});
+		}
+		// Do not reveal whether an account exists for this email.
+		await equalizeMissingAccountTiming(password);
+		recordCredentialFailure(normalizedEmail);
+		return authState(res, INVALID_CREDENTIALS);
 	}
 
 	const credentialAccounts = await db.query.account.findMany({
@@ -136,12 +211,10 @@ async function handleCredentialSession(
 			password,
 		);
 		if (!valid) {
-			return authState(res, {
-				ok: false,
-				code: "invalid_credentials",
-				message: "Invalid email or password.",
-			});
+			recordCredentialFailure(normalizedEmail);
+			return authState(res, INVALID_CREDENTIALS);
 		}
+		credentialFailures.delete(normalizedEmail);
 		if (!credentialWithPassword.password.includes(":")) {
 			await db
 				.update(account)
@@ -150,6 +223,27 @@ async function handleCredentialSession(
 					updatedAt: new Date(),
 				})
 				.where(eq(account.id, credentialWithPassword.id));
+		}
+
+		const banActive =
+			existingUser.banned &&
+			(!existingUser.banExpires || existingUser.banExpires > new Date());
+		if (banActive) {
+			return authState(res, {
+				ok: false,
+				code: "account_banned",
+				message: "This account has been suspended. Contact an administrator.",
+			});
+		}
+
+		// Never mint a session here for 2FA accounts: the console hands off to
+		// better-auth's sign-in, which issues the second-factor challenge.
+		if (existingUser.twoFactorEnabled) {
+			return authState(res, {
+				ok: false,
+				code: "two_factor_required",
+				message: "Enter the code from your authenticator app.",
+			});
 		}
 
 		const token = await createSessionForUser(req, existingUser.id);

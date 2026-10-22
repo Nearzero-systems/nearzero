@@ -48,6 +48,7 @@ export * from "./services/github";
 export * from "./services/gitlab";
 export * from "./services/install-domain-bootstrap";
 export * from "./services/install-setup";
+export * from "./services/instance-owner";
 export * from "./services/libsql";
 export * from "./services/license-key";
 export * from "./services/managed-domain";

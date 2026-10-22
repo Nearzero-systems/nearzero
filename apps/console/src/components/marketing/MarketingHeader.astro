@@ -1,5 +1,6 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
+import GitHubMark from "@/components/marketing/GitHubMark.astro";
 import NearzeroMark from "@/components/NearzeroMark.astro";
 import { publicSiteLinks } from "@/lib/public-site";
 
@@ -13,14 +14,14 @@ const { active = "docs", showSignIn = true } = Astro.props;
 
 <header class="nz-nav-shell">
 	<nav class="nz-container nz-nav" aria-label="Primary navigation">
-		<a class="nz-brand" href={publicSiteLinks.home} aria-label="Nearzero home">
+		<a class="nz-brand text-xs" href={publicSiteLinks.home} aria-label="Nearzero home">
 			<span class="nz-brand-mark" aria-hidden="true">
-				<NearzeroMark size={28} />
+				<NearzeroMark size={20} />
 			</span>
 			<span>Nearzero</span>
 		</a>
 
-		<div class="nz-nav__links" aria-label="Primary links">
+		<div class="nz-nav__links text-xs" aria-label="Primary links">
 			<a href={publicSiteLinks.architecture}>Architecture</a>
 			<a href={publicSiteLinks.selfHosting}>Self-hosting</a>
 			<a href={publicSiteLinks.agentSafety}>Agent</a>
@@ -33,16 +34,19 @@ const { active = "docs", showSignIn = true } = Astro.props;
 			<a href={publicSiteLinks.docs} aria-current={active === "docs" ? "page" : undefined}>Docs</a>
 		</div>
 
-		<div class="nz-nav__actions">
+		<div class="nz-nav__actions text-xs">
 			{showSignIn && (
 				<a class="nz-nav__login" href={publicSiteLinks.signIn}>Sign in</a>
 			)}
 			<a
-				class="nz-button nz-button--small nz-button--primary"
-				href={publicSiteLinks.selfHosting}
+				class="nz-button nz-button--star text-xs px-2 py-1"
+				href={publicSiteLinks.github}
+				target="_blank"
+				rel="noreferrer"
+				aria-label="Star Nearzero on GitHub"
 			>
-				Read install guide
-				<span aria-hidden="true">↗</span>
+				<GitHubMark size={12} />
+				Star us
 			</a>
 		</div>
 
@@ -76,8 +80,15 @@ const { active = "docs", showSignIn = true } = Astro.props;
 				{showSignIn && (
 					<a href={publicSiteLinks.signIn}>Sign in</a>
 				)}
-				<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
-					Read install guide
+				<a
+					class="nz-button nz-button--star text-xs px-2 py-1"
+					href={publicSiteLinks.github}
+					target="_blank"
+					rel="noreferrer"
+					aria-label="Star Nearzero on GitHub"
+				>
+					<GitHubMark size={12} />
+					Star us
 				</a>
 			</div>
 		</div>

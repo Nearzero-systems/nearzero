@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 # Nearzero Monitoring Service Docker Image
-# Copyright 2025 Nearzero (Nearzero.dev)
+# Copyright 2025-present Nearzero Systems
 # Build stage
 FROM golang:1.26-alpine3.24@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS builder
 
@@ -35,8 +35,14 @@ COPY --from=builder /app/apps/monitoring/main ./main
 ENV PORT=4500
 EXPOSE 4500
 
-LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
-      org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.title="Nearzero Monitoring" \
+      org.opencontainers.image.description="Host and container metrics collector for Nearzero." \
+      org.opencontainers.image.vendor="Nearzero Systems" \
+      org.opencontainers.image.authors="Nearzero Systems" \
+      org.opencontainers.image.url="https://nearzero.dev" \
+      org.opencontainers.image.documentation="https://docs.nearzero.dev" \
+      org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
+      org.opencontainers.image.licenses="MIT"
 
 # Ejecutar la aplicación
 CMD ["./main"]

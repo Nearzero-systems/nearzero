@@ -1,6 +1,4 @@
 ---
-import AuthGrid from "./AuthGrid.astro";
-import AuthButtonSpinner from "./AuthButtonSpinner.astro";
 import {
 	authBtnClass,
 	authControlClass,
@@ -8,15 +6,17 @@ import {
 } from "@/lib/auth-form-classes";
 import {
 	HEARD_ABOUT_OPTIONS,
+	isOnboardingRegisterStep,
 	MIGRATION_OPTIONS,
 	MONTHLY_CALL_VOLUME_OPTIONS,
 	ON_PREM_OPTIONS,
-	ROLE_OPTIONS,
-	isOnboardingRegisterStep,
 	parseRegisterStep,
+	ROLE_OPTIONS,
 	stepSubtitle,
 	stepTitle,
 } from "@/lib/register-onboarding";
+import AuthButtonSpinner from "./AuthButtonSpinner.astro";
+import AuthGrid from "./AuthGrid.astro";
 
 interface Props {
 	loginHref?: string;
@@ -144,8 +144,8 @@ const onboardingBtnClass =
 				data-registration-closed
 				class="hidden w-full flex-col items-center gap-2 text-center"
 			>
-				<p class="text-base font-medium text-[#111827]">Invitation required</p>
-				<p class={`max-w-[26rem] text-sm ${authMutedText}`}>
+				<p class="text-base font-medium text-[#111827]" data-registration-closed-title>Invitation required</p>
+				<p class={`max-w-[26rem] text-sm ${authMutedText}`} data-registration-closed-body>
 					Account creation is closed on this Nearzero installation. Ask a workspace owner for an invitation, then open the invitation link to create your account.
 				</p>
 				<a href={loginHref} class="text-sm font-medium text-[#111827] underline underline-offset-2 transition-colors hover:text-[#111827]">
@@ -304,8 +304,11 @@ const onboardingBtnClass =
 
 <script>
 	import { invitationPath, resolveInvitationTokenFromPage } from "@/lib/invitation-routes";
-	import { fetchInstallSetupStatus } from "@/lib/install-setup";
-	import { fetchRegistrationExperience } from "@/lib/registration-status";
+	import {
+		CREATE_OWNER_COMMAND,
+		fetchRegistrationStatus,
+		resolveRegistrationExperience,
+	} from "@/lib/registration-status";
 	import { bindAuthCredentialsFlow } from "@/scripts/auth-credentials-flow";
 	import { parseRegisterStep, registerStepPath, isOnboardingRegisterStep } from "@/lib/register-onboarding";
 	import {
@@ -323,19 +326,10 @@ const onboardingBtnClass =
 		const hasInvitation = Boolean(
 			root.dataset.invitationToken?.trim() || resolveInvitationTokenFromPage(),
 		);
-		const [experience, setup] = await Promise.all([
-			fetchRegistrationExperience(hasInvitation),
-			fetchInstallSetupStatus(),
-		]);
+		const resolved = hasInvitation
+			? "open"
+			: resolveRegistrationExperience(await fetchRegistrationStatus(), false);
 		if (!root.isConnected) return;
-		const firstOwnerExists =
-			Boolean(setup?.bootstrapClaimed) ||
-			setup?.phase === "operational" ||
-			setup?.phase === "claimed";
-		const resolved =
-			experience !== "open" && firstOwnerExists
-				? "invitation_required"
-				: experience;
 
 		const signupStage = root.querySelector<HTMLElement>(
 			'[data-register-stage="signup"]',
@@ -343,16 +337,28 @@ const onboardingBtnClass =
 		const closed = root.querySelector<HTMLElement>(
 			"[data-registration-closed]",
 		);
-		const invitationRequired = resolved === "invitation_required";
+		const closedTitle = root.querySelector<HTMLElement>(
+			"[data-registration-closed-title]",
+		);
+		const closedBody = root.querySelector<HTMLElement>(
+			"[data-registration-closed-body]",
+		);
+		const signupClosed = resolved !== "open";
 
-		signupStage?.classList.toggle("hidden", invitationRequired);
-		signupStage?.classList.toggle("flex", !invitationRequired);
-		closed?.classList.toggle("hidden", !invitationRequired);
-		closed?.classList.toggle("flex", invitationRequired);
+		signupStage?.classList.toggle("hidden", signupClosed);
+		signupStage?.classList.toggle("flex", !signupClosed);
+		closed?.classList.toggle("hidden", !signupClosed);
+		closed?.classList.toggle("flex", signupClosed);
+		if (resolved === "owner_required") {
+			if (closedTitle) closedTitle.textContent = "Create the admin account on the server";
+			if (closedBody) {
+				closedBody.textContent = `This Nearzero server has no admin account yet. On the server, run ${CREATE_OWNER_COMMAND}, then sign in.`;
+			}
+		}
 		for (const control of root.querySelectorAll<
 			HTMLInputElement | HTMLButtonElement
 		>("[data-auth-credentials-form] input, [data-auth-credentials-submit]")) {
-			control.disabled = invitationRequired;
+			control.disabled = signupClosed;
 		}
 	}
 

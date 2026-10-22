@@ -45,11 +45,11 @@ test("Add suffix to service names with depends_on (array) in compose file", () =
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);
@@ -57,7 +57,7 @@ test("Add suffix to service names with depends_on (array) in compose file", () =
 		"myapi:latest",
 	);
 
-	// Verificar que los nombres en depends_on tienen el prefijo
+	// Check that names in depends_on have the prefix
 	expect(actualComposeData.services?.[`web-${suffix}`]?.depends_on).toContain(
 		`db-${suffix}`,
 	);
@@ -65,7 +65,7 @@ test("Add suffix to service names with depends_on (array) in compose file", () =
 		`api-${suffix}`,
 	);
 
-	// Verificar que los servicios `db` y `api` también tienen el prefijo
+	// Check that the `db` and `api` services also have the prefix
 	expect(actualComposeData.services).toHaveProperty(`db-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("db");
 	expect(actualComposeData.services?.[`db-${suffix}`]?.image).toBe(
@@ -115,11 +115,11 @@ test("Add suffix to service names with depends_on (object) in compose file", () 
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);
@@ -127,7 +127,7 @@ test("Add suffix to service names with depends_on (object) in compose file", () 
 		"myapi:latest",
 	);
 
-	// Verificar que los nombres en depends_on tienen el prefijo
+	// Check that names in depends_on have the prefix
 	const webDependsOn = actualComposeData.services?.[`web-${suffix}`]
 		?.depends_on as Record<string, any>;
 	expect(webDependsOn).toHaveProperty(`db-${suffix}`);
@@ -135,7 +135,7 @@ test("Add suffix to service names with depends_on (object) in compose file", () 
 	expect(webDependsOn[`db-${suffix}`].condition).toBe("service_healthy");
 	expect(webDependsOn[`api-${suffix}`].condition).toBe("service_started");
 
-	// Verificar que los servicios `db` y `api` también tienen el prefijo
+	// Check that the `db` and `api` services also have the prefix
 	expect(actualComposeData.services).toHaveProperty(`db-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("db");
 	expect(actualComposeData.services?.[`db-${suffix}`]?.image).toBe(

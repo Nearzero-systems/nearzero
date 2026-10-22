@@ -47,7 +47,7 @@ build({
 	format: "esm",
 	plugins: [bundleWorkspacePackages],
 	packages: "external",
-	// Opcional: si deseas emitir declaraciones de tipos con esbuild-plugin-dts
+	// Optional: emit type declarations with esbuild-plugin-dts
 })
 	.then(() => {
 		console.log("Build successful");

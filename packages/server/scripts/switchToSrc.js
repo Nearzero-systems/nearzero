@@ -7,12 +7,12 @@ const __dirname = path.dirname(__filename);
 
 const packagePath = path.resolve(__dirname, "../package.json");
 
-// Leer el archivo package.json
+// Read package.json
 const pkg = JSON.parse(fs.readFileSync(packagePath, "utf-8"));
 
 pkg.main = "./src/index.ts";
 
-// Modificar los exports
+// Point exports at the TypeScript sources
 pkg.exports = {
 	".": "./src/index.ts",
 	"./db": {
@@ -49,6 +49,6 @@ pkg.exports = {
 	},
 };
 
-// Guardar los cambios en package.json
+// Write the updated package.json
 fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2));
 console.log("Switched exports to use src for development");

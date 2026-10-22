@@ -1,5 +1,7 @@
 {
 	"name": "@nearzero/schedules",
+	"author": "Nearzero Systems",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "PORT=4001 tsx watch src/index.ts",

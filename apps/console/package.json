@@ -1,6 +1,8 @@
 {
 	"name": "@nearzero/console",
 	"version": "0.0.1",
+	"author": "Nearzero Systems",
+	"license": "Apache-2.0",
 	"private": true,
 	"type": "module",
 	"engines": {

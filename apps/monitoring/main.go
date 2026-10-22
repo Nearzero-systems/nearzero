@@ -1,5 +1,5 @@
 // Nearzero Monitoring Service
-// Copyright 2025 Nearzero (Nearzero.dev)
+// Copyright 2025-present Nearzero Systems
 // Licensed under MIT License
 package main
 
@@ -35,7 +35,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Iniciar el sistema de limpieza de métricas
+	// Start the periodic metrics cleanup
 	cleanupCron, err := database.StartMetricsCleanup(db.DB, cfg.Server.RetentionDays, cfg.Server.CronJob)
 	if err != nil {
 		log.Fatalf("Error starting metrics cleanup system: %v", err)

@@ -45,7 +45,12 @@ function expectIncludes(path: string, pattern: string, label: string) {
 	}
 }
 
-function expectOrder(path: string, first: string, second: string, label: string) {
+function expectOrder(
+	path: string,
+	first: string,
+	second: string,
+	label: string,
+) {
 	const contents = read(path);
 	const firstIndex = contents.indexOf(first);
 	const secondIndex = contents.indexOf(second);
@@ -156,7 +161,7 @@ expectOrder(
 
 expectIncludes(
 	"apps/console/src/components/dashboard/settings/GitProvidersDashboard.astro",
-	"data-is-community=\"1\"",
+	'data-is-community="1"',
 	"Astro Community-only Git provider modals",
 );
 expectIncludes(
@@ -192,24 +197,19 @@ expectIncludes(
 );
 
 expectIncludes(
-	"apps/console/src/pages/index.astro",
-	"fetchInstallSetupStatusServer",
-	"Community root consults install setup before login",
+	"apps/platform/scripts/owner.ts",
+	"createInstanceOwner",
+	"Community owner created on the server",
 );
 expectIncludes(
-	"apps/console/src/pages/setup.astro",
-	"SetupGrid",
-	"Community one-time domain setup page",
+	"packages/server/src/lib/registration-policy.ts",
+	'reason: "owner_required"',
+	"Community web signup never creates the first owner",
 );
 expectIncludes(
-	"apps/platform/server/routes/install-setup.ts",
-	"/api/install/setup",
-	"Community install setup API",
-);
-expectIncludes(
-	"packages/server/src/services/install-setup.ts",
-	"verifyInstallSetupToken",
-	"Community install setup token verification",
+	"scripts/install.sh",
+	"dist/owner.mjs create",
+	"Community installer creates the admin account",
 );
 
 expectIncludes(

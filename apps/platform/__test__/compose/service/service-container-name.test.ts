@@ -40,15 +40,15 @@ test("Add suffix to service names with container_name in compose file", () => {
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que el nombre del contenedor ha cambiado correctamente
+	// Check that the container name changed correctly
 	expect(actualComposeData.services?.[`web-${suffix}`]?.container_name).toBe(
 		`web_container-${suffix}`,
 	);
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);

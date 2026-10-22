@@ -18,6 +18,10 @@ import {
 	volumeBackups,
 } from "@nearzero/server/db/schema";
 import { findDestinationById } from "@nearzero/server/services/destination";
+import {
+	resolveVolumeBackupServerId,
+	runsOnExternalJobsService,
+} from "@nearzero/server/services/job-placement";
 import { checkServicePermissionAndAccess } from "@nearzero/server/services/permission";
 import { findServerById } from "@nearzero/server/services/server";
 import { getDestinationSensitiveValues } from "@nearzero/server/utils/backups/utils";
@@ -144,7 +148,10 @@ export const volumeBackupsRouter = createTRPCRouter({
 			const newVolumeBackup = await createVolumeBackup(input);
 
 			if (newVolumeBackup?.enabled) {
-				if (process.env.JOBS_URL) {
+				const placement = await findVolumeBackupById(
+					newVolumeBackup.volumeBackupId,
+				);
+				if (runsOnExternalJobsService(resolveVolumeBackupServerId(placement))) {
 					await schedule({
 						cronSchedule: newVolumeBackup.cronExpression,
 						volumeBackupId: newVolumeBackup.volumeBackupId,
@@ -208,6 +215,16 @@ export const volumeBackupsRouter = createTRPCRouter({
 				});
 			}
 			const result = await removeVolumeBackup(input.volumeBackupId);
+			// Stop the cron job too, or it keeps firing for a deleted backup.
+			if (runsOnExternalJobsService(resolveVolumeBackupServerId(vb))) {
+				await removeJob({
+					cronSchedule: vb.cronExpression,
+					volumeBackupId: vb.volumeBackupId,
+					type: "volume-backup",
+				});
+			} else {
+				removeVolumeBackupJob(vb.volumeBackupId);
+			}
 			await audit(ctx, {
 				action: "delete",
 				resourceType: "volumeBackup",
@@ -245,7 +262,7 @@ export const volumeBackupsRouter = createTRPCRouter({
 				});
 			}
 
-			if (process.env.JOBS_URL) {
+			if (runsOnExternalJobsService(resolveVolumeBackupServerId(existingVb))) {
 				if (updatedVolumeBackup.enabled) {
 					await updateJob({
 						cronSchedule: updatedVolumeBackup.cronExpression,

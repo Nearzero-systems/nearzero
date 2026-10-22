@@ -2,12 +2,13 @@
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
 import MarketingLayout from "@/layouts/MarketingLayout.astro";
 import type { ComparisonPage } from "@/lib/comparisons";
-import { comparisonReviewDate, comparisons } from "@/lib/comparisons";
+import { comparisons } from "@/lib/comparisons";
 import { publicSiteLinks } from "@/lib/public-site";
-import "@/styles/public-comparisons.css";
-import GitHubMark from "./GitHubMark.astro";
+import "@/styles/landing.css";
+import LandingBoard from "./LandingBoard.astro";
 import MarketingFooter from "./MarketingFooter.astro";
 import MarketingHeader from "./MarketingHeader.astro";
+import MastheadBoard from "./MastheadBoard.astro";
 
 interface Props {
 	comparison: ComparisonPage;
@@ -18,22 +19,26 @@ const otherComparisons = comparisons.filter(
 	(item) => item.slug !== comparison.slug,
 );
 
+const firstSentence = (text: string) => {
+	const index = text.indexOf(". ");
+	return index > 0 ? text.slice(0, index + 1) : text;
+};
+
+const salesUrl = "mailto:contact@nearzero.dev?subject=Nearzero%20walkthrough";
+
 const seoTitles: Record<ComparisonPage["slug"], string> = {
-	vercel: "Nearzero vs Vercel: Self-hosting and infrastructure control",
-	netlify: "Nearzero vs Netlify: Managed edge or your own servers?",
-	coolify: "Nearzero vs Coolify: Servers, DNS, and operations",
-	dokploy: "Nearzero vs Dokploy: Self-hosted PaaS compared",
+	vercel: "Nearzero vs Vercel — keep the server",
+	netlify: "Nearzero vs Netlify — a control plane, not an edge for sites",
+	coolify: "Nearzero vs Coolify — placement, DNS, and a locked-down Agent",
 };
 
 const socialAlts: Record<ComparisonPage["slug"], string> = {
 	vercel:
-		"Nearzero versus Vercel comparison focused on managed infrastructure and self-hosted server control.",
+		"Nearzero versus Vercel: owned servers versus managed cloud infrastructure.",
 	netlify:
-		"Nearzero versus Netlify comparison focused on managed web delivery and self-hosted Docker workloads.",
+		"Nearzero versus Netlify: self-hosted workloads versus managed web hosting.",
 	coolify:
-		"Nearzero versus Coolify comparison focused on self-hosting, Docker workloads, remote servers, domains, and operations.",
-	dokploy:
-		"Nearzero versus Dokploy comparison focused on self-hosting, Docker workloads, remote servers, domains, and operations.",
+		"Nearzero versus Coolify: self-hosted deployment platforms compared.",
 };
 
 const faqSchema = {
@@ -44,40 +49,8 @@ const faqSchema = {
 		acceptedAnswer: { "@type": "Answer", text: faq.answer },
 	})),
 };
-
-const deploymentPath = [
-	{
-		number: "01",
-		title: "Host Nearzero",
-		copy: "Run the Community control plane on a dedicated Linux host and secure its management surface.",
-	},
-	{
-		number: "02",
-		title: "Attach capacity",
-		copy: "Use the local host or connect remote servers, then choose where each workload should run.",
-	},
-	{
-		number: "03",
-		title: "Describe the service",
-		copy: "Connect Git, review build commands, add environment values, and define the runtime port or Compose stack.",
-	},
-	{
-		number: "04",
-		title: "Deploy",
-		copy: "Build and start the application or database on the selected Docker host while Nearzero records deployment state.",
-	},
-	{
-		number: "05",
-		title: "Route traffic",
-		copy: "Point a custom record or delegated managed zone to the selected server and let Traefik terminate HTTPS when prerequisites pass.",
-	},
-	{
-		number: "06",
-		title: "Operate",
-		copy: "Use logs and metrics directly, or ask the Agent to inspect and act within the requesting user's RBAC, administrator-controlled per-action policy, and the separate production gate.",
-	},
-];
 ---
+
 
 <MarketingLayout
 	kind="webpage"
@@ -88,165 +61,206 @@ const deploymentPath = [
 	socialImageAlt={socialAlts[comparison.slug]}
 	schemaGraph={[faqSchema]}
 >
-	<div class="nz-marketing nz-compare-site">
-		<MarketingHeader active="compare" />
-
-		<main id="main-content" class="nz-compare-main">
-			<header class="nz-compare-hero">
+	<div class="nz-marketing">
+		<MastheadBoard compact>
+			<MarketingHeader slot="header" active="compare" />
+			<section slot="hero" class="nz-hero" id="main-content" aria-labelledby="nz-compare-hero-heading">
 				<div class="nz-container">
-					<nav class="nz-compare-breadcrumbs" aria-label="Breadcrumb">
-						<a href={publicSiteLinks.docs}>Docs</a><span aria-hidden="true">/</span>
-						<a href={publicSiteLinks.compare}>Compare</a><span aria-hidden="true">/</span>
-						<span>{comparison.competitor}</span>
-					</nav>
-
-					<div class="nz-compare-hero__grid">
-						<div>
-							<span class="nz-kicker">{comparison.categoryLabel}</span>
-							<h1>Nearzero <span>vs</span> {comparison.competitor}</h1>
-							<p>{comparison.summary}</p>
-							<div class="nz-compare-actions">
-								<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
-									Read the self-hosting guide <span aria-hidden="true">→</span>
-								</a>
-								<a
-									class="nz-button nz-button--secondary"
-									href={publicSiteLinks.github}
-									target="_blank"
-									rel="noreferrer"
-								>
-									<GitHubMark size={16} /> View Nearzero source
-								</a>
-							</div>
+					<div class="nz-hero__copy">
+						<h1 id="nz-compare-hero-heading">Nearzero vs {comparison.competitor}</h1>
+						<p class="nz-hero__lede">{comparison.summary}</p>
+						<div class="nz-hero__actions">
+							<a class="nz-button nz-button--primary" href="#why">
+								Where Nearzero wins
+								<span aria-hidden="true">↓</span>
+							</a>
 						</div>
-
-						<aside class="nz-compare-answer" aria-label="Quick answer">
-							<div><span>Quick answer</span><small>Reviewed {comparisonReviewDate}</small></div>
-							<p>{comparison.quickAnswer}</p>
-						</aside>
-					</div>
-				</div>
-			</header>
-
-			<section class="nz-compare-section" id="decision">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading">
-						<span class="nz-compare-index">01</span>
-						<div><span class="nz-kicker">Start with the operating model</span><h2>Which platform fits the job?</h2></div>
-					</div>
-
-					<div class="nz-compare-choice-grid">
-						<article>
-							<span class="nz-compare-choice__label">Choose Nearzero when</span>
-							<h3>You want the platform on infrastructure you operate.</h3>
-							<ul>{comparison.chooseNearzero.map((item) => <li><span aria-hidden="true">✓</span>{item}</li>)}</ul>
-						</article>
-						<article>
-							<span class="nz-compare-choice__label">Choose {comparison.competitor} when</span>
-							<h3>Its product model better matches what you want to outsource.</h3>
-							<ul>{comparison.chooseCompetitor.map((item) => <li><span aria-hidden="true">→</span>{item}</li>)}</ul>
-						</article>
 					</div>
 				</div>
 			</section>
+		</MastheadBoard>
 
-			<section class="nz-compare-section" id="capabilities">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading">
-						<span class="nz-compare-index">02</span>
-						<div><span class="nz-kicker">Capability by capability</span><h2>Same outcome, different responsibility.</h2></div>
-					</div>
+		<main>
+			<LandingBoard kicker="Why" headingId="nz-compare-why-heading" id="why" bodyClass="nz-land-board__body--split">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-why-heading">Where Nearzero wins.</h2>
+					<p>These are the jobs {comparison.competitor} does not give you.</p>
+				</Fragment>
+				{
+					comparison.chooseNearzero.map((item, index) => (
+						<article class="nz-land-tile">
+							<span class="nz-land-tile__kicker">{String(index + 1).padStart(2, "0")}</span>
+							<h3>{item.title}</h3>
+							<p>{item.copy}</p>
+						</article>
+					))
+				}
+			</LandingBoard>
 
-					<div class="nz-compare-table-wrap">
-						<table class="nz-compare-table">
-							<caption>Nearzero and {comparison.competitor} capability comparison</caption>
-							<thead><tr><th scope="col">Area</th><th scope="col">Nearzero</th><th scope="col">{comparison.competitor}</th><th scope="col">What it means</th></tr></thead>
-							<tbody>
-								{comparison.rows.map((row) => (
+			<LandingBoard kicker="Table" headingId="nz-compare-table-heading" id="capabilities" bodyClass="nz-land-board__body--docs">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-table-heading">The gap, row by row.</h2>
+					<p>Read the competitor column as what you give up — not as a feature list for them.</p>
+				</Fragment>
+				<div class="nz-land-tile nz-land-tile--wide nz-land-tile--table">
+					<table class="nz-land-table">
+						<caption>Nearzero and {comparison.competitor} capability comparison</caption>
+						<thead>
+							<tr>
+								<th scope="col">Area</th>
+								<th scope="col">Nearzero</th>
+								<th scope="col">{comparison.competitor}</th>
+								<th scope="col">What you get</th>
+							</tr>
+						</thead>
+						<tbody>
+							{
+								comparison.rows.map((row) => (
 									<tr>
 										<th scope="row">{row.capability}</th>
-										<td data-label="Nearzero"><span class:list={["nz-compare-status", `is-${row.nearzero.tone}`]}>{row.nearzero.value}</span></td>
-										<td data-label={comparison.competitor}><span class:list={["nz-compare-status", `is-${row.competitor.tone}`]}>{row.competitor.value}</span></td>
-										<td data-label="What it means">{row.implication}</td>
+										<td>
+											<span class:list={["nz-land-status", `is-${row.nearzero.tone}`]}>
+												{row.nearzero.value}
+											</span>
+										</td>
+										<td>
+											<span class:list={["nz-land-status", `is-${row.competitor.tone}`]}>
+												{row.competitor.value}
+											</span>
+										</td>
+										<td>{row.implication}</td>
 									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
+								))
+							}
+						</tbody>
+					</table>
 				</div>
-			</section>
+			</LandingBoard>
 
-			<section class="nz-compare-section" id="workflow">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading">
-						<span class="nz-compare-index">03</span>
-						<div><span class="nz-kicker">Nearzero end to end</span><h2>What the self-hosted workflow actually includes.</h2></div>
-					</div>
+			<LandingBoard kicker="Unlock" headingId="nz-compare-unlock-heading" id="unlock" bodyClass="nz-land-board__body--split">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-unlock-heading">What that unlocks.</h2>
+					<p>Control stays on the host. Nearzero builds, deploys, and routes.</p>
+				</Fragment>
+				{
+					comparison.implications.map((item) => (
+						<article class="nz-land-tile">
+							<span class="nz-land-tile__kicker">Outcome</span>
+							<h3>{item.title}</h3>
+							<p>{item.copy}</p>
+						</article>
+					))
+				}
+			</LandingBoard>
 
-					<ol class="nz-compare-path">
-						{deploymentPath.map((step) => <li><span>{step.number}</span><h3>{step.title}</h3><p>{step.copy}</p></li>)}
-					</ol>
+			<LandingBoard kicker="FAQ" headingId="nz-compare-faq-heading" id="faq" bodyClass="nz-land-board__body--faq">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-faq-heading">Nearzero vs {comparison.competitor} FAQ</h2>
+					<p>Short answers for why this control plane belongs on your servers.</p>
+				</Fragment>
+				{
+					comparison.faqs.map((faq) => (
+						<details class="nz-land-tile nz-land-faq">
+							<summary>
+								<h3>{faq.question}</h3>
+								<i aria-hidden="true"></i>
+							</summary>
+							<p>{faq.answer}</p>
+						</details>
+					))
+				}
+			</LandingBoard>
 
-					<div class="nz-compare-implications">
-						{comparison.implications.map((item) => <article><span aria-hidden="true">↳</span><div><h3>{item.title}</h3><p>{item.copy}</p></div></article>)}
-					</div>
-				</div>
-			</section>
+			<LandingBoard kicker="Compare" headingId="nz-compare-related-heading" id="related" bodyClass="nz-land-board__body--uses">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-related-heading">Keep going.</h2>
+					<p>Same thesis. Different gap.</p>
+				</Fragment>
+				{
+					otherComparisons.map((item) => (
+						<a class="nz-land-tile nz-land-tile--link" href={`/compare/${item.slug}`}>
+							<span class="nz-land-tile__kicker">
+								{item.category === "managed-platform" ? "Managed" : "Self-hosted"}
+							</span>
+							<h3>Nearzero vs {item.competitor}</h3>
+							<p>{firstSentence(item.summary)}</p>
+							<span class="nz-text-link">
+								Read comparison <span aria-hidden="true">→</span>
+							</span>
+						</a>
+					))
+				}
+			</LandingBoard>
 
-			<section class="nz-compare-section" id="tradeoffs">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading">
-						<span class="nz-compare-index">04</span>
-						<div><span class="nz-kicker">Tradeoffs, not slogans</span><h2>What each choice asks from your team.</h2></div>
+			<LandingBoard kicker="Call" headingId="nz-compare-walk-heading" id="walkthrough" bodyClass="nz-land-board__body--split">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-walk-heading">Map this to the servers you have.</h2>
+					<p>Thirty minutes against the hosts, DNS, and Compose you actually run.</p>
+				</Fragment>
+				<article class="nz-land-tile nz-land-tile--cta">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">Book</span>
+						<h3>Walk through Nearzero vs {comparison.competitor}.</h3>
+						<p>Bring what you run today. We will say when Nearzero is the wrong install.</p>
+						<ul class="nz-land-checks">
+							<li>Whether the job is a control plane on servers you operate</li>
+							<li>Where Compose, databases, and placement actually matter</li>
+							<li>DNS, HTTPS, and who owns the box after deploy</li>
+						</ul>
 					</div>
+					<div class="nz-land-actions">
+						<a
+							class="nz-button nz-button--primary"
+							href={salesUrl}
+						>
+							Book a 30-minute walkthrough
+							<span aria-hidden="true">→</span>
+						</a>
+					</div>
+				</article>
+				<article class="nz-land-tile">
+					<span class="nz-land-tile__kicker">Format</span>
+					<h3>What the half-hour is.</h3>
+					<p>A working session, not a pitch deck.</p>
+					<ul class="nz-land-checks">
+						<li>Current setup and the hosts you already pay for</li>
+						<li>This comparison against those constraints</li>
+						<li>Next step: install Nearzero, or stay where you are</li>
+					</ul>
+				</article>
+			</LandingBoard>
 
-					<div class="nz-compare-limits">
-						<article><h3>Nearzero limitations</h3><ul>{comparison.nearzeroLimitations.map((item) => <li>{item}</li>)}</ul></article>
-						<article><h3>{comparison.competitor} considerations</h3><ul>{comparison.competitorLimitations.map((item) => <li>{item}</li>)}</ul></article>
+			<LandingBoard kicker="Guides" headingId="nz-compare-next-heading" id="get-started" bodyClass="nz-land-board__body--cta" gapAfter={false}>
+				<Fragment slot="intro">
+					<h2 id="nz-compare-next-heading">If this pointed at Nearzero, install it.</h2>
+					<p>Own the host first. Then put the control plane on it.</p>
+				</Fragment>
+				<article class="nz-land-tile nz-land-tile--cta">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">Install</span>
+						<h3>Self-hosting guide</h3>
+						<p>Dedicated Linux host, DNS, HTTPS, and the first deploy.</p>
 					</div>
-					<p class="nz-compare-safety-link">
-						Before production, review host security, DNS and HTTPS prerequisites, backups, access controls, and <a href={publicSiteLinks.agentSafety}>Agent policy if automation is enabled</a>.
-					</p>
-				</div>
-			</section>
-
-			<section class="nz-compare-section" id="methodology">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading">
-						<span class="nz-compare-index">05</span>
-						<div><span class="nz-kicker">Evidence and review method</span><h2>Read the sources behind the comparison.</h2></div>
+					<div class="nz-land-actions">
+						<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
+							Open the install guide
+							<span aria-hidden="true">→</span>
+						</a>
 					</div>
-					<div class="nz-compare-method">
-						<div><span>Last reviewed</span><strong>{comparisonReviewDate}</strong><p>{comparison.methodology}</p></div>
-						<ul>{comparison.sources.map((source) => <li><a href={source.url} target="_blank" rel="noreferrer">{source.label}<span aria-hidden="true">↗</span></a></li>)}</ul>
+				</article>
+				<article class="nz-land-tile">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">Keep comparing</span>
+						<h3>Other platforms</h3>
+						<p>Vercel, Netlify, and Coolify — what they do not give you.</p>
 					</div>
-				</div>
-			</section>
-
-			<section class="nz-compare-section" id="faq">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading">
-						<span class="nz-compare-index">06</span>
-						<div><span class="nz-kicker">Common questions</span><h2>Nearzero vs {comparison.competitor} FAQ</h2></div>
+					<div class="nz-land-actions">
+						<a class="nz-button nz-button--secondary" href={publicSiteLinks.compare}>
+							All comparisons
+						</a>
 					</div>
-					<div class="nz-compare-faq">
-						{comparison.faqs.map((faq, index) => <details open={index === 0}><summary><span>{faq.question}</span><i aria-hidden="true"></i></summary><p>{faq.answer}</p></details>)}
-					</div>
-				</div>
-			</section>
-
-			<section class="nz-compare-related">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-related__heading"><div><span class="nz-kicker">Keep comparing</span><h2>Choose the model before the product.</h2></div><a href={publicSiteLinks.compare}>All comparisons <span aria-hidden="true">→</span></a></div>
-					<div class="nz-compare-related__grid">
-						{otherComparisons.map((item) => <a href={`/compare/${item.slug}`}><span>{item.categoryLabel}</span><strong>Nearzero vs {item.competitor}</strong><i aria-hidden="true">→</i></a>)}
-					</div>
-				</div>
-			</section>
-
-			<section class="nz-compare-cta">
-				<div class="nz-container nz-compare-reading"><div><span class="nz-kicker">See the real operating model</span><h2>Follow the secure self-hosting path.</h2><p>Install the control plane, connect a workload server, and verify DNS, ingress, backups, and access policy before production.</p></div><a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>Open the install guide <span aria-hidden="true">→</span></a></div>
-			</section>
+				</article>
+			</LandingBoard>
 		</main>
 
 		<MarketingFooter />

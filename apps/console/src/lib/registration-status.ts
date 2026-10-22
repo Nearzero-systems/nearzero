@@ -1,21 +1,23 @@
 export type PublicRegistrationStatus = {
 	mode: "bootstrap" | "invite_only" | "open";
 	normalSignupAllowed: boolean;
-	bootstrapClaimed: boolean;
-	adminEmailConfigured: boolean;
+	ownerExists: boolean;
 };
 
+/**
+ * - open: anyone can create an account.
+ * - owner_required: nobody owns this server yet; the owner is created on the
+ *   server with `sudo nearzero create-owner`, never from the web.
+ * - invitation_required: accounts are created from invitation links only.
+ */
 export type RegistrationExperience =
 	| "open"
-	| "bootstrap_owner"
+	| "owner_required"
 	| "invitation_required";
 
-type SetupClaimSignal = {
-	bootstrapClaimed?: boolean;
-	phase?: string;
-} | null;
+export const CREATE_OWNER_COMMAND = "sudo nearzero create-owner";
 
-function isPublicRegistrationStatus(
+export function isPublicRegistrationStatus(
 	value: unknown,
 ): value is PublicRegistrationStatus {
 	if (!value || typeof value !== "object") return false;
@@ -25,8 +27,7 @@ function isPublicRegistrationStatus(
 			status.mode === "invite_only" ||
 			status.mode === "open") &&
 		typeof status.normalSignupAllowed === "boolean" &&
-		typeof status.bootstrapClaimed === "boolean" &&
-		typeof status.adminEmailConfigured === "boolean"
+		typeof status.ownerExists === "boolean"
 	);
 }
 
@@ -37,37 +38,11 @@ export function resolveRegistrationExperience(
 	// Invitation registration is authorized independently of ordinary signup.
 	// Missing or malformed status is intentionally fail-open; the server still
 	// enforces the registration policy when the form is submitted.
-	if (hasInvitation || !status || status.mode === "open") return "open";
-	if (status.bootstrapClaimed || !status.normalSignupAllowed) {
-		return "invitation_required";
-	}
-	if (status.mode === "bootstrap") {
-		return "bootstrap_owner";
-	}
-	return "invitation_required";
+	if (hasInvitation || !status || status.normalSignupAllowed) return "open";
+	return status.ownerExists ? "invitation_required" : "owner_required";
 }
 
-export function resolveLoginRegistrationExperience(
-	experience: RegistrationExperience,
-	setup: SetupClaimSignal,
-): RegistrationExperience {
-	if (experience === "open") return "open";
-	const firstOwnerExists =
-		Boolean(setup?.bootstrapClaimed) ||
-		setup?.phase === "operational" ||
-		setup?.phase === "claimed";
-	if (firstOwnerExists) return "invitation_required";
-	// Domain setup is finished; login should not keep first-time installer copy.
-	if (setup?.phase === "configured" && experience === "bootstrap_owner") {
-		return "open";
-	}
-	return experience;
-}
-
-export async function fetchRegistrationExperience(
-	hasInvitation: boolean,
-): Promise<RegistrationExperience> {
-	if (hasInvitation) return "open";
+export async function fetchRegistrationStatus(): Promise<PublicRegistrationStatus | null> {
 	try {
 		const response = await fetch("/api/auth/registration-status", {
 			method: "GET",
@@ -75,13 +50,20 @@ export async function fetchRegistrationExperience(
 			headers: { accept: "application/json" },
 			cache: "no-store",
 		});
-		if (!response.ok) return "open";
+		if (!response.ok) return null;
 		const value = (await response.json().catch(() => null)) as unknown;
-		return resolveRegistrationExperience(
-			isPublicRegistrationStatus(value) ? value : null,
-			hasInvitation,
-		);
+		return isPublicRegistrationStatus(value) ? value : null;
 	} catch {
-		return "open";
+		return null;
 	}
+}
+
+export async function fetchRegistrationExperience(
+	hasInvitation: boolean,
+): Promise<RegistrationExperience> {
+	if (hasInvitation) return "open";
+	return resolveRegistrationExperience(
+		await fetchRegistrationStatus(),
+		hasInvitation,
+	);
 }

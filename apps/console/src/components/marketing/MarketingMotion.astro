@@ -2,11 +2,9 @@
 	import { animate, inView, stagger } from "framer-motion/dom";
 
 	const body = document.body;
+	const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-	if (
-		body.dataset.nzMotionBound !== "true" &&
-		!window.matchMedia("(prefers-reduced-motion: reduce)").matches
-	) {
+	if (body.dataset.nzMotionBound !== "true" && !reduceMotion) {
 		body.dataset.nzMotionBound = "true";
 
 		const easing = [0.22, 1, 0.36, 1] as const;
@@ -20,14 +18,27 @@
 			),
 		];
 
-		const prepare = (elements: HTMLElement[], distance = 14) => {
+		const isInInitialView = (element: HTMLElement) => {
+			const rect = element.getBoundingClientRect();
+			return rect.bottom > 24 && rect.top < window.innerHeight * 0.88;
+		};
+
+		const prepare = (elements: HTMLElement[], distance = 22) => {
+			const queued: HTMLElement[] = [];
+
 			for (const element of elements) {
+				if (element.closest(".nz-land-gap, .nz-footer")) continue;
+				if (element.dataset.nzMotionPending === "true") continue;
+
 				element.style.opacity = "0";
 				element.style.transform = `translateY(${distance}px)`;
 				element.style.willChange = "opacity, transform";
 				element.dataset.nzMotionPending = "true";
 				pending.add(element);
+				queued.push(element);
 			}
+
+			return queued;
 		};
 
 		const finish = (elements: HTMLElement[]) => {
@@ -51,78 +62,84 @@
 				{ opacity: 1, transform: "translateY(0px)" },
 				{
 					delay: options.delay ?? 0,
-					duration: options.duration ?? 0.52,
+					duration: options.duration ?? 0.58,
 					ease: easing,
 					onComplete: () => finish(elements),
 				},
 			);
 		};
 
-		const entrance = uniqueElements([
-			".nz-docs-hero > .nz-container",
-			".nz-compare-hero__grid > div",
-			".nz-compare-answer",
-			".nz-compare-hub-hero > .nz-container",
-		]);
+		const watch = (
+			trigger: HTMLElement,
+			queued: HTMLElement[],
+			options: { delay?: number | ReturnType<typeof stagger>; duration?: number } = {},
+		) => {
+			if (queued.length === 0) return;
 
-		prepare(entrance, 12);
-		reveal(entrance, { delay: stagger(0.055), duration: 0.48 });
+			if (isInInitialView(trigger)) {
+				reveal(queued, { ...options, duration: options.duration ?? 0.5 });
+				return;
+			}
 
-		const singleReveals = uniqueElements([
-			".nz-doc-section",
-			".nz-doc-pager",
-			".nz-compare-section__heading",
-			".nz-compare-table-wrap",
-			".nz-compare-method",
-			".nz-compare-faq",
-			".nz-compare-group > header",
-			".nz-compare-related__heading",
-			".nz-compare-cta > .nz-container",
-		]);
-
-		for (const element of singleReveals) {
-			prepare([element]);
 			let hasRevealed = false;
 			inView(
-				element,
+				trigger,
 				() => {
 					if (hasRevealed) return;
 					hasRevealed = true;
-					reveal([element]);
+					reveal(queued, options);
 				},
-				{ amount: 0.16, margin: "0px 0px -7% 0px" },
+				{ amount: 0.08, margin: "0px 0px -12% 0px" },
 			);
+		};
+
+		watch(
+			document.querySelector(".nz-hero__copy") ?? body,
+			prepare(
+				uniqueElements([
+					".nz-hero__copy",
+					".nz-docs-page__header",
+					".nz-docs-hero > .nz-container",
+				]),
+				16,
+			),
+			{ delay: stagger(0.05), duration: 0.52 },
+		);
+
+		for (const element of uniqueElements([
+			".nz-land-board__intro",
+			".nz-land-board__visual",
+			".nz-faq-board__intro",
+			".nz-faq-board__visual",
+			".nz-docs-page__header",
+			".nz-doc-section",
+			".nz-docs-pager",
+			".nz-doc-pager",
+		])) {
+			watch(element, prepare([element], 24), { duration: 0.62 });
 		}
 
 		const staggerGroups = [
-			[".nz-comparison-card-grid", ":scope > a"],
-			[".nz-compare-choice-grid", ":scope > article"],
-			[".nz-compare-path", ":scope > li"],
-			[".nz-compare-implications", ":scope > article"],
-			[".nz-compare-limits", ":scope > article"],
-			[".nz-compare-related__grid", ":scope > a"],
-			[".nz-compare-group__grid", ":scope > a"],
-			[".nz-compare-methodology-grid", ":scope > article"],
-			[".nz-compare-honesty", ":scope > div"],
+			[".nz-land-board__body", ":scope > .nz-land-tile, :scope > a.nz-land-tile"],
+			[".nz-faq-board__body", ":scope > .nz-faq-board__group"],
+			[".nz-footer__nav", ".nz-footer__heading, .nz-footer__cell"],
+			[".nz-docs-article", ":scope > *"],
+			[".nz-docs-rail", ".nz-docs-rail__group"],
 		] as const;
 
 		for (const [groupSelector, childSelector] of staggerGroups) {
 			for (const group of document.querySelectorAll<HTMLElement>(groupSelector)) {
-				const children = [
-					...group.querySelectorAll<HTMLElement>(childSelector),
-				];
-				prepare(children, 12);
-				let hasRevealed = false;
-				inView(
-					group,
-					() => {
-						if (hasRevealed) return;
-						hasRevealed = true;
-						reveal(children, { delay: stagger(0.06), duration: 0.46 });
-					},
-					{ amount: 0.12, margin: "0px 0px -5% 0px" },
-				);
+				const children = [...group.querySelectorAll<HTMLElement>(childSelector)];
+				watch(group, prepare(children, 18), {
+					delay: stagger(0.05),
+					duration: 0.5,
+				});
 			}
+		}
+
+		const footer = document.querySelector<HTMLElement>(".nz-footer");
+		if (footer) {
+			watch(footer, prepare([footer], 16), { duration: 0.55 });
 		}
 
 		window.addEventListener("beforeprint", () => finish([...pending]));

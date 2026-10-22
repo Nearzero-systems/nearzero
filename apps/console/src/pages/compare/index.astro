@@ -1,16 +1,20 @@
 ---
 // biome-ignore-all lint/correctness/noUnusedImports: Astro resolves frontmatter bindings in the template.
-import GitHubMark from "@/components/marketing/GitHubMark.astro";
+import LandingBoard from "@/components/marketing/LandingBoard.astro";
+import MarketingFaq from "@/components/marketing/MarketingFaq.astro";
 import MarketingFooter from "@/components/marketing/MarketingFooter.astro";
 import MarketingHeader from "@/components/marketing/MarketingHeader.astro";
+import MastheadBoard from "@/components/marketing/MastheadBoard.astro";
 import MarketingLayout from "@/layouts/MarketingLayout.astro";
+import { comparisonGroups, comparisons } from "@/lib/comparisons";
 import {
-	comparisonGroups,
-	comparisonReviewDate,
-	comparisons,
-} from "@/lib/comparisons";
-import { publicSiteLinks, publicSiteUrl } from "@/lib/public-site";
-import "@/styles/public-comparisons.css";
+	comparisonNavigation,
+	publicSiteLinks,
+	publicSiteUrl,
+} from "@/lib/public-site";
+import "@/styles/landing.css";
+
+const salesUrl = "mailto:contact@nearzero.dev?subject=Nearzero%20walkthrough";
 
 const itemListSchema = {
 	"@type": "ItemList",
@@ -24,173 +28,213 @@ const itemListSchema = {
 	})),
 };
 
-const operatingModels = [
+const cardCopy = Object.fromEntries(
+	comparisonNavigation.map((item) => [item.competitor, item.description]),
+);
+
+const nearzeroPath = [
 	{
-		platform: "Nearzero",
-		model: "Self-hosted control plane",
-		runtime: "Your selected Docker servers",
-		best: "Applications, databases, Compose, remote-server placement, managed zones, and day-two operations",
-		owner: "You operate hosts, capacity, backups, and availability",
+		number: "01",
+		title: "Control plane",
+		copy: "Install Nearzero on a dedicated Linux host you operate.",
 	},
 	{
-		platform: "Vercel",
-		model: "Managed application platform",
-		runtime: "Vercel-managed infrastructure",
-		best: "Managed web and agent workloads, framework integration, global delivery, and mature previews",
-		owner:
-			"Vercel operates the platform; you operate application configuration and data dependencies",
+		number: "02",
+		title: "Servers",
+		copy: "Keep work on that host, or add more Linux servers over SSH.",
 	},
 	{
-		platform: "Netlify",
-		model: "Managed web platform",
-		runtime: "Netlify-managed edge and compute",
-		best: "Atomic web deploys, previews, Functions, edge delivery, and managed domain workflows",
-		owner:
-			"Netlify operates the platform; you operate application configuration and external services",
+		number: "03",
+		title: "Source",
+		copy: "Connect Git. Branch, build command, and runtime stay with the app.",
 	},
 	{
-		platform: "Coolify",
-		model: "Self-hosted PaaS or managed control plane",
-		runtime: "Servers you connect",
-		best: "Broad self-hosting, Git delivery, Compose, services, templates, TLS, and remote servers",
-		owner:
-			"You operate workload servers; self-hosted users also operate the control plane",
+		number: "04",
+		title: "Deploy",
+		copy: "Build apps, databases, or Compose on the selected server.",
 	},
 	{
-		platform: "Dokploy",
-		model: "Self-hosted PaaS or cloud offering",
-		runtime: "Docker and Swarm servers you connect",
-		best: "Applications, databases, Compose, templates, previews, remote builds, and cluster workflows",
-		owner:
-			"Responsibility depends on edition; self-hosted users operate the control plane and hosts",
+		number: "05",
+		title: "Publish",
+		copy: "Point the hostname at that server. Traefik and Let's Encrypt handle HTTPS.",
+	},
+	{
+		number: "06",
+		title: "Operate",
+		copy: "Logs and metrics stay with the workload. The Agent can look — production writes stay off until you turn them on.",
 	},
 ];
 
-const nearzeroPath = [
-	[
-		"01",
-		"Control plane",
-		"Self-host the open-source Community edition on a dedicated Linux host.",
-	],
-	[
-		"02",
-		"Servers",
-		"Connect local or remote workload capacity and choose placement per service.",
-	],
-	[
-		"03",
-		"Source",
-		"Import Git, review commands, and describe the runtime and environment.",
-	],
-	[
-		"04",
-		"Deploy",
-		"Build and run applications, databases, or Compose stacks on the selected host.",
-	],
-	[
-		"05",
-		"Publish",
-		"Route a custom or managed hostname to that host and provision HTTPS when DNS and ingress are ready.",
-	],
-	[
-		"06",
-		"Operate",
-		"Use logs and metrics directly or ask the Agent to act within user RBAC, administrator-controlled per-action policy, and the separate production gate.",
-	],
-];
+const groupIntros = {
+	"managed-platforms": {
+		heading: "They own the runtime. You do not get the server.",
+		copy: "Vercel and Netlify will not give you a Docker host, a database on your VPS, or a say in which machine the work runs on.",
+	},
+	"self-hosted-paas": {
+		heading: "Same VPS. Different control plane.",
+		copy: "Coolify can ship Git to a server. Nearzero keeps placement, optional DNS, HTTPS, metrics, and a locked-down Agent on that host.",
+	},
+} as const;
 ---
 
 <MarketingLayout
 	kind="collection"
-	title="Compare Nearzero with Vercel, Netlify, Coolify, and Dokploy"
-	description="Compare Nearzero with Vercel, Netlify, Coolify, and Dokploy by hosting model, Git and Docker workloads, remote servers, domains, and operator responsibility."
+	title="Nearzero vs Vercel, Netlify, and Coolify"
+	description="Vercel and Netlify own the runtime. Coolify ships Git to a VPS. Nearzero is the control plane for apps, databases, and Compose on Linux you operate."
 	canonical="/compare"
-	breadcrumbLabel="Deployment platform comparisons"
-	socialImageAlt="Nearzero deployment platform comparison for teams choosing between managed infrastructure and self-hosted servers."
+	breadcrumbLabel="Compare"
+	socialImageAlt="Nearzero comparison hub: self-hosted deployment versus Vercel, Coolify, and Netlify."
 	schemaGraph={[itemListSchema]}
 >
-	<div class="nz-marketing nz-compare-site">
-		<MarketingHeader active="compare" />
-
-		<main id="main-content" class="nz-compare-main">
-			<header class="nz-compare-hub-hero">
-				<div class="nz-container nz-compare-reading">
-					<nav class="nz-compare-breadcrumbs" aria-label="Breadcrumb"><a href={publicSiteLinks.docs}>Docs</a><span aria-hidden="true">/</span><span>Compare</span></nav>
-					<span class="nz-kicker">Deployment platform comparisons</span>
-					<h1>Choose what to manage. <span>Then choose the platform.</span></h1>
-					<p>
-						Nearzero, Vercel, Netlify, Coolify, and Dokploy can all move code toward production. The meaningful difference is where workloads run, who operates the platform, and how much infrastructure context stays under your control.
-					</p>
-					<div class="nz-compare-actions">
-						<a class="nz-button nz-button--primary" href="#platforms">Compare the platforms <span aria-hidden="true">↓</span></a>
-						<a class="nz-button nz-button--secondary" href={publicSiteLinks.github} target="_blank" rel="noreferrer"><GitHubMark size={16} /> Inspect the source</a>
-					</div>
-					<div class="nz-compare-review"><span aria-hidden="true"></span>Facts reviewed against official sources on {comparisonReviewDate}</div>
-				</div>
-			</header>
-
-			<section class="nz-compare-section" id="platforms">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading"><span class="nz-compare-index">01</span><div><span class="nz-kicker">Start with the category</span><h2>Managed platform or self-hosted PaaS?</h2><p>That decision changes your control, operating burden, scaling model, and failure modes more than a checklist of overlapping features.</p></div></div>
-
-					{comparisonGroups.map((group) => (
-						<div class="nz-compare-group">
-							<header><div><span>{group.question}</span><h3>{group.label}</h3></div><p>{group.description}</p></header>
-							<div class="nz-compare-group__grid">
-								{group.comparisons.map((comparison) => (
-									<a href={`/compare/${comparison.slug}`}>
-										<span>{comparison.categoryLabel}</span>
-										<h4>Nearzero vs {comparison.competitor}</h4>
-										<p>{comparison.quickAnswer}</p>
-										<strong>Read the sourced comparison <i aria-hidden="true">→</i></strong>
-									</a>
-								))}
-							</div>
+	<div class="nz-marketing">
+		<MastheadBoard compact>
+			<MarketingHeader slot="header" active="compare" />
+			<section slot="hero" class="nz-hero" id="main-content" aria-labelledby="nz-compare-hero-heading">
+				<div class="nz-container">
+					<div class="nz-hero__copy">
+						<h1 id="nz-compare-hero-heading">
+							Keep the servers. Run the platform on them.
+						</h1>
+						<p class="nz-hero__lede">
+							Nearzero is the control plane for apps, databases, and Compose on Linux you operate. These three pages show what Vercel, Netlify, and Coolify do not give you.
+						</p>
+						<div class="nz-hero__actions">
+							<a class="nz-button nz-button--primary" href="#platforms">
+								See the gaps
+								<span aria-hidden="true">↓</span>
+							</a>
 						</div>
-					))}
-				</div>
-			</section>
-
-			<section class="nz-compare-section" id="model">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading"><span class="nz-compare-index">02</span><div><span class="nz-kicker">Operating-model overview</span><h2>Where the software runs changes everything after deploy.</h2></div></div>
-					<div class="nz-compare-table-wrap">
-						<table class="nz-compare-table nz-compare-table--hub">
-							<caption>Operating model for Nearzero, Vercel, Netlify, Coolify, and Dokploy</caption>
-							<thead><tr><th scope="col">Platform</th><th scope="col">Product model</th><th scope="col">Workloads run on</th><th scope="col">Strong fit</th><th scope="col">Operator responsibility</th></tr></thead>
-							<tbody>{operatingModels.map((row) => <tr><th scope="row">{row.platform}</th><td data-label="Product model">{row.model}</td><td data-label="Workloads run on">{row.runtime}</td><td data-label="Strong fit">{row.best}</td><td data-label="Operator responsibility">{row.owner}</td></tr>)}</tbody>
-						</table>
-					</div>
-					<p class="nz-compare-table-note">Capabilities and plan boundaries change. Use each detailed page for the reviewed claim, caveat, and official source—not this summary alone.</p>
-				</div>
-			</section>
-
-			<section class="nz-compare-section" id="nearzero-path">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading"><span class="nz-compare-index">03</span><div><span class="nz-kicker">What Nearzero actually does</span><h2>From a Linux host to an operated application.</h2><p>The value is the connected path, not a claim that infrastructure disappears.</p></div></div>
-					<ol class="nz-compare-path">{nearzeroPath.map(([number, title, copy]) => <li><span>{number}</span><h3>{title}</h3><p>{copy}</p></li>)}</ol>
-					<div class="nz-compare-honesty">
-						<div><span class="nz-kicker">Choose Nearzero when</span><h3>Control is worth the operating responsibility.</h3><p>You want long-running applications, databases, Compose, remote-server placement, and server-aware domains in one self-hosted control plane. The policy-bounded Agent is available when useful.</p></div>
-						<div><span class="nz-kicker">Choose managed infrastructure when</span><h3>You want fewer systems to operate.</h3><p>Vercel or Netlify may be the stronger choice when a managed global platform, elastic compute, edge delivery, and mature preview collaboration matter more than owning hosts.</p></div>
 					</div>
 				</div>
 			</section>
+		</MastheadBoard>
 
-			<section class="nz-compare-section" id="methodology">
-				<div class="nz-container nz-compare-reading">
-					<div class="nz-compare-section__heading"><span class="nz-compare-index">04</span><div><span class="nz-kicker">Comparison method</span><h2>Useful pages require evidence and uncomfortable tradeoffs.</h2></div></div>
-					<div class="nz-compare-methodology-grid">
-						<article><span>01</span><h3>Primary sources</h3><p>Competitor claims link to current official product pages, documentation, and repositories rather than third-party summaries.</p></article>
-						<article><span>02</span><h3>No checkbox theater</h3><p>A shared feature can behave very differently on managed infrastructure, a self-hosted control plane, or a remote Docker server.</p></article>
-						<article><span>03</span><h3>Show both reasons</h3><p>Each page explains when Nearzero fits, when the competitor fits, and what limitations remain on both sides.</p></article>
-						<article><span>04</span><h3>Date volatile facts</h3><p>Every page carries a visible review date. Confirm plan limits, pricing, and recently launched features before deciding.</p></article>
+		<main>
+			{
+				comparisonGroups.map((group) => (
+					<LandingBoard
+						kicker={group.id === "managed-platforms" ? "Managed" : "Self-host"}
+						headingId={`nz-compare-${group.id}`}
+						id={group.id === "managed-platforms" ? "platforms" : group.id}
+						bodyClass="nz-land-board__body--split"
+					>
+						<Fragment slot="intro">
+							<h2 id={`nz-compare-${group.id}`}>{groupIntros[group.id].heading}</h2>
+							<p>{groupIntros[group.id].copy}</p>
+						</Fragment>
+						{group.comparisons.map((comparison) => (
+							<a class="nz-land-tile nz-land-tile--link" href={`/compare/${comparison.slug}`}>
+								<span class="nz-land-tile__kicker">
+									{comparison.category === "managed-platform" ? "Managed" : "Self-hosted"}
+								</span>
+								<h3>Nearzero vs {comparison.competitor}</h3>
+								<p>{cardCopy[comparison.competitor] ?? comparison.summary}</p>
+								<span class="nz-text-link">
+									Why Nearzero <span aria-hidden="true">→</span>
+								</span>
+							</a>
+						))}
+					</LandingBoard>
+				))
+			}
+
+			<LandingBoard kicker="Path" headingId="nz-compare-path-heading" id="nearzero-path" bodyClass="nz-land-board__body--path">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-path-heading">Host to a running application.</h2>
+					<p>Nearzero runs the workflow. You keep the servers.</p>
+				</Fragment>
+				{
+					nearzeroPath.map((step) => (
+						<article class="nz-land-tile">
+							<span class="nz-land-tile__kicker">{step.number}</span>
+							<h3>{step.title}</h3>
+							<p>{step.copy}</p>
+						</article>
+					))
+				}
+				<article class="nz-land-tile nz-land-tile--wide">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">The point</span>
+						<h3>You still patch, back up, and size the VPS.</h3>
+						<p>That is how you keep the data, the network path, and the incident. Nearzero builds, deploys, and routes.</p>
 					</div>
-				</div>
-			</section>
+					<a class="nz-text-link" href={publicSiteLinks.selfHosting}>
+						Read the self-hosting guide <span aria-hidden="true">→</span>
+					</a>
+				</article>
+			</LandingBoard>
 
-			<section class="nz-compare-cta">
-				<div class="nz-container nz-compare-reading"><div><span class="nz-kicker">Evaluate Nearzero directly</span><h2>Read the operating guides before choosing.</h2><p>Start with installation, remote-server security, workload placement, DNS and HTTPS, backups, and production access controls.</p></div><div class="nz-compare-actions"><a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>Self-hosting guide <span aria-hidden="true">→</span></a><a class="nz-button nz-button--dark-outline" href={publicSiteLinks.agentSafety}>Agent safety model</a></div></div>
-			</section>
+			<LandingBoard kicker="Call" headingId="nz-compare-walk-heading" id="walkthrough" bodyClass="nz-land-board__body--split">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-walk-heading">Map this to the servers you have.</h2>
+					<p>Thirty minutes against the hosts, DNS, and Compose you actually run.</p>
+				</Fragment>
+				<article class="nz-land-tile nz-land-tile--cta">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">Book</span>
+						<h3>Walk through the comparison.</h3>
+						<p>Bring what you run today. We will say when Nearzero is the wrong install.</p>
+						<ul class="nz-land-checks">
+							<li>Whether you need a Docker host a managed platform does not give you</li>
+							<li>Docker, Compose, and where each service should run</li>
+							<li>DNS, HTTPS, and who owns the box after deploy</li>
+						</ul>
+					</div>
+					<div class="nz-land-actions">
+						<a
+							class="nz-button nz-button--primary"
+							href={salesUrl}
+						>
+							Book a 30-minute walkthrough
+							<span aria-hidden="true">→</span>
+						</a>
+					</div>
+				</article>
+				<article class="nz-land-tile">
+					<span class="nz-land-tile__kicker">Format</span>
+					<h3>What the half-hour is.</h3>
+					<p>A working session, not a pitch deck.</p>
+					<ul class="nz-land-checks">
+						<li>Current setup and the hosts you already pay for</li>
+						<li>Nearzero against those constraints</li>
+						<li>Next step: install, or stay where you are</li>
+					</ul>
+				</article>
+			</LandingBoard>
+
+			<LandingBoard kicker="Guides" headingId="nz-compare-next-heading" id="get-started" bodyClass="nz-land-board__body--cta">
+				<Fragment slot="intro">
+					<h2 id="nz-compare-next-heading">If this pointed at Nearzero, install it.</h2>
+					<p>Own the host first. Then put the control plane on it.</p>
+				</Fragment>
+				<article class="nz-land-tile nz-land-tile--cta">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">Install</span>
+						<h3>Self-hosting guide</h3>
+						<p>Dedicated Linux host, DNS, HTTPS, and the first deploy.</p>
+					</div>
+					<div class="nz-land-actions">
+						<a class="nz-button nz-button--primary" href={publicSiteLinks.selfHosting}>
+							Open the install guide
+							<span aria-hidden="true">→</span>
+						</a>
+					</div>
+				</article>
+				<article class="nz-land-tile">
+					<div class="nz-land-tile__copy">
+						<span class="nz-land-tile__kicker">System</span>
+						<h3>Architecture</h3>
+						<p>Your servers run the apps. Nearzero is the control plane.</p>
+					</div>
+					<div class="nz-land-actions">
+						<a class="nz-button nz-button--secondary" href={publicSiteLinks.architecture}>
+							Read the architecture
+						</a>
+					</div>
+				</article>
+			</LandingBoard>
+
+			<MarketingFaq />
 		</main>
 
 		<MarketingFooter />

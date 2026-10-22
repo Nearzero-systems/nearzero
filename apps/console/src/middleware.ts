@@ -1,15 +1,6 @@
 import type { MiddlewareHandler } from "astro";
 import { sanitizeAuthCallbackPath } from "./lib/auth-callback-url";
 import { getSession } from "./lib/backendProxy";
-import {
-	isInstallBootstrapBlockingAuth,
-	isLoopbackHostname,
-	resolveInstallBootstrapPath,
-} from "./lib/install-setup";
-import {
-	fetchInstallBootstrapStatusServer,
-	fetchInstallSetupStatusServer,
-} from "./lib/install-setup-server";
 import { parseInvitationCallback } from "./lib/invitation-routes";
 import {
 	invitationPathFromToken,
@@ -31,6 +22,7 @@ import {
 	isOnboardingRegisterStep,
 	parseRegisterStep,
 } from "./lib/register-onboarding";
+import { fetchRegistrationStatusServer } from "./lib/registration-status-server";
 import { createServerTrpcClient } from "./lib/server-api";
 import {
 	fetchActiveOrganization,
@@ -44,13 +36,6 @@ export const ORG_DASHBOARD_REWRITE_HEADER = "x-nearzero-org-dashboard-rewrite";
 
 function isOrgDashboardRewrite(request: Request) {
 	return request.headers.get(ORG_DASHBOARD_REWRITE_HEADER) === "1";
-}
-
-function isRawIpHostname(hostname: string) {
-	const host = hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
-	if (isLoopbackHostname(host)) return true;
-	if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
-	return host.includes(":");
 }
 
 function dashboardPathForOrganization(
@@ -192,70 +177,29 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 				),
 			);
 		}
-		const setupStatus = await fetchInstallBootstrapStatusServer();
-		const setupPath = resolveInstallBootstrapPath(setupStatus);
-		if (setupPath && setupPath !== "/login") {
-			return context.redirect(setupPath);
-		}
 		return context.redirect("/login");
 	}
 
+	// The browser setup wizard was retired: the owner is created on the server.
 	if (path === "/setup" || path.startsWith("/setup/")) {
-		const setupSession = await getSession(context.request);
-		if (setupSession?.user) {
-			return context.redirect(
-				await resolvePostAuthRedirect(
-					context.request,
-					context.url,
-					"/dashboard/agent",
-				),
-			);
-		}
-		const setupStatus = await fetchInstallBootstrapStatusServer();
-		if (setupStatus && setupStatus.nextSurface !== "setup") {
-			return context.redirect(`/${setupStatus.nextSurface}`);
-		}
+		return context.redirect("/login");
 	}
 
-	if (path === "/login" || path === "/register") {
-		const [setupStatus, installStatus] = await Promise.all([
-			fetchInstallBootstrapStatusServer(),
-			fetchInstallSetupStatusServer(context.request),
-		]);
-		if (isInstallBootstrapBlockingAuth(setupStatus)) {
-			return context.redirect("/setup");
-		}
-		// After DNS/HTTPS is verified, prefer the management domain over :4321/IP.
-		const managementHostname = installStatus?.managementHostname?.trim();
-		if (
-			managementHostname &&
-			installStatus?.setupVerified &&
-			isRawIpHostname(context.url.hostname)
-		) {
-			const target = new URL(
-				`${context.url.pathname}${context.url.search}`,
-				`https://${managementHostname}`,
-			);
-			return context.redirect(target.toString());
-		}
-		const inviteToken =
-			context.url.searchParams.get("token")?.trim() || "";
-		// First owner already exists: /register without an invite is login.
-		if (
-			path === "/register" &&
-			!inviteToken &&
-			(setupStatus?.bootstrapClaimed ||
-				setupStatus?.nextSurface === "login" ||
-				installStatus?.bootstrapClaimed)
-		) {
-			return context.redirect("/login");
-		}
-		// Domain setup finished but no owner yet: send sign-in to first-owner signup.
-		if (
-			path === "/login" &&
-			setupStatus?.nextSurface === "register"
-		) {
-			return context.redirect("/register");
+	if (path === "/register") {
+		const inviteToken = context.url.searchParams.get("token")?.trim() || "";
+		// Without public signup, /register only serves invitations. Signed-in
+		// users (including someone mid-onboarding) are routed by the
+		// session-aware /register branch below; sending them to /login would
+		// bounce straight back to /register?step=… in a loop.
+		if (!inviteToken) {
+			const registration = await fetchRegistrationStatusServer();
+			if (
+				registration &&
+				!registration.normalSignupAllowed &&
+				!(await getSession(context.request))?.user
+			) {
+				return context.redirect("/login");
+			}
 		}
 	}
 

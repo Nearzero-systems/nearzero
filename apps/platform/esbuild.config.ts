@@ -37,6 +37,7 @@ try {
 				"wait-for-postgres": "wait-for-postgres.ts",
 				"reset-2fa": "reset-2fa.ts",
 				"migrate-auth-secret": "scripts/migrate-auth-secret.ts",
+				owner: "scripts/owner.ts",
 			},
 			bundle: true,
 			platform: "node",

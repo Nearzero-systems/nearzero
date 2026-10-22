@@ -572,7 +572,7 @@ export const detectGithubRepositoryApps = async (input: {
 
 /**
  * Returns the login of the GitHub account (user or organization) that the
- * GitHub App installation belongs to (e.g. "theshreyanshsingh").
+ * GitHub App installation belongs to (e.g. "nearzero-systems").
  *
  * This is resilient by design: any failure (missing configuration, network
  * error, revoked installation, etc.) resolves to `null` so callers can safely

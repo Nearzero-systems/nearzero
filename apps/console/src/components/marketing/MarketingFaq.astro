@@ -1,0 +1,147 @@
+---
+import { publicFaqGroups, publicFaqs } from "@/lib/public-site";
+
+interface Props {
+	emitSchema?: boolean;
+}
+
+const { emitSchema = true } = Astro.props;
+const sideTiles = [
+	{ col: 1, row: 1 },
+	{ col: 2, row: 1 },
+	{ col: 11, row: 1 },
+	{ col: 12, row: 1 },
+	{ col: 1, row: 2 },
+	{ col: 2, row: 2 },
+	{ col: 11, row: 2 },
+	{ col: 12, row: 2 },
+];
+const faqSchemaJson = JSON.stringify({
+	"@context": "https://schema.org",
+	"@type": "FAQPage",
+	mainEntity: publicFaqs.map((faq) => ({
+		"@type": "Question",
+		name: faq.question,
+		acceptedAnswer: { "@type": "Answer", text: faq.answer },
+	})),
+}).replaceAll("<", "\\u003c");
+---
+
+<section class="nz-faq-board" id="faq" aria-labelledby="nz-faq-heading">
+	<div class="nz-faq-board__grid">
+		{
+			sideTiles.map((tile) => (
+				<div
+					class="nz-faq-board__tile nz-faq-board__tile--side"
+					aria-hidden="true"
+					style={`--nz-c:${tile.col};--nz-r:${tile.row}`}
+				/>
+			))
+		}
+		<div class="nz-faq-board__visual" aria-hidden="true">
+			<span class="nz-kicker">FAQ</span>
+		</div>
+		<header class="nz-faq-board__intro">
+			<h2 id="nz-faq-heading">Frequently asked questions</h2>
+			<p>Short answers about installing Nearzero and running it on servers you own.</p>
+		</header>
+		<div class="nz-faq-board__body">
+			{
+				publicFaqGroups.map((group) => (
+					<div class="nz-faq-board__group">
+						<p class="nz-faq-board__category">{group.title}</p>
+						<div class="nz-faq-board__questions">
+							{group.items.map((faq) => (
+								<details class="nz-faq-board__item">
+									<summary>
+										<h3>{faq.question}</h3>
+										<i aria-hidden="true"></i>
+									</summary>
+									<div class="nz-faq-board__panel">
+										<p>{faq.answer}</p>
+									</div>
+								</details>
+							))}
+						</div>
+					</div>
+				))
+			}
+		</div>
+	</div>
+	{
+		emitSchema && (
+			<script is:inline type="application/ld+json" set:html={faqSchemaJson} />
+		)
+	}
+</section>
+
+<script>
+	const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+	const settlePanel = (panel: HTMLElement, item: HTMLDetailsElement) => {
+		if (item.classList.contains("is-expanded")) {
+			panel.style.height = "auto";
+			return;
+		}
+		item.open = false;
+		panel.style.height = "";
+	};
+
+	for (const board of document.querySelectorAll(".nz-faq-board")) {
+		if (!(board instanceof HTMLElement) || board.dataset.faqBound === "true") continue;
+		board.dataset.faqBound = "true";
+		board.classList.add("nz-faq-board--animated");
+
+		for (const item of board.querySelectorAll("details.nz-faq-board__item")) {
+			if (!(item instanceof HTMLDetailsElement)) continue;
+			const summary = item.querySelector("summary");
+			const panel = item.querySelector(".nz-faq-board__panel");
+			if (!(summary instanceof HTMLElement) || !(panel instanceof HTMLElement)) continue;
+
+			let motion = 0;
+			let settleTimer = 0;
+
+			summary.addEventListener("click", (event) => {
+				event.preventDefault();
+				const expanding = !item.classList.contains("is-expanded");
+
+				if (reduceMotion) {
+					item.open = expanding;
+					item.classList.toggle("is-expanded", expanding);
+					panel.style.height = "";
+					return;
+				}
+
+				const token = ++motion;
+				window.clearTimeout(settleTimer);
+
+				if (expanding) {
+					item.open = true;
+					panel.style.height = "auto";
+					const target = panel.scrollHeight;
+					panel.style.height = "0px";
+					panel.getBoundingClientRect();
+					item.classList.add("is-expanded");
+					panel.style.height = `${target}px`;
+				} else {
+					panel.style.height = `${panel.scrollHeight}px`;
+					panel.getBoundingClientRect();
+					item.classList.remove("is-expanded");
+					panel.style.height = "0px";
+				}
+
+				const onEnd = (endEvent: TransitionEvent) => {
+					if (endEvent.target !== panel || endEvent.propertyName !== "height") return;
+					if (token !== motion) return;
+					panel.removeEventListener("transitionend", onEnd);
+					settlePanel(panel, item);
+				};
+				panel.addEventListener("transitionend", onEnd);
+				settleTimer = window.setTimeout(() => {
+					panel.removeEventListener("transitionend", onEnd);
+					if (token === motion) settlePanel(panel, item);
+				}, 480);
+			});
+		}
+	}
+</script>

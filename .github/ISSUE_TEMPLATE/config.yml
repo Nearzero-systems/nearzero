@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Questions?
-    url: https://github.com/Nearzero-dev/nearzero/discussions
-    about: Ask your questions here.
+  - name: Documentation
+    url: https://docs.nearzero.dev
+    about: Installation, configuration, and troubleshooting guides.
+  - name: Security vulnerability
+    url: https://github.com/Nearzero-systems/nearzero/blob/main/SECURITY.md
+    about: Please report security issues privately as described in SECURITY.md, not as a public issue.

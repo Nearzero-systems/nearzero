@@ -49,7 +49,7 @@ test("Add suffix to networks in services", () => {
 	);
 });
 
-// Caso 2: Objeto con aliases
+// Case 2: object with aliases
 const composeFile2 = `
 version: "3.8"
 
@@ -171,7 +171,7 @@ test("Add suffix to networks in services (combined case)", () => {
 		`backend-${suffix}`,
 	);
 
-	// Caso 2: Objeto con aliases
+	// Case 2: object with aliases
 	const apiNetworks = actualComposeData.services?.api?.networks as {
 		[key: string]: unknown;
 	};
@@ -179,7 +179,7 @@ test("Add suffix to networks in services (combined case)", () => {
 	expect(apiNetworks[`frontend-${suffix}`]).toBeDefined();
 	expect(apiNetworks).not.toHaveProperty("frontend");
 
-	// Caso 3: Objeto con redes simples
+	// Case 3: object with plain networks
 	const redisNetworks = actualComposeData.services?.redis?.networks;
 	expect(redisNetworks).toHaveProperty(`backend-${suffix}`);
 	expect(redisNetworks).not.toHaveProperty("backend");

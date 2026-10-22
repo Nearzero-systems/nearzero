@@ -13,7 +13,6 @@ import githubSetup from "@/server/routes/handlers/providers/github/setup";
 import githubWebhook from "@/server/routes/handlers/providers/github/webhook";
 import { handleAgent } from "@/server/routes/agent";
 import { handleAuth } from "@/server/routes/auth";
-import { handleInstallSetup } from "@/server/routes/install-setup";
 import { handleOpenApi } from "@/server/routes/trpc-openapi";
 import { handleTrpc } from "@/server/routes/trpc";
 
@@ -50,11 +49,6 @@ export async function routeRequest(
 
 	if (pathname.startsWith("/api/auth")) {
 		await handleAuth(req, res);
-		return true;
-	}
-
-	if (pathname.startsWith("/api/install/")) {
-		await handleInstallSetup(req, res);
 		return true;
 	}
 

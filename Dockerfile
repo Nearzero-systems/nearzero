@@ -108,7 +108,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
   CMD curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:3000/api/health >/dev/null && \
       curl -fsS --connect-timeout 1 --max-time 2 http://127.0.0.1:4321/login >/dev/null || exit 1
 
-LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
+LABEL org.opencontainers.image.title="Nearzero" \
+      org.opencontainers.image.description="Self-hosted platform for deploying applications and databases (platform API and console)." \
+      org.opencontainers.image.vendor="Nearzero Systems" \
+      org.opencontainers.image.authors="Nearzero Systems" \
+      org.opencontainers.image.url="https://nearzero.dev" \
+      org.opencontainers.image.documentation="https://docs.nearzero.dev" \
+      org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ENTRYPOINT ["./entrypoint.sh"]

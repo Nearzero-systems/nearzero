@@ -44,11 +44,11 @@ test("Add suffix to service names with links in compose file", () => {
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);
@@ -56,12 +56,12 @@ test("Add suffix to service names with links in compose file", () => {
 		"myapi:latest",
 	);
 
-	// Verificar que los nombres en links tienen el prefijo
+	// Check that names in links have the prefix
 	expect(actualComposeData.services?.[`web-${suffix}`]?.links).toContain(
 		`db-${suffix}`,
 	);
 
-	// Verificar que los servicios `db` y `api` también tienen el prefijo
+	// Check that the `db` and `api` services also have the prefix
 	expect(actualComposeData.services).toHaveProperty(`db-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("db");
 	expect(actualComposeData.services?.[`db-${suffix}`]?.image).toBe(

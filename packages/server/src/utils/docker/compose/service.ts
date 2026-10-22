@@ -1,8 +1,8 @@
-// En la sección depends_on de otros servicios: Para definir dependencias entre servicios.
-// En la sección networks de otros servicios: Aunque esto no es común, es posible referenciar servicios en redes personalizadas.
-// En la sección volumes_from de otros servicios: Para reutilizar volúmenes definidos por otro servicio.
-// En la sección links de otros servicios: Para crear enlaces entre servicios.
-// En la sección extends de otros servicios: Para extender la configuración de otro servicio.
+// In other services' depends_on: defines dependencies between services.
+// In other services' networks: uncommon, but services can be referenced in custom networks.
+// In other services' volumes_from: reuses volumes defined by another service.
+// In other services' links: creates links between services.
+// In other services' extends: extends another service's configuration.
 
 import _ from "lodash";
 import type { ComposeSpecification, DefinitionsService } from "../types";
@@ -23,7 +23,7 @@ export const addSuffixToServiceNames = (
 		const newServiceName = `${serviceName}-${suffix}`;
 		const newServiceConfig = _.cloneDeep(serviceConfig);
 
-		// Reemplazar nombres de servicios en depends_on
+		// Rename services in depends_on
 		if (newServiceConfig.depends_on) {
 			if (Array.isArray(newServiceConfig.depends_on)) {
 				newServiceConfig.depends_on = newServiceConfig.depends_on.map(
@@ -40,19 +40,19 @@ export const addSuffixToServiceNames = (
 			}
 		}
 
-		// Reemplazar nombre en container_name
+		// Rename container_name
 		if (newServiceConfig.container_name) {
 			newServiceConfig.container_name = `${newServiceConfig.container_name}-${suffix}`;
 		}
 
-		// Reemplazar nombres de servicios en links
+		// Rename services in links
 		if (newServiceConfig.links) {
 			newServiceConfig.links = newServiceConfig.links.map(
 				(link) => `${link}-${suffix}`,
 			);
 		}
 
-		// Reemplazar nombres de servicios en extends
+		// Rename services in extends
 		if (newServiceConfig.extends) {
 			if (typeof newServiceConfig.extends === "string") {
 				newServiceConfig.extends = `${newServiceConfig.extends}-${suffix}`;
@@ -61,7 +61,7 @@ export const addSuffixToServiceNames = (
 			}
 		}
 
-		// Reemplazar nombres de servicios en volumes_from
+		// Rename services in volumes_from
 		if (newServiceConfig.volumes_from) {
 			newServiceConfig.volumes_from = newServiceConfig.volumes_from.map(
 				(vol) => `${vol}-${suffix}`,

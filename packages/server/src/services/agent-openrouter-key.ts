@@ -1,16 +1,23 @@
-import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { tryGetEdition } from "@nearzero/edition-contract";
 import { db } from "@nearzero/server/db";
 import { organizationSettings } from "@nearzero/server/db/schema";
+import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
+import {
+	betterAuthSecret,
+	isBetterAuthSecretConfigured,
+} from "../lib/auth-secret";
 import { getOrganizationSettings } from "./organization-settings";
 
 function encryptionSecret() {
-	const secret = process.env.BETTER_AUTH_SECRET;
-	if (!secret) {
+	// Same resolution as better-auth itself, including BETTER_AUTH_SECRET_FILE.
+	if (
+		!isBetterAuthSecretConfigured() &&
+		process.env.NODE_ENV === "production"
+	) {
 		throw new Error("BETTER_AUTH_SECRET is required to store OpenRouter keys.");
 	}
-	return secret;
+	return betterAuthSecret;
 }
 
 export function isValidOpenRouterKeyShape(apiKey: string) {
@@ -90,8 +97,7 @@ export type AgentProviderSource = "env" | "org" | "none";
 
 export async function getAgentProviderStatus(organizationId: string) {
 	const edition = tryGetEdition();
-	const allowsEnvProviderKey =
-		edition?.allowsEnvAgentProviderKey() ?? false;
+	const allowsEnvProviderKey = edition?.allowsEnvAgentProviderKey() ?? false;
 
 	if (allowsEnvProviderKey && process.env.OPENROUTER_API_KEY?.trim()) {
 		return { configured: true, source: "env" as const };

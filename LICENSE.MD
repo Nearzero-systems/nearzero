@@ -1,4 +1,4 @@
-Copyright 2026-present Nearzero Technology, Inc.
+Copyright 2026-present Nearzero Systems
 
 Portions of this software are licensed as follows:
 
@@ -7,7 +7,7 @@ Portions of this software are licensed as follows:
 
 ## Apache License 2.0
 
-Copyright 2026-present Nearzero Technology, Inc.
+Copyright 2026-present Nearzero Systems
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

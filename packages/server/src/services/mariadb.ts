@@ -12,6 +12,7 @@ import { execAsyncRemote } from "@nearzero/server/utils/process/execAsync";
 import { TRPCError } from "@trpc/server";
 import { eq, getTableColumns } from "drizzle-orm";
 import type { z } from "zod";
+import { dockerPullCommand } from "../utils/docker/image-reference";
 import { validUniqueServerAppName } from "./project";
 
 export type Mariadb = typeof mariadb.$inferSelect;
@@ -140,7 +141,7 @@ export const deployMariadb = async (
 		if (mariadb.serverId) {
 			await execAsyncRemote(
 				mariadb.serverId,
-				`docker pull ${mariadb.dockerImage}`,
+				dockerPullCommand(mariadb.dockerImage),
 				onData,
 			);
 		} else {

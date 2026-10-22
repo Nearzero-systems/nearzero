@@ -147,7 +147,7 @@ volumes:
 
 `;
 
-// Expected compose file con el prefijo `testhash`
+// Expected compose file with the `testhash` prefix
 const expectedComposeFile4 = parse(`
 version: "3.8"
 
@@ -189,6 +189,6 @@ test("Add suffix to volumes in root property", () => {
 	const volumes = addSuffixToVolumesRoot(composeData.volumes, suffix);
 	const updatedComposeData = { ...composeData, volumes };
 
-	// Verificar que el resultado coincide con el archivo esperado
+	// Check that the result matches the expected file
 	expect(updatedComposeData).toEqual(expectedComposeFile4);
 });

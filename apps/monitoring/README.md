@@ -1,6 +1,6 @@
 # Nearzero Monitoring (Go Version)
 
-**Powered by Nearzero (Nearzero.dev)**
+Maintained by Nearzero Systems. Licensed under the MIT License (see [LICENSE.md](LICENSE.md)).
 
 Application that powers Nearzero's monitoring service.
 

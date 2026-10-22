@@ -99,7 +99,7 @@ const createMockApplication = (
 		name: "Real Test App",
 		appName: `real-test-${Date.now()}`,
 		sourceType: "git" as const,
-		customGitUrl: "https://github.com/nearzero/examples.git",
+		customGitUrl: "https://github.com/Nearzero-systems/examples.git",
 		customGitBranch: "main",
 		customGitSSHKeyId: null,
 		customGitBuildPath: "/astro",

@@ -136,7 +136,7 @@ configs:
     file: ./db-config.yml
 `;
 
-// Expected compose file con el prefijo `testhash`
+// Expected compose file with the `testhash` prefix
 const expectedComposeFileConfigRoot = parse(`
 version: "3.8"
 
@@ -172,6 +172,6 @@ test("Add suffix to configs in root property", () => {
 	const configs = addSuffixToConfigsRoot(composeData.configs, suffix);
 	const updatedComposeData = { ...composeData, configs };
 
-	// Verificar que el resultado coincide con el archivo esperado
+	// Check that the result matches the expected file
 	expect(updatedComposeData).toEqual(expectedComposeFileConfigRoot);
 });

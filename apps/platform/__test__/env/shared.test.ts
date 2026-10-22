@@ -34,7 +34,7 @@ describe("prepareEnvironmentVariables", () => {
 
 		expect(
 			() =>
-				prepareEnvironmentVariables(invalidServiceEnv, incompleteProjectEnv), // Cambiado el orden
+				prepareEnvironmentVariables(invalidServiceEnv, incompleteProjectEnv), // Arguments in reverse order
 		).toThrow("Invalid project environment variable: project.UNDEFINED_VAR");
 	});
 	it("allows service-specific variables to override project variables", () => {

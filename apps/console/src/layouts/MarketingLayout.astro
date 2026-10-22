@@ -21,7 +21,7 @@ interface Props {
 }
 
 const {
-	title = "Nearzero — Open-source deployment on your servers",
+	title = "Nearzero",
 	description = PUBLIC_SITE_DESCRIPTION,
 	canonical,
 	kind = "software",
@@ -78,7 +78,11 @@ const pageSchema: SchemaNode =
 				url: canonicalHref,
 				isPartOf: { "@id": websiteId },
 				mainEntityOfPage: { "@id": pageId },
-				publisher: { "@type": "Organization", name: "Nearzero" },
+				publisher: {
+					"@type": "Organization",
+					name: "Nearzero Systems",
+					url: "https://nearzero.dev",
+				},
 			}
 		: kind === "collection"
 			? {

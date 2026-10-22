@@ -156,7 +156,7 @@ services:
 
 `;
 
-// Expected compose file con el prefijo `testhash`
+// Expected compose file with the `testhash` prefix
 const expectedComposeFileConfigServices = parse(`
 version: "3.8"
 

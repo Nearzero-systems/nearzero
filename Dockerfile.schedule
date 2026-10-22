@@ -78,7 +78,13 @@ RUN set -eu; \
       done; \
     done
 
-LABEL org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
+LABEL org.opencontainers.image.title="Nearzero Schedules" \
+      org.opencontainers.image.description="Scheduled backups and jobs worker for Nearzero." \
+      org.opencontainers.image.vendor="Nearzero Systems" \
+      org.opencontainers.image.authors="Nearzero Systems" \
+      org.opencontainers.image.url="https://nearzero.dev" \
+      org.opencontainers.image.documentation="https://docs.nearzero.dev" \
+      org.opencontainers.image.source="https://github.com/Nearzero-systems/nearzero" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ENV HOSTNAME=0.0.0.0

@@ -5,7 +5,7 @@ import type {
 	DefinitionsVolume,
 } from "../types";
 
-// Función para agregar prefijo a volúmenes
+// Adds the app suffix to top-level volume names
 export const addSuffixToVolumesRoot = (
 	volumes: { [key: string]: DefinitionsVolume },
 	suffix: string,
@@ -22,7 +22,7 @@ export const addSuffixToVolumesInServices = (
 	_.forEach(services, (serviceConfig, serviceName) => {
 		const newServiceConfig = _.cloneDeep(serviceConfig);
 
-		// Reemplazar nombres de volúmenes en volumes
+		// Rename volumes in volumes
 		if (_.has(newServiceConfig, "volumes")) {
 			newServiceConfig.volumes = _.map(newServiceConfig.volumes, (volume) => {
 				if (_.isString(volume)) {

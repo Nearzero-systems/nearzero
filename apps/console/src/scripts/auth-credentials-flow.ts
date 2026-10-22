@@ -85,6 +85,19 @@ async function createNearzeroCredentialSession(
 	};
 }
 
+const TOTP_CODE_PATTERN = /^\d{6}$/;
+
+/** Completes a better-auth second-factor challenge with a TOTP or backup code. */
+async function verifySecondFactor(code: string) {
+	const normalized = code.replace(/\s+/g, "");
+	const result = TOTP_CODE_PATTERN.test(normalized)
+		? await authClient.twoFactor.verifyTotp({ code: normalized })
+		: await authClient.twoFactor.verifyBackupCode({ code: normalized });
+	return result.error
+		? authErrorMessage(result.error, "That code is not valid. Try again.")
+		: null;
+}
+
 export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 	const {
 		root,
@@ -109,10 +122,68 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 	const submitBtn = root.querySelector<HTMLButtonElement>(
 		"[data-auth-credentials-submit]",
 	);
+	const twoFactorField = root.querySelector<HTMLElement>(
+		"[data-auth-2fa-field]",
+	);
+	const twoFactorInput = root.querySelector<HTMLInputElement>(
+		"[data-auth-2fa-input]",
+	);
+	let twoFactorPending = false;
+
+	const showTwoFactorStep = () => {
+		twoFactorPending = true;
+		twoFactorField?.classList.remove("hidden");
+		twoFactorField?.classList.add("flex");
+		if (emailInput) emailInput.readOnly = true;
+		if (passwordInput) passwordInput.readOnly = true;
+		if (twoFactorInput) {
+			twoFactorInput.required = true;
+			twoFactorInput.value = "";
+		}
+		const label = submitBtn?.querySelector<HTMLElement>(
+			"[data-auth-btn-label]",
+		);
+		if (label) label.textContent = "Verify";
+		if (submitBtn) submitBtn.dataset.defaultLabel = "Verify";
+	};
 
 	form?.addEventListener("submit", async (event) => {
 		event.preventDefault();
 		if (isAuthPanelLocked(root) || !submitBtn) return;
+
+		if (twoFactorPending) {
+			const code = twoFactorInput?.value.trim() || "";
+			if (!code) {
+				showToast("Enter your authentication code.", "error");
+				return;
+			}
+			if (!lockAuthPanel(root, submitBtn)) return;
+			let keepLocked = false;
+			try {
+				const verifyError = await verifySecondFactor(code);
+				if (verifyError) {
+					showToast(verifyError, "error");
+					return;
+				}
+				if (!(await waitForEstablishedSession())) {
+					showToast(
+						"Signed in, but your session could not be saved in this browser. Try again in a private window.",
+						"error",
+					);
+					return;
+				}
+				keepLocked = true;
+				window.location.href = sanitizeAuthCallbackPath(
+					callbackUrl,
+					window.location.href,
+				);
+			} catch {
+				showToast("Could not verify the code right now.", "error");
+			} finally {
+				if (!keepLocked) unlockAuthPanel(root);
+			}
+			return;
+		}
 
 		const email = (emailInput?.value || "").trim().toLowerCase();
 		const password = passwordInput?.value || "";
@@ -182,7 +253,28 @@ export function bindAuthCredentialsFlow(options: AuthCredentialsFlowOptions) {
 					email,
 					password,
 				);
-				if (!credentialSession.ok) {
+				if (
+					!credentialSession.ok &&
+					credentialSession.code === "two_factor_required"
+				) {
+					// Accounts with 2FA sign in through better-auth, which issues
+					// the second-factor challenge before any session exists.
+					const result = await authClient.signIn.email({ email, password });
+					if (result.error) {
+						showToast(
+							authErrorMessage(result.error, "Invalid email or password."),
+							"error",
+						);
+						return;
+					}
+					const data = result.data as { twoFactorRedirect?: boolean } | null;
+					if (data?.twoFactorRedirect) {
+						showTwoFactorStep();
+						showToast("Enter the code from your authenticator app.");
+						twoFactorInput?.focus();
+						return;
+					}
+				} else if (!credentialSession.ok) {
 					showToast(credentialSession.message, "error");
 					return;
 				}

@@ -48,11 +48,11 @@ test("Add suffix to service names with volumes_from in compose file", () => {
 	);
 	const actualComposeData = { ...composeData, services: updatedComposeData };
 
-	// Verificar que la nueva clave del servicio tiene el prefijo y la vieja clave no existe
+	// Check that the new service key has the prefix and the old key is gone
 	expect(actualComposeData.services).toHaveProperty(`web-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("web");
 
-	// Verificar que la configuración de la imagen sigue igual
+	// Check that the image configuration is unchanged
 	expect(actualComposeData.services?.[`web-${suffix}`]?.image).toBe(
 		"nginx:latest",
 	);
@@ -60,7 +60,7 @@ test("Add suffix to service names with volumes_from in compose file", () => {
 		"myapi:latest",
 	);
 
-	// Verificar que los nombres en volumes_from tienen el prefijo
+	// Check that names in volumes_from have the prefix
 	expect(actualComposeData.services?.[`web-${suffix}`]?.volumes_from).toContain(
 		`shared-${suffix}`,
 	);
@@ -68,7 +68,7 @@ test("Add suffix to service names with volumes_from in compose file", () => {
 		`shared-${suffix}`,
 	);
 
-	// Verificar que el servicio shared también tiene el prefijo
+	// Check that the shared service also has the prefix
 	expect(actualComposeData.services).toHaveProperty(`shared-${suffix}`);
 	expect(actualComposeData.services).not.toHaveProperty("shared");
 	expect(actualComposeData.services?.[`shared-${suffix}`]?.image).toBe(

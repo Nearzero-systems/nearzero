@@ -1,6 +1,8 @@
 {
   "name": "@nearzero/server",
   "version": "1.0.0",
+  "author": "Nearzero Systems",
+  "license": "Apache-2.0",
   "main": "./dist/index.js",
   "type": "module",
   "exports": {

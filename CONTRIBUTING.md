@@ -51,7 +51,7 @@ feat: add new feature
 
 ## Setup
 
-Before you start, please make the clone based on the `nightly` branch. The `main` branch reflects the latest stable release, and feature pull requests should target `nightly`.
+Before you start, clone the repository and create your branch from `main`. Pull requests should target `main`.
 
 We use Node v24.4.0 and recommend this specific version. If you have nvm installed, you can run `nvm install 24.4.0 && nvm use` in the root directory.
 
@@ -121,24 +121,13 @@ Community sign-in is email and password only. No Resend or other third-party aut
 
 ## Docker
 
-To build the docker image first run commands to copy .env files
+Build the production image (platform API and console) from the repository root:
 
 ```bash
-cp apps/platform/.env.production.example .env.production
-cp apps/platform/.env.production.example apps/platform/.env.production
+docker build -t nearzero:local .
 ```
 
-then run build command
-
-```bash
-bun run docker:build
-```
-
-To push the docker image
-
-```bash
-bun run docker:push
-```
+Release images are built and published by the `docker-images.yml` workflow to `ghcr.io/nearzero-systems`.
 
 If you want to test the webhooks on development mode using localtunnel, make sure to install [`localtunnel`](https://localtunnel.app/)
 
@@ -164,10 +153,10 @@ sudo sh scripts/install-verified-build-tools.sh nixpacks railpack buildpacks
 
 ## Pull Request
 
-- The `nightly` branch is the source of truth for active development. The `main` branch reflects the latest stable release.
+- `main` is the source of truth for active development and releases.
 - Create a new branch for each feature or bug fix.
 - Make sure to add tests for your changes.
-- Make sure to update the documentation for any changes Go to the [docs.nearzero.com](https://docs.nearzero.dev) website to see the changes.
+- Make sure to update the documentation for any user-facing change. See [docs.nearzero.dev](https://docs.nearzero.dev).
 - When creating a pull request, please provide a clear and concise description of the changes made.
 - If you include a video or screenshot, would be awesome so we can see the changes in action.
 - If your pull request fixes an open issue, please reference the issue in the pull request description.
@@ -185,7 +174,7 @@ Thank you for your contribution!
 
 ## Templates
 
-To add a new template, go to `https://github.com/nearzero/templates` repository and read the README.md file.
+Templates are served from [templates.nearzero.dev](https://templates.nearzero.dev). To propose a new template, [open an issue](https://github.com/Nearzero-systems/nearzero/issues) with the Compose file and the variables it needs.
 
 ### Recommendations
 
@@ -196,4 +185,4 @@ To add a new template, go to `https://github.com/nearzero/templates` repository 
 
 ## Docs & Website
 
-To contribute to the Nearzero docs or website, please go to this [repository](https://github.com/nearzero/website).
+To report a problem with the Nearzero docs or website, [open an issue](https://github.com/Nearzero-systems/nearzero/issues) or email [contact@nearzero.dev](mailto:contact@nearzero.dev).

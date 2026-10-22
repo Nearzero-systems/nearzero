@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	type PublicRegistrationStatus,
-	resolveLoginRegistrationExperience,
 	resolveRegistrationExperience,
 } from "./registration-status";
 
@@ -10,56 +9,39 @@ function status(
 ): PublicRegistrationStatus {
 	return {
 		mode: "bootstrap",
-		normalSignupAllowed: true,
-		bootstrapClaimed: false,
-		adminEmailConfigured: true,
+		normalSignupAllowed: false,
+		ownerExists: false,
 		...overrides,
 	};
 }
 
 describe("registration experience", () => {
-	it("shows first-owner copy only before bootstrap is claimed", () => {
+	it("points to the server command before an owner exists", () => {
 		expect(resolveRegistrationExperience(status(), false)).toBe(
-			"bootstrap_owner",
+			"owner_required",
 		);
 	});
 
-	it("hides first-owner copy after the first owner exists", () => {
+	it("requires an invitation once the owner exists", () => {
+		expect(
+			resolveRegistrationExperience(status({ ownerExists: true }), false),
+		).toBe("invitation_required");
 		expect(
 			resolveRegistrationExperience(
-				status({
-					bootstrapClaimed: true,
-					normalSignupAllowed: false,
-				}),
+				status({ mode: "invite_only", ownerExists: true }),
 				false,
 			),
 		).toBe("invitation_required");
 	});
 
-	it("does not revive first-owner copy from a stale claimed status", () => {
+	it("keeps signup open for open installs, invitations, and unknown status", () => {
 		expect(
 			resolveRegistrationExperience(
-				status({
-					bootstrapClaimed: true,
-					normalSignupAllowed: true,
-				}),
+				status({ mode: "open", normalSignupAllowed: true }),
 				false,
 			),
-		).toBe("invitation_required");
-	});
-
-	it("drops first-owner login copy after domain setup and after the first owner", () => {
-		expect(
-			resolveLoginRegistrationExperience("bootstrap_owner", {
-				phase: "configured",
-				bootstrapClaimed: false,
-			}),
 		).toBe("open");
-		expect(
-			resolveLoginRegistrationExperience("bootstrap_owner", {
-				phase: "operational",
-				bootstrapClaimed: true,
-			}),
-		).toBe("invitation_required");
+		expect(resolveRegistrationExperience(status(), true)).toBe("open");
+		expect(resolveRegistrationExperience(null, false)).toBe("open");
 	});
 });

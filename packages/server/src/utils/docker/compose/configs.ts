@@ -28,7 +28,7 @@ export const addSuffixToConfigsInServices = (
 	_.forEach(services, (serviceConfig, serviceName) => {
 		const newServiceConfig = _.cloneDeep(serviceConfig);
 
-		// Reemplazar nombres de configs en configs
+		// Rename configs in configs
 		if (_.has(newServiceConfig, "configs")) {
 			newServiceConfig.configs = _.map(newServiceConfig.configs, (config) => {
 				if (_.isString(config)) {

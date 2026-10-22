@@ -7,6 +7,10 @@ import { getWebServerSettings } from "@nearzero/server/services/web-server-setti
 import { eq } from "drizzle-orm";
 import { scheduleJob } from "node-schedule";
 import { db } from "../../db/index";
+import {
+	resolveBackupServerId,
+	runsOnExternalJobsService,
+} from "../../services/job-placement";
 import { startLogCleanup } from "../access-log/handler";
 import { cleanupAll } from "../docker/utils";
 import { sendDockerCleanupNotifications } from "../notifications/docker-cleanup";
@@ -55,6 +59,7 @@ export const initCronJobs = async () => {
 
 	for (const server of servers) {
 		const { serverId, enableDockerCleanup, name } = server;
+		if (runsOnExternalJobsService(serverId)) continue;
 		if (enableDockerCleanup) {
 			try {
 				scheduleJob(serverId, CLEANUP_CRON_JOB, async () => {
@@ -90,6 +95,7 @@ export const initCronJobs = async () => {
 
 	for (const backup of backups) {
 		try {
+			if (runsOnExternalJobsService(resolveBackupServerId(backup))) continue;
 			if (backup.enabled) {
 				scheduleBackup(backup);
 				console.log(

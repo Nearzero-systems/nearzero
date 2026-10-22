@@ -1,6 +1,10 @@
 import { schedules } from "@nearzero/server/db/schema";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/index";
+import {
+	resolveScheduleServerId,
+	runsOnExternalJobsService,
+} from "../../services/job-placement";
 import { scheduleJob } from "./utils";
 
 export const initSchedules = async () => {
@@ -29,6 +33,9 @@ export const initSchedules = async () => {
 
 		console.log(`Initializing ${schedulesResult.length} schedules`);
 		for (const schedule of schedulesResult) {
+			if (runsOnExternalJobsService(resolveScheduleServerId(schedule))) {
+				continue;
+			}
 			scheduleJob(schedule);
 			console.log(
 				`Initialized schedule: ${schedule.name} ${schedule.scheduleType} ✅`,

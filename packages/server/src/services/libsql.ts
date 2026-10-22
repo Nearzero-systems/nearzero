@@ -12,6 +12,7 @@ import { execAsyncRemote } from "@nearzero/server/utils/process/execAsync";
 import { TRPCError } from "@trpc/server";
 import { eq, getTableColumns } from "drizzle-orm";
 import type { z } from "zod";
+import { dockerPullCommand } from "../utils/docker/image-reference";
 import { validUniqueServerAppName } from "./project";
 
 export type Libsql = typeof libsql.$inferSelect;
@@ -135,7 +136,7 @@ export const deployLibsql = async (
 		if (libsql.serverId) {
 			await execAsyncRemote(
 				libsql.serverId,
-				`docker pull ${libsql.dockerImage}`,
+				dockerPullCommand(libsql.dockerImage),
 				onData,
 			);
 		} else {

@@ -1,6 +1,6 @@
 MIT License
 
-Copyright 2025 Nearzero (Nearzero.dev)
+Copyright 2025-present Nearzero Systems
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -24,8 +24,8 @@ import {
 	updateLetsEncryptEmail,
 	updateServerTraefik,
 } from "@nearzero/server";
+import { assertBetterAuthSecretConfigured } from "@nearzero/server/lib/auth-secret";
 import { seedConfiguredManagementDomain } from "@nearzero/server/services/install-domain-bootstrap";
-import { syncInstallSetupFromEnvironment } from "@nearzero/server/services/install-setup";
 import { isCommunityMode } from "@nearzero/server/services/runtime-mode";
 import packageInfo from "../package.json";
 import { migration } from "./db/migration";
@@ -106,6 +106,13 @@ if (shouldBootstrapLocalRuntime) {
 	);
 }
 
+try {
+	assertBetterAuthSecretConfigured();
+} catch (error) {
+	console.error(error instanceof Error ? error.message : error);
+	process.exit(1);
+}
+
 void (async () => {
 	try {
 		console.log("Running Nearzero Platform: ", packageInfo.version);
@@ -135,14 +142,6 @@ void (async () => {
 		if (managementDomain.configured) {
 			console.log(
 				`Management hostname ${managementDomain.host} ${managementDomain.changed ? "seeded" : "already configured"}`,
-			);
-		}
-		try {
-			await syncInstallSetupFromEnvironment();
-		} catch (setupSyncError) {
-			console.warn(
-				"Install setup sync from environment failed; wizard status may be incomplete.",
-				setupSyncError,
 			);
 		}
 		if (shouldBootstrapLocalRuntime) {

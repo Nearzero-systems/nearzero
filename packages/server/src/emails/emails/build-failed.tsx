@@ -51,10 +51,10 @@ export const BuildFailedEmail = ({
 						<Section className="mt-[32px]">
 							<Img
 								src={
-									"https://raw.githubusercontent.com/Nearzero-systems/nearzero/refs/heads/main/apps/nearzero/logo.png"
+									"https://raw.githubusercontent.com/Nearzero-systems/nearzero/refs/heads/main/packages/server/src/emails/emails/static/logo.png"
 								}
-								width="100"
-								height="50"
+								width="48"
+								height="48"
 								alt="Nearzero"
 								className="my-0 mx-auto"
 							/>

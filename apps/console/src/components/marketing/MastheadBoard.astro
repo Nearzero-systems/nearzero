@@ -1,0 +1,42 @@
+---
+interface Props {
+	compact?: boolean;
+}
+
+const { compact = false } = Astro.props;
+const COLS = 12;
+const ROWS = compact ? 4 : 6;
+const band = { colStart: 3, colEnd: 11 };
+const hero = compact ? { rowStart: 3, rowEnd: 4 } : { rowStart: 3, rowEnd: 6 };
+
+const emptyCells: { row: number; col: number }[] = [];
+for (let row = 1; row <= ROWS; row += 1) {
+	for (let col = 1; col <= COLS; col += 1) {
+		const inHeader = row === 1 && col >= band.colStart && col < band.colEnd;
+		const inHero =
+			row >= hero.rowStart &&
+			row < hero.rowEnd &&
+			col >= band.colStart &&
+			col < band.colEnd;
+		if (!inHeader && !inHero) emptyCells.push({ row, col });
+	}
+}
+---
+
+<div class:list={["nz-masthead-board", compact && "nz-masthead-board--compact"]}>
+	<div class="nz-masthead-board__header">
+		<slot name="header" />
+	</div>
+	{
+		emptyCells.map((cell) => (
+			<div
+				class="nz-masthead-tile"
+				aria-hidden="true"
+				style={`grid-column:${cell.col};grid-row:${cell.row}`}
+			/>
+		))
+	}
+	<div class="nz-masthead-board__hero">
+		<slot name="hero" />
+	</div>
+</div>

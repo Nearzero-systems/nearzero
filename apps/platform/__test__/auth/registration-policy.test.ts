@@ -1,23 +1,18 @@
 import {
 	buildPublicRegistrationStatus,
+	CREATE_OWNER_COMMAND,
 	decideRegistration,
-	mergeRegistrationPolicyAdminEmail,
 	registrationDecisionMessage,
 	resolveRegistrationPolicy,
 } from "@nearzero/server/lib/registration-policy";
+import { ownerFirstNameFromEmail } from "@nearzero/server/services/instance-owner";
 import { describe, expect, it } from "vitest";
 
 describe("Community registration policy", () => {
 	it("defaults production Community installations to bootstrap", () => {
-		expect(
-			resolveRegistrationPolicy(
-				{
-					NODE_ENV: "production",
-					NEARZERO_ADMIN_EMAIL: " Admin@Example.com ",
-				},
-				true,
-			),
-		).toEqual({ mode: "bootstrap", adminEmail: "admin@example.com" });
+		expect(resolveRegistrationPolicy({ NODE_ENV: "production" }, true)).toEqual(
+			{ mode: "bootstrap" },
+		);
 	});
 
 	it("keeps development, test, and Cloud open unless explicitly configured", () => {
@@ -41,7 +36,7 @@ describe("Community registration policy", () => {
 		).toBe("invite_only");
 	});
 
-	it("rejects invalid modes and bootstrap configurations", () => {
+	it("rejects invalid modes", () => {
 		expect(() =>
 			resolveRegistrationPolicy(
 				{
@@ -51,55 +46,25 @@ describe("Community registration policy", () => {
 				true,
 			),
 		).toThrow("bootstrap, invite_only, open");
-		expect(
-			resolveRegistrationPolicy({ NODE_ENV: "production" }, true),
-		).toEqual({ mode: "bootstrap", adminEmail: null });
-		expect(() =>
-			resolveRegistrationPolicy(
-				{
-					NODE_ENV: "test",
-					NEARZERO_REGISTRATION_MODE: "bootstrap",
-					NEARZERO_ADMIN_EMAIL: "not-an-email",
-				},
-				true,
-			),
-		).toThrow("NEARZERO_ADMIN_EMAIL");
 	});
 
-	it("allows only the configured administrator until bootstrap is claimed", () => {
-		const policy = {
-			mode: "bootstrap" as const,
-			adminEmail: "admin@example.com",
-		};
-		expect(
-			decideRegistration({
-				policy,
-				email: "ADMIN@example.com",
-				hasValidInvitation: false,
-				bootstrapClaimed: false,
-			}),
-		).toEqual({ allowed: true, reason: "bootstrap_admin" });
-
-		const wrongEmail = decideRegistration({
+	it("never creates the first owner from the web", () => {
+		const policy = { mode: "bootstrap" as const };
+		const beforeOwner = decideRegistration({
 			policy,
-			email: "other@example.com",
 			hasValidInvitation: false,
-			bootstrapClaimed: false,
+			ownerExists: false,
 		});
-		expect(wrongEmail).toEqual({
-			allowed: false,
-			reason: "bootstrap_admin_only",
-		});
-		expect(registrationDecisionMessage(wrongEmail)).toContain(
-			"configured bootstrap administrator",
+		expect(beforeOwner).toEqual({ allowed: false, reason: "owner_required" });
+		expect(registrationDecisionMessage(beforeOwner)).toContain(
+			CREATE_OWNER_COMMAND,
 		);
 
 		expect(
 			decideRegistration({
 				policy,
-				email: "admin@example.com",
 				hasValidInvitation: false,
-				bootstrapClaimed: true,
+				ownerExists: true,
 			}),
 		).toEqual({ allowed: false, reason: "invite_only" });
 	});
@@ -108,13 +73,9 @@ describe("Community registration policy", () => {
 		for (const mode of ["bootstrap", "invite_only", "open"] as const) {
 			expect(
 				decideRegistration({
-					policy: {
-						mode,
-						adminEmail: mode === "bootstrap" ? "admin@example.com" : null,
-					},
-					email: "invitee@example.com",
+					policy: { mode },
 					hasValidInvitation: true,
-					bootstrapClaimed: true,
+					ownerExists: true,
 				}),
 			).toEqual({ allowed: true, reason: "invitation" });
 		}
@@ -123,46 +84,30 @@ describe("Community registration policy", () => {
 	it("keeps invite-only closed to normal registration", () => {
 		expect(
 			decideRegistration({
-				policy: { mode: "invite_only", adminEmail: null },
-				email: "person@example.com",
+				policy: { mode: "invite_only" },
 				hasValidInvitation: false,
-				bootstrapClaimed: false,
+				ownerExists: false,
 			}),
 		).toEqual({ allowed: false, reason: "invite_only" });
 	});
 
-	it("builds a non-sensitive public status", () => {
-		const status = buildPublicRegistrationStatus(
-			{ mode: "bootstrap", adminEmail: "private-admin@example.com" },
-			false,
+	it("reports public signup only for open installations", () => {
+		expect(buildPublicRegistrationStatus({ mode: "bootstrap" }, false)).toEqual(
+			{ mode: "bootstrap", normalSignupAllowed: false, ownerExists: false },
 		);
-		expect(status).toEqual({
-			mode: "bootstrap",
+		expect(buildPublicRegistrationStatus({ mode: "open" }, true)).toEqual({
+			mode: "open",
 			normalSignupAllowed: true,
-			bootstrapClaimed: false,
-			adminEmailConfigured: true,
-		});
-		expect(status).not.toHaveProperty("adminEmail");
-
-		expect(
-			buildPublicRegistrationStatus(
-				{ mode: "bootstrap", adminEmail: "private-admin@example.com" },
-				true,
-			),
-		).toEqual({
-			mode: "bootstrap",
-			normalSignupAllowed: false,
-			bootstrapClaimed: true,
-			adminEmailConfigured: true,
+			ownerExists: true,
 		});
 	});
+});
 
-	it("merges wizard admin email when env bootstrap email is unset", () => {
-		expect(
-			mergeRegistrationPolicyAdminEmail(
-				{ mode: "bootstrap", adminEmail: null },
-				" Owner@Example.com ",
-			),
-		).toEqual({ mode: "bootstrap", adminEmail: "owner@example.com" });
+describe("server-created owner", () => {
+	it("derives a first name from the email address", () => {
+		expect(ownerFirstNameFromEmail("jane.doe@acme.com")).toBe("Jane");
+		expect(ownerFirstNameFromEmail("ADMIN@Example.com")).toBe("Admin");
+		expect(ownerFirstNameFromEmail("ops+nz@example.com")).toBe("Ops");
+		expect(ownerFirstNameFromEmail("123@example.com")).toBe("Admin");
 	});
 });
