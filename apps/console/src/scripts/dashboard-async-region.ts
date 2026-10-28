@@ -25,14 +25,17 @@ type NavigationState = DashboardRoutePayload & {
 type DashboardFrameResponse = {
 	frame: HTMLElement;
 	title?: string;
+	stylesheets: string[];
 };
 
 const LOADED = "loaded";
 const LOADING = "loading";
 const MIN_VISIBLE_LOADING_MS = 120;
 const PAGE_DATA_TIMEOUT_MS = 25_000;
+const STYLESHEET_TIMEOUT_MS = 5_000;
 
 let activeNavigation = 0;
+const routeStylesheets = new Map<string, Promise<string[]>>();
 
 function wait(ms: number) {
 	return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -66,6 +69,64 @@ function rerunScripts(root: HTMLElement) {
 		replacement.textContent = script.textContent;
 		script.replaceWith(replacement);
 	}
+}
+
+function stylesheetHrefs(doc: Document) {
+	return Array.from(
+		doc.querySelectorAll<HTMLLinkElement>('head link[rel="stylesheet"][href]'),
+	)
+		.map((link) => link.getAttribute("href") ?? "")
+		.filter(Boolean);
+}
+
+/** Add stylesheets the current document lacks and wait for them to load. */
+function adoptStylesheets(hrefs: string[]) {
+	const present = new Set(stylesheetHrefs(document));
+	const pending = hrefs
+		.filter((href) => !present.has(href))
+		.map(
+			(href) =>
+				new Promise<void>((resolve) => {
+					const link = document.createElement("link");
+					link.rel = "stylesheet";
+					link.href = href;
+					link.addEventListener("load", () => resolve(), { once: true });
+					link.addEventListener("error", () => resolve(), { once: true });
+					document.head.append(link);
+				}),
+		);
+	if (pending.length === 0) return Promise.resolve();
+	return Promise.race([
+		Promise.all(pending).then(() => undefined),
+		wait(STYLESHEET_TIMEOUT_MS),
+	]);
+}
+
+/**
+ * Page fragments arrive without the `<link>` tags Astro puts in the page head,
+ * so a route's own stylesheet (for example get-started.css) is missing when
+ * the user navigates to it from another dashboard page. Read the route's full
+ * page once to learn its stylesheets; they are the same for every visit.
+ */
+function routeStylesheetsFor(routeId: string, href: string) {
+	let cached = routeStylesheets.get(routeId);
+	if (!cached) {
+		cached = fetch(href, {
+			method: "GET",
+			headers: { accept: "text/html" },
+			credentials: "include",
+		})
+			.then((response) => (response.ok ? response.text() : ""))
+			.then((html) =>
+				stylesheetHrefs(new DOMParser().parseFromString(html, "text/html")),
+			)
+			.catch(() => {
+				routeStylesheets.delete(routeId);
+				return [];
+			});
+		routeStylesheets.set(routeId, cached);
+	}
+	return cached;
 }
 
 function escapeHtml(value: string) {
@@ -188,6 +249,7 @@ async function fetchDashboardFrame(href: string): Promise<DashboardFrameResponse
 		return {
 			frame,
 			title: documentFragment.querySelector("title")?.textContent ?? undefined,
+			stylesheets: stylesheetHrefs(documentFragment),
 		};
 	} finally {
 		window.clearTimeout(timeout);
@@ -207,9 +269,10 @@ function swapContent(root: HTMLElement, html: string) {
 	document.dispatchEvent(new Event("astro:page-load"));
 }
 
-function swapDashboardFrame(next: DashboardFrameResponse) {
+async function swapDashboardFrame(next: DashboardFrameResponse) {
 	const frame = document.querySelector<HTMLElement>("[data-nz-dashboard-frame]");
 	if (!frame) throw new Error("Unable to find the current dashboard frame.");
+	await adoptStylesheets(next.stylesheets);
 	frame.replaceWith(next.frame);
 	if (next.title) document.title = next.title;
 	rerunScripts(next.frame);
@@ -217,7 +280,11 @@ function swapDashboardFrame(next: DashboardFrameResponse) {
 	document.dispatchEvent(new Event("astro:page-load"));
 }
 
-async function loadIntoRoot(root: HTMLElement, payload: DashboardRoutePayload) {
+async function loadIntoRoot(
+	root: HTMLElement,
+	payload: DashboardRoutePayload,
+	stylesheets?: Promise<string[]>,
+) {
 	if (root.dataset.state === LOADING) return;
 	root.dataset.state = LOADING;
 	const startedAt = performance.now();
@@ -226,7 +293,12 @@ async function loadIntoRoot(root: HTMLElement, payload: DashboardRoutePayload) {
 
 	try {
 		await waitForDashboardPaint();
-		const data = await fetchPageData(payload);
+		const [data, hrefs] = await Promise.all([
+			fetchPageData(payload),
+			stylesheets ?? Promise.resolve([]),
+		]);
+		if (root.dataset.loadId !== loadId) return;
+		await adoptStylesheets(hrefs);
 		if (root.dataset.loadId !== loadId) return;
 
 		const elapsed = performance.now() - startedAt;
@@ -375,7 +447,7 @@ async function navigateWithState(state: NavigationState, options?: { push?: bool
 		try {
 			const nextFrame = await fetchDashboardFrame(state.href);
 			if (sequence !== activeNavigation) return;
-			swapDashboardFrame(nextFrame);
+			await swapDashboardFrame(nextFrame);
 		} catch (error) {
 			if (sequence !== activeNavigation) return;
 			outlet.dataset.state = "error";
@@ -387,13 +459,17 @@ async function navigateWithState(state: NavigationState, options?: { push?: bool
 		return;
 	}
 
-	void loadIntoRoot(outlet, {
-		routeId: state.routeId,
-		params: state.params,
-		search: state.search,
-		orgSlug: state.orgSlug,
-		label: state.label,
-	});
+	void loadIntoRoot(
+		outlet,
+		{
+			routeId: state.routeId,
+			params: state.params,
+			search: state.search,
+			orgSlug: state.orgSlug,
+			label: state.label,
+		},
+		routeStylesheetsFor(state.routeId, state.href),
+	);
 }
 
 export function navigateDashboardHref(
