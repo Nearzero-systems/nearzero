@@ -75,38 +75,8 @@ sudo nearzero restore-db /path/to/verified-backup.sql`;
 const uninstallBackupCode = `sudo install -d -m 0700 /var/backups/nearzero
 sudo nearzero backup-db /var/backups/nearzero/control-plane.sql`;
 
-const uninstallCode = `sudo bash -s <<'NEARZERO_UNINSTALL'
-set -Euo pipefail
-command -v docker >/dev/null 2>&1 || { echo "Docker is not installed: nothing to remove."; exit 1; }
-echo "1/6 Stopping the Nearzero control plane"
-docker ps -aq --filter label=com.docker.compose.project=nearzero | xargs -r docker rm -f >/dev/null
-docker rm -f nearzero-traefik nearzero-docker-proxy nearzero-monitoring nearzero-dns >/dev/null 2>&1 || true
-echo "2/6 Removing apps and databases deployed by Nearzero"
-if [ "$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)" = "active" ]; then
-  docker service ls -q | xargs -r docker service rm >/dev/null
-  docker swarm leave --force >/dev/null
-fi
-docker ps -aq --filter label=com.docker.swarm.service.id | xargs -r docker rm -f >/dev/null
-for project in $(docker ps -a --format '{{.Label "com.docker.compose.project"}} {{.Label "com.docker.compose.project.working_dir"}}' | awk '$2 ~ "^/etc/nearzero/compose/" { print $1 }' | sort -u); do
-  docker ps -aq --filter "label=com.docker.compose.project=\${project}" | xargs -r docker rm -f >/dev/null
-done
-echo "3/6 Removing Nearzero networks"
-docker network rm nearzero-network nearzero-traefik-control >/dev/null 2>&1 || true
-docker network prune --force >/dev/null
-echo "4/6 Deleting all unused Docker volumes (Nearzero data, app and database volumes)"
-docker volume prune --all --force >/dev/null 2>&1 || docker volume prune --force >/dev/null
-echo "5/6 Deleting unused images and build cache"
-docker image prune --all --force >/dev/null
-docker builder prune --all --force >/dev/null 2>&1 || true
-echo "6/6 Deleting Nearzero files"
-rm -rf /opt/nearzero /etc/nearzero /usr/local/bin/nearzero
-echo
-echo "Left over (all should be empty):"
-echo "  containers: $(docker ps -aq | wc -l | tr -d ' ')"
-echo "  volumes:    $(docker volume ls -q | wc -l | tr -d ' ')"
-echo "  swarm:      $(docker info --format '{{.Swarm.LocalNodeState}}')"
-echo "  files:      $(ls -d /opt/nearzero /etc/nearzero /usr/local/bin/nearzero 2>/dev/null | tr '\\n' ' ')"
-NEARZERO_UNINSTALL`;
+const uninstallCode =
+	"curl -fsSL https://cdn.nearzero.dev/uninstall.sh | sudo bash";
 ---
 
 <MarketingLayout
@@ -314,7 +284,7 @@ NEARZERO_UNINSTALL`;
 			</DocCallout>
 			<p>With the installer-managed Postgres, keep a copy of the control-plane database first:</p>
 			<DocCode code={uninstallBackupCode} label="backup first" />
-			<p>Then remove Nearzero with one command. It prints what is left at the end; every line should be empty or <code>inactive</code>.</p>
+			<p>Then remove Nearzero. It asks once before deleting anything; in scripts, add <code>-s -- --yes</code> after <code>bash</code> to skip the question.</p>
 			<DocCode code={uninstallCode} label="remove Nearzero" />
 			<p>To install again, run the <a href="#install">install command</a>. It is a fresh first install: it asks for the admin email and password again.</p>
 			<ul>

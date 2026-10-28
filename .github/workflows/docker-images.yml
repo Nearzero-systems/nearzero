@@ -300,6 +300,13 @@ jobs:
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: r2 object put ${{ env.R2_BUCKET }}/install.sh.sha256 --remote --file scripts/install.sh.sha256 --content-type text/plain --cache-control no-cache
 
+      - name: Upload latest uninstaller
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put ${{ env.R2_BUCKET }}/uninstall.sh --remote --file scripts/uninstall.sh --content-type text/x-shellscript --cache-control no-cache
+
       - name: Upload SHA-pinned installer
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
         with:

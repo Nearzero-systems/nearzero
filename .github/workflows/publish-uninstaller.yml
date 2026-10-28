@@ -1,0 +1,66 @@
+name: Publish Uninstaller
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  R2_BUCKET: nearzero
+
+jobs:
+  publish:
+    name: Publish uninstall.sh to R2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Check the uninstaller
+        run: |
+          set -euo pipefail
+          bash -n scripts/uninstall.sh
+          (cd scripts && sha256sum uninstall.sh > uninstall.sh.sha256)
+
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler@4.76.0
+
+      - name: Publish uninstaller to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 2888ec0ba25e82e4c0f3819aaceca38e
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "CLOUDFLARE_API_TOKEN is not configured in GitHub Actions secrets." >&2
+            exit 1
+          fi
+          wrangler r2 object put "${R2_BUCKET}/uninstall.sh" \
+            --remote \
+            --file scripts/uninstall.sh \
+            --content-type text/x-shellscript \
+            --cache-control no-cache
+          wrangler r2 object put "${R2_BUCKET}/uninstall.sh.sha256" \
+            --remote \
+            --file scripts/uninstall.sh.sha256 \
+            --content-type text/plain \
+            --cache-control no-cache
+
+      - name: Verify CDN serves the uninstaller
+        shell: bash
+        run: |
+          set -euo pipefail
+          download_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$download_dir"' EXIT
+          for artifact in uninstall.sh uninstall.sh.sha256; do
+            curl --fail --location \
+              --proto '=https' --proto-redir '=https' --tlsv1.2 \
+              --retry 6 --retry-all-errors --retry-delay 5 \
+              --output "$download_dir/$artifact" \
+              "https://cdn.nearzero.dev/$artifact"
+          done
+          cmp -s scripts/uninstall.sh "$download_dir/uninstall.sh"
+          (cd "$download_dir" && sha256sum --check uninstall.sh.sha256)

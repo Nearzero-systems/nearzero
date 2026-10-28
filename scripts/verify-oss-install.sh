@@ -49,6 +49,13 @@ installer_default_image() {
 }
 
 bash -n "$ROOT_DIR/scripts/install.sh" || fail "scripts/install.sh is not valid Bash"
+bash -n "$ROOT_DIR/scripts/uninstall.sh" || fail "scripts/uninstall.sh is not valid Bash"
+grep -Fq 'uninstall.sh' "$ROOT_DIR/.github/workflows/docker-images.yml" || fail "release workflow does not publish the uninstaller"
+uninstall_output="$(bash "$ROOT_DIR/scripts/uninstall.sh" </dev/null 2>&1)" && fail "uninstaller ran without root or confirmation"
+case "$uninstall_output" in
+	*"othing was removed"* | *"Run it with sudo"*) ;;
+	*) fail "uninstaller did not refuse safely without confirmation: $uninstall_output" ;;
+esac
 sh -n "$ROOT_DIR/scripts/install-verified-build-tools.sh" || fail "verified build-tool installer is not valid POSIX shell"
 
 for supply_chain_file in \

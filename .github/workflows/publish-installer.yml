@@ -92,6 +92,11 @@ jobs:
             --file scripts/install.sh.sha256 \
             --content-type text/plain \
             --cache-control no-cache
+          wrangler r2 object put "${R2_BUCKET}/uninstall.sh" \
+            --remote \
+            --file scripts/uninstall.sh \
+            --content-type text/x-shellscript \
+            --cache-control no-cache
           wrangler r2 object put "${R2_BUCKET}/dns-init.ts" \
             --remote \
             --file docker/dns-init.ts \
