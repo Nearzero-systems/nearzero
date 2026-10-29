@@ -12,6 +12,7 @@ import {
 	runHarnessIntents,
 	runHarnessUserInputResponse,
 } from "./harness-intents/run-harness-intents";
+import { OpenRouterRequestError } from "./loop/openrouter-stream";
 import { resolveProvider } from "./resolve-provider";
 import {
 	AgentUserInputRequiredError,
@@ -200,6 +201,23 @@ export async function runTurnLoop(input: RunTurnInput) {
 		});
 		await emit({ kind: "done", completed: true });
 	} catch (error) {
+		if (error instanceof OpenRouterRequestError && error.rejectedKey) {
+			// Ask for a new key the same way as when none is saved yet.
+			const message = input.isOrgAdmin
+				? "OpenRouter rejected the saved API key. Paste a valid key to continue."
+				: "OpenRouter rejected this workspace's API key. Ask a workspace admin to update it.";
+			await insertMessage(threadId, "assistant", { text: message });
+			await emit({ kind: "assistant_message", text: message });
+			await emit({
+				kind: "provider_setup_required",
+				canConfigure: Boolean(input.isOrgAdmin),
+				waitingLabel: input.isOrgAdmin
+					? "Waiting for the key"
+					: "Waiting for admin to configure OpenRouter",
+			});
+			await emit({ kind: "done", completed: true });
+			return threadId;
+		}
 		const message =
 			error instanceof Error ? error.message : "Agent backend error.";
 		await insertMessage(threadId, "assistant", { text: message });

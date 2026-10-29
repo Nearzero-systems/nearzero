@@ -72,6 +72,57 @@ function appendContent(content: string, piece: string | null | undefined) {
 	return content + piece;
 }
 
+/** A failed OpenRouter request, worded for the person reading the chat. */
+export class OpenRouterRequestError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+		this.name = "OpenRouterRequestError";
+	}
+
+	/** OpenRouter answers 401 when the key is wrong, revoked, or disabled. */
+	get rejectedKey() {
+		return this.status === 401;
+	}
+}
+
+async function openRouterRequestError(res: Response) {
+	const body = await res.text().catch(() => "");
+	let detail = body.trim().slice(0, 300);
+	try {
+		const parsed = JSON.parse(body) as { error?: { message?: unknown } };
+		if (typeof parsed.error?.message === "string") {
+			detail = parsed.error.message.trim();
+		}
+	} catch {
+		// Not JSON; keep the trimmed body.
+	}
+	switch (res.status) {
+		case 401:
+			return new OpenRouterRequestError(
+				"OpenRouter rejected the saved API key.",
+				res.status,
+			);
+		case 402:
+			return new OpenRouterRequestError(
+				"The OpenRouter account for this key is out of credits. Add credits at openrouter.ai, then send your message again.",
+				res.status,
+			);
+		case 429:
+			return new OpenRouterRequestError(
+				"OpenRouter is rate limiting this key. Wait a moment, then send your message again.",
+				res.status,
+			);
+		default:
+			return new OpenRouterRequestError(
+				`OpenRouter could not answer (HTTP ${res.status})${detail ? `: ${detail}` : "."}`,
+				res.status,
+			);
+	}
+}
+
 export async function streamOpenRouterCompletion(input: {
 	provider: AgentProvider;
 	messages: OpenAiMessage[];
@@ -94,7 +145,7 @@ export async function streamOpenRouterCompletion(input: {
 	});
 
 	if (!res.ok || !res.body) {
-		throw new Error(await res.text());
+		throw await openRouterRequestError(res);
 	}
 
 	const reader = res.body.getReader();
@@ -189,7 +240,7 @@ export async function completeOpenRouterJson(input: {
 			}),
 		),
 	});
-	if (!res.ok) throw new Error(await res.text());
+	if (!res.ok) throw await openRouterRequestError(res);
 	const json = (await res.json()) as {
 		choices?: Array<{ message?: { content?: string | null } }>;
 	};

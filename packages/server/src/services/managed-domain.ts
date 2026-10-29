@@ -52,7 +52,7 @@ export function buildManagedServiceHost(input: {
 	return `${slug}.${zone}`;
 }
 
-/** Stable short random label under an apex (e.g. a3f9c2b1.veritus.space). */
+/** Stable short random label under an apex (e.g. a3f9c2b1.example.com). */
 export function buildRandomPlatformServiceHost(input: {
 	zoneName: string;
 	seed: string;

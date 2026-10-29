@@ -1806,7 +1806,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	padding: 1.25rem;
 	border: 1px solid var(--nz-border, #eceef3);
 	border-radius: 0.375rem;
-	background: #ffffff;
+	background: var(--nz-bg-elevated, #ffffff);
 }
 
 .nz-first-run__intro {
@@ -1849,7 +1849,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	padding: 0.25rem 0.5rem;
 	border: 1px solid var(--nz-border, #dfe3ea);
 	border-radius: 0.25rem;
-	background: #ffffff;
+	background: var(--nz-bg-elevated, #ffffff);
 	font-size: 0.6875rem;
 	font-weight: 600;
 	white-space: nowrap;
@@ -1879,7 +1879,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	gap: 0.75rem;
 	min-width: 0;
 	padding: 1rem;
-	background: #ffffff;
+	background: var(--nz-bg-elevated, #ffffff);
 }
 
 .nz-first-run__step + .nz-first-run__step {
@@ -1897,7 +1897,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	background: var(--nz-text, #111827);
 	font-size: 0.6875rem;
 	font-weight: 600;
-	color: #ffffff;
+	color: var(--nz-bg-elevated, #ffffff);
 }
 
 .nz-first-run__step-body {
@@ -1936,7 +1936,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	padding: 0.1rem 0.25rem;
 	border: 1px solid var(--nz-border, #e5e7eb);
 	border-radius: 0.2rem;
-	background: #ffffff;
+	background: var(--nz-bg-elevated, #ffffff);
 	font-size: 0.6875rem;
 	color: var(--nz-text, #111827);
 }
@@ -1967,6 +1967,11 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	color: #991b1b;
 }
 
+html.dark .nz-first-run__step .nz-first-run__error,
+html.dark .nz-first-run__load-warning {
+	color: #f87171;
+}
+
 .nz-first-run__actions {
 	display: flex;
 	flex-wrap: wrap;
@@ -1983,7 +1988,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 	padding: 0.25rem 0.5rem;
 	border: 1px solid var(--nz-border, #dfe3ea);
 	border-radius: 0.25rem;
-	background: #ffffff;
+	background: var(--nz-bg-elevated, #ffffff);
 	font: inherit;
 	font-size: 0.75rem;
 	font-weight: 500;
@@ -2000,7 +2005,7 @@ html.dark .nz-dashboard-content .nz-settings-table .nz-table-action-btn:hover {
 .nz-first-run__actions .is-primary {
 	border-color: var(--nz-text, #111827);
 	background: var(--nz-text, #111827);
-	color: #ffffff;
+	color: var(--nz-bg-elevated, #ffffff);
 }
 
 .nz-first-run__load-warning {
@@ -2673,6 +2678,12 @@ html.dark
 	font-size: 0.75rem;
 	line-height: 1.35rem;
 	color: #92400e;
+}
+
+html.dark .nz-traefik__callout {
+	border-color: rgb(146 64 14 / 0.6);
+	background: rgb(120 53 15 / 0.25);
+	color: #fcd34d;
 }
 
 .nz-traefik__error {

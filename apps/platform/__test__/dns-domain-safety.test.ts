@@ -99,7 +99,7 @@ describe("DNS input safety", () => {
 
 	it("defaults empty nameservers to the platform apex NS hosts", () => {
 		const previous = process.env.NEARZERO_PLATFORM_DOMAIN;
-		process.env.NEARZERO_PLATFORM_DOMAIN = "veritus.space";
+		process.env.NEARZERO_PLATFORM_DOMAIN = "platform.example";
 		try {
 			const rendered = renderZoneFile({
 				zoneName: "customer.app",
@@ -109,9 +109,9 @@ describe("DNS input safety", () => {
 				serial: "125",
 				records: [{ name: "www", type: "A", value: "1.2.3.4" }],
 			});
-			expect(rendered).toContain("@ IN SOA ns1.veritus.space.");
-			expect(rendered).toContain("@ IN NS ns1.veritus.space.");
-			expect(rendered).toContain("@ IN NS ns2.veritus.space.");
+			expect(rendered).toContain("@ IN SOA ns1.platform.example.");
+			expect(rendered).toContain("@ IN NS ns1.platform.example.");
+			expect(rendered).toContain("@ IN NS ns2.platform.example.");
 			expect(rendered).not.toContain("ns1.customer.app");
 		} finally {
 			if (previous === undefined) delete process.env.NEARZERO_PLATFORM_DOMAIN;
@@ -157,17 +157,17 @@ describe("managed DNS target safety", () => {
 
 	it("reserves the configured platform namespace for generated hostnames", () => {
 		const previous = process.env.NEARZERO_PLATFORM_DOMAIN;
-		process.env.NEARZERO_PLATFORM_DOMAIN = "veritus.space";
+		process.env.NEARZERO_PLATFORM_DOMAIN = "platform.example";
 		try {
 			expect(() =>
 				assertHostnameIsNotReservedForPlatform(
-					"customer.veritus.space",
+					"customer.platform.example",
 					"external",
 				),
 			).toThrow(/reserved/);
 			expect(() =>
 				assertHostnameIsNotReservedForPlatform(
-					"customer.veritus.space",
+					"customer.platform.example",
 					"platform",
 				),
 			).not.toThrow();
@@ -227,25 +227,25 @@ describe("managed hostname plans", () => {
 		expect(
 			buildManagedServiceHost({
 				serviceName: "Web App",
-				zoneName: "veritus.space",
+				zoneName: "platform.example",
 				environment: {
 					name: "production",
 					isDefault: false,
 					domainPrefix: null,
 				},
 			}),
-		).toBe("web-app.veritus.space");
+		).toBe("web-app.platform.example");
 		expect(
 			buildManagedServiceHost({
 				serviceName: "Web App",
-				zoneName: "veritus.space",
+				zoneName: "platform.example",
 				environment: {
 					name: "staging",
 					isDefault: false,
 					domainPrefix: "staging",
 				},
 			}),
-		).toBe("web-app.staging.veritus.space");
+		).toBe("web-app.staging.platform.example");
 	});
 
 	it("keeps generated preview labels inside DNS's 63-byte label limit", () => {

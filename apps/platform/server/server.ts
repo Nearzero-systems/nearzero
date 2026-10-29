@@ -229,9 +229,11 @@ void (async () => {
 					if (webServerSettings.letsEncryptEmail) {
 						updateLetsEncryptEmail(webServerSettings.letsEncryptEmail);
 					}
-					await ensureTraefikSetup();
-					console.log("Public HTTPS proxy ready");
 				}
+				// Apps get preview URLs before a domain is set, so ports 80/443 need
+				// the proxy from the first boot, not only once a hostname exists.
+				await ensureTraefikSetup();
+				console.log("Public HTTPS proxy ready");
 			} catch (traefikError) {
 				const message =
 					traefikError instanceof Error

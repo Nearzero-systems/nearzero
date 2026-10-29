@@ -27,8 +27,6 @@ import { createServerTrpcClient } from "./lib/server-api";
 import {
 	fetchActiveOrganization,
 	fetchOnboardingStatus,
-	fetchOrganizationActivationHttpsSummary,
-	fetchOrganizationActivationSummary,
 } from "./lib/trpc-server";
 
 /** Internal header set on org-scoped dashboard rewrites to prevent redirect loops. */
@@ -68,25 +66,11 @@ function withPrivateNoStore(response: Response) {
 	});
 }
 
-async function resolveDashboardLanding(
-	request: Request,
-	orgSlug?: string | null,
-) {
-	const activation = await fetchOrganizationActivationSummary(request);
-	let needsActivationGuide =
-		activation?.canManage === true && activation.complete === false;
-	if (activation?.canManage === true && activation.complete === true) {
-		const https = await fetchOrganizationActivationHttpsSummary(request);
-		// Fail closed for an owner: a timeout or route error is actionable in the
-		// activation guide and must not silently land them on the optional Agent.
-		needsActivationGuide = https?.verified !== true;
-	}
-	const dashboardPath = needsActivationGuide
-		? "/dashboard/get-started"
-		: "/dashboard/agent";
+// The Get started guide is hidden for now, so every sign-in lands on the Agent.
+function dashboardLandingPath(orgSlug?: string | null) {
 	return orgSlug?.trim()
-		? orgDashboardPath(orgSlug.trim(), dashboardPath)
-		: dashboardPath;
+		? orgDashboardPath(orgSlug.trim(), "/dashboard/agent")
+		: "/dashboard/agent";
 }
 
 async function resolvePostAuthRedirect(
@@ -117,13 +101,8 @@ async function resolvePostAuthRedirect(
 		return registerOnboardingResumePath(onboardingStatus);
 	}
 
-	const activationFallback =
-		fallback === "/dashboard/agent"
-			? await resolveDashboardLanding(request, activeOrg?.slug)
-			: dashboardPathForOrganization(activeOrg, fallback);
-	return callbackInvitationToken
-		? activationFallback
-		: callbackPath || activationFallback;
+	const landing = dashboardPathForOrganization(activeOrg, fallback);
+	return callbackInvitationToken ? landing : callbackPath || landing;
 }
 
 async function guardDashboardAccess(
@@ -232,6 +211,9 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 	}
 
 	const { orgSlug, dashboardPath } = normalizeDashboardPath(path);
+	if (dashboardPath === "/dashboard/get-started") {
+		return context.redirect(dashboardLandingPath(orgSlug));
+	}
 	const isOrgDashboard = isOrgScopedDashboardPath(path);
 	const usesSession = consolePathUsesSession(path) || isOrgDashboard;
 
@@ -273,10 +255,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 			if (blocked) return blocked;
 			const activeOrg = await fetchActiveOrganization(context.request);
 			return context.redirect(
-				(await resolveDashboardLanding(
-					context.request,
-					activeOrg?.slug ?? orgSlug,
-				)) + context.url.search,
+				dashboardLandingPath(activeOrg?.slug ?? orgSlug) + context.url.search,
 			);
 		}
 
@@ -289,10 +268,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 			if (blocked) return blocked;
 			const activeOrg = await fetchActiveOrganization(context.request);
 			return context.redirect(
-				(await resolveDashboardLanding(
-					context.request,
-					activeOrg?.slug ?? orgSlug,
-				)) + context.url.search,
+				dashboardLandingPath(activeOrg?.slug ?? orgSlug) + context.url.search,
 			);
 		}
 
@@ -350,8 +326,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 			const activeOrg = await fetchActiveOrganization(context.request);
 			return context.redirect(
-				(await resolveDashboardLanding(context.request, activeOrg?.slug)) +
-					context.url.search,
+				dashboardLandingPath(activeOrg?.slug) + context.url.search,
 			);
 		}
 
@@ -365,8 +340,7 @@ export const onRequest: MiddlewareHandler = async (context, next) => {
 
 			const activeOrg = await fetchActiveOrganization(context.request);
 			return context.redirect(
-				(await resolveDashboardLanding(context.request, activeOrg?.slug)) +
-					context.url.search,
+				dashboardLandingPath(activeOrg?.slug) + context.url.search,
 			);
 		}
 

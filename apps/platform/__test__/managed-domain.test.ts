@@ -119,13 +119,13 @@ describe("platform domain routing scope", () => {
 
 	it("uses the platform apex locally but requires an explicit shared edge remotely", () => {
 		delete process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE;
-		expect(canUsePlatformDomainForServer(null, "veritus.space")).toBe(true);
+		expect(canUsePlatformDomainForServer(null, "platform.example")).toBe(true);
 		expect(
-			canUsePlatformDomainForServer("remote-server-id", "veritus.space"),
+			canUsePlatformDomainForServer("remote-server-id", "platform.example"),
 		).toBe(false);
 		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = "true";
 		expect(
-			canUsePlatformDomainForServer("remote-server-id", "veritus.space"),
+			canUsePlatformDomainForServer("remote-server-id", "platform.example"),
 		).toBe(true);
 	});
 });
@@ -147,14 +147,14 @@ describe("resolvePlatformDefaultDomain", () => {
 
 	it("returns the env apex when configured", async () => {
 		process.env.NEARZERO_PLATFORM_DOMAIN = "Example.COM.";
-		mockGetWebServerSettings.mockResolvedValue({ host: "veritus.space" });
+		mockGetWebServerSettings.mockResolvedValue({ host: "platform.example" });
 		await expect(resolvePlatformDefaultDomain()).resolves.toBe("example.com");
 	});
 
 	it("does not conflate the management hostname with the service apex", async () => {
 		delete process.env.NEARZERO_PLATFORM_DOMAIN;
 		mockGetWebServerSettings.mockResolvedValue({
-			host: "https://Veritus.Space/",
+			host: "https://Platform.Example/",
 		});
 		await expect(resolvePlatformDefaultDomain()).resolves.toBeNull();
 	});
@@ -163,8 +163,8 @@ describe("resolvePlatformDefaultDomain", () => {
 describe("platform hostname helpers", () => {
 	it("normalizes configured apex values", () => {
 		expect(
-			normalizeConfiguredPlatformApex("https://Veritus.Space/console"),
-		).toBe("veritus.space");
+			normalizeConfiguredPlatformApex("https://Platform.Example/console"),
+		).toBe("platform.example");
 		expect(normalizeConfiguredPlatformApex("")).toBeNull();
 	});
 
@@ -172,31 +172,31 @@ describe("platform hostname helpers", () => {
 		expect(
 			buildManagedServiceHost({
 				serviceName: "backend",
-				zoneName: "veritus.space",
+				zoneName: "platform.example",
 				environment: {
 					name: "development",
 					isDefault: false,
 					domainPrefix: null,
 				},
 			}),
-		).toBe("backend.veritus.space");
+		).toBe("backend.platform.example");
 	});
 
 	it("builds stable random platform hostnames that omit the service name", () => {
 		expect(
 			buildRandomPlatformServiceHost({
-				zoneName: "veritus.space",
+				zoneName: "platform.example",
 				seed: "env-1:backend",
 			}),
-		).toBe("dcbf50a721.veritus.space");
+		).toBe("dcbf50a721.platform.example");
 		expect(
 			buildRandomPlatformServiceHost({
-				zoneName: "veritus.space",
+				zoneName: "platform.example",
 				seed: "env-1:backend",
 			}),
 		).toBe(
 			buildRandomPlatformServiceHost({
-				zoneName: "veritus.space",
+				zoneName: "platform.example",
 				seed: "env-1:backend",
 			}),
 		);
@@ -204,25 +204,25 @@ describe("platform hostname helpers", () => {
 
 	it("documents DNS setup options for platform and managed zones", () => {
 		expect(
-			platformDomainWildcardDnsHint("veritus.space", "13.51.16.1"),
-		).toContain("*.veritus.space");
+			platformDomainWildcardDnsHint("platform.example", "13.51.16.1"),
+		).toContain("*.platform.example");
 		expect(
 			platformDomainDnsSetupHints({
-				host: "backend.veritus.space",
-				platformApex: "veritus.space",
+				host: "backend.platform.example",
+				platformApex: "platform.example",
 				targetIp: "13.51.16.1",
 			}),
 		).toEqual(
 			expect.arrayContaining([
 				expect.stringContaining("Wildcard A"),
-				expect.stringContaining("backend.veritus.space A 13.51.16.1"),
+				expect.stringContaining("backend.platform.example A 13.51.16.1"),
 				expect.stringContaining("Managed DNS (NS)"),
 			]),
 		);
 		expect(
 			managedZoneDnsSetupHints({
-				host: "backend.veritus.space",
-				zoneName: "veritus.space",
+				host: "backend.platform.example",
+				zoneName: "platform.example",
 				targetIp: "13.51.16.1",
 				zoneActive: true,
 			})[0],

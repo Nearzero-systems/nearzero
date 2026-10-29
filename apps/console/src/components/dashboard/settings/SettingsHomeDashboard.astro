@@ -45,8 +45,6 @@ if (bootstrap.ok) {
 }
 
 const agentHref = scopeDashboardHref("/dashboard/agent", orgSlug);
-const getStartedHref = scopeDashboardHref("/dashboard/get-started", orgSlug);
-const canManageActivation = !!ctx.permissions?.organization?.update;
 ---
 
 {
@@ -67,16 +65,6 @@ const canManageActivation = !!ctx.permissions?.organization?.update;
 					Quick start
 				</p>
 				<ul class="mt-3 space-y-2 text-sm text-[#111827]">
-					{
-						canManageActivation ? (
-							<li>
-								<a href={getStartedHref} class="font-medium underline-offset-2 hover:underline">
-									Resume activation
-								</a>
-								<span class="text-[#6b7280]"> — verify a runtime, source, deployment, and HTTPS</span>
-							</li>
-						) : null
-					}
 					<li>
 						<a
 							href={scopeDashboardHref("/dashboard/projects", ctx.orgSlug)}
@@ -90,7 +78,7 @@ const canManageActivation = !!ctx.permissions?.organization?.update;
 						<a href={agentHref} class="font-medium underline-offset-2 hover:underline">
 							Open Agent
 						</a>
-						<span class="text-[#6b7280]"> — optional assistance after the platform is ready</span>
+						<span class="text-[#6b7280]"> — ask about deployments, logs, and infrastructure</span>
 					</li>
 				</ul>
 			</div>

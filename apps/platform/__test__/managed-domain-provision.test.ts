@@ -82,7 +82,7 @@ describe("previewServiceDomain platform apex", () => {
 	});
 
 	it("does not use the web-server settings host as an application apex", async () => {
-		mockGetWebServerSettings.mockResolvedValue({ host: "veritus.space" });
+		mockGetWebServerSettings.mockResolvedValue({ host: "platform.example" });
 
 		const result = await previewServiceDomain({
 			environmentId: "env-1",
@@ -99,7 +99,7 @@ describe("previewServiceDomain platform apex", () => {
 	it("uses an explicit platform apex remotely only with a shared edge", async () => {
 		process.env.NEARZERO_PLATFORM_DOMAIN = "env-apex.com";
 		process.env.NEARZERO_PLATFORM_DOMAIN_SHARED_EDGE = "true";
-		mockGetWebServerSettings.mockResolvedValue({ host: "veritus.space" });
+		mockGetWebServerSettings.mockResolvedValue({ host: "platform.example" });
 
 		const result = await previewServiceDomain({
 			environmentId: "env-1",

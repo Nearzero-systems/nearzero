@@ -388,8 +388,10 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 						<section class="nz-domains-platform-card nz-domains-platform-card--muted mb-3" aria-label="Platform domain">
 							<p class="nz-domains-platform-card__eyebrow">Platform domain</p>
 							<p class="nz-domains-platform-card__copy">
-								Set <code>NEARZERO_PLATFORM_DOMAIN</code> or the web-server host (e.g.{" "}
-								<code>veritus.space</code>) so apps receive random preview URLs on deploy.
+								Preview URLs are off. To give each deploy one, set{" "}
+								<code>NEARZERO_PLATFORM_DOMAIN=apps.example.com</code> in{" "}
+								<code>/opt/nearzero/.env</code>, point <code>*.apps.example.com</code> at this
+								server, then run <code>sudo nearzero update</code>.
 							</p>
 						</section>
 					) : null
