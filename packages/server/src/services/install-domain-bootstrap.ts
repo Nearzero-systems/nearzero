@@ -14,7 +14,7 @@ import {
 	normalizeDnsZoneName,
 	writeZoneFileAtomic,
 } from "@nearzero/server/utils/dns/zone-file";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { createDnsZone, publishDnsZone, upsertSystemDnsARecord } from "./dns";
 import { isPublicIpv4, resolveDomainTargetIp } from "./domain-target";
@@ -276,6 +276,20 @@ export async function findConfiguredManagedDnsZoneForOrganization(
 			eq(dnsZones.organizationId, organizationId),
 			eq(dnsZones.name, zoneName),
 		),
+		columns: { dnsZoneId: true, name: true, status: true },
+	});
+}
+
+/** The zone new environments use: the installer's, else the oldest connected. */
+export async function findDefaultDnsZoneForOrganization(
+	organizationId: string,
+) {
+	const configured =
+		await findConfiguredManagedDnsZoneForOrganization(organizationId);
+	if (configured) return configured;
+	return db.query.dnsZones.findFirst({
+		where: eq(dnsZones.organizationId, organizationId),
+		orderBy: [asc(dnsZones.createdAt)],
 		columns: { dnsZoneId: true, name: true, status: true },
 	});
 }

@@ -9,6 +9,7 @@ import {
 	loadGitlabBranches,
 	loadGitlabRepos,
 } from "@/lib/git-application-source";
+import { copyText } from "@/lib/browser-utils";
 import { bindDockerTerminalUi } from "@/scripts/bind-docker-terminal-ui";
 import {
 	bindDeleteServiceModal,
@@ -533,7 +534,7 @@ function bindDeploymentHistory(root: HTMLElement) {
 	copyBtn?.addEventListener("click", async () => {
 		if (!latestLogs) return;
 		try {
-			await navigator.clipboard.writeText(latestLogs);
+			await copyText(latestLogs);
 			showToast("Logs copied", "success");
 		} catch {
 			showToast("Could not copy logs", "error");

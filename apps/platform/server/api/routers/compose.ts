@@ -12,13 +12,13 @@ import {
 	findDomainsByComposeId,
 	findEnvironmentById,
 	findProjectById,
-	findServerById,
+	findDefaultDnsZoneForOrganization,
 	findSSHKeyById,
 	getAccessibleGitProviderIds,
 	getAccessibleServerIds,
 	getComposeContainer,
 	getContainerLogs,
-	getWebServerSettings,
+	resolveTemplateDomainZone,
 	loadServices,
 	randomizeComposeFile,
 	randomizeIsolatedDeploymentComposeFile,
@@ -663,19 +663,11 @@ export const composeRouter = createTRPCRouter({
 
 			const template = await fetchTemplateFiles(input.id, input.baseUrl);
 
-			let serverIp = "127.0.0.1";
-
 			const project = await findProjectById(environment.projectId);
-
-			if (input.serverId) {
-				const server = await findServerById(input.serverId);
-				serverIp = server.ipAddress;
-			} else if (process.env.NODE_ENV === "development") {
-				serverIp = "127.0.0.1";
-			} else {
-				const settings = await getWebServerSettings();
-				serverIp = settings?.serverIp || "127.0.0.1";
-			}
+			const templateZone = await resolveTemplateDomainZone(
+				input.environmentId,
+				input.serverId,
+			);
 
 			const projectName = slugify(`${project.name} ${input.id}`);
 			const appName = `${projectName}-${generatePassword(6)}`;
@@ -687,7 +679,7 @@ export const composeRouter = createTRPCRouter({
 				},
 			};
 			const generate = processTemplate(config, {
-				serverIp: serverIp,
+				zoneName: templateZone.zoneName,
 				projectName: projectName,
 			});
 
@@ -721,6 +713,7 @@ export const composeRouter = createTRPCRouter({
 				for (const domain of generate.domains) {
 					await createDomain({
 						...domain,
+						...templateZone.domainFields,
 						domainType: "compose",
 						https: true,
 						certificateType: "letsencrypt",
@@ -875,17 +868,10 @@ export const composeRouter = createTRPCRouter({
 				const decodedData = Buffer.from(input.base64, "base64").toString(
 					"utf-8",
 				);
-				let serverIp = "127.0.0.1";
-
-				if (compose.serverId) {
-					const server = await findServerById(compose.serverId);
-					serverIp = server.ipAddress;
-				} else if (process.env.NODE_ENV === "development") {
-					serverIp = "127.0.0.1";
-				} else {
-					const settings = await getWebServerSettings();
-					serverIp = settings?.serverIp || "127.0.0.1";
-				}
+				const templateZone = await resolveTemplateDomainZone(
+					compose.environmentId,
+					compose.serverId,
+				);
 				const templateData = JSON.parse(decodedData);
 				const config = parse(templateData.config) as CompleteTemplate;
 
@@ -906,7 +892,7 @@ export const composeRouter = createTRPCRouter({
 				};
 
 				const processedTemplate = processTemplate(configModified, {
-					serverIp: serverIp,
+					zoneName: templateZone.zoneName,
 					projectName: compose.appName,
 				});
 
@@ -946,15 +932,9 @@ export const composeRouter = createTRPCRouter({
 					"utf-8",
 				);
 
-				let serverIp = "127.0.0.1";
-
-				if (input.serverId) {
-					const server = await findServerById(input.serverId);
-					serverIp = server.ipAddress;
-				} else if (process.env.NODE_ENV !== "development") {
-					const settings = await getWebServerSettings();
-					serverIp = settings?.serverIp || "127.0.0.1";
-				}
+				const defaultZone = await findDefaultDnsZoneForOrganization(
+					ctx.session.activeOrganizationId,
+				);
 
 				const templateData = JSON.parse(decodedData);
 				const config = parse(templateData.config) as CompleteTemplate;
@@ -976,7 +956,7 @@ export const composeRouter = createTRPCRouter({
 				};
 
 				const processedTemplate = processTemplate(configModified, {
-					serverIp,
+					zoneName: defaultZone?.name ?? null,
 					projectName: input.appName,
 				});
 
@@ -1017,17 +997,10 @@ export const composeRouter = createTRPCRouter({
 					await removeDomainById(domain.domainId);
 				}
 
-				let serverIp = "127.0.0.1";
-
-				if (compose.serverId) {
-					const server = await findServerById(compose.serverId);
-					serverIp = server.ipAddress;
-				} else if (process.env.NODE_ENV === "development") {
-					serverIp = "127.0.0.1";
-				} else {
-					const settings = await getWebServerSettings();
-					serverIp = settings?.serverIp || "127.0.0.1";
-				}
+				const templateZone = await resolveTemplateDomainZone(
+					compose.environmentId,
+					compose.serverId,
+				);
 
 				const templateData = JSON.parse(decodedData);
 
@@ -1050,7 +1023,7 @@ export const composeRouter = createTRPCRouter({
 				};
 
 				const processedTemplate = processTemplate(configModified, {
-					serverIp: serverIp,
+					zoneName: templateZone.zoneName,
 					projectName: compose.appName,
 				});
 
@@ -1078,6 +1051,7 @@ export const composeRouter = createTRPCRouter({
 					for (const domain of processedTemplate.domains) {
 						await createDomain({
 							...domain,
+							...templateZone.domainFields,
 							domainType: "compose",
 							https: true,
 							certificateType: "letsencrypt",
@@ -1097,7 +1071,8 @@ export const composeRouter = createTRPCRouter({
 					success: true,
 					message: "Template imported successfully",
 				};
-			} catch {
+			} catch (error) {
+				if (error instanceof TRPCError) throw error;
 				throw new TRPCError({
 					code: "BAD_REQUEST",
 					message: "Error importing template",

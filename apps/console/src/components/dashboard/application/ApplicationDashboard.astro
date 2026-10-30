@@ -205,9 +205,7 @@ const defaultDomainPreviewHost =
 const defaultDomainPreviewLabel =
 	defaultDomainPreview?.mode === "platform"
 		? "Nearzero default"
-		: defaultDomainPreview?.mode === "preview"
-			? "Nearzero preview"
-			: "Managed hostname";
+		: "Managed hostname";
 const hasRollback = Boolean(latestRollbackId);
 const hasRollbackTarget = deploymentRows.some((d: { rollback?: { rollbackId?: string } | null }) =>
 	Boolean(d?.rollback?.rollbackId),
@@ -407,7 +405,7 @@ const deleteServiceDescription =
 											<span class="text-[10px] uppercase tracking-[0.08em] text-[var(--nz-text-subtle)]">{defaultDomainPreviewLabel}</span>
 										</span>
 									) : (
-										<span class="text-muted-foreground">—</span>
+										<a href={domainsHubHref} class="text-muted-foreground hover:underline">Add a DNS domain</a>
 									)
 								}
 							</dd>
@@ -892,7 +890,7 @@ const deleteServiceDescription =
 												{
 													defaultDomainPreviewHost
 														? `Suggested: ${defaultDomainPreviewHost}`
-														: "Create a platform hostname or add a custom domain."
+														: "Add a DNS domain under Domains and this service gets a hostname on it."
 												}
 											</p>
 										</div>

@@ -6,7 +6,7 @@ describe("helpers functions", () => {
 	// Mock schema for testing
 	const mockSchema: Schema = {
 		projectName: "test",
-		serverIp: "127.0.0.1",
+		zoneName: "apps.example.com",
 	};
 	// some helpers to test jwt
 	type JWTParts = [string, string, string];
@@ -29,9 +29,13 @@ describe("helpers functions", () => {
 		it("should generate a random domain", () => {
 			const domain = processValue("${domain}", {}, mockSchema);
 			expect(domain.startsWith(`${mockSchema.projectName}-`)).toBeTruthy();
-			expect(
-				domain.endsWith(`${mockSchema.serverIp.replaceAll(".", "-")}.sslip.io`),
-			).toBeTruthy();
+			expect(domain.endsWith(".apps.example.com")).toBeTruthy();
+		});
+
+		it("asks for a DNS domain when the environment has none", () => {
+			expect(() =>
+				processValue("${domain}", {}, { projectName: "test", zoneName: null }),
+			).toThrow(/Add a DNS domain/);
 		});
 	});
 

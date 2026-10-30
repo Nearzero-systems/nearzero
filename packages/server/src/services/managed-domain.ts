@@ -69,17 +69,10 @@ export function buildRandomPlatformServiceHost(input: {
 export function buildManagedPreviewHost(input: {
 	appName: string;
 	zoneName: string;
-	targetIp: string;
 }) {
 	const zone = normalizeDnsZoneName(input.zoneName);
 	const hash = slugifyServiceName(input.appName) || "preview";
-	if (zone.includes("sslip.io")) {
-		const slugIp = input.targetIp.replaceAll(".", "-");
-		const suffix = slugIp ? `-${slugIp}` : "";
-		const label = `${hash.slice(0, Math.max(1, 63 - suffix.length))}${suffix}`;
-		return `${label}.${zone}`;
-	}
-	return `${hash}.preview.${zone}`;
+	return `${hash.slice(0, 63)}.preview.${zone}`;
 }
 
 export function buildPreviewServiceSlug(input: {

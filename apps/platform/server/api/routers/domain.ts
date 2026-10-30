@@ -7,7 +7,6 @@ import {
 	findDomainsByComposeId,
 	findEnvironmentById,
 	findPreviewDeploymentById,
-	generateTraefikMeDomain,
 	manageDomain,
 	previewServiceDomain,
 	provisionServiceDomain,
@@ -267,25 +266,6 @@ export const domainRouter = createTRPCRouter({
 				domain: ["read"],
 			});
 			return await findDomainsByComposeId(input.composeId);
-		}),
-	generateDomain: withPermission("domain", "create")
-		.input(
-			z.object({
-				appName: z.string().trim().min(1).max(128),
-				serverId: z.string().min(1).optional(),
-			}),
-		)
-		.mutation(async ({ input, ctx }) => {
-			await assertRuntimePlacement(ctx, "domain.assign", {
-				serverId: input.serverId ?? null,
-				resourceType: "domain",
-				resourceName: input.appName,
-			});
-			return generateTraefikMeDomain(
-				input.appName,
-				ctx.user.ownerId,
-				input.serverId,
-			);
 		}),
 	canGenerateTraefikMeDomains: withPermission("domain", "read")
 		.input(z.object({ serverId: z.string().optional() }))

@@ -3,6 +3,7 @@ import { trpcMutate, trpcQuery } from "@/lib/client-api";
 import { NZ_TOAST_EVENT } from "@/lib/nzToast";
 import { logLineClass, parseLogs } from "@/lib/parse-logs";
 import { trpcSubscribe } from "@/lib/trpc-subscribe";
+import { copyText } from "@/lib/browser-utils";
 import { bindDockerTerminalUi } from "@/scripts/bind-docker-terminal-ui";
 import { closeDialog, openDialog } from "@/scripts/ui";
 import {
@@ -662,7 +663,7 @@ export function bindDatabaseDeploymentHistory() {
 		copyBtn?.addEventListener("click", async () => {
 			if (!latestLogs) return;
 			try {
-				await navigator.clipboard.writeText(latestLogs);
+				await copyText(latestLogs);
 				toast("Logs copied", "success");
 			} catch {
 				toast("Could not copy logs", "error");

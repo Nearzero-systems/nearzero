@@ -172,7 +172,7 @@ const uninstallCode =
 			</p>
 			<div class="nz-doc-option-grid">
 				<div><code>nearzero.example.com</code><p>The management hostname. It is the one HTTPS origin for the console, proxied API and WebSockets, authentication, and Git OAuth callbacks. Traefik and Let's Encrypt are configured for it.</p></div>
-				<div><code>apps.example.com</code><p>An optional application zone when managed DNS is enabled. Nearzero writes authoritative service and preview A records here, including records that target selected remote servers.</p></div>
+				<div><code>apps.example.com</code><p>The application zone when managed DNS is enabled. Connect it under <strong>Domains → Add New → Connect a domain</strong>: the first domain you connect becomes the default for every environment, and Nearzero writes authoritative service and preview A records there, including records that target selected remote servers. Until a domain is connected, apps run without a public URL.</p></div>
 			</div>
 			<DocCallout title="Do not reuse NEARZERO_PLATFORM_DOMAIN for built-in DNS" tone="warning">
 				<p><code>NEARZERO_PLATFORM_DOMAIN</code> describes an independently operated wildcard/shared edge. It neither creates a CoreDNS zone nor routes remote-server traffic. Use <code>NEARZERO_MANAGED_DNS_ZONE</code> for the application zone instead.</p>

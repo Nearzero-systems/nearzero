@@ -3,6 +3,7 @@ import {
 	type apiCreateEnvironment,
 	type apiDuplicateEnvironment,
 	environments,
+	projects,
 } from "@nearzero/server/db/schema";
 import { TRPCError } from "@trpc/server";
 import { asc, eq } from "drizzle-orm";
@@ -18,13 +19,28 @@ export function isProductionEnvironment(
 	return env.name.trim().toLowerCase() === "production";
 }
 
+const defaultDnsZoneIdForProject = async (projectId: string) => {
+	const project = await db.query.projects.findFirst({
+		where: eq(projects.projectId, projectId),
+		columns: { organizationId: true },
+	});
+	if (!project) return null;
+	const { findDefaultDnsZoneForOrganization } = await import(
+		"./install-domain-bootstrap"
+	);
+	const zone = await findDefaultDnsZoneForOrganization(project.organizationId);
+	return zone?.dnsZoneId ?? null;
+};
+
 export const createEnvironment = async (
 	input: z.infer<typeof apiCreateEnvironment>,
 ) => {
+	const dnsZoneId = await defaultDnsZoneIdForProject(input.projectId);
 	const newEnvironment = await db
 		.insert(environments)
 		.values({
 			...input,
+			dnsZoneId,
 		})
 		.returning()
 		.then((value) => value[0]);
@@ -355,6 +371,10 @@ export const duplicateEnvironment = async (
 	// Find the original environment
 	const originalEnvironment = await findEnvironmentById(input.environmentId);
 
+	const dnsZoneId = await defaultDnsZoneIdForProject(
+		originalEnvironment.projectId,
+	);
+
 	// Create a new environment with the provided name and description
 	const newEnvironment = await db
 		.insert(environments)
@@ -363,6 +383,7 @@ export const duplicateEnvironment = async (
 			description: input.description || originalEnvironment.description,
 			projectId: originalEnvironment.projectId,
 			env: originalEnvironment.env,
+			dnsZoneId,
 		})
 		.returning()
 		.then((value) => value[0]);

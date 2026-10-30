@@ -1,7 +1,12 @@
 import { db } from "@nearzero/server/db";
-import { dnsZones, previewDeployments } from "@nearzero/server/db/schema";
+import {
+	dnsZones,
+	environments,
+	previewDeployments,
+	projects,
+} from "@nearzero/server/db/schema";
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { normalizeDnsHostname } from "../utils/dns/zone-file";
 import { serviceSpecReferencesNetwork } from "../utils/docker/utils";
 import { resolveAutomaticDomainSsl } from "../utils/domain-ssl";
@@ -17,7 +22,11 @@ import {
 	reconcileComposeDomainRoutes,
 	withComposeRoutingMutationLock,
 } from "./compose";
-import { checkDnsHealth, deleteManagedDnsRecordForDomain } from "./dns";
+import {
+	checkDnsHealth,
+	deleteManagedDnsRecordForDomain,
+	publishDnsZone,
+} from "./dns";
 import {
 	createDomain,
 	type Domain,
@@ -44,6 +53,9 @@ import {
 	slugifyServiceName,
 } from "./managed-domain";
 import { getWebServerSettings } from "./web-server-settings";
+
+const NO_DNS_DOMAIN_MESSAGE =
+	"No DNS domain yet. Add one under Domains to give this service a public URL.";
 
 export type ServiceDomainMode =
 	| "org-zone"
@@ -354,7 +366,6 @@ export async function resolvePreviewDomainPlan(input: {
 			host: buildManagedPreviewHost({
 				appName: previewSlug,
 				zoneName: zone.name,
-				targetIp: targetIp ?? "",
 			}),
 			targetIp,
 			dnsZoneId: zone.dnsZoneId,
@@ -373,7 +384,6 @@ export async function resolvePreviewDomainPlan(input: {
 			host: buildManagedPreviewHost({
 				appName: previewSlug,
 				zoneName: platformApex,
-				targetIp: targetIp ?? "",
 			}),
 			targetIp,
 			managedByNearzero: false,
@@ -395,27 +405,11 @@ export async function resolvePreviewDomainPlan(input: {
 		};
 	}
 
-	if (!targetIp) {
-		throw new TRPCError({
-			code: "BAD_REQUEST",
-			message: "Could not resolve a target IP for the preview domain",
-		});
-	}
-
-	return {
-		mode: "preview",
-		host: buildManagedPreviewHost({
-			appName: previewSlug,
-			zoneName: "sslip.io",
-			targetIp,
-		}),
-		targetIp,
-		managedByNearzero: false,
-		...resolveAutomaticDomainSsl({
-			https: input.previewHttps,
-			certificateType: input.previewCertificateType,
-		}),
-	};
+	throw new TRPCError({
+		code: "BAD_REQUEST",
+		message:
+			"Preview deployments need a hostname. Add a DNS domain under Domains, or set a preview wildcard on this application.",
+	});
 }
 
 export async function ensurePreviewDeploymentDomain(input: {
@@ -670,21 +664,9 @@ export async function previewServiceDomain(
 				}),
 			);
 		}
-	} else if (targetIp) {
-		const previewLabel =
-			buildRandomPlatformServiceHost({
-				zoneName: "sslip.io",
-				seed: `${input.environmentId}:${slugifyServiceName(input.serviceName)}`,
-			}).split(".")[0] || "app";
-		host = buildManagedPreviewHost({
-			appName: previewLabel,
-			zoneName: "sslip.io",
-			targetIp,
-		});
-		zoneName = "sslip.io";
-		mode = "preview";
 	} else {
 		mode = "byod";
+		warnings.push(NO_DNS_DOMAIN_MESSAGE);
 	}
 
 	const visitUrl = host && mode !== "byod" ? `https://${host}` : null;
@@ -827,56 +809,9 @@ export async function provisionServiceDomain(
 		return domain;
 	}
 
-	const targetIp = await resolveDomainTargetIp(input.serverId).catch(
-		() => null,
-	);
-	if (!targetIp) {
-		return null;
-	}
-	const host = buildManagedPreviewHost({
-		appName: input.serviceName,
-		zoneName: "sslip.io",
-		targetIp,
-	});
-	const resolved = await resolveProvisionedHost({
-		baseHost: host,
-		provision: input,
-	});
-	if (resolved.existing) {
-		return syncProvisionedDomain(input, resolved.existing, path, {
-			host: resolved.host,
-			managedByNearzero: false,
-			dnsMode: "external",
-		});
-	}
-	if (migratableFallback) {
-		return syncProvisionedDomain(input, migratableFallback, path, {
-			host: resolved.host,
-			managedByNearzero: false,
-			dnsZoneId: null,
-			dnsMode: "external",
-		});
-	}
-	const domain = await createDomain(
-		{
-			host: resolved.host,
-			port: input.port,
-			path,
-			https: true,
-			certificateType: "letsencrypt",
-			domainType: input.domainType,
-			managedByNearzero: false,
-			isSystemAssigned: true,
-			...(input.domainType === "application"
-				? { applicationId: input.applicationId }
-				: { composeId: input.composeId }),
-		},
-		{
-			reconcileComposeRoute: !input.deferComposeRouteReconciliation,
-			composeRoutingLockHeld: input.domainType === "compose",
-		},
-	);
-	return domain;
+	// No DNS domain yet: the service runs without a generated hostname, and one
+	// it already has keeps working until a zone takes over.
+	return migratableFallback ?? null;
 }
 
 export async function ensureDefaultServiceDomain(input: {
@@ -988,6 +923,80 @@ export async function ensureDefaultServiceDomain(input: {
 		deferComposeRouteReconciliation: input.deferComposeRouteReconciliation,
 		composeRoutingLockHeld: input.composeRoutingLockHeld,
 	});
+}
+
+/**
+ * The first zone an organization connects becomes its default: environments
+ * without a zone start using it, and hostnames Nearzero generated move onto it.
+ */
+export async function adoptFirstDnsZone(
+	dnsZoneId: string,
+	organizationId: string,
+) {
+	const otherZone = await db.query.dnsZones.findFirst({
+		where: and(
+			eq(dnsZones.organizationId, organizationId),
+			ne(dnsZones.dnsZoneId, dnsZoneId),
+		),
+		columns: { dnsZoneId: true },
+	});
+	if (otherZone) return;
+
+	const unbound = await db
+		.select({ environmentId: environments.environmentId })
+		.from(environments)
+		.innerJoin(projects, eq(environments.projectId, projects.projectId))
+		.where(
+			and(
+				eq(projects.organizationId, organizationId),
+				isNull(environments.dnsZoneId),
+			),
+		);
+	for (const { environmentId } of unbound) {
+		await db
+			.update(environments)
+			.set({ dnsZoneId })
+			.where(eq(environments.environmentId, environmentId));
+		await reconcileEnvironmentDefaultDomains(environmentId).catch(
+			() => undefined,
+		);
+	}
+	// A failed publish is recorded on the zone and shown under Domains.
+	await publishDnsZone(dnsZoneId, organizationId).catch(() => undefined);
+}
+
+/** The DNS zone a one-click template's generated hostnames live on. */
+export async function resolveTemplateDomainZone(
+	environmentId: string,
+	serverId?: string | null,
+) {
+	const env = await findEnvironmentForDomain(environmentId);
+	if (env.dnsZoneId) {
+		const zone = await db.query.dnsZones.findFirst({
+			where: and(
+				eq(dnsZones.dnsZoneId, env.dnsZoneId),
+				eq(dnsZones.organizationId, env.project.organizationId),
+			),
+		});
+		if (zone) {
+			return {
+				zoneName: zone.name,
+				domainFields: {
+					dnsZoneId: zone.dnsZoneId,
+					managedByNearzero: true,
+					dnsMode: "nearzero_managed" as const,
+				},
+			};
+		}
+	}
+	const platformApex = await resolvePlatformDefaultDomain();
+	if (platformApex && canUsePlatformDomainForServer(serverId, platformApex)) {
+		return {
+			zoneName: platformApex,
+			domainFields: { dnsMode: "platform" as const },
+		};
+	}
+	return { zoneName: null, domainFields: {} };
 }
 
 export async function reconcileEnvironmentDefaultDomains(

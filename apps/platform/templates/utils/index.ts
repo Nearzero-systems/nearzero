@@ -19,19 +19,6 @@ export interface Template {
 	domains?: DomainSchema[];
 }
 
-export const generateRandomDomain = ({
-	serverIp,
-	projectName,
-}: {
-	serverIp: string;
-	projectName: string;
-}): string => {
-	const hash = randomBytes(3).toString("hex");
-	const slugIp = serverIp.replaceAll(".", "-");
-
-	return `${projectName}-${hash}${slugIp === "" ? "" : `-${slugIp}`}.sslip.io`;
-};
-
 export const generateHash = (projectName: string, quantity = 3): string => {
 	const hash = randomBytes(quantity).toString("hex");
 	return `${projectName}-${hash}`;

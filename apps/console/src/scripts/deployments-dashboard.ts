@@ -1,3 +1,4 @@
+import { copyText } from "@/lib/browser-utils";
 import { trpcMutate, trpcQuery } from "@/lib/client-api";
 import { navigateDashboardHref } from "@/scripts/dashboard-async-region";
 import { showToast } from "@/scripts/ui";
@@ -725,7 +726,7 @@ export function bindDeploymentLogs() {
 		copy?.addEventListener("click", (event) => {
 			event.stopPropagation();
 			const value = normalizeLogs(rawLogs);
-			void navigator.clipboard.writeText(value).then(
+			void copyText(value).then(
 				() => showToast("Logs copied", "success"),
 				() => showToast("Could not copy logs", "error"),
 			);

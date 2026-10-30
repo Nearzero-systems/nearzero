@@ -230,8 +230,8 @@ void (async () => {
 						updateLetsEncryptEmail(webServerSettings.letsEncryptEmail);
 					}
 				}
-				// Apps get preview URLs before a domain is set, so ports 80/443 need
-				// the proxy from the first boot, not only once a hostname exists.
+				// Connecting a DNS domain gives apps hostnames right away, so ports
+				// 80/443 need the proxy from the first boot.
 				await ensureTraefikSetup();
 				console.log("Public HTTPS proxy ready");
 			} catch (traefikError) {

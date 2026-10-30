@@ -114,6 +114,12 @@ function parseServiceSelectValue(value: string) {
 }
 
 function bindAddNewMenu(root: HTMLElement, signal?: AbortSignal) {
+	root
+		.querySelector<HTMLButtonElement>("[data-domains-connect]")
+		?.addEventListener("click", () => openDialog("nz-dns-create-dialog"), {
+			signal,
+		});
+
 	const toggle = root.querySelector<HTMLButtonElement>(
 		"[data-domains-add-toggle]",
 	);
@@ -353,12 +359,19 @@ function bindDnsZones(root: HTMLElement) {
 		event.preventDefault();
 		const data = new FormData(createForm);
 		const nameservers = parseNameservers(String(data.get("nameservers") || ""));
-		await trpcMutate("dns.zones.create", {
-			name: String(data.get("name") || ""),
-			soaEmail: String(data.get("soaEmail") || ""),
-			...(nameservers.length > 0 ? { nameservers } : {}),
-		});
-		window.location.reload();
+		try {
+			await trpcMutate("dns.zones.create", {
+				name: String(data.get("name") || ""),
+				soaEmail: String(data.get("soaEmail") || ""),
+				...(nameservers.length > 0 ? { nameservers } : {}),
+			});
+			window.location.reload();
+		} catch (error) {
+			toast(
+				error instanceof Error ? error.message : "Could not connect this domain",
+				"error",
+			);
+		}
 	});
 
 	recordTypeInput?.addEventListener("change", () => {
@@ -1009,6 +1022,11 @@ export function initDomainsHub() {
 	bindAddNewMenu(root, ac.signal);
 	bindTabs(root, ac.signal);
 	bindDomainsSearch(ac.signal);
+
+	// The rest bind without a signal, and this runs again on every page-load
+	// event: binding twice would submit each form twice.
+	if (root.dataset.nzDomainsBound === "1") return;
+	root.dataset.nzDomainsBound = "1";
 	bindDnsZones(root);
 	bindHostnameModal(projects);
 	bindConnectServiceModal(projects);

@@ -32,6 +32,7 @@ import {
 	type PreviewServiceDomainResult,
 } from "@/lib/managed-domain-client";
 import { slugify } from "@/lib/slug";
+import { copyText } from "@/lib/browser-utils";
 import { NZ_TOAST_EVENT } from "@/lib/nzToast";
 import type { ProviderOption } from "@/components/dashboard/projects/shared";
 import {
@@ -1510,8 +1511,10 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		const preview = state.domainPreview;
 		if (!domainPreviewEl) return;
 		if (!preview?.enabled) {
-			domainPreviewEl.classList.add("hidden");
-			domainPreviewEl.textContent = "";
+			const noDomainNote =
+				preview?.mode === "byod" ? preview.warnings.join(" ") : "";
+			domainPreviewEl.classList.toggle("hidden", !noDomainNote);
+			domainPreviewEl.textContent = noDomainNote;
 			managedDomainWrap?.classList.add("hidden");
 			managedPortWrap?.classList.add("hidden");
 			return;
@@ -1523,9 +1526,7 @@ export function mountApplicationImportPage(root: HTMLElement) {
 				? "Managed DNS hostname"
 				: preview.mode === "platform"
 					? "Platform hostname"
-					: preview.mode === "preview"
-						? "Temporary IP-based hostname"
-						: "Suggested hostname";
+					: "Suggested hostname";
 		const warn =
 			preview.warnings.length > 0 ?
 				`<br /><span class="text-amber-700">${preview.warnings.map((w) => escapeAttr(w)).join(" ")}</span>`
@@ -1533,9 +1534,7 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		const dnsSetup =
 			preview.dnsSetup?.length ?
 				`<ul class="mt-1 list-disc pl-5 text-amber-700">${preview.dnsSetup.map((hint) => `<li>${escapeAttr(hint)}</li>`).join("")}</ul>`
-			: preview.mode === "preview"
-				? '<br /><span class="text-amber-700">No default application domain is configured, so this points directly to the selected server.</span>'
-				: "";
+			: "";
 		domainPreviewEl.innerHTML = `<strong>${escapeAttr(preview.host ?? "")}</strong><br />${escapeAttr(modeLabel)}${warn}${dnsSetup}`;
 
 		if (preview.mode === "org-zone") {
@@ -1576,7 +1575,6 @@ export function mountApplicationImportPage(root: HTMLElement) {
 		const preview = state.domainPreview;
 		if (!preview?.enabled || !preview.host) return false;
 		if (preview.mode === "platform") return true;
-		if (preview.mode === "preview") return true;
 		if (preview.mode === "org-zone") return state.managedDomain;
 		return false;
 	}
@@ -1995,7 +1993,7 @@ export function mountApplicationImportPage(root: HTMLElement) {
 
 			const copyBuildLogs = target.closest("[data-app-import-build-copy]");
 			if (copyBuildLogs) {
-				void navigator.clipboard.writeText(importBuildLogs).then(
+				void copyText(importBuildLogs).then(
 					() => toast("Build logs copied", "success"),
 					() => toast("Could not copy build logs", "error"),
 				);

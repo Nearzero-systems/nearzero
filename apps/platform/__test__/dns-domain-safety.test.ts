@@ -257,8 +257,7 @@ describe("managed hostname plans", () => {
 		expect(slug.length).toBeLessThanOrEqual(63);
 		const host = buildManagedPreviewHost({
 			appName: "x".repeat(200),
-			zoneName: "sslip.io",
-			targetIp: "123.123.123.123",
+			zoneName: "example.com",
 		});
 		expect(host.split(".")[0]?.length).toBeLessThanOrEqual(63);
 	});

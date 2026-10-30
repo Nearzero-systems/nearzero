@@ -15,7 +15,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import { createDefaultEnvironment } from "./environment";
-import { findConfiguredManagedDnsZoneForOrganization } from "./install-domain-bootstrap";
+import { findDefaultDnsZoneForOrganization } from "./install-domain-bootstrap";
 
 export type Project = typeof projects.$inferSelect;
 
@@ -23,8 +23,7 @@ export const createProject = async (
 	input: z.infer<typeof apiCreateProject>,
 	organizationId: string,
 ) => {
-	const configuredZone =
-		await findConfiguredManagedDnsZoneForOrganization(organizationId);
+	const defaultZone = await findDefaultDnsZoneForOrganization(organizationId);
 	return await db.transaction(async (tx) => {
 		const newProject = await tx
 			.insert(projects)
@@ -45,7 +44,7 @@ export const createProject = async (
 		const newEnvironment = await createDefaultEnvironment(
 			newProject.projectId,
 			tx,
-			{ dnsZoneId: configuredZone?.dnsZoneId ?? null },
+			{ dnsZoneId: defaultZone?.dnsZoneId ?? null },
 		);
 		return {
 			project: newProject,

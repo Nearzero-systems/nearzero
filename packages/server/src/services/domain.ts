@@ -6,7 +6,6 @@ import {
 } from "@nearzero/server/constants";
 import { db } from "@nearzero/server/db";
 import { getWebServerSettings } from "@nearzero/server/services/web-server-settings";
-import { generateRandomDomain } from "@nearzero/server/templates";
 import { normalizeDnsHostname } from "@nearzero/server/utils/dns/zone-file";
 import {
 	manageDomain,
@@ -565,32 +564,6 @@ export const createDomain = async (
 		}
 		throw error;
 	}
-};
-
-export const generateTraefikMeDomain = async (
-	appName: string,
-	_userId: string,
-	serverId?: string,
-) => {
-	if (serverId) {
-		const server = await findServerById(serverId);
-		return generateRandomDomain({
-			serverIp: server.ipAddress,
-			projectName: appName,
-		});
-	}
-
-	if (process.env.NODE_ENV === "development") {
-		return generateRandomDomain({
-			serverIp: "",
-			projectName: appName,
-		});
-	}
-	const settings = await getWebServerSettings();
-	return generateRandomDomain({
-		serverIp: settings?.serverIp || "",
-		projectName: appName,
-	});
 };
 
 export const generateWildcardDomain = (

@@ -384,15 +384,16 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 								)
 							}
 						</section>
-					) : canDomainRead ? (
-						<section class="nz-domains-platform-card nz-domains-platform-card--muted mb-3" aria-label="Platform domain">
-							<p class="nz-domains-platform-card__eyebrow">Platform domain</p>
+					) : canDomainRead && zones.length === 0 ? (
+						<section class="nz-domains-platform-card nz-domains-platform-card--muted mb-3" aria-label="DNS domain">
+							<p class="nz-domains-platform-card__eyebrow">DNS domain</p>
 							<p class="nz-domains-platform-card__copy">
-								Preview URLs are off. To give each deploy one, set{" "}
-								<code>NEARZERO_PLATFORM_DOMAIN=apps.example.com</code> in{" "}
-								<code>/opt/nearzero/.env</code>, point <code>*.apps.example.com</code> at this
-								server, then run <code>sudo nearzero update</code>.
+								No DNS domain yet. Connect yours once and every environment uses it, so each app
+								you deploy gets a hostname like <code>web.example.com</code>.
 							</p>
+							{canDomainCreate ? (
+								<button type="button" class={`${ST.filterBtn} mt-2`} data-domains-connect>Connect a domain</button>
+							) : null}
 						</section>
 					) : null
 				}
@@ -780,7 +781,7 @@ const showDnsHealthBanner = health.some((row) => row.status === "error");
 			</div>
 
 			<!-- Modals -->
-			<NzModal id="nz-dns-create-dialog" title="Connect a domain" description="Delegate your domain’s nameservers to Nearzero DNS. Nearzero becomes authoritative for the zone (Vercel-style NS migration)." size="sm" form formId="nz-dns-create-form" showClose={false}>
+			<NzModal id="nz-dns-create-dialog" title="Connect a domain" description="Delegate your domain’s nameservers to Nearzero DNS. Nearzero becomes authoritative for the zone, and the first domain you connect becomes the default for every environment." size="sm" form formId="nz-dns-create-form" showClose={false}>
 				<label class="nz-modal__field">
 					<span class="nz-modal__label">Zone name</span>
 					<input name="name" required placeholder="example.com" class="nz-modal__input" />

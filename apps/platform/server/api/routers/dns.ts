@@ -11,6 +11,7 @@ import {
 	publishDnsZone,
 	upsertDnsRecord,
 } from "@nearzero/server/services/dns";
+import { adoptFirstDnsZone } from "@nearzero/server/services/managed-domain-provision";
 import { getManagedDnsReadiness } from "@nearzero/server/services/managed-domain-provision";
 import { apiCreateDnsZone, apiUpsertDnsRecord } from "@nearzero/server/db/schema";
 import { z } from "zod";
@@ -36,6 +37,7 @@ export const dnsRouter = createTRPCRouter({
 			.input(apiCreateDnsZone)
 			.mutation(async ({ ctx, input }) => {
 				const zone = await createDnsZone(orgId(ctx), input);
+				await adoptFirstDnsZone(zone.dnsZoneId, orgId(ctx));
 				await audit(ctx, {
 					action: "create",
 					resourceType: "domain",

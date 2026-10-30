@@ -3,6 +3,7 @@ import {
 	rememberDefaultLabel,
 	setButtonLoadingVisuals,
 } from "@/lib/auth-button-state";
+import { copyText } from "@/lib/browser-utils";
 import { disconnectDockerLogs, mountDockerLogs } from "@/scripts/docker-logs-ws";
 import { executeWithHealthCheck } from "@/scripts/health-check";
 import { bindDropdown, closeDialog, openDialog, showToast } from "@/scripts/ui";
@@ -594,9 +595,10 @@ export function bindCopyServerIp(signal?: AbortSignal) {
 		() => {
 			const ip = document.getElementById("nz-ws-server-ip")?.textContent?.trim();
 			if (!ip) return;
-			void navigator.clipboard
-				.writeText(ip)
-				.then(() => showToast("Copied to clipboard", "success"));
+			void copyText(ip).then(
+				() => showToast("Copied to clipboard", "success"),
+				() => showToast("Could not copy", "error"),
+			);
 		},
 		signal ? { signal } : undefined,
 	);

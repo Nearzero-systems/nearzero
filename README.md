@@ -51,6 +51,12 @@ Open the address and sign in. If the page doesn't load, allow inbound TCP 4321
 in the server's firewall or cloud security group. To serve the console on your
 own domain with HTTPS, open **Settings → About Nearzero** after signing in.
 
+Apps get public addresses from your DNS domain. Open **Domains → Add New →
+Connect a domain**, then point the domain's nameservers at this server and allow
+inbound TCP 80 and 443 plus TCP and UDP 53. The first domain you connect becomes
+the default for every environment, so an app named `web` gets `web.example.com`.
+Until then, apps deploy and run without a public URL.
+
 Nobody can create an account from the web until you invite them: the admin
 account only comes from the server, so a fresh install can't be claimed by
 someone else first.
@@ -82,7 +88,7 @@ checksum. Nothing runs if a download or the checksum check fails:
   workdir="$(mktemp -d)"
   trap 'rm -rf "$workdir"' EXIT
   cd "$workdir"
-  version="0.1.52"
+  version="0.1.53"
   base_url="https://cdn.nearzero.dev/releases/${version}"
   curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --retry 3 --output install.sh "${base_url}/install.sh"

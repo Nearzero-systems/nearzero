@@ -3,7 +3,6 @@ import { trpcMutate, trpcQuery } from "@/lib/client-api";
 export type ServiceDomainMode =
 	| "org-zone"
 	| "platform"
-	| "preview"
 	| "byod"
 	| "none";
 

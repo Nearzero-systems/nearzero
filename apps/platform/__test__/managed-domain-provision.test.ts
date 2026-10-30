@@ -90,9 +90,8 @@ describe("previewServiceDomain platform apex", () => {
 			serverId: "remote-server-id",
 		});
 
-		expect(result.mode).toBe("preview");
-		expect(result.host).toBe("dcbf50a721-13-51-16-1.sslip.io");
-		expect(result.host).not.toContain("backend");
+		expect(result.mode).toBe("byod");
+		expect(result.host).toBeNull();
 		expect(result.platformApex).toBeNull();
 	});
 
@@ -113,7 +112,7 @@ describe("previewServiceDomain platform apex", () => {
 		expect(result.platformApex).toBe("env-apex.com");
 	});
 
-	it("falls back to sslip.io when no platform apex is configured", async () => {
+	it("assigns no hostname until a DNS domain exists", async () => {
 		mockGetWebServerSettings.mockResolvedValue({ host: null });
 
 		const result = await previewServiceDomain({
@@ -122,9 +121,10 @@ describe("previewServiceDomain platform apex", () => {
 			serverId: "remote-server-id",
 		});
 
-		expect(result.mode).toBe("preview");
-		expect(result.host).toBe("dcbf50a721-13-51-16-1.sslip.io");
-		expect(result.host).not.toContain("backend");
-		expect(result.platformApex).toBeNull();
+		expect(result.mode).toBe("byod");
+		expect(result.enabled).toBe(false);
+		expect(result.host).toBeNull();
+		expect(result.visitUrl).toBeNull();
+		expect(result.warnings.join(" ")).toContain("Add one under Domains");
 	});
 });

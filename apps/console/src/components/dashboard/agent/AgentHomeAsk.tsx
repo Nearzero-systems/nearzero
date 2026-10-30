@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { randomId } from "@/lib/browser-utils";
 import { AgentChatMarkdown } from "./AgentChatMarkdown";
 import { activityFromToolEvent } from "./agentToolLabels";
 import {
@@ -446,7 +447,7 @@ function AgentHomeAskInner({
 		setMessages((current) => [
 			...current,
 			{
-				id: crypto.randomUUID(),
+				id: randomId(),
 				role: "assistant",
 				content: `Attached ${data.attachment.name}`,
 			},
@@ -465,7 +466,7 @@ function AgentHomeAskInner({
 		const trimmed = text.trim();
 		if (!trimmed || isLoading) return;
 
-		const assistantId = crypto.randomUUID();
+		const assistantId = randomId();
 		let assistantText = "";
 		const requestThreadId = threadIdRef.current;
 		const isNewSession = !requestThreadId;
@@ -477,7 +478,7 @@ function AgentHomeAskInner({
 				? messages
 				: [
 						...messages,
-						{ id: crypto.randomUUID(), role: "user" as const, content: trimmed },
+						{ id: randomId(), role: "user" as const, content: trimmed },
 					]),
 			{ id: assistantId, role: "assistant" as const, content: "" },
 		];
