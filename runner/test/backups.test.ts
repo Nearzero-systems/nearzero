@@ -90,13 +90,20 @@ describe("the stdin rule (spec 23.1)", () => {
   test("the failure this prevents: a script fed to a shell on stdin loses its later steps", async () => {
     // What the rule is about: here the first step reads the rest of the script as its input, so
     // "after" never runs and the shell still exits 0. Steps are therefore never run this way.
-    const result = await runCommand({
-      argv: ["sh", "-s"],
-      stdin: "cat >/dev/null\necho after\n",
-      timeoutMs: 10_000,
-    });
-    expect(result.exitCode).toBe(0);
-    expect(result.output).not.toContain("after");
+    // bash reads a script from a pipe a byte at a time, so even a short one loses its later steps.
+    // dash (Debian's and Ubuntu's sh) and BusyBox read ahead in blocks: a short script survives
+    // whole, but every step past the block they had read is lost.
+    const script = (between: string) => `cat >/dev/null\n${between}echo after\n`;
+    const long = "# longer than any shell reads ahead\n".repeat(2048);
+    for (const [shell, stdin] of [
+      ["bash", script("")],
+      ["bash", script(long)],
+      ["sh", script(long)],
+    ] as const) {
+      const result = await runCommand({ argv: [shell, "-s"], stdin, timeoutMs: 10_000 });
+      expect(result.exitCode).toBe(0);
+      expect(result.output).not.toContain("after");
+    }
   });
 
   test("a failing step stops the run, names the step, and only `always` steps still run", async () => {

@@ -254,16 +254,36 @@ export function inspectScript(
   return { script, converted, errors, warnings };
 }
 
+/** How bash, dash and BusyBox say a script ended too soon. */
+const ENDS_TOO_SOON = /end of file|\bEOF\b|unterminated/i;
+
+/** The number of the script's last line that isn't blank, or 0 when every line is. */
+function lastLineWithContent(script: string): number {
+  const lines = script.replace(/\r\n?/g, "\n").split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    if ((lines[index] ?? "").trim() !== "") return index + 1;
+  }
+  return 0;
+}
+
 /**
  * Reads a shell's own syntax-check output (`<shell> -n`) and names the line. Bash says
  * "bash: -c: line 3: …", dash says "sh: 3: Syntax error: …", BusyBox says "sh: line 3: …".
+ *
+ * Given the script, one that ends too soon (an `if` without `fi`, an open quote) is named by its
+ * last line with content, whatever the shell: bash 5 and dash name the line they stopped reading
+ * on, usually the one after it (later still after blank lines at the end), BusyBox names none,
+ * and macOS's bash 3.2, which counts `-c` lines from 0, names the last line itself. A line the
+ * shell names inside the script is kept: bash names the line an open quote starts on.
  */
-export function syntaxErrorNote(output: string): ScriptNote {
+export function syntaxErrorNote(output: string, script?: string): ScriptNote {
   const text = output.replace(/\r/g, "").trim();
   const first = text.split("\n").find((line) => line.trim() !== "") ?? "";
   const lineMatch =
     /\bline (\d+)\b/i.exec(first) ?? /^[^:]+:\s*(?:-c:\s*)?(\d+):/.exec(first) ?? null;
-  const line = lineMatch ? Number(lineMatch[1]) : null;
+  let line = lineMatch ? Number(lineMatch[1]) : null;
+  const last = script === undefined ? 0 : lastLineWithContent(script);
+  if (last > 0 && (line === null ? ENDS_TOO_SOON.test(first) : line > last)) line = last;
   const detail = first
     .replace(/^[^:]*:\s*(-c:\s*)?/, "")
     .replace(/^line \d+:\s*/i, "")

@@ -243,19 +243,16 @@ export class M10Runner {
         ];
       }
       case "task.check": {
-        const child = Bun.spawn(["sh", "-n", "-c", String(params.script)], {
+        // The shell's own words, as from the runner: dash and macOS's bash 3.2 word errors and
+        // count lines differently, and the control plane names the same line from either.
+        const child = Bun.spawn([String(params.shell), "-n", "-c", String(params.script)], {
           stdin: "ignore",
           stdout: "pipe",
           stderr: "pipe",
         });
         const output = await new Response(child.stderr).text();
         const code = await child.exited;
-        const line = /(\d+):/.exec(output)?.[1] ?? "1";
-        return {
-          ok: code === 0,
-          exitCode: code,
-          output: code === 0 ? "" : `bash: -c: line ${line}: syntax error near unexpected token`,
-        };
+        return { ok: code === 0, exitCode: code, output: output.trim() };
       }
       case "task.run": {
         write(

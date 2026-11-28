@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EMBEDS, PATHS, readEmbedded, readSources } from "../scripts/files.ts";
+import { runBash } from "./support/bash.ts";
 
 /**
  * install.sh in dry-run mode (spec 03 3.1, 3.2): settings checks, the saved-settings rules on
@@ -54,13 +55,10 @@ async function dryRun(env: Record<string, string>, savedEnv?: string): Promise<R
 /** Runs one of install.sh's functions without running main. */
 async function callFunction(script: string): Promise<Run> {
   const source = (await Bun.file(PATHS.install).text()).replace(/\nmain "\$@"\n$/, "\n");
-  const child = Bun.spawn(["bash", "-c", `${source}\n${script}`], {
+  const run = await runBash(`${source}\n${script}`, {
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const out = await new Response(child.stdout).text();
-  return { code: await child.exited, out };
+  return { code: run.code, out: run.stdout };
 }
 
 const SAVED = `# Nearzero settings
@@ -1541,28 +1539,18 @@ describe("the install folder on a real run (B2-26)", () => {
    */
   async function chosenFolder(env: Record<string, string>, before = ""): Promise<Run> {
     const source = (await Bun.file(PATHS.install).text()).replace(/\nmain "\$@"\n$/, "\n");
-    const child = Bun.spawn(
-      [
-        "bash",
-        "-c",
-        `${source}
+    const run = await runBash(
+      `${source}
 nz_require_root() { :; }
 ${before}
 nz_detect_platform() { printf 'dir=%s env=%s\\n' "$NZ_DIR" "$NZ_ENV_FILE"; exit 0; }
 main`,
-      ],
       {
         env: { PATH: process.env.PATH ?? "/usr/bin:/bin", NEARZERO_UNATTENDED: "true", ...env },
         stdin: "ignore",
-        stdout: "pipe",
-        stderr: "pipe",
       },
     );
-    const [out, err] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    return { code: await child.exited, out: out + err };
+    return { code: run.code, out: run.stdout + run.stderr };
   }
 
   test("C2-18: Nearzero's own folder without its settings file isn't called someone else's", async () => {

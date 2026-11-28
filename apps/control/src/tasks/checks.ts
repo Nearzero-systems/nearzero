@@ -135,6 +135,7 @@ export async function syntaxCheck(
     if (answer.exitCode === null) return unchecked("the shell didn't report a result");
     const note = syntaxErrorNote(
       answer.output || `the shell exited with ${answer.exitCode ?? "no code"}`,
+      check.script,
     );
     return {
       ...check,

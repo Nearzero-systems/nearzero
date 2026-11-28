@@ -82,6 +82,50 @@ describe("the shell's own syntax errors name the line (spec 12.2 acceptance)", (
   test("without a line", () => {
     expect(syntaxErrorNote("something odd").line).toBeNull();
   });
+
+  // What each shell prints for these scripts with `-n -c`: bash 5.2 and dash from Ubuntu 24.04,
+  // BusyBox from Alpine 3.22, bash 3.2 from macOS.
+  test("a script that ends too soon is named by its last line with content, whatever the shell", () => {
+    const script = "echo one\necho two\nif true; then\n";
+    for (const output of [
+      "bash: -c: line 4: syntax error: unexpected end of file",
+      'sh: 4: Syntax error: end of file unexpected (expecting "fi")',
+      'sh: syntax error: unexpected end of file (expecting "fi")',
+      "sh: -c: line 3: syntax error: unexpected end of file",
+    ]) {
+      const note = syntaxErrorNote(output, script);
+      expect(note.line).toBe(3);
+      expect(note.message).toStartWith("The shell found a syntax error on line 3: ");
+    }
+    // Blank lines at the end move where the shell stops reading, not the line to fix.
+    for (const output of [
+      "bash: -c: line 6: syntax error: unexpected end of file",
+      'sh: 6: Syntax error: end of file unexpected (expecting "fi")',
+      "sh: -c: line 5: syntax error: unexpected end of file",
+    ]) {
+      expect(syntaxErrorNote(output, `${script}  \n\n`).line).toBe(3);
+    }
+    expect(syntaxErrorNote("bash: -c: line 4: syntax error: unexpected end of file").line).toBe(4);
+  });
+
+  test("an open quote keeps the line bash names for it; other shells name the last line", () => {
+    const script = 'echo one\necho "two\necho three\n';
+    expect(
+      syntaxErrorNote("bash: -c: line 2: unexpected EOF while looking for matching `\"'", script)
+        .line,
+    ).toBe(2);
+    expect(syntaxErrorNote("sh: 4: Syntax error: Unterminated quoted string", script).line).toBe(3);
+    expect(syntaxErrorNote("sh: syntax error: unterminated quoted string", script).line).toBe(3);
+  });
+
+  test("other errors keep the line the shell names, or none", () => {
+    const script = "echo one\nfi\necho three\n";
+    expect(
+      syntaxErrorNote("bash: -c: line 2: syntax error near unexpected token `fi'", script).line,
+    ).toBe(2);
+    expect(syntaxErrorNote('sh: 2: Syntax error: "fi" unexpected', script).line).toBe(2);
+    expect(syntaxErrorNote('sh: syntax error: unexpected "fi"', script).line).toBeNull();
+  });
 });
 
 describe("a container's multi-line command (G3-15)", () => {

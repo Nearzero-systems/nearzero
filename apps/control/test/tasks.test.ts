@@ -59,7 +59,10 @@ beforeAll(async () => {
   h = await createHarness({ instanceEmail: INSTANCE_RESEND, extra: { objects } });
   runner = await FakeRunner.connect(h.test.db, h.services.runners, null);
   runner.extraHandlers.set("task.check", async (params) => {
-    const child = Bun.spawn(["sh", "-n", "-c", String(params.script)], {
+    // The shell's own words come back, as from the runner: this machine's sh may be dash (Debian,
+    // Ubuntu) or bash 3.2 (macOS), which word errors and count lines differently, and the
+    // control plane has to name the same line from either.
+    const child = Bun.spawn([String(params.shell), "-n", "-c", String(params.script)], {
       stdout: "pipe",
       stderr: "pipe",
       stdin: "ignore",
@@ -67,14 +70,7 @@ beforeAll(async () => {
     const output =
       (await new Response(child.stderr).text()) + (await new Response(child.stdout).text());
     const exitCode = await child.exited;
-    // Report it the way bash words it, so the line is named like on a server.
-    const line = /(\d+):/.exec(output)?.[1];
-    return {
-      ok: exitCode === 0,
-      exitCode,
-      output:
-        exitCode === 0 ? "" : `bash: -c: line ${line ?? "?"}: syntax error near unexpected token`,
-    };
+    return { ok: exitCode === 0, exitCode, output: output.trim() };
   });
   runner.extraHandlers.set("task.run", async (params, write) => {
     write(

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { processSpecs } from "../../container/supervise.ts";
 import { checksumLine, PATHS, sha256 } from "../scripts/files.ts";
 import { releaseFiles } from "../scripts/release.ts";
+import { runBash } from "./support/bash.ts";
 
 /** The nearzero command and uninstall.sh without root (spec 03 3.3, 3.4), and the release layout. */
 
@@ -103,14 +104,10 @@ describe("nearzero runner-link (C4-10)", () => {
       `nzc_control() { echo "control $*"; return ${controlExit}; }`,
       'nzc_restart() { echo "restarted"; }',
     ].join("\n");
-    const child = Bun.spawn(["bash", "-c", `${source}\n${stubs}\nnzc_runner_link ${args}`], {
+    const run = await runBash(`${source}\n${stubs}\nnzc_runner_link ${args}`, {
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const out =
-      (await new Response(child.stdout).text()) + (await new Response(child.stderr).text());
-    return { code: await child.exited, out };
+    return { code: run.code, out: run.stdout + run.stderr };
   }
 
   test("each step runs in the control plane's container; a switch that went through restarts it", async () => {
@@ -143,16 +140,11 @@ describe("nearzero logs with 0.1.x's service names (R4-10)", () => {
     await Bun.write(join(bin, "docker"), '#!/bin/sh\necho "docker $*"\n');
     await Bun.$`chmod 0755 ${join(bin, "docker")}`.quiet();
     const source = (await Bun.file(PATHS.command).text()).replace(/\nnzc_main "\$@"\n$/, "\n");
-    const child = Bun.spawn(["bash", "-c", `${source}\nnzc_logs ${service}`], {
+    const run = await runBash(`${source}\nnzc_logs ${service}`, {
       env: { PATH: `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}` },
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const out =
-      (await new Response(child.stdout).text()) + (await new Response(child.stderr).text());
-    await child.exited;
     await rm(bin, { recursive: true, force: true });
-    return out;
+    return run.stdout + run.stderr;
   }
 
   test("platform and console follow the control plane, traefik the router", async () => {
@@ -197,15 +189,11 @@ async function accountCommand(
       while IFS= read -r line; do printf 'line: [%s]\n' "$line"; done
     }`,
   ].join("\n");
-  const child = Bun.spawn(["bash", "-c", `${source}\n${fakes}\n${call}`], {
+  const run = await runBash(`${source}\n${fakes}\n${call}`, {
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
     stdin: new Blob([input]),
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const out = (await new Response(child.stdout).text()) + (await new Response(child.stderr).text());
-  await child.exited;
-  return out;
+  return run.stdout + run.stderr;
 }
 
 describe("account commands' input lines (31a G1-01, G1-14, spec 03 3.4)", () => {
@@ -269,16 +257,11 @@ echo "docker $*"
     );
     await Bun.$`chmod 0755 ${join(bin, "docker")}`.quiet();
     const source = (await Bun.file(PATHS.command).text()).replace(/\nnzc_main "\$@"\n$/, "\n");
-    const child = Bun.spawn(["bash", "-c", `${source}\n${call}`], {
+    const run = await runBash(`${source}\n${call}`, {
       env: { PATH: `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}`, FAKE_DNS: dns },
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const out =
-      (await new Response(child.stdout).text()) + (await new Response(child.stderr).text());
-    const code = await child.exited;
     await rm(bin, { recursive: true, force: true });
-    return { out, code };
+    return { out: run.stdout + run.stderr, code: run.code };
   }
 
   test("several services are followed together, and --tail, --since and --timestamps are Docker's", async () => {
@@ -362,17 +345,11 @@ NZU_RUNNER_PID=${root}/run/nearzero-runner.pid
 NZU_KEEP_DIR=${root}/var/backups/nearzero
 id() { echo 0; }
 `;
-  const child = Bun.spawn(["bash", "-c", `${source}\n${paths}\n${script}`], {
+  const run = await runBash(`${source}\n${paths}\n${script}`, {
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin", ...env },
     stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
   });
-  const [out, err] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return { code: await child.exited, out: out + err };
+  return { code: run.code, out: run.stdout + run.stderr };
 }
 
 async function pretendServer(): Promise<string> {
@@ -773,7 +750,7 @@ curl() { log "curl $*"; printf 200; }
 nzc_control() { log "control $*"; case "$*" in "migrate rollback-plan") echo "swarm-service shop_pg" ;; esac; return 0; }
 `;
     const body = scriptFor ? scriptFor(dir) : script;
-    const child = Bun.spawn(["bash", "-c", `${source}\n${standIns}\n${body}`], {
+    const run = await runBash(`${source}\n${standIns}\n${body}`, {
       env: {
         PATH: process.env.PATH ?? "/usr/bin:/bin",
         NEARZERO_INSTALL_DIR: dir,
@@ -783,19 +760,12 @@ nzc_control() { log "control $*"; case "$*" in "migrate rollback-plan") echo "sw
         NZC_FINALIZE_WAIT_SECONDS: "3",
       },
       stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
     });
-    const [out, err] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ]);
-    const code = await child.exited;
     const calls = (await readFile(join(dir, "calls.log"), "utf8").catch(() => ""))
       .split("\n")
       .filter(Boolean);
     await rm(dir, { recursive: true, force: true });
-    return { code, out: out + err, calls };
+    return { code: run.code, out: run.stdout + run.stderr, calls };
   }
 
   const controlPlane = (dir: string) =>
