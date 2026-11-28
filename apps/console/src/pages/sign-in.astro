@@ -1,0 +1,110 @@
+---
+import SignInCard, { type SignInFooter } from "../components/auth/SignInCard.astro";
+import PublicLayout from "../layouts/PublicLayout.astro";
+import { isApiError } from "../lib/api-error.ts";
+import { consoleData } from "../lib/data/index.ts";
+import { forgetInvitationLink, readInvitationLink } from "../lib/invitation-cookie.ts";
+import { destinationAfter, prefilledEmail, requestedPage } from "../lib/next-step.ts";
+import { formSecret, formText, sessionOrUnavailable } from "../lib/page.ts";
+
+// Sign-in (spec 4.1): in the browser's theme (spec 21.2), POST only, the two-factor step, and the footer line that
+// depends on the install and on an invitation link the person arrived with.
+const data = consoleData(Astro);
+// `next`, or 0.1.x's `callbackUrl` (spec 29.5); `?email=` fills the form (30a R1-08).
+const requested = requestedPage(Astro.url.searchParams, Astro.url);
+const query = new URLSearchParams();
+if (requested) query.set("next", requested);
+const action = `/sign-in${query.size > 0 ? `?${query}` : ""}`;
+const link = readInvitationLink(Astro.cookies);
+
+async function pendingLink() {
+  if (!link) return null;
+  try {
+    const found = await data.inspectInvitation(link.token);
+    return found.state === "pending" ? found : null;
+  } catch {
+    return null;
+  }
+}
+
+let step: "password" | "code" = "password";
+let error: string | null = null;
+let email = prefilledEmail(Astro.url.searchParams);
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const wantsCode = formText(form, "step") === "code";
+  try {
+    let signedIn = false;
+    if (wantsCode) {
+      step = "code";
+      // The code step shows which account it signs in (30a R1-07); the challenge cookie, not
+      // this field, decides the account.
+      email = formText(form, "email", 320);
+      await data.verifyCode(formText(form, "code", 64));
+      signedIn = true;
+    } else {
+      email = formText(form, "email", 320);
+      const outcome = await data.signIn({ email, password: formSecret(form, "password") });
+      if (outcome.status === "signed_in") signedIn = true;
+      else {
+        step = "code";
+        // Moving on to the code step also says so in a toast, as 0.1.x did (30a R1-07).
+        Astro.locals.flash = [
+          ...(Astro.locals.flash ?? []),
+          { message: "Enter the code from your authenticator app.", tone: "info" },
+        ];
+      }
+    }
+    if (signedIn) {
+      // Come back here once to check the browser kept the session, then move on.
+      const check = new URLSearchParams(query);
+      check.set("signed", "1");
+      return Astro.redirect(`/sign-in?${check}`, 303);
+    }
+  } catch (problem) {
+    if (!isApiError(problem)) throw problem;
+    if (problem.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    error = problem.message;
+    // The two-factor challenge ran out: start again from the password.
+    if (wantsCode && problem.code === "unauthenticated" && !problem.field("code")) {
+      step = "password";
+    }
+  }
+}
+
+const session = await sessionOrUnavailable(Astro);
+if (session instanceof Response) return session;
+if (session.signedIn) {
+  const invitation = await pendingLink();
+  if (link && !invitation) forgetInvitationLink(Astro.cookies);
+  return Astro.redirect(
+    destinationAfter({
+      next: session.next,
+      workspaceSlug: session.workspace?.slug ?? null,
+      requested,
+      invitationLink: Boolean(invitation && !invitation.forAnotherEmail),
+    }),
+    303,
+  );
+}
+if (Astro.url.searchParams.get("signed") === "1" && !error && step === "password") {
+  error =
+    "Signed in, but your session could not be saved in this browser. Try again in a private window.";
+}
+
+let footer: SignInFooter = { kind: session.hasOwner ? "invite-only" : "no-owner" };
+const invitation = step === "password" ? await pendingLink() : null;
+if (invitation && invitation.state === "pending") {
+  footer = invitation.accountExists
+    ? { kind: "existing", workspace: invitation.workspaceName, email: invitation.email }
+    : { kind: "sign-up", workspace: invitation.workspaceName, href: "/sign-up" };
+}
+---
+
+<PublicLayout
+  title="Sign in"
+  description="Sign in to this Nearzero console to deploy and run apps on your own servers."
+>
+  <SignInCard step={step} footer={footer} email={email} error={error} action={action} />
+</PublicLayout>

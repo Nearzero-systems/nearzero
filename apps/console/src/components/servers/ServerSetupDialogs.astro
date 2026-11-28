@@ -1,0 +1,177 @@
+---
+import { MONITORING_MESSAGES, SETUP_MESSAGES } from "@nearzero/shared/browser";
+import MonitoringPanel from "../monitoring/MonitoringPanel.astro";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Icon from "../ui/Icon.astro";
+import Switch from "../ui/Switch.astro";
+
+/**
+ * The server setup and server details dialogs (spec 09 9.3, 9.4, 9.5; 14.2 placeholder). The
+ * Servers page mounts them and asks for them with `nz:server-setup` and `nz:server-details`;
+ * client/server-setup.ts fills and follows them from the API (docs/api/server-setup.md).
+ *
+ * Both show the server's DNS card ([data-dns-card]) when the install has a platform domain:
+ * refreshing it never closes the dialog, and copying works on plain HTTP.
+ */
+---
+
+<template id="nz-dns-card-template">
+  <section class="nz-dns-card" aria-label="DNS record for this server">
+    <div class="nz-dns-card-head">
+      <div class="min-w-0">
+        <h3 class="nz-setup-heading" data-dns-title></h3>
+        <p class="nz-small nz-dim" data-dns-subtitle></p>
+        <p class="nz-small nz-dim" data-dns-while-setup hidden></p>
+      </div>
+      <span class="nz-pill" data-status="idle" data-dns-badge data-dns-detail></span>
+    </div>
+    <div class="nz-dns-table" role="table" aria-label="The DNS record" data-dns-detail>
+      <div class="nz-dns-row nz-dns-row--head" role="row">
+        <span role="columnheader">Type</span>
+        <span role="columnheader">Name</span>
+        <span role="columnheader">Value</span>
+        <span role="columnheader">Proxy</span>
+      </div>
+      <div class="nz-dns-row" role="row">
+        <span role="cell" class="nz-dns-cell" data-label="Type">
+          <code class="nz-code" data-dns-type></code>
+          <button type="button" class="nz-btn nz-btn--icon nz-dns-copy" aria-label="Copy type" data-dns-copy="type">
+            <Icon name="copy" />
+          </button>
+        </span>
+        <span role="cell" class="nz-dns-cell" data-label="Name">
+          <code class="nz-code" data-dns-name></code>
+          <button type="button" class="nz-btn nz-btn--icon nz-dns-copy" aria-label="Copy name" data-dns-copy="name">
+            <Icon name="copy" />
+          </button>
+        </span>
+        <span role="cell" class="nz-dns-cell" data-label="Value">
+          <code class="nz-code" data-dns-value></code>
+          <button type="button" class="nz-btn nz-btn--icon nz-dns-copy" aria-label="Copy value" data-dns-copy="value">
+            <Icon name="copy" />
+          </button>
+        </span>
+        <span role="cell" class="nz-dns-cell" data-label="Proxy">
+          <code class="nz-code" data-dns-proxy></code>
+          <button type="button" class="nz-btn nz-btn--icon nz-dns-copy" aria-label="Copy proxy setting" data-dns-copy="proxy">
+            <Icon name="copy" />
+          </button>
+        </span>
+      </div>
+    </div>
+    <p class="nz-small nz-dim" data-dns-zone data-dns-detail></p>
+    <div data-dns-detail>
+      <details class="nz-dns-steps" data-dns-steps-wrap>
+        <summary class="nz-small" data-dns-steps-title>Steps</summary>
+        <ol class="nz-small nz-dim" data-dns-steps></ol>
+      </details>
+    </div>
+    <div class="nz-dns-foot" data-dns-detail>
+      <p class="nz-small nz-dim" data-dns-message></p>
+      <span class="flex-1"></span>
+      <Button variant="outline" icon="refresh" data-dns-check>Check again</Button>
+    </div>
+    <p class="nz-hint" data-dns-hint data-dns-detail></p>
+  </section>
+</template>
+
+<div data-server-setup-dialogs>
+  <Dialog id="nz-server-setup" title={SETUP_MESSAGES.title} description={SETUP_MESSAGES.description} wide class="nz-setup-dialog">
+    <div class="nz-setup-head">
+      <div class="min-w-0">
+        <p class="nz-setup-name" data-setup-name></p>
+        <p class="nz-code nz-small nz-dim nz-truncate" data-setup-target></p>
+      </div>
+      <span class="nz-pill" data-status="idle" data-setup-badge>Not started</span>
+    </div>
+    <div data-dns-card-slot></div>
+    <p class="nz-setup-notice" data-setup-notice hidden></p>
+    <div class="nz-setup-state" aria-live="polite">
+      <span class="nz-setup-state-text" data-setup-state>Starting setup…</span>
+      <span class="nz-small nz-dim" data-setup-progress-text></span>
+    </div>
+    <div class="nz-setup-progress" aria-hidden="true" data-setup-progress></div>
+    <div class="nz-setup-failure" role="alert" data-setup-failure hidden>
+      <Icon name="alert" />
+      <div class="min-w-0 nz-stack-sm">
+        <p data-setup-failure-message></p>
+        <ul class="nz-small nz-setup-hints" data-setup-failure-hints></ul>
+        <div class="nz-setup-fix" data-setup-fix hidden>
+          <code class="nz-code nz-setup-fix-code" data-setup-fix-command></code>
+          <Button variant="outline" icon="copy" data-setup-fix-copy data-copy="">Copy</Button>
+        </div>
+      </div>
+    </div>
+    <div class="nz-setup-log-head">
+      <h3 class="nz-setup-heading">{SETUP_MESSAGES.logsHeading}</h3>
+      <span class="flex-1"></span>
+      <Button variant="outline" icon="copy" data-setup-log-copy>Copy</Button>
+    </div>
+    <div class="nz-log nz-setup-log" role="log" aria-label="Setup logs" tabindex="0" data-setup-log>
+      <div class="nz-log-line nz-dim">Waiting for logs…</div>
+    </div>
+    <div class="nz-dialog-foot nz-setup-foot">
+      <Button variant="ghost" data-dialog-close>Close</Button>
+      <Button variant="outline" icon="info" data-setup-open-details hidden>View details</Button>
+      <Button variant="outline" icon="key" data-setup-trust hidden>Trust this host key and run setup again</Button>
+      <Button variant="outline" icon="key" data-setup-forget hidden>Forget host key and run setup again</Button>
+      <Button variant="primary" icon="user" data-setup-use-user hidden><span data-setup-use-user-label></span></Button>
+      <Button variant="primary" icon="refresh" data-setup-again hidden>Run setup again</Button>
+    </div>
+  </Dialog>
+
+  <Dialog id="nz-server-details" title="Server details" wide class="nz-details-dialog">
+    <div class="nz-setup-head">
+      <div class="min-w-0">
+        <p class="nz-setup-name" data-details-name></p>
+        <p class="nz-code nz-small nz-dim nz-truncate" data-details-target></p>
+      </div>
+      <span class="nz-pill" data-status="idle" data-details-badge></span>
+    </div>
+    <dl class="nz-details-fields" data-details-fields></dl>
+    <div data-dns-card-slot></div>
+
+    <section class="nz-details-section" aria-labelledby="nz-details-validation-title">
+      <div class="nz-details-section-head">
+        <h3 class="nz-setup-heading" id="nz-details-validation-title">Setup validation</h3>
+        <span class="nz-small nz-dim" data-validation-checked></span>
+        <span class="flex-1"></span>
+        <Button variant="outline" icon="refresh" data-validation-run>Check again</Button>
+      </div>
+      <p class="nz-details-verdict" data-validation-verdict></p>
+      <div class="nz-check-grid" data-validation-checks></div>
+    </section>
+
+    <section class="nz-details-section" aria-labelledby="nz-details-audit-title">
+      <div class="nz-details-section-head">
+        <h3 class="nz-setup-heading" id="nz-details-audit-title">Security audit</h3>
+        <span class="nz-small nz-dim" data-audit-checked></span>
+        <span class="flex-1"></span>
+        <Button variant="outline" icon="lock" data-audit-run>Run audit</Button>
+      </div>
+      <p class="nz-small nz-dim" data-audit-intro>Reads the firewall, SSH sign-in and intrusion-ban settings. Nothing on the server changes.</p>
+      <ul class="nz-audit-list" data-audit-items></ul>
+    </section>
+
+    <section class="nz-details-section" aria-label="Daily Docker cleanup">
+      <Switch id="nz-details-cleanup" label="Daily Docker cleanup" description="Removes unused images and build cache every day at 23:50 server time." data-cleanup-switch />
+      <p class="nz-small nz-dim" data-cleanup-last></p>
+    </section>
+
+    <section class="nz-details-section" aria-labelledby="nz-details-monitoring-title">
+      <div class="nz-details-section-head">
+        <h3 class="nz-setup-heading" id="nz-details-monitoring-title">Monitoring</h3>
+      </div>
+      <div data-server-monitoring-mount>
+        <MonitoringPanel intro={MONITORING_MESSAGES.serverIntro} idPrefix="nz-details-monitoring" />
+      </div>
+    </section>
+
+    <div class="nz-dialog-foot">
+      <Button variant="ghost" data-dialog-close>Close</Button>
+      <Button variant="outline" icon="key" data-details-forget-key hidden>Forget host key</Button>
+      <Button variant="outline" icon="refresh" data-details-setup>Run setup again</Button>
+    </div>
+  </Dialog>
+</div>

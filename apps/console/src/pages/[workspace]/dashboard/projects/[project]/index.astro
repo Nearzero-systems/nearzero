@@ -1,0 +1,16 @@
+---
+import { dashboardContext } from "../../../../../lib/page.ts";
+import { openingEnvironment } from "../../../../../lib/projects.ts";
+import { PROJECT_SECTIONS, projectPath, projectsPath } from "../../../../../lib/routes.ts";
+
+// A project's own address opens its development environment (else default, else first).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const project = await ctx.data.project(Astro.params.project ?? "");
+const environment = project ? openingEnvironment(project) : null;
+if (!project || !environment) return Astro.redirect(projectsPath(ctx.workspace.slug));
+// The project switcher keeps the section it was opened from (?section=services, spec 5.2).
+const wanted = Astro.url.searchParams.get("section");
+const section = PROJECT_SECTIONS.find((item) => item === wanted) ?? "overview";
+return Astro.redirect(projectPath(ctx.workspace.slug, project.id, environment.id, section));
+---

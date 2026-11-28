@@ -1,0 +1,169 @@
+---
+import type { RecentDeployments } from "../../lib/data/index.ts";
+import type { DashboardContext } from "../../lib/page.ts";
+import { agentPath, settingsVisibility } from "../../lib/routes.ts";
+import Icon from "../ui/Icon.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import Bell from "./Bell.astro";
+import WorkspaceSwitcher from "./WorkspaceSwitcher.astro";
+
+/**
+ * The 42px header (spec 21.6, 21.10): the phone menu button below 1024px, the brand (the owner's
+ * mark, logo.svg, and the word, spec 21.9b; hidden on phones), the workspace switcher, then the
+ * project crumb (with the project switcher) and the environment crumb (with the environment
+ * switcher and a PRODUCTION badge), and the bell.
+ */
+export interface Crumbs {
+  project?: {
+    name: string;
+    href: string;
+    /** The project switcher (spec 5.2): every project the person can see, the same section. */
+    options?: { name: string; href: string; current: boolean }[];
+  };
+  environment?: {
+    current: { id: string; name: string; isProduction: boolean };
+    options: { name: string; href: string; current: boolean }[];
+    /** The environment dialogs live in ProjectLayout (EnvironmentDialogs.astro). */
+    canAdd: boolean;
+    canRename: boolean;
+    canDelete: boolean;
+  };
+}
+
+interface Props {
+  ctx: DashboardContext;
+  crumbs?: Crumbs;
+  deployments: RecentDeployments | null;
+  /** Plain crumbs with no switch chevrons (the new-application page). */
+  plainCrumbs?: boolean;
+}
+
+const { ctx, crumbs, deployments, plainCrumbs = false } = Astro.props;
+const { workspace, workspaces, invitations } = ctx;
+const environment = crumbs?.environment;
+const production = environment?.current.isProduction === true;
+---
+
+<header class="nz-header" data-crumbs={crumbs?.project ? "true" : "false"}>
+  <div class="nz-header-left">
+    <button
+      type="button"
+      class="nz-menu-button nz-only-small"
+      aria-label="Open menu"
+      title="Open menu"
+      data-dialog-open="nz-nav-sheet"
+    >
+      <Icon name="menu" />
+    </button>
+    <a href={agentPath(workspace.slug)} class="nz-brand nz-hide-phone">
+      <img class="nz-brand-mark" src="/logo.svg" width="18" height="18" alt="" />
+      Nearzero
+    </a>
+    <span class="nz-crumb-sep nz-hide-phone" aria-hidden="true">/</span>
+    <WorkspaceSwitcher
+      workspace={workspace}
+      workspaces={workspaces}
+      canAdd={ctx.canAddWorkspace}
+      canRename={ctx.access.can.rename}
+    />
+    {
+      crumbs?.project && (
+        <>
+          <span class="nz-crumb-sep" aria-hidden="true">/</span>
+          {!plainCrumbs && crumbs.project.options && crumbs.project.options.length > 0 ? (
+            <>
+              <button
+                type="button"
+                class="nz-crumb"
+                popovertarget="nz-project-menu"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                aria-label={`Project: ${crumbs.project.name}`}
+              >
+                <span class="nz-crumb-name">{crumbs.project.name}</span>
+                <Icon name="chevrons-up-down" />
+              </button>
+              <Menu id="nz-project-menu" label="Projects">
+                <p class="nz-menu-heading nz-eyebrow">Projects</p>
+                {crumbs.project.options.map((option) => (
+                  <MenuItem href={option.href} checked={option.current}>
+                    {option.name}
+                  </MenuItem>
+                ))}
+              </Menu>
+            </>
+          ) : (
+            <a href={crumbs.project.href} class="nz-crumb" aria-label={`Project: ${crumbs.project.name}`}>
+              <span class="nz-crumb-name">{crumbs.project.name}</span>
+            </a>
+          )}
+        </>
+      )
+    }
+    {
+      environment && plainCrumbs && (
+        <>
+          <span class="nz-crumb-sep" aria-hidden="true">/</span>
+          <span class="nz-crumb nz-crumb--plain">
+            <span class="nz-crumb-name">{environment.current.name}</span>
+            {production && <span class="nz-badge nz-badge--prod">PRODUCTION</span>}
+          </span>
+        </>
+      )
+    }
+    {
+      environment && !plainCrumbs && (
+        <>
+          <span class="nz-crumb-sep" aria-hidden="true">/</span>
+          <button
+            type="button"
+            class="nz-crumb"
+            popovertarget="nz-environment-menu"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-label={`Environment: ${environment.current.name}`}
+          >
+            <span class="nz-crumb-name">{environment.current.name}</span>
+            {production && <span class="nz-badge nz-badge--prod">PRODUCTION</span>}
+            <Icon name="chevrons-up-down" />
+          </button>
+          <Menu id="nz-environment-menu" label="Environments">
+            <p class="nz-menu-heading nz-eyebrow">Environments</p>
+            {environment.options.map((option) => (
+              <MenuItem href={option.href} checked={option.current}>
+                {option.name}
+              </MenuItem>
+            ))}
+            {(environment.canAdd || environment.canRename || environment.canDelete) && (
+              <hr class="nz-menu-sep" />
+            )}
+            {environment.canAdd && (
+              <MenuItem icon="plus" muted data-dialog-open="nz-env-add">
+                Add environment
+              </MenuItem>
+            )}
+            {environment.canRename && (
+              <MenuItem icon="edit" muted data-dialog-open="nz-env-rename">
+                Rename {environment.current.name}
+              </MenuItem>
+            )}
+            {environment.canDelete && (
+              <MenuItem icon="trash" danger data-dialog-open="nz-env-delete">
+                Delete {environment.current.name}
+              </MenuItem>
+            )}
+          </Menu>
+        </>
+      )
+    }
+  </div>
+  <div class="nz-header-right">
+    <Bell
+      workspace={workspace.slug}
+      invitations={invitations}
+      deployments={deployments}
+      channels={settingsVisibility(ctx.access).channels}
+    />
+  </div>
+</header>

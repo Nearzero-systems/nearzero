@@ -1,0 +1,125 @@
+---
+import type { ServiceView } from "../../lib/data/index.ts";
+import { servicePort } from "../../lib/projects.ts";
+import { dashboardPath } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The Add domain dialog (spec 10.6), opened by "No domain yet" cards, Add New → Domain, Create
+ * URL and a service's Domains section with `data-dialog-fill='{"serviceId", "mode"}'`. Generate
+ * shows "It will be live at …" and the server's missing record with Check again; Use my own
+ * domain shows the A record and checks it before adding. Port and path, and a Compose service
+ * picker for Compose services. Adding is all or nothing (client/domains.ts).
+ */
+interface Props {
+  workspace: string;
+  /** Applications and Compose services of this environment. */
+  services: ServiceView[];
+}
+
+const { workspace, services } = Astro.props;
+const first = services[0];
+---
+
+<Dialog id="nz-add-domain" title="Add domain" description="Give a service a public URL with HTTPS.">
+  <form data-scripted class="nz-form nz-domain-dialog" data-add-domain novalidate>
+    <div data-field>
+      <label for="nz-domain-service" class="nz-label">Service</label>
+      <span class="nz-select-wrap">
+        <select id="nz-domain-service" name="serviceId" class="nz-select" data-domain-service>
+          {
+            services.map((service) => (
+              <option
+                value={service.id}
+                data-kind={service.kind}
+                data-port={service.kind === "application" ? servicePort(service) : ""}
+              >
+                {service.name}
+              </option>
+            ))
+          }
+        </select>
+      </span>
+    </div>
+    <div class="nz-segmented" role="radiogroup" aria-label="Where the hostname comes from">
+      <label><input type="radio" name="mode" value="generate" checked />Generate a domain</label>
+      <label><input type="radio" name="mode" value="own" />Use my own domain</label>
+    </div>
+
+    <div class="nz-stack-sm" data-domain-panel="generate">
+      <p class="nz-dim" data-domain-suggestion aria-live="polite">Looking for a domain to generate under…</p>
+      <div class="nz-record-card" data-domain-record hidden>
+        <p class="nz-small" data-domain-record-message></p>
+        <div class="nz-record" data-domain-record-row></div>
+        <div><Button variant="outline" icon="refresh" data-domain-check>Check again</Button></div>
+      </div>
+      <div data-domain-open hidden>
+        <Button variant="outline" href={dashboardPath(workspace, "domains")} iconEnd="arrow-right">Open Domains</Button>
+      </div>
+    </div>
+
+    <div class="nz-stack-sm" data-domain-panel="own" hidden>
+      <div data-field>
+        <label for="nz-domain-host" class="nz-label">Domain</label>
+        <input
+          id="nz-domain-host"
+          name="hostname"
+          class="nz-input"
+          placeholder="app.example.com"
+          autocomplete="off"
+          spellcheck="false"
+          inputmode="url"
+          data-domain-host
+        />
+        <p class="nz-field-error" data-field-error hidden></p>
+      </div>
+      <div class="nz-record-card" data-domain-own-record hidden>
+        <p class="nz-small">Add this record at your DNS provider, as DNS only (not proxied):</p>
+        <div class="nz-record" data-domain-own-record-row></div>
+        <p class="nz-small" data-domain-own-status aria-live="polite"></p>
+        <div><Button variant="outline" icon="refresh" data-domain-own-check>Check again</Button></div>
+      </div>
+    </div>
+
+    <fieldset class="nz-choice-list">
+      <legend class="nz-label">Port and path</legend>
+      <div class="nz-form-grid-2">
+        <div data-field>
+          <label for="nz-domain-port" class="nz-label">Container port</label>
+          <input
+            id="nz-domain-port"
+            name="port"
+            class="nz-input"
+            inputmode="numeric"
+            value={first?.kind === "application" ? servicePort(first) : ""}
+            data-domain-port
+          />
+          <p class="nz-field-error" data-field-error hidden></p>
+        </div>
+        <div data-field>
+          <label for="nz-domain-path" class="nz-label">Path</label>
+          <input id="nz-domain-path" name="path" class="nz-input" value="/" autocomplete="off" />
+          <p class="nz-field-error" data-field-error hidden></p>
+        </div>
+      </div>
+      <div data-field data-domain-compose hidden={first?.kind !== "compose"}>
+        <label for="nz-domain-compose-service" class="nz-label">Compose service</label>
+        <span class="nz-select-wrap">
+          <select id="nz-domain-compose-service" name="composeService" class="nz-select" data-domain-compose-select>
+            <option value="">Choose a service</option>
+          </select>
+        </span>
+        <p class="nz-hint">The service in the Compose file that answers on this port.</p>
+        <p class="nz-field-error" data-field-error hidden></p>
+      </div>
+    </fieldset>
+
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" data-domain-submit>Generate domain</Button>
+    </div>
+  </form>
+</Dialog>

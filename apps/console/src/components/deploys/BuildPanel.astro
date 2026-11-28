@@ -1,0 +1,31 @@
+---
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import Icon from "../ui/Icon.astro";
+import DeployLog from "./DeployLog.astro";
+
+/**
+ * The creation page's build panel (spec 6.1): after Create & deploy the forms give way to it.
+ * Its title follows the state (Queued → Building → Deployment complete / Deployment failed); once
+ * live it says "Deployment complete. It's live at: <url>" with Copy and Visit; the build log has
+ * Copy. client/build-panel.ts runs it.
+ */
+---
+
+<section class="nz-card nz-section nz-build-panel" data-build-panel hidden aria-live="polite">
+  <div class="nz-section-head">
+    <h2 class="nz-subtitle">
+      <span class="nz-spinner" aria-hidden="true" data-build-spinner></span>
+      <span data-log-state>Queued</span>
+    </h2>
+    <Button variant="outline" iconEnd="arrow-right" data-build-open href="#">Open service</Button>
+  </div>
+  <p class="nz-dim" data-build-message>Waiting for the build to start.</p>
+  <div class="nz-url nz-build-url" data-build-url hidden>
+    <Icon name="check" />
+    <span class="nz-url-text" data-build-url-text></span>
+    <CopyButton text="" what="URL" />
+    <Button variant="icon" icon="external" href="#" target="_blank" label="Visit" data-build-visit />
+  </div>
+  <DeployLog label="Build log" />
+</section>

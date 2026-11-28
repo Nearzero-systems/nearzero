@@ -1,0 +1,6 @@
+---
+import { agentPath } from "../../../lib/routes.ts";
+
+// The dashboard's own address opens the Agent (spec 19.1, 27).
+return Astro.redirect(agentPath(Astro.params.workspace ?? ""));
+---

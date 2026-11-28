@@ -1,0 +1,140 @@
+---
+import AutomaticCard from "../../../../components/domains/AutomaticCard.astro";
+import CertificatesTab from "../../../../components/domains/CertificatesTab.astro";
+import DefaultsTab from "../../../../components/domains/DefaultsTab.astro";
+import DomainDialogs from "../../../../components/domains/DomainDialogs.astro";
+import HostnamesTab from "../../../../components/domains/HostnamesTab.astro";
+import ZonesTab from "../../../../components/domains/ZonesTab.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import LinkTabs from "../../../../components/ui/LinkTabs.astro";
+import Menu from "../../../../components/ui/Menu.astro";
+import MenuItem from "../../../../components/ui/MenuItem.astro";
+import PageHead from "../../../../components/ui/PageHead.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import { chooseDomainsTab, parseHostnameFilter, visibleTabs } from "../../../../lib/domains.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { dashboardPath } from "../../../../lib/routes.ts";
+
+// Domains (spec 10.3–10.8): the header with Add domain and More, the Automatic hostnames card
+// (with a platform domain) or the "No domain yet" card, and the tabs, each with its count:
+// Hostnames always; DNS zones and Environment defaults once a zone exists; Uploaded certificates
+// once one exists. Hidden tabs stay reachable by address (?tab=…).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const slug = ctx.workspace.slug;
+const base = dashboardPath(slug, "domains");
+const overview = await ctx.data.domains();
+const params = Astro.url.searchParams;
+const tab = chooseDomainsTab(params.get("tab"));
+const q = (params.get("q") ?? "").slice(0, 200);
+const show = parseHostnameFilter(params.get("show"));
+const refused = "refused" in overview ? overview.refused : null;
+const page = "refused" in overview ? null : overview;
+if (refused) Astro.response.status = 403;
+
+const [card, hostnames, zones, defaults, certificates, targets] = page
+  ? await Promise.all([
+      page.platformDomain ? ctx.data.automaticCard().catch(() => null) : Promise.resolve(null),
+      tab === "hostnames" ? ctx.data.hostnames({ q: q || undefined, show }) : Promise.resolve(null),
+      tab === "dns-zones" ? ctx.data.zones() : Promise.resolve(null),
+      tab === "environment-defaults" ? ctx.data.environmentDefaults() : Promise.resolve(null),
+      tab === "uploaded-certificates" ? ctx.data.certificates() : Promise.resolve(null),
+      ctx.data.targets(),
+    ])
+  : [null, null, null, null, null, []];
+// The Change dialog's choices come with the Environment defaults tab, the one place it opens.
+const defaultOptions = defaults;
+const canZones = page?.can.connectZone ?? false;
+const canCertificates = page?.can.uploadCertificate ?? false;
+const tabs = page
+  ? visibleTabs(page.tabs, tab).map((item) => ({
+      label: item.label,
+      href: item.id === "hostnames" ? base : `${base}?tab=${item.id}`,
+      current: item.id === tab,
+      ...(typeof item.count === "number" ? { count: item.count } : {}),
+    }))
+  : [];
+const servers = targets.map((target) => ({
+  id: target.id,
+  name: target.host ? "Nearzero host" : target.name,
+}));
+---
+
+<AppShell ctx={ctx} title="Domains" active="domains">
+  {
+    refused || !page ? (
+      <>
+        <PageHead title="Domains" />
+        <div class="nz-body"><EmptyState title="You can't see Domains" text={refused ?? ""} /></div>
+      </>
+    ) : (
+      <div class="nz-fill" data-domains-page data-base={base}>
+        <PageHead title={page.title} description={page.description} class="nz-domains-head">
+            <Button variant="primary" data-wizard-open>Add domain</Button>
+            {(canZones || canCertificates) && (
+              <>
+                <Button variant="outline" iconEnd="chevron-down" popovertarget="nz-domains-more" aria-haspopup="menu" aria-expanded="false">
+                  More
+                </Button>
+                <Menu id="nz-domains-more" label="More" placement="bottom-end" class="nz-pop--hints">
+                  {page.more.map((item) => {
+                    const allowed = item.id === "connect-zone" ? canZones : canCertificates;
+                    return allowed ? (
+                      <MenuItem
+                        icon={item.id === "connect-zone" ? "domains" : "lock"}
+                        data-dialog-open={item.id === "connect-zone" ? "nz-zone-connect" : "nz-certificate-upload"}
+                      >
+                        <span class="nz-menu-two-line">
+                          <span>{item.label}</span>
+                          <span class="nz-small nz-dim">{item.hint}</span>
+                        </span>
+                      </MenuItem>
+                    ) : null;
+                  })}
+                </Menu>
+              </>
+            )}
+        </PageHead>
+
+        <div class="nz-body nz-domains-body">
+        {card && <AutomaticCard card={card} />}
+        {page.noDomain && (
+          <section class="nz-callout" aria-labelledby="nz-no-domain-title">
+            <h2 class="nz-eyebrow" id="nz-no-domain-title">No domain yet</h2>
+            <p class="nz-callout-text">
+              Add a hostname you own, like <code>app.example.com</code>, and point it at this server. Nearzero checks DNS
+              and gets a free HTTPS certificate. Or connect a whole DNS zone and every app gets a hostname automatically.
+            </p>
+            <div class="nz-callout-actions">
+              <Button variant="primary" data-wizard-open>Add domain</Button>
+              {canZones && <Button variant="outline" data-dialog-open="nz-zone-connect">Connect a DNS zone</Button>}
+            </div>
+          </section>
+        )}
+
+        <div>
+          {tabs.length > 1 && <LinkTabs label="Domains sections" items={tabs} lined class="mb-3" />}
+          {tab === "hostnames" && hostnames && <HostnamesTab list={hostnames} q={q} show={show} base={base} workspace={slug} />}
+          {tab === "dns-zones" && zones && <ZonesTab zones={zones} canManage={canZones} />}
+          {tab === "environment-defaults" && defaults && <DefaultsTab defaults={defaults} canManage={canZones} />}
+          {tab === "uploaded-certificates" && certificates && <CertificatesTab certificates={certificates} canManage={canCertificates} />}
+        </div>
+        </div>
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">
+    {
+      page && (
+        <DomainDialogs
+          workspace={slug}
+          startFrom={page.startFrom}
+          options={defaultOptions?.options ?? []}
+          prefixHint={defaultOptions?.prefixHint ?? ""}
+          servers={servers}
+        />
+      )
+    }
+  </Fragment>
+</AppShell>

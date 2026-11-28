@@ -1,0 +1,83 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import Icon from "./Icon.astro";
+
+/**
+ * A labelled input, select or text area with its hint and error (spec 21.5 "Fields"). The error
+ * is linked to the control so screen readers announce it.
+ */
+type Props = Omit<HTMLAttributes<"input">, "id"> & {
+  id: string;
+  label: string;
+  as?: "input" | "select" | "textarea";
+  hint?: string;
+  error?: string | null;
+  rows?: number;
+  options?: { value: string; label: string; selected?: boolean }[];
+  /** Hides the visible label (it stays the control's accessible name). */
+  hideLabel?: boolean;
+  wrapClass?: string;
+};
+
+const {
+  id,
+  label,
+  as = "input",
+  hint,
+  error,
+  rows = 3,
+  options = [],
+  hideLabel = false,
+  wrapClass,
+  class: className,
+  value,
+  ...rest
+} = Astro.props;
+
+const hintId = hint ? `${id}-hint` : undefined;
+const errorId = `${id}-error`;
+const describedBy = [hintId, error ? errorId : undefined].filter(Boolean).join(" ") || undefined;
+---
+
+<div class={wrapClass} data-field>
+  <label for={id} class:list={["nz-label", hideLabel && "nz-visually-hidden"]}>{label}</label>
+  {
+    as === "textarea" ? (
+      <textarea
+        id={id}
+        rows={rows}
+        class:list={["nz-textarea", className]}
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={describedBy}
+        {...(rest as HTMLAttributes<"textarea">)}
+      >{value}</textarea>
+    ) : as === "select" ? (
+      <span class="nz-select-wrap">
+        <select
+          id={id}
+          class:list={["nz-select", className]}
+          aria-describedby={describedBy}
+          {...(rest as HTMLAttributes<"select">)}
+        >
+          {options.map((option) => (
+            <option value={option.value} selected={option.selected}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <Icon name="chevron-down" />
+      </span>
+    ) : (
+      <input
+        id={id}
+        class:list={["nz-input", className]}
+        value={value}
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={describedBy}
+        {...rest}
+      />
+    )
+  }
+  {hint && <p id={hintId} class="nz-hint">{hint}</p>}
+  <p id={errorId} class="nz-field-error" data-field-error hidden={!error}>{error}</p>
+</div>

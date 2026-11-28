@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, typecheck, test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18.1-alpine
+        env:
+          POSTGRES_USER: nearzero
+          POSTGRES_PASSWORD: nearzero-dev
+          POSTGRES_DB: nearzero
+        ports:
+          - 55440:5432
+        options: >-
+          --health-cmd "pg_isready -U nearzero -d nearzero"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      NEARZERO_TEST_DATABASE_URL: postgres://nearzero:nearzero-dev@127.0.0.1:55440/nearzero
+      ASTRO_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint and format check
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit tests
+        run: bun test
+
+      - name: Installer scripts (syntax, shellcheck, embedded copies)
+        run: |
+          for script in installer/install.sh installer/uninstall.sh installer/nearzero container/nearzero-control; do
+            bash -n "$script"
+          done
+          shellcheck -S warning installer/install.sh installer/uninstall.sh installer/nearzero container/nearzero-control
+          bun installer/scripts/embed.ts --check
+
+      - name: End-to-end smoke run
+        run: bun run test:e2e
+
+      - name: Build console, control plane and runner binaries
+        run: bun run build
+
+      - name: Runner binaries and checksums
+        run: |
+          cd runner/dist
+          sha256sum --check SHA256SUMS
+          ./nearzero-runner-linux-x64 --version
+          docker run --rm -v "$PWD:/runner:ro" alpine:3.20 \
+            sh -c 'apk add --no-cache -q libstdc++ libgcc && /runner/nearzero-runner-linux-x64-musl --version'
+
+  commits:
+    name: Sign-off and attribution
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Every commit is signed off and carries no AI tool attribution
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            message=$(git log -1 --format=%B "$sha")
+            if ! grep -qE '^Signed-off-by: .+ <.+>$' <<<"$message"; then
+              echo "::error::Commit $sha has no Signed-off-by line. Add one with: git commit --amend --signoff"
+              status=1
+            fi
+            if grep -qiE '^(co-authored-by|generated-by|assisted-by):.*(claude|anthropic|copilot|cursor|openai|chatgpt|gemini|codex)' <<<"$message" \
+              || grep -qiE 'generated (with|by) .*(claude|copilot|cursor|chatgpt|gemini|codex)' <<<"$message"; then
+              echo "::error::Commit $sha carries an AI tool attribution. Remove it from the commit message."
+              status=1
+            fi
+          done
+          exit $status

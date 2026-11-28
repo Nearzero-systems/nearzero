@@ -1,0 +1,49 @@
+# Never send these into an image build context.
+
+# Version control and editor state
+.git
+.github
+.idea
+.vscode
+.DS_Store
+
+# Dependencies (images install their own)
+node_modules
+**/node_modules
+
+# Build output
+dist
+**/dist
+**/.astro
+*.tsbuildinfo
+
+# Environment files and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+
+# End-to-end suites and their work folders (hold test secrets). The workspace manifests stay,
+# because the frozen lockfile lists every workspace.
+e2e/*
+!e2e/package.json
+**/.work
+coverage
+
+# Not part of the image: the installer, the runner's tests and builds, and the image recipe itself.
+# The runner's source, its build script (the image compiles the runners) and its pinned builder
+# tools (runner/tools, installed by the build) stay.
+installer
+runner/*
+!runner/package.json
+!runner/src
+!runner/scripts
+!runner/tools
+Dockerfile
+.dockerignore
+
+# Development-only files
+docker-compose.dev.yml
+spec
+provenance
+*.log

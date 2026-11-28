@@ -1,0 +1,84 @@
+---
+import Header, { type Crumbs } from "../components/shell/Header.astro";
+import NavSheet from "../components/shell/NavSheet.astro";
+import type { NavKey } from "../components/shell/nav-items.ts";
+import PrimaryNav from "../components/shell/PrimaryNav.astro";
+import WorkspaceDialogs from "../components/shell/WorkspaceDialogs.astro";
+import { NAV_COOKIE, type RailPage, resolveNavState } from "../lib/nav-state.ts";
+import type { DashboardContext } from "../lib/page.ts";
+import { DEFAULT_DESCRIPTION, SECTION_DESCRIPTIONS } from "../lib/page-meta.ts";
+import Document from "./Document.astro";
+
+/**
+ * The dashboard shell (spec 21.6, 21.10): the header, the primary sidebar (or the rail on the
+ * Agent and project pages), an optional secondary column, and the content on an opaque panel.
+ * Pages build their content from strips (PageHead, Toolbar, ListFoot) and a padded body. Below
+ * 1024px the sidebar and rail give way to one navigation sheet (spec 21.8).
+ */
+interface Props {
+  ctx: DashboardContext;
+  title: string;
+  /** The current sidebar item, if the page has one. */
+  active?: NavKey;
+  /** Agent and project pages: the sidebar can collapse to a rail. */
+  rail?: RailPage;
+  crumbs?: Crumbs;
+  /** Crumbs without switch chevrons (the new-application page). */
+  plainCrumbs?: boolean;
+  /** Wraps the content in the page column that strips and bodies stack in. */
+  padded?: boolean;
+  /** One sentence about the page; by default the sentence for its sidebar item (spec 21.9b). */
+  description?: string;
+}
+
+const {
+  ctx,
+  title,
+  active,
+  rail,
+  crumbs,
+  plainCrumbs = false,
+  padded = true,
+  description,
+} = Astro.props;
+const { data, viewer, workspace } = ctx;
+const deployments = await data.recent();
+const railState = rail ? resolveNavState(Astro.cookies.get(NAV_COOKIE)?.value, rail) : undefined;
+---
+
+<Document
+  title={title}
+  description={description ?? (active ? SECTION_DESCRIPTIONS[active] : DEFAULT_DESCRIPTION)}
+>
+  <a href="#main" class="nz-skip nz-btn nz-btn--outline">Skip to content</a>
+  <div class="nz-shell" data-shell>
+    <Header ctx={ctx} crumbs={crumbs} deployments={deployments} plainCrumbs={plainCrumbs} />
+    <div class="nz-frame">
+      <PrimaryNav
+        viewer={viewer}
+        workspace={workspace}
+        active={active}
+        railState={railState}
+        tasks={ctx.access.can.tasks}
+      />
+      <slot name="secondary" />
+      <main id="main" class:list={["nz-main", rail === "agent" && "nz-main--agent"]}>
+        <slot name="subnav" />
+        {
+          padded ? (
+            <div class="nz-page" data-page-content>
+              <slot />
+            </div>
+          ) : (
+            <div class="nz-page nz-page--bare" data-page-content>
+              <slot />
+            </div>
+          )
+        }
+      </main>
+    </div>
+  </div>
+  <NavSheet viewer={viewer} workspace={workspace} active={active} tasks={ctx.access.can.tasks} />
+  <WorkspaceDialogs ctx={ctx} />
+  <slot name="dialogs" />
+</Document>

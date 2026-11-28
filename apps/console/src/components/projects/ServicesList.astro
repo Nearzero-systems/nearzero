@@ -1,0 +1,122 @@
+---
+import type { ServiceView } from "../../lib/data/index.ts";
+import { inServiceOrder, SERVICE_STATUS, serviceKindName } from "../../lib/projects.ts";
+import Button from "../ui/Button.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+
+/**
+ * An environment's services with their status (spec 05 5.2, 21.10): applications, Compose
+ * services, then databases; each row has the name with its type on a second line and the status
+ * as plain grey text. On the Overview it is the "All services" card (`heading`); on the Services
+ * page (`selectable`) the rows run edge to edge under a strip with "Select all", "N selected" and
+ * "Delete selected", which opens the teardown dialog for the ticked ones
+ * (client/services-list.ts, client/teardown.ts), and each row has a menu: Open service, Delete
+ * service.
+ */
+interface Props {
+  services: ServiceView[];
+  hrefs: Record<string, string>;
+  environmentId: string;
+  selectable?: boolean;
+  /** Where to go after a single delete from a row (the list itself). */
+  afterDelete?: string;
+  /** The Overview's card: its title and the "View all" link. */
+  heading?: { title: string; href: string };
+}
+
+const { services, hrefs, environmentId, selectable = false, afterDelete, heading } = Astro.props;
+const ordered = inServiceOrder(services);
+const deletable = selectable && services.some((service) => service.can.delete);
+---
+
+<div
+  class:list={["nz-services", heading ? "nz-card nz-services--card" : "nz-services--page"]}
+  data-services-list
+>
+  {
+    heading && (
+      <div class="nz-services-head">
+        <h2 class="nz-services-title">{heading.title}</h2>
+        <a class="nz-btn nz-btn--ghost" href={heading.href}>View all</a>
+      </div>
+    )
+  }
+  {
+    deletable && (
+      <div class="nz-strip nz-bulk-bar">
+        <label class="nz-check">
+          <input type="checkbox" data-service-select-all />
+          Select all
+        </label>
+        <span class="nz-dim" data-selected-count>0 selected</span>
+        <Button
+          variant="outline"
+          class="nz-bulk-delete"
+          data-teardown-open="services"
+          data-environment-id={environmentId}
+          data-bulk-delete
+          disabled
+        >
+          Delete selected
+        </Button>
+      </div>
+    )
+  }
+  <div class="nz-service-list">
+    {
+      ordered.map((service) => {
+        const status = SERVICE_STATUS[service.status];
+        const menuId = `nz-service-menu-${service.id}`;
+        return (
+          <div class="nz-service-row" data-service-row={service.id}>
+            {deletable && (
+              <input
+                type="checkbox"
+                class="nz-row-check"
+                value={service.id}
+                data-service-select
+                disabled={!service.can.delete}
+                aria-label={`Select ${service.name}`}
+              />
+            )}
+            <div class="nz-service-main">
+              <a class="nz-service-name nz-row-link" href={hrefs[service.id]}>
+                {service.name}
+              </a>
+              <span class="nz-service-kind">{serviceKindName(service.kind)}</span>
+            </div>
+            <span class="nz-service-status" data-status={status.pill}>
+              {status.label}
+            </span>
+            {selectable && (
+              <>
+                <Button
+                  variant="icon"
+                  icon="more"
+                  label={`Actions for ${service.name}`}
+                  popovertarget={menuId}
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                />
+                <Menu id={menuId} label={`Actions for ${service.name}`} placement="bottom-end">
+                  <MenuItem href={hrefs[service.id]}>Open service</MenuItem>
+                  {service.can.delete && (
+                    <MenuItem
+                      danger
+                      data-service-delete-open
+                      data-service-id={service.id}
+                      data-after-delete={afterDelete}
+                    >
+                      Delete service
+                    </MenuItem>
+                  )}
+                </Menu>
+              </>
+            )}
+          </div>
+        );
+      })
+    }
+  </div>
+</div>

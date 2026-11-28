@@ -1,0 +1,521 @@
+/* Page-level pieces: projects (spec 5.1, 5.2), sign-in and onboarding (spec 4.1, 4.3). */
+
+@layer components {
+  /* ---------- Projects list (spec 21.10) ---------- */
+  /* Three 373px cards to a row at 1440, 12px apart. */
+  .nz-project-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+    gap: 12px;
+  }
+
+  /* Two parts split by a hairline: the name with its menu, then created and the count. */
+  .nz-project-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .nz-project-card[data-openable="true"]:hover {
+    border-color: var(--nz-line-strong);
+  }
+
+  :root[data-theme="dusk"] .nz-project-card[data-openable="true"]:hover {
+    border-color: rgb(167 139 250 / 0.35);
+  }
+
+  .nz-project-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 49px;
+    padding: 12px 12px 10px;
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  .nz-project-name {
+    display: block;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The name's link covers the card, so the whole card opens the project. */
+  .nz-project-name a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 6px;
+  }
+
+  .nz-project-name a:focus-visible {
+    outline: none;
+  }
+
+  .nz-project-name a:focus-visible::after {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .nz-project-desc {
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-project-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 12px;
+    padding: 8px 12px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-project-meta > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nz-project-menu {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    margin: 0 -6px -4px 0;
+  }
+
+  .nz-project-menu .nz-btn--icon svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .nz-list-foot {
+    margin-top: 12px;
+    color: var(--nz-text-dim);
+  }
+
+  /* ---------- Project canvas (spec 5.2, 21.10) ---------- */
+  /* A dotted panel, 2px dots every 12px, as tall as its cards with 72px above them and 110px
+     below (with four rows it reaches the bottom of a 900px window). */
+  .nz-canvas {
+    --nz-canvas-dot: #e7e8ea;
+    --nz-database-line: #b7dcf1;
+    position: relative;
+    min-height: 20rem;
+    overflow: auto;
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background-color: var(--nz-panel);
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      var(--nz-canvas-dot) 1px,
+      transparent 1.2px
+    );
+    background-size: 12px 12px;
+    background-position: 0 0;
+  }
+
+  :root[data-tone="dark"] .nz-canvas {
+    --nz-canvas-dot: #28282c;
+    --nz-database-line: #1b3f53;
+  }
+
+  :root[data-theme="dusk"] .nz-canvas {
+    --nz-canvas-dot: #28282b;
+    --nz-database-line: #23465a;
+  }
+
+  /* The cards' block: 120px in at 1440 (a third of the spare width), 72px down. */
+  .nz-canvas-stage {
+    position: relative;
+    width: var(--nz-stage-w);
+    height: var(--nz-stage-h);
+    margin: 72px 0 110px max(16px, calc((100% - var(--nz-stage-w)) * 0.342));
+  }
+
+  .nz-canvas-group {
+    position: absolute;
+    left: var(--nz-x);
+    top: var(--nz-y);
+    width: var(--nz-stage-w);
+    height: var(--nz-h);
+    pointer-events: none;
+  }
+
+  .nz-canvas-group--single {
+    width: 304px;
+  }
+
+  .nz-canvas-card,
+  .nz-canvas-domains {
+    position: absolute;
+    top: 0;
+    width: 304px;
+    pointer-events: auto;
+  }
+
+  .nz-canvas-card {
+    left: 0;
+  }
+
+  .nz-canvas-domains {
+    left: var(--nz-x);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nz-canvas-links {
+    position: absolute;
+    inset: 0;
+    overflow: visible;
+  }
+
+  .nz-canvas-links path {
+    fill: none;
+    stroke: var(--nz-line-strong);
+    stroke-width: 1;
+    stroke-dasharray: 6 4;
+  }
+
+  :root[data-tone="dark"] .nz-canvas-links path {
+    stroke: #323238;
+  }
+
+  /* A card: a 36px header (12px glyph and the 13px name), a hairline, two 18px rows of 11px. */
+  .nz-node {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  .nz-node[data-glyph="database"] {
+    border-color: var(--nz-database-line);
+  }
+
+  .nz-node-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 38px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  .nz-node-glyph {
+    display: grid;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    flex: none;
+    color: var(--nz-text-faint);
+  }
+
+  .nz-node[data-glyph="database"] .nz-node-glyph {
+    color: #7cc4ea;
+  }
+
+  :root[data-tone="dark"] .nz-node[data-glyph="database"] .nz-node-glyph {
+    color: #2b7fa8;
+  }
+
+  .nz-node-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nz-node-rows,
+  .nz-node-body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 10px;
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  .nz-node-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    min-height: 18px;
+  }
+
+  .nz-node-kind {
+    font-weight: 600;
+  }
+
+  .nz-node .nz-pill[data-kind="text"] {
+    gap: 4px;
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  .nz-node .nz-pill[data-kind="text"]::before {
+    width: 5px;
+    height: 5px;
+  }
+
+  .nz-node-tools {
+    display: inline-flex;
+    gap: 2px;
+    margin: -4px -4px -4px 0;
+  }
+
+  .nz-node--domain .nz-node-name {
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .nz-node--domain .nz-node-head {
+    border-bottom-style: dashed;
+  }
+
+  /* "No domain yet": a dashed frame, a grey header, a dashed hairline. */
+  .nz-node--pending {
+    border-style: dashed;
+    border-color: var(--nz-line-strong);
+  }
+
+  :root[data-tone="dark"] .nz-node--pending {
+    border-color: #323238;
+  }
+
+  .nz-node--pending .nz-node-head {
+    border-bottom: 1px dashed var(--nz-line);
+  }
+
+  .nz-node--pending .nz-node-name {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-node--pending .nz-node-body {
+    gap: 6px;
+    padding: 10px 10px 10px;
+  }
+
+  .nz-node-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* The Add New menu: about 156px, text only. */
+  .nz-pop.nz-add-new-menu {
+    min-width: 156px;
+  }
+
+  /* Service lists (spec 21.10): the Overview's "All services" card and the Services page's
+     edge-to-edge rows. A row is the name with its type under it and the status in grey. */
+  .nz-services-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 6px 10px 12px;
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  .nz-services-title {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+
+  .nz-services-empty {
+    padding: 12px;
+  }
+
+  .nz-service-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nz-service-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    min-height: 58px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-service-row:first-child {
+    border-top: 0;
+  }
+
+  .nz-services--page .nz-service-row .nz-row-check {
+    margin-right: 4px;
+  }
+
+  .nz-service-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-service-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* On the Overview card the whole row opens the service. */
+  .nz-services--card .nz-service-name::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+
+  .nz-services--card .nz-service-row:hover {
+    background: color-mix(in srgb, var(--nz-hover) 50%, transparent);
+  }
+
+  .nz-service-kind {
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-service-status {
+    flex: none;
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-service-status[data-status="fail"] {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-services--page .nz-service-status {
+    margin-right: 16px;
+  }
+
+  .nz-bulk-bar {
+    gap: 8px;
+    min-height: 39px;
+    padding: 6px 12px;
+  }
+
+  .nz-bulk-bar [data-selected-count] {
+    flex: 1;
+  }
+
+  /* "Delete selected": red text on a hairline outline, faded until something is ticked. */
+  .nz-btn.nz-bulk-delete {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-btn.nz-bulk-delete:disabled {
+    opacity: 0.55;
+  }
+
+  /* Sign-in, invitation and onboarding are drawn in auth.css; forms and facts are shared. */
+  .nz-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .nz-facts {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+    margin-top: 12px;
+  }
+
+  .nz-facts dt {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-facts dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- Style guide ---------- */
+  .nz-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+    gap: 12px;
+  }
+
+  .nz-guide-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+/* At 640px and below the canvas becomes a list: no lines, no dragging, swipes scroll the page.
+   Each app is followed by its domain cards, indented 16px, then the databases. */
+@media (max-width: 640px) {
+  .nz-canvas {
+    min-height: 0;
+    overflow: visible;
+    padding: 12px;
+  }
+
+  .nz-canvas-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: auto;
+    height: auto;
+    margin: 0;
+  }
+
+  .nz-canvas-group,
+  .nz-canvas-group--single {
+    position: static;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: auto;
+    height: auto;
+    pointer-events: auto;
+  }
+
+  .nz-canvas-card,
+  .nz-canvas-domains {
+    position: static;
+    width: auto;
+  }
+
+  .nz-canvas-domains {
+    padding-left: 16px;
+    gap: 8px;
+  }
+
+  .nz-canvas-links {
+    display: none;
+  }
+}

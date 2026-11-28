@@ -1,0 +1,21 @@
+---
+import Button from "./Button.astro";
+
+/** Opens an address in a new tab (spec 21.1, rule 7). */
+interface Props {
+  href: string;
+  withLabel?: boolean;
+}
+
+const { href, withLabel = false } = Astro.props;
+---
+
+{
+  withLabel ? (
+    <Button variant="outline" icon="external" href={href} target="_blank" aria-label={`Visit ${href}`}>
+      Visit
+    </Button>
+  ) : (
+    <Button variant="icon" icon="external" href={href} target="_blank" label={`Visit ${href}`} />
+  )
+}

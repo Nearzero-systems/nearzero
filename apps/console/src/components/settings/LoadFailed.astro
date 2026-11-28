@@ -1,0 +1,17 @@
+---
+import { LOAD_FAILED_MESSAGE } from "../../lib/api-error.ts";
+import Button from "../ui/Button.astro";
+import EmptyState from "../ui/EmptyState.astro";
+
+/** A settings page whose data could not be loaded (spec 18.1). */
+interface Props {
+  /** The API's own message, when it gave one. */
+  detail?: string | null;
+}
+
+const { detail } = Astro.props;
+---
+
+<EmptyState icon="alert" title={LOAD_FAILED_MESSAGE} text={detail ?? undefined}>
+  <Button variant="outline" icon="refresh" href={Astro.url.pathname + Astro.url.search}>Refresh</Button>
+</EmptyState>

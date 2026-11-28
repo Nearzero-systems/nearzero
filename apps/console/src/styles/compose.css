@@ -1,0 +1,563 @@
+/*
+ * The Compose page (spec 07 7.2): the source summary, the containers table, and Preview
+ * Compose. Flat, 1px lines, 6px corners (spec 21.1); wide tables and files scroll in their own
+ * box and never widen the page (21.5).
+ */
+
+@layer components {
+  .nz-compose-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .nz-compose-note svg {
+    flex: none;
+    margin-top: 1px;
+  }
+
+  .nz-compose-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin-bottom: 12px;
+  }
+
+  .nz-compose-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-compose-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 1px 6px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .nz-compose-chip .nz-code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nz-compose-table td:first-child {
+    max-width: 22rem;
+  }
+
+  .nz-compose-table .nz-stack-sm > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .nz-compose-old {
+    white-space: nowrap;
+  }
+
+  .nz-compose-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .nz-compose-files {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .nz-compose-file-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .nz-compose-code {
+    max-height: 50vh;
+    white-space: pre;
+    tab-size: 2;
+  }
+
+  .nz-compose-refusal {
+    border-color: color-mix(in srgb, var(--nz-fail-dot) 40%, var(--nz-line));
+    color: var(--nz-danger-text);
+  }
+
+  .nz-compose-warnings {
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--nz-warn-dot) 35%, var(--nz-line));
+    border-radius: 6px;
+    font-size: 12px;
+  }
+
+  .nz-compose-warning-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-compose-warning-list .nz-pill {
+    margin-right: 4px;
+  }
+
+  @media (max-width: 640px) {
+    .nz-compose-file-head {
+      flex-wrap: wrap;
+    }
+
+    .nz-compose-code {
+      max-height: 40vh;
+    }
+  }
+
+  /* ---------- The Compose page's own layout (spec 21.10) ---------- */
+  /* Full-width cards (the panel's own fill in Light and Dark, the card tone in Dusk), 24px
+     apart: a 26px-in header with a 20px semibold title and a hairline under it, then the body
+     24px in. */
+  .nz-compose {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+    padding-bottom: 24px;
+  }
+
+  .nz-cs-section {
+    min-width: 0;
+    padding-bottom: 24px;
+    border-radius: 8px;
+    background: var(--nz-card);
+  }
+
+  .nz-cs-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 24px;
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  /* The Compose pill sits at the title's right without narrowing the line under it. */
+  .nz-cs-section--first > .nz-cs-section-head {
+    position: relative;
+    padding-top: 32px;
+  }
+
+  .nz-cs-section--first > .nz-cs-section-head > .nz-cs-pill {
+    position: absolute;
+    top: 32px;
+    right: 24px;
+  }
+
+  /* Section headings: system UI 600 20px with -0.5px tracking (spec 21.10, as corrected after
+     the first capture); "Deploy Settings" sits on a 20px line, the others on 28px. */
+  .nz-cs-title {
+    font-family: var(--nz-font-system);
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+
+  #nz-compose-title {
+    line-height: 20px;
+  }
+
+  .nz-cs-desc {
+    color: var(--nz-text-dim);
+  }
+
+  #nz-compose-title + .nz-cs-desc {
+    margin-top: 8px;
+  }
+
+  .nz-cs-body {
+    min-width: 0;
+    padding: 15px 24px 0;
+  }
+
+  /* The Compose pill: a small round button-coloured label. */
+  .nz-badge.nz-cs-pill {
+    align-self: flex-start;
+    margin-top: 0;
+    padding: 3px 11px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--nz-primary);
+    color: var(--nz-primary-text);
+    font-family: var(--nz-font-ui);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* Deploy, Reload, Stop, Open Terminal and Autodeploy: 4px by 8px buttons, 16px apart. */
+  .nz-cs-section--first {
+    padding-bottom: 32px;
+  }
+
+  .nz-cs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding-top: 24px;
+  }
+
+  .nz-cs-actions > .nz-btn--danger {
+    border-color: #dc2626;
+    background: #dc2626;
+  }
+
+  .nz-cs-actions > .nz-btn--danger:hover {
+    border-color: #b91c1c;
+    background: #b91c1c;
+  }
+
+  .nz-cs-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 34px;
+    padding: 0 16px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .nz-cs-check input {
+    width: 14px;
+    height: 14px;
+    accent-color: #2563eb;
+  }
+
+  .nz-cs-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 24px;
+  }
+
+  .nz-cs-notes:has(> :not([hidden])) {
+    padding-top: 16px;
+  }
+
+  .nz-cs-notes .nz-live-at {
+    margin: 0;
+  }
+
+  /* Provider: text tabs with no fill or line; the current one darker. */
+  .nz-cs-tabs .nz-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: 16px;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .nz-cs-tabs .nz-tab,
+  .nz-cs-tabs .nz-tab:hover {
+    background: transparent;
+    font-weight: 500;
+  }
+
+  .nz-cs-tabs .nz-tab[aria-selected="true"] {
+    background: transparent;
+    color: var(--nz-text);
+    font-weight: 500;
+  }
+
+  .nz-cs-body.nz-cs-tabs {
+    padding-top: 16px;
+  }
+
+  /* The panel's own 12px plus this puts "Compose file (YAML)" 38px under the tabs. */
+  .nz-cs-tabs [role="tabpanel"] > :first-child {
+    margin-top: 6px;
+  }
+
+  /* The YAML box: grey, two lines (its rows), scrolling inside. */
+  .nz-textarea.nz-cs-yaml {
+    border-color: var(--nz-line);
+    background: var(--nz-field-filled);
+  }
+
+  .nz-cs-tabs .nz-form-actions {
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+
+  #nz-compose-logs .nz-cs-desc {
+    margin-top: 6px;
+  }
+
+  #nz-compose-logs .nz-cs-body {
+    padding-top: 16px;
+  }
+
+  /* Logs: "Container", a full-width grey picker, and the terminal box. */
+  .nz-cs-select {
+    width: 100%;
+  }
+
+  .nz-cs-select .nz-select {
+    border-color: var(--nz-line);
+  }
+
+  .nz-terminal {
+    height: 358px;
+    margin-top: 18px;
+    padding: 15px 17px;
+    overflow: auto;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: #000000;
+    color: #34c26b;
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  :root[data-tone="dark"] .nz-terminal {
+    background: var(--nz-muted);
+    color: var(--nz-text);
+  }
+
+  /* The Compose page's box: one 358px frame; once a container is picked, its tools run along
+     the top inside it (no toolbar row of their own) and the lines fill the rest. */
+  .nz-cs-term {
+    display: flex;
+    flex-direction: column;
+    height: 360px;
+    margin-top: 16px;
+    overflow: hidden;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: #000000;
+  }
+
+  :root[data-tone="dark"] .nz-cs-term {
+    background: var(--nz-muted);
+  }
+
+  .nz-cs-term > .nz-terminal {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .nz-logs-tools.nz-cs-term-tools {
+    flex: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgb(255 255 255 / 0.12);
+    color: #d1d5db;
+    color-scheme: dark;
+  }
+
+  :root[data-tone="dark"] .nz-logs-tools.nz-cs-term-tools {
+    border-bottom-color: var(--nz-line);
+    color: var(--nz-text-dim);
+  }
+
+  .nz-cs-term-tools .nz-input,
+  .nz-cs-term-tools .nz-select {
+    border-color: rgb(255 255 255 / 0.16);
+    color: inherit;
+  }
+
+  :root[data-tone="dark"] .nz-cs-term-tools .nz-input,
+  :root[data-tone="dark"] .nz-cs-term-tools .nz-select {
+    border-color: var(--nz-line);
+    color: var(--nz-text);
+  }
+
+  .nz-cs-term-tools .nz-input::placeholder {
+    color: rgb(255 255 255 / 0.45);
+  }
+
+  .nz-cs-term-tools .nz-select-wrap > svg {
+    color: inherit;
+  }
+
+  .nz-cs-term-tools .nz-logs-tool {
+    width: 112px;
+  }
+
+  .nz-cs-term-tools .nz-logs-since {
+    width: 12rem;
+  }
+
+  .nz-cs-term-tools .nz-logs-search {
+    flex: 1 1 10rem;
+    width: auto;
+    min-width: 7rem;
+  }
+
+  .nz-cs-term-tools .nz-logs-follow,
+  .nz-cs-term-tools .nz-btn {
+    color: inherit;
+  }
+
+  .nz-cs-term-tools .nz-btn:hover {
+    background: rgb(255 255 255 / 0.08);
+    color: #ffffff;
+  }
+
+  .nz-logs-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+  }
+
+  .nz-logs-tool {
+    flex: 0 0 auto;
+    width: 122px;
+  }
+
+  .nz-logs-tools .nz-logs-since {
+    width: 13rem;
+  }
+
+  .nz-logs-tools .nz-logs-search {
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: 8rem;
+  }
+
+  .nz-logs-tools .nz-input,
+  .nz-logs-tools .nz-select {
+    font-size: 12px;
+  }
+
+  .nz-logs-status:empty {
+    display: none;
+  }
+
+  .nz-logs-status {
+    margin-top: 6px;
+  }
+
+  .nz-fold .nz-terminal {
+    height: auto;
+    min-height: 16rem;
+    max-height: 32rem;
+    margin-top: 10px;
+  }
+
+  /* The Variables card sits flush with the column's left edge, as in the original. */
+  /* The Variables and Volume backups cards sit where the other sections' content does: 24px in
+     from both edges, the full width of that column (B3-26). */
+  .nz-cs-vars,
+  .nz-cs-backups {
+    min-width: 0;
+    padding: 0 24px;
+  }
+
+  .nz-cs-vars .nz-vars-card {
+    max-width: none;
+  }
+
+  /* Containers: the table right under the hairline, a 48px white header, the empty line in
+     the middle. */
+  #nz-compose-containers .nz-cs-body {
+    padding-top: 0;
+  }
+
+  .nz-cs-table .nz-table thead th {
+    height: 49px;
+    padding: 0 16px;
+    background: transparent;
+    color: var(--nz-text-dim);
+    font-weight: 400;
+  }
+
+  .nz-cs-table .nz-table td {
+    padding: 8px 16px;
+  }
+
+  .nz-cs-table .nz-table tbody:not([hidden]) tr:last-child td {
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  .nz-cs-table-empty {
+    padding: 16px;
+    color: var(--nz-text-dim);
+    text-align: center;
+  }
+
+  .nz-cs-table-empty:empty {
+    display: none;
+  }
+
+  /* Volume backups: its own padded card with text buttons and the dashed box inside. */
+  .nz-cs-backups .nz-backups-panel {
+    padding: 24px 24px 25px;
+    border-radius: 8px;
+  }
+
+  .nz-cs-backups .nz-backups-head {
+    margin: 0;
+  }
+
+  .nz-cs-backups .nz-backups-actions .nz-btn--outline {
+    border-color: transparent;
+    background-image: none;
+  }
+
+  .nz-cs-backups .nz-backups-body {
+    margin: 13px 0 0;
+  }
+
+  .nz-cs-backups .nz-backups-body > :not(.nz-backups-empty, .nz-table-wrap) {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  /* Phones: 26px action buttons wrapping 16px apart; the tabs wrap too (spec 21.10). */
+  @media (max-width: 639.98px) {
+    .nz-cs-actions {
+      gap: 16px;
+    }
+
+    .nz-cs-tabs .nz-tabs {
+      row-gap: 18px;
+    }
+
+    .nz-logs-tools .nz-logs-since {
+      width: auto;
+      flex: 1 1 10rem;
+    }
+  }
+}

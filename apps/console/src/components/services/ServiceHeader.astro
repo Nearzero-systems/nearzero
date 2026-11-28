@@ -1,0 +1,134 @@
+---
+import type { ServiceDetail, ServiceHostnames } from "../../lib/data/index.ts";
+import { confirmText, headerActions, liveUrl } from "../../lib/deploys.ts";
+import { composeFormat, isDatabase, isRoutable, servicePort } from "../../lib/projects.ts";
+import Button from "../ui/Button.astro";
+import Icon from "../ui/Icon.astro";
+import LinkTabs from "../ui/LinkTabs.astro";
+import LiveAt from "./LiveAt.astro";
+
+/**
+ * A service page's header (spec 6.2, 7.2, 8.2, 21.10), as two strips: a 48px title strip with a
+ * back chevron and the name (Space Grotesk 600 14px in every theme), then one strip with the tabs
+ * at the left and the actions at the right, all outlined and text only (a database's Deploy is
+ * the filled grey button). On phones the tabs come first and the actions take the next row. Every
+ * action asks "Confirm action" first (client/deploys.ts). Visit opens the first hostname; Create
+ * URL gives the service a generated one when it has none and one can be generated. Below it, the
+ * "Live at" banner shows once after the creation page or Create URL.
+ */
+interface Props {
+  service: ServiceDetail;
+  backHref: string;
+  hostnames: ServiceHostnames | null;
+  /** A generated hostname is available (GET …/hostnames/suggestion). */
+  canGenerate: boolean;
+  /** The service's tabs (Overview, Settings, Variables…). */
+  tabs?: { label: string; href: string; current: boolean }[];
+}
+
+const { service, backHref, hostnames, canGenerate, tabs = [] } = Astro.props;
+const database = isDatabase(service);
+const actions = headerActions({
+  ...service,
+  ...(service.kind === "compose" ? { format: composeFormat(service) } : {}),
+});
+const environment = service.environment.name;
+const visit = hostnames ? liveUrl(hostnames.hostnames) : null;
+const routable = isRoutable(service);
+const createUrl = routable && !visit && canGenerate && (hostnames?.canAdd ?? false);
+const labels = { deploy: "Deploy", redeploy: "Redeploy" } as const;
+const runtimeLabels = { start: "Start", stop: "Stop", reload: "Reload" } as const;
+const port = service.kind === "application" ? servicePort(service) : null;
+const inProgress = service.deploy?.inProgress ?? null;
+---
+
+<div class="nz-strip nz-strip--service nz-service-head nz-service-strip">
+  <div class="nz-service-title">
+    <a href={backHref} class="nz-back" aria-label="Back to services" title="Back to services">
+      <Icon name="chevron-left" />
+    </a>
+    <h1 class="nz-title nz-title--service" title={service.name}>{service.name}</h1>
+    {
+      service.kind === "compose" && (
+        <span class="nz-badge">{composeFormat(service) === "stack" ? "Stack" : "Compose"}</span>
+      )
+    }
+  </div>
+</div>
+<div class="nz-strip nz-strip--tabs nz-service-bar">
+  {tabs.length > 1 && <LinkTabs label={`${service.name} sections`} items={tabs} class="nz-service-tabs" />}
+  <div class="nz-service-actions">
+    {
+      actions.primary && (
+        <Button
+          variant={database ? "secondary" : "outline"}
+          data-service-action={actions.primary}
+          data-service-id={service.id}
+          data-confirm-text={confirmText(actions.primary, service, environment)}
+          data-confirm-label={labels[actions.primary]}
+          disabled={actions.busy}
+        >
+          {database ? "Deploy" : labels[actions.primary]}
+        </Button>
+      )
+    }
+    {
+      actions.redeploy && (
+        <Button
+          variant="outline"
+          data-service-action="redeploy"
+          data-service-id={service.id}
+          data-confirm-text={confirmText("redeploy", service, environment)}
+          data-confirm-label="Reload (redeploy)"
+          disabled={actions.busy}
+        >
+          Reload (redeploy)
+        </Button>
+      )
+    }
+    {
+      actions.runtime.map((action) => (
+        <Button
+          variant="outline"
+          data-service-action={action}
+          data-service-id={service.id}
+          data-confirm-text={confirmText(action, service, environment)}
+          data-confirm-label={runtimeLabels[action]}
+          data-confirm-danger={action === "stop" ? "true" : undefined}
+        >
+          {runtimeLabels[action]}
+        </Button>
+      ))
+    }
+    {
+      service.can.deploy && inProgress && (
+        <Button
+          variant="outline"
+          data-service-action="cancel"
+          data-deployment-id={inProgress.id}
+          data-confirm-text={confirmText("cancel", service, environment)}
+          data-confirm-label="Cancel deployment"
+          data-confirm-danger="true"
+        >
+          Cancel
+        </Button>
+      )
+    }
+    {
+      actions.terminal && (
+        <Button variant="outline" data-terminal-open={service.id} data-terminal-name={service.name}>
+          {database ? "Open Terminal" : "Terminal"}
+        </Button>
+      )
+    }
+    {visit && <Button variant="outline" href={visit} target="_blank">Visit</Button>}
+    {
+      createUrl && (
+        <Button variant="outline" data-create-url={service.id} data-port={port ?? undefined}>
+          Create URL
+        </Button>
+      )
+    }
+  </div>
+</div>
+<LiveAt serviceId={service.id} />

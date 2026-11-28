@@ -1,0 +1,19 @@
+---
+import Icon from "./Icon.astro";
+
+/**
+ * Where a form shows a refusal that names no single field (client/api.ts fills it in). The
+ * server can render one already, for a page sent back with an error.
+ */
+interface Props {
+  message?: string | null;
+  class?: string;
+}
+
+const { message, class: className } = Astro.props;
+---
+
+<p class:list={["nz-inline-error", className]} role="alert" data-form-error hidden={!message}>
+  <Icon name="alert" />
+  <span data-form-error-text>{message}</span>
+</p>

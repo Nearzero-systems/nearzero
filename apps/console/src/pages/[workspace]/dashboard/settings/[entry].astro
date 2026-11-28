@@ -1,0 +1,14 @@
+---
+import { movedSettingsPath } from "../../../../lib/legacy-paths.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { settingsPath } from "../../../../lib/routes.ts";
+
+// Every settings entry has its own page (spec 18.1). An address that isn't one goes where the
+// page moved (the server settings page → About Nearzero, certificates → Domains' Uploaded
+// certificates tab, DNS → Domains, profile, users, agent, notifications → their 1.0 pages), and
+// anything else to the settings hub.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const moved = movedSettingsPath(ctx.workspace.slug, Astro.params.entry ?? "");
+return Astro.redirect(moved ?? settingsPath(ctx.workspace.slug), 301);
+---

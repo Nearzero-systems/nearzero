@@ -1,0 +1,139 @@
+---
+import TerminalDialog from "../../../../components/deploys/TerminalDialog.astro";
+import ServerCard from "../../../../components/servers/ServerCard.astro";
+import ServerDialogs from "../../../../components/servers/ServerDialogs.astro";
+import ServerSetupDialogs from "../../../../components/servers/ServerSetupDialogs.astro";
+import SshKeys from "../../../../components/servers/SshKeys.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import LinkTabs from "../../../../components/ui/LinkTabs.astro";
+import PageHead from "../../../../components/ui/PageHead.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { ServerRecord } from "../../../../lib/data/index.ts";
+import { READINESS_FILTERS } from "../../../../lib/domains.ts";
+import { dashboardContext, isManager } from "../../../../lib/page.ts";
+import { dashboardPath } from "../../../../lib/routes.ts";
+
+// Servers (spec 9.1, 9.2, 9.6, 9.7): server cards with search and a status filter, and the SSH
+// keys tab (?tab=ssh-keys). The main button beside the title follows the tab. The setup and
+// details dialogs belong to the server setup milestone: this page leaves them a mount point
+// ([data-server-setup-mount]) and asks for them with the `nz:server-setup` and
+// `nz:server-details` events (client/servers.ts).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const slug = ctx.workspace.slug;
+const base = dashboardPath(slug, "servers");
+const manager = isManager(ctx.access.role);
+const holds = (capability: string) =>
+  manager || ctx.access.capabilities.includes(capability as never);
+const canManageServers = holds("servers.manage");
+const canSeeKeys = holds("ssh-keys.use") || holds("ssh-keys.manage");
+const canManageKeys = holds("ssh-keys.manage");
+const canSeeRouterFiles =
+  ctx.access.isInstanceAdmin ||
+  canManageServers ||
+  ctx.access.capabilities.includes("router-files.read");
+const tab = canSeeKeys && Astro.url.searchParams.get("tab") === "ssh-keys" ? "ssh-keys" : "servers";
+const q = (Astro.url.searchParams.get("q") ?? "").slice(0, 200);
+const status = READINESS_FILTERS.some((item) => item.value === Astro.url.searchParams.get("status"))
+  ? (Astro.url.searchParams.get("status") as string)
+  : "all";
+
+let servers: ServerRecord[] = [];
+let problem: string | null = null;
+const [listed, keysListed] = await Promise.all([
+  ctx.data.servers({ q: q || undefined, status }).catch((error: unknown) => error),
+  // People who add servers pick a saved key in Add server, with or without the keys tab (G3-06).
+  canSeeKeys || canManageServers ? ctx.data.sshKeys().catch(() => null) : Promise.resolve(null),
+]);
+if (Array.isArray(listed)) servers = listed;
+else if (isApiError(listed) && listed.code === "forbidden")
+  problem = "You do not have access to servers.";
+else if (isApiError(listed) && listed.code !== "control_unreachable")
+  problem = "Could not load servers. Try refreshing the page.";
+else throw listed;
+const keys = keysListed ?? [];
+const filtered = q !== "" || status !== "all";
+const tabs = [
+  { label: "Servers", href: base, current: tab === "servers" },
+  ...(canSeeKeys
+    ? [
+        {
+          label: "SSH keys",
+          href: `${base}?tab=ssh-keys`,
+          current: tab === "ssh-keys",
+        },
+      ]
+    : []),
+];
+---
+
+<AppShell ctx={ctx} title="Servers" active="servers">
+  <div class="nz-fill" data-servers-page>
+    <PageHead title="Servers">
+      {tab === "servers" && canManageServers && !problem && (
+        <Button variant="primary" data-dialog-open="nz-server-add">Add Server</Button>
+      )}
+      {tab === "ssh-keys" && canManageKeys && (
+        <Button variant="primary" data-dialog-open="nz-ssh-key-add">Add SSH Key</Button>
+      )}
+    </PageHead>
+    <div class="nz-strip nz-strip--tabs nz-servers-tools">
+      {tabs.length > 1 && <LinkTabs label="Servers sections" items={tabs} />}
+      {tab === "servers" && !problem && (
+        <form class="nz-toolbar nz-servers-filter" method="get" action={base} data-filter-form data-search-open={q ? "true" : undefined}>
+          <label class="nz-toolbar-search nz-search-reveal">
+            <span class="nz-visually-hidden">Search servers</span>
+            <input type="search" name="q" class="nz-input nz-input--search" placeholder="Search..." title="Search by name, address, description or user" value={q} autocomplete="off" />
+          </label>
+          <Button variant="icon" icon="search" label="Search servers" class="nz-search-toggle" data-search-toggle aria-expanded={q ? "true" : "false"} />
+          <label class="nz-select-wrap nz-toolbar-filter nz-native-select">
+            <span class="nz-visually-hidden">Status</span>
+            <select class="nz-select nz-select--toolbar" name="status" aria-label="Status" data-default="all">
+              {READINESS_FILTERS.map((option) => <option value={option.value} selected={option.value === status}>{option.label}</option>)}
+            </select>
+            <Icon name="chevron-down" />
+          </label>
+        </form>
+      )}
+    </div>
+
+    {
+      tab === "servers" &&
+        (problem ? (
+          <div class="nz-body"><EmptyState title={problem} /></div>
+        ) : (
+          <div class="nz-body nz-servers-body">
+            {servers.length === 0 ? (
+              filtered ? (
+                <EmptyState title="No servers match your filters" text="Try adjusting your search or status filter." />
+              ) : keys.length === 0 && canSeeKeys ? (
+                <EmptyState title="No SSH keys yet" text="Add an SSH key first, then connect a server for Nearzero to set up automatically.">
+                  {canManageKeys && <Button variant="primary" href={`${base}?tab=ssh-keys`}>Add SSH Key</Button>}
+                </EmptyState>
+              ) : (
+                <EmptyState title="No servers yet" text="Add a server to deploy applications on it.">
+                  {canManageServers && <Button variant="primary" data-dialog-open="nz-server-add">Add Server</Button>}
+                </EmptyState>
+              )
+            ) : (
+              <div class="nz-server-grid">
+                {servers.map((server) => (
+                  <ServerCard server={server} canManage={canManageServers} canSeeRouterFiles={canSeeRouterFiles} />
+                ))}
+              </div>
+            )}
+          </div>
+        ))
+    }
+    {tab === "ssh-keys" && <SshKeys keys={keys} canManage={canManageKeys} />}
+    <div data-server-setup-mount><ServerSetupDialogs /></div>
+  </div>
+
+  <Fragment slot="dialogs">
+    <ServerDialogs keys={keys} />
+    <TerminalDialog />
+  </Fragment>
+</AppShell>

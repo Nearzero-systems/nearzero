@@ -1,0 +1,59 @@
+---
+import type { AutomaticCard } from "../../lib/data/index.ts";
+import { badgePill } from "../../lib/domains.ts";
+import Button from "../ui/Button.astro";
+import Icon from "../ui/Icon.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import RecordLine from "./RecordLine.astro";
+
+/**
+ * The Automatic hostnames card (spec 10.2, 10.3): one row per server the person can reach (the
+ * Nearzero host first, for those who may use it) with its wildcard record, a badge, and Check
+ * again or Give N a hostname; "About HTTPS" collapsed.
+ */
+interface Props {
+  card: AutomaticCard;
+}
+
+const { card } = Astro.props;
+const about = Array.isArray(card.aboutHttps) ? card.aboutHttps : [card.aboutHttps];
+---
+
+<section class="nz-card nz-section" aria-labelledby="nz-automatic-title" data-automatic-card>
+  <div class="nz-section-head">
+    <div class="min-w-0">
+      <h2 class="nz-subtitle" id="nz-automatic-title">Automatic hostnames</h2>
+      <p class="nz-dim">{card.description}</p>
+    </div>
+  </div>
+  <ul class="nz-auto-rows">
+    {
+      card.rows.map((row) => (
+        <li class="nz-auto-row" data-auto-row={row.target.id}>
+          <div class="nz-auto-head">
+            <span class="min-w-0">
+              <span class="font-medium nz-truncate">{row.target.host ? "Nearzero host" : row.target.name}</span>
+              <span class="nz-small nz-dim nz-block" data-auto-subtitle>{row.subtitle}</span>
+            </span>
+            <StatusPill status={badgePill(row.badge)} label={row.badgeLabel} />
+            <Button
+              variant={row.action === "check_again" ? "outline" : "primary"}
+              icon={row.action === "check_again" ? "refresh" : undefined}
+              data-auto-action={row.action === "check_again" ? "check" : "give"}
+              data-target-id={row.target.id}
+            >
+              {row.actionLabel}
+            </Button>
+          </div>
+          {row.record && <RecordLine record={row.record} valueWord="IP" />}
+          {row.help && <p class="nz-hint">{row.help}</p>}
+          <p class="nz-small nz-dim" data-auto-message aria-live="polite">{row.message}</p>
+        </li>
+      ))
+    }
+  </ul>
+  <details class="nz-collapsible nz-about-https">
+    <summary><span class="nz-label">About HTTPS</span><Icon name="chevron-down" /></summary>
+    {about.map((line) => <p class="nz-dim">{line}</p>)}
+  </details>
+</section>

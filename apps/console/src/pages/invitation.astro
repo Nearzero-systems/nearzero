@@ -1,0 +1,203 @@
+---
+import { ROLE_LABELS } from "@nearzero/shared";
+import AuthFrame from "../components/auth/AuthFrame.astro";
+import Button from "../components/ui/Button.astro";
+import Icon from "../components/ui/Icon.astro";
+import PublicLayout from "../layouts/PublicLayout.astro";
+import { type ApiError, isApiError } from "../lib/api-error.ts";
+import {
+  consoleData,
+  type InvitationInspection,
+  type PendingInvitation,
+} from "../lib/data/index.ts";
+import { setFlash } from "../lib/flash.ts";
+import {
+  forgetInvitationLink,
+  readInvitationLink,
+  saveInvitationLink,
+} from "../lib/invitation-cookie.ts";
+import {
+  INVITATION_TITLES,
+  type InvitationView,
+  invitationByIdView,
+  invitationNote,
+  invitationView,
+  looksLikeToken,
+} from "../lib/invitation-view.ts";
+import { destinationAfter, signInPath } from "../lib/next-step.ts";
+import { formText, SEEN_INVITATION_COOKIE, sessionOrUnavailable } from "../lib/page.ts";
+
+// The invitee's page (spec 4.5). A link's token and proof move into a cookie at once, so they
+// never stay in the address bar. "?id=" is an invitation the bell or sign-in sent the person to.
+const data = consoleData(Astro);
+const params = Astro.url.searchParams;
+const linkToken = params.get("token");
+if (Astro.request.method === "GET" && params.has("token")) {
+  if (looksLikeToken(linkToken)) {
+    const proof = params.get("proof") ?? undefined;
+    saveInvitationLink(Astro, { token: linkToken.trim(), ...(proof ? { proof } : {}) });
+  } else {
+    forgetInvitationLink(Astro.cookies);
+  }
+  return Astro.redirect(looksLikeToken(linkToken) ? "/invitation" : "/invitation?incomplete=1");
+}
+
+const session = await sessionOrUnavailable(Astro);
+if (session instanceof Response) return session;
+const signedIn = session.signedIn;
+const byId = params.get("id")?.slice(0, 64) ?? null;
+const link = byId ? null : readInvitationLink(Astro.cookies);
+if (byId && !signedIn)
+  return Astro.redirect(signInPath(`/invitation?id=${encodeURIComponent(byId)}`));
+
+let actionError: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = formText(form, "intent");
+  const target = byId ? { id: byId } : link ? { token: link.token } : null;
+  if (intent === "dismiss") {
+    forgetInvitationLink(Astro.cookies);
+    return Astro.redirect("/", 303);
+  }
+  if (target && signedIn && (intent === "accept" || intent === "decline")) {
+    try {
+      if (intent === "accept") {
+        const joined = await data.acceptInvitation(target);
+        forgetInvitationLink(Astro.cookies);
+        Astro.cookies.delete(SEEN_INVITATION_COOKIE, { path: "/" });
+        setFlash(Astro, joined.message);
+        return Astro.redirect(
+          destinationAfter({ next: joined.next, workspaceSlug: joined.workspace.slug }),
+          303,
+        );
+      }
+      const declined = await data.declineInvitation(target);
+      forgetInvitationLink(Astro.cookies);
+      Astro.cookies.delete(SEEN_INVITATION_COOKIE, { path: "/" });
+      setFlash(Astro, "Invitation declined.", "info");
+      return Astro.redirect(declined.signedOut ? "/sign-in" : "/", 303);
+    } catch (error) {
+      if (!isApiError(error)) throw error;
+      if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+      actionError = error.message;
+    }
+  }
+}
+
+let view: InvitationView;
+if (byId && session.signedIn) {
+  let list: PendingInvitation[] | ApiError;
+  try {
+    list = await data.pendingInvitations();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    list = error;
+  }
+  view = invitationByIdView(list, byId, session.viewer.email);
+} else if (link) {
+  let result: InvitationInspection | ApiError;
+  try {
+    result = await data.inspectInvitation(link.token);
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    result = error;
+  }
+  view = invitationView(result, signedIn);
+} else {
+  view = invitationView(null, signedIn);
+}
+
+// Signed out with a live link: on to sign-in (existing account) or sign-up, email locked.
+if (view.kind === "sign-in") return Astro.redirect("/sign-in");
+if (view.kind === "sign-up") return Astro.redirect("/sign-up");
+if (view.kind !== "pending" && view.kind !== "other-email" && view.kind !== "unavailable") {
+  forgetInvitationLink(Astro.cookies);
+}
+const retry = byId ? `/invitation?id=${encodeURIComponent(byId)}` : "/invitation";
+const heading =
+  view.kind === "pending" ? `Join ${view.workspaceName}` : INVITATION_TITLES[view.kind];
+const note = invitationNote(view, signedIn);
+// Workspace, Role and Invited email, on a live link and on a used one alike (31a G1-08).
+const facts =
+  view.kind === "pending" ||
+  view.kind === "expired" ||
+  view.kind === "cancelled" ||
+  view.kind === "accepted"
+    ? view
+    : null;
+// "Signed in as <email>" on every state but the other-email one, which says it in its note.
+const signedInAs = session.signedIn && view.kind !== "other-email" ? session.viewer.email : null;
+// The way out: back into the console, or to sign in (with the invited email for a used link).
+const wayOut = signedIn
+  ? { href: "/", label: "Continue to Nearzero" }
+  : view.kind === "accepted"
+    ? { href: `/sign-in?email=${encodeURIComponent(view.email)}`, label: "Sign in" }
+    : { href: "/sign-in", label: "Back to sign in" };
+---
+
+<PublicLayout
+  title="Invitation"
+  description="Accept an invitation to join a workspace on this Nearzero console."
+>
+  <AuthFrame heading={heading}>
+    {note && <p slot="note">{note}</p>}
+    {
+      view.kind === "pending" ? (
+        <>
+          {actionError && (
+            <p class="nz-inline-error mb-3" role="alert">
+              <Icon name="alert" />
+              <span>{actionError}</span>
+            </p>
+          )}
+          <dl class="nz-facts">
+            <dt>Workspace</dt>
+            <dd>{view.workspaceName}</dd>
+            <dt>Role</dt>
+            <dd>{ROLE_LABELS[view.role]}</dd>
+            <dt>Invited email</dt>
+            <dd>{view.email}</dd>
+          </dl>
+          <form method="post" class="nz-gate-actions" data-astro-reload>
+            <Button variant="outline" type="submit" name="intent" value="decline">Decline</Button>
+            <Button variant="primary" type="submit" name="intent" value="accept">Accept invitation</Button>
+          </form>
+        </>
+      ) : view.kind === "other-email" ? (
+        <div class="nz-gate-actions nz-gate-actions--block">
+          <form method="post" action="/sign-out" data-astro-reload>
+            <input type="hidden" name="next" value="/invitation" />
+            <Button variant="primary" type="submit">Sign out and continue as {view.email}</Button>
+          </form>
+          <form method="post" data-astro-reload>
+            <Button variant="outline" type="submit" name="intent" value="dismiss">Stay signed in</Button>
+          </form>
+        </div>
+      ) : (
+        <>
+          {facts && (
+            <dl class="nz-facts">
+              <dt>Workspace</dt>
+              <dd>{facts.workspaceName}</dd>
+              <dt>Role</dt>
+              <dd>{ROLE_LABELS[facts.role]}</dd>
+              <dt>Invited email</dt>
+              <dd>{facts.email}</dd>
+            </dl>
+          )}
+          <div class="nz-gate-actions nz-gate-actions--block">
+            {view.kind === "unavailable" && (
+              <Button variant="primary" href={retry} data-astro-reload>
+                Try again
+              </Button>
+            )}
+            <Button variant={view.kind === "accepted" && !signedIn ? "primary" : "outline"} href={wayOut.href}>
+              {wayOut.label}
+            </Button>
+          </div>
+        </>
+      )
+    }
+    {signedInAs && <p class="nz-dim nz-small nz-signed-in-as">Signed in as {signedInAs}</p>}
+  </AuthFrame>
+</PublicLayout>

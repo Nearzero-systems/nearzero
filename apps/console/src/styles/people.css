@@ -1,0 +1,943 @@
+/*
+ * People and access pages (spec 04 4.3 to 4.8, 19.9): profile, Members & access, API keys,
+ * Agent policies, and the workspace dialogs. Flat, 1px lines, 6px corners (spec 21.1).
+ */
+
+@layer components {
+  /* ---------- Forms inside cards and dialogs ---------- */
+  .nz-form .nz-form,
+  .nz-dialog-body > .nz-form,
+  .nz-dialog-body > div > .nz-form:first-child,
+  .nz-section .nz-form {
+    margin-top: 0;
+  }
+
+  .nz-form--grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .nz-form--grid > [data-form-error],
+  .nz-form--grid > .nz-form-actions {
+    grid-column: 1 / -1;
+  }
+
+  .nz-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .nz-text-link {
+    color: var(--nz-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  :root[data-theme="dusk"] .nz-text-link {
+    color: var(--nz-accent-soft);
+  }
+
+  .nz-input-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .nz-input-row > .nz-input {
+    flex: 1 1 12rem;
+    width: auto;
+  }
+
+  /* Two or three choices side by side, like a small tab row (Resend / SMTP). */
+  .nz-segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    align-self: flex-start;
+  }
+
+  .nz-segmented label {
+    position: relative;
+    display: inline-flex;
+    padding: 3px 8px;
+    border-radius: 6px;
+    color: var(--nz-text-dim);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .nz-segmented input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .nz-segmented label:has(input:checked) {
+    background: var(--nz-active-fill);
+    color: var(--nz-active-text);
+  }
+
+  .nz-segmented label:has(input:focus-visible:not([data-quiet-focus])) {
+    outline: 2px solid var(--nz-focus-ring);
+  }
+
+  .nz-choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nz-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .nz-choice > input {
+    margin-top: 2px;
+    accent-color: var(--nz-primary);
+    flex: none;
+  }
+
+  .nz-choice > span {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .nz-choice:has(input:checked) {
+    border-color: var(--nz-line-strong);
+    background: var(--nz-muted);
+  }
+
+  :root[data-theme="dusk"] .nz-choice:has(input:checked) {
+    border-color: rgb(167 139 250 / 0.45);
+    background: var(--nz-accent-tint);
+  }
+
+  .nz-choice-extra {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 30px;
+  }
+
+  .nz-confirm {
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--nz-danger) 35%, transparent);
+    border-radius: 6px;
+  }
+
+  .nz-confirm .nz-dialog-foot {
+    margin-top: 8px;
+  }
+
+  /* ---------- Avatars ---------- */
+  :root .nz-avatar[data-color] {
+    color: #ffffff;
+  }
+
+  :root .nz-avatar[data-color="violet"],
+  .nz-swatch[data-color="violet"] {
+    background: #7c3aed;
+  }
+  :root .nz-avatar[data-color="blue"],
+  .nz-swatch[data-color="blue"] {
+    background: #2563eb;
+  }
+  :root .nz-avatar[data-color="teal"],
+  .nz-swatch[data-color="teal"] {
+    background: #0f766e;
+  }
+  :root .nz-avatar[data-color="green"],
+  .nz-swatch[data-color="green"] {
+    background: #15803d;
+  }
+  :root .nz-avatar[data-color="amber"],
+  .nz-swatch[data-color="amber"] {
+    background: #b45309;
+  }
+  :root .nz-avatar[data-color="orange"],
+  .nz-swatch[data-color="orange"] {
+    background: #c2410c;
+  }
+  :root .nz-avatar[data-color="rose"],
+  .nz-swatch[data-color="rose"] {
+    background: #be123c;
+  }
+  :root .nz-avatar[data-color="slate"],
+  .nz-swatch[data-color="slate"] {
+    background: #475569;
+  }
+
+  .nz-avatar--image {
+    object-fit: cover;
+    border: 1px solid var(--nz-line);
+  }
+
+  .nz-avatar--large {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
+  }
+
+  .nz-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-left: 30px;
+  }
+
+  .nz-swatch {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    cursor: pointer;
+  }
+
+  .nz-swatch input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .nz-swatch:has(input:checked) {
+    outline: 2px solid var(--nz-text);
+    outline-offset: 2px;
+  }
+
+  .nz-swatch:has(input:focus-visible:not([data-quiet-focus])) {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Any color (spec 4.6): a rainbow until one is picked, then that color. */
+  .nz-swatch--custom:not([data-chosen]) {
+    background: conic-gradient(#ef4444, #f59e0b, #22c55e, #06b6d4, #6366f1, #d946ef, #ef4444);
+  }
+
+  .nz-color-pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  .nz-color-pick input[type="color"] {
+    width: 28px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: none;
+    cursor: pointer;
+  }
+
+  .nz-crumb-logo {
+    object-fit: cover;
+  }
+
+  /* ---------- Profile (the page itself is in profile.css) ---------- */
+  .nz-2fa-setup {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* The QR code stays dark on white in every theme, so phones can read it. */
+  .nz-qr {
+    padding: 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: #ffffff;
+  }
+
+  .nz-qr img {
+    display: block;
+    width: 160px;
+    height: 160px;
+  }
+
+  .nz-codes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+    margin: 8px 0;
+    padding: 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-code);
+    font-family: var(--nz-font-code);
+    list-style: none;
+  }
+
+  .nz-codes:empty {
+    display: none;
+  }
+
+  /* ---------- Results with copyable values (links, sign-in details) ---------- */
+  .nz-results {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-result {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    min-width: 0;
+  }
+
+  .nz-result-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .nz-result-field {
+    display: grid;
+    grid-template-columns: 5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+  }
+
+  .nz-url--boxed {
+    padding: 4px 4px 4px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+  }
+
+  /* ---------- Members & access ---------- */
+  /* The invitation-email banner: a 6px status dot, the words, the action (spec 21.10). */
+  .nz-email-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+  }
+
+  .nz-email-dot {
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--nz-text-faint);
+  }
+
+  .nz-email-dot[data-on="true"] {
+    background: var(--nz-ok-dot);
+  }
+
+  .nz-email-strip-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* The member filter and Add user on one row; subheadings with a small grey count. */
+  .nz-people-tools {
+    flex-wrap: nowrap;
+    margin-bottom: 2px;
+  }
+
+  /* Member and invitation avatars: a light square with bold dark initials. */
+  .nz-person .nz-avatar {
+    border: 1px solid var(--nz-line);
+    background: var(--nz-muted);
+    color: var(--nz-text);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .nz-people-tools .nz-toolbar-search {
+    flex: 1 1 auto;
+  }
+
+  .nz-people-heading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .nz-table-wrap + .nz-people-heading,
+  [data-people-no-match] + .nz-people-heading {
+    margin-top: 8px;
+  }
+
+  .nz-people-heading .nz-count,
+  .nz-tabs--underline .nz-count {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .nz-you {
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+
+  .nz-person {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 22rem;
+  }
+
+  .nz-access-note {
+    max-width: 16rem;
+    white-space: normal;
+  }
+
+  .nz-cell-actions {
+    width: 1%;
+    text-align: right;
+  }
+
+  .nz-table td.nz-cell-actions {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .nz-empty-line {
+    padding: 12px;
+    color: var(--nz-text-dim);
+    text-align: center;
+  }
+
+  /* The intro with New policy right beside it, then cards about 440px wide. */
+  .nz-policies-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 12px 0 8px;
+  }
+
+  .nz-policies-intro > p {
+    flex: 0 1 auto;
+    max-width: 736px;
+  }
+
+  .nz-policy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 27.5rem), 27.5rem));
+    gap: 12px;
+  }
+
+  .nz-policy-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    padding: 11px 12px 10px;
+  }
+
+  .nz-policy-name {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+
+  .nz-policy-card .nz-policy-desc {
+    margin-top: 1px;
+  }
+
+  .nz-policy-holders {
+    padding-top: 6px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-policy-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* Phones: Edit and Delete under the description. */
+  @media (max-width: 639.98px) {
+    .nz-policy-head {
+      flex-direction: column;
+    }
+  }
+
+  .nz-policy-desc {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .nz-policy-facts {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 4px 8px;
+  }
+
+  .nz-policy-facts dt {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-policy-facts dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---------- What a policy or a member's grants allow ---------- */
+  .nz-access {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .nz-access-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    margin: 0;
+    padding: 12px 0 0;
+    border: 0;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-access-section > legend {
+    float: left;
+    width: 100%;
+    margin-bottom: 2px;
+  }
+
+  .nz-access-section > legend + * {
+    clear: both;
+  }
+
+  .nz-capability-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 10px 16px;
+    margin-top: 4px;
+  }
+
+  .nz-capability-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .nz-access .nz-check,
+  .nz-option-list .nz-check,
+  .nz-choice-list > .nz-check {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    min-width: 0;
+  }
+
+  .nz-access .nz-check > span,
+  .nz-option-list .nz-check > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* A capability with its one-line explanation under the name (31a G1-05). */
+  .nz-access .nz-check--hinted {
+    align-items: flex-start;
+    flex-wrap: nowrap;
+  }
+
+  .nz-access .nz-check--hinted > input {
+    margin-top: 2px;
+    flex: none;
+  }
+
+  .nz-check-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 6px;
+    min-width: 0;
+  }
+
+  .nz-check-hint {
+    flex-basis: 100%;
+    color: var(--nz-text-dim);
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  .nz-option-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .nz-from {
+    padding: 0 4px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    color: var(--nz-text-dim);
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  :root[data-theme="dusk"] .nz-from {
+    border-color: rgb(167 139 250 / 0.35);
+    color: var(--nz-accent-soft);
+  }
+
+  .nz-tree,
+  .nz-tree ul {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-tree ul {
+    margin-top: 4px;
+    padding-left: 20px;
+    border-left: 1px solid var(--nz-line);
+    margin-left: 6px;
+  }
+
+  .nz-check[data-covered] {
+    color: var(--nz-text-dim);
+  }
+
+  /* ---------- API keys and Agent policies ---------- */
+  /* API keys (spec 04 4.8, 21.10): one card per key with its labels right after the title, the
+     description, and a grey mono field with Add key at the right. */
+  .nz-keys {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nz-keys-intro {
+    max-width: 52rem;
+    margin-bottom: 4px;
+  }
+
+  .nz-key-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 20px;
+  }
+
+  .nz-key-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .nz-key-title {
+    margin: 0 4px 0 0;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .nz-key-head .nz-pill {
+    height: 22px;
+    padding: 0 8px;
+    border-color: var(--nz-line);
+    border-radius: 9999px;
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+  }
+
+  .nz-key-card .nz-key-form {
+    margin-top: 6px;
+  }
+
+  /* A 26px field with Add key beside it (under it on phones), both 4px by 8px. */
+  .nz-key-card .nz-input {
+    border-color: var(--nz-line);
+    font-family: var(--nz-font-code);
+    line-height: 16px;
+  }
+
+  .nz-key-card .nz-key-row {
+    align-items: center;
+  }
+
+  /* Phones: the key field full width, with Add key (or Replace and Remove) under it. */
+  @media (max-width: 639.98px) {
+    .nz-key-card .nz-key-row {
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .nz-key-card .nz-key-row > [data-field] {
+      flex: 1 1 100%;
+    }
+  }
+
+  .nz-key-saved {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 8px;
+  }
+
+  .nz-section .nz-key-form {
+    margin-top: 10px;
+  }
+
+  .nz-key-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .nz-key-row > [data-field] {
+    flex: 1 1 14rem;
+  }
+
+  /* Agent policies (spec 19.9, 21.10): the intro, full-width group cards whose rows put the
+     switch beside the label, a red PRODUCTION eyebrow, and Save changes at the bottom left. */
+  .nz-agent-policies {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nz-agent-intro {
+    max-width: 52rem;
+  }
+
+  .nz-agent-saved {
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .nz-agent-group {
+    margin-top: 11px;
+    padding: 14px 20px 2px;
+  }
+
+  .nz-agent-policies > .nz-agent-group:first-of-type {
+    margin-top: 17px;
+  }
+
+  .nz-agent-group-title {
+    margin: 0 0 4px;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .nz-agent-group-title--danger {
+    color: var(--nz-danger-text);
+    font-family: var(--nz-font-small);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+  }
+
+  /* 5px under the heading (its own 4px margin collapses into this one). */
+  .nz-agent-group-intro {
+    margin: 5px 0;
+  }
+
+  .nz-agent-group .nz-switch-row {
+    align-items: flex-start;
+    padding: 10px 0;
+  }
+
+  .nz-agent-group .nz-switch-list > .nz-switch-row:first-child {
+    padding-top: 7px;
+  }
+
+  /* PRODUCTION stands further from its one row than the other headings do. */
+  .nz-agent-group.nz-production > .nz-switch-row {
+    padding-top: 13px;
+  }
+
+  .nz-agent-group .nz-switch {
+    margin-top: 0;
+  }
+
+  .nz-agent-group .nz-switch-label {
+    font-weight: 500;
+  }
+
+  .nz-save-bar.nz-agent-save {
+    justify-content: flex-start;
+    margin-top: 16px;
+  }
+
+  .nz-switch-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nz-switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--nz-line);
+    cursor: pointer;
+  }
+
+  .nz-switch-list > .nz-switch-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .nz-production > .nz-switch-row {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .nz-switch-label {
+    display: block;
+  }
+
+  .nz-switch-desc {
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* A 28 by 16 track with a white 12px knob: dark when on, light grey when off (spec 21.10). */
+  .nz-switch {
+    appearance: none;
+    position: relative;
+    width: 28px;
+    height: 16px;
+    flex: none;
+    margin: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--nz-switch-off, #e5e7eb);
+    cursor: pointer;
+    transition: background-color 120ms ease;
+  }
+
+  :root[data-tone="dark"] .nz-switch {
+    --nz-switch-off: #303036;
+  }
+
+  .nz-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 9999px;
+    background: #ffffff;
+    /* A hairline around the knob, drawn as an outline: nothing has a shadow (spec 21.9a). */
+    outline: 0.5px solid rgb(0 0 0 / 0.12);
+    transition: transform 120ms ease;
+  }
+
+  .nz-switch:checked {
+    background: var(--nz-primary);
+  }
+
+  .nz-switch:checked::after {
+    transform: translateX(12px);
+  }
+
+  .nz-switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .nz-switch:focus-visible {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .nz-save-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 639.98px) {
+  .nz-2fa-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nz-qr {
+    justify-self: center;
+  }
+
+  .nz-codes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nz-result-field {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .nz-result-field > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .nz-email-strip-actions {
+    width: 100%;
+  }
+
+  .nz-choice-extra,
+  .nz-swatches {
+    padding-left: 0;
+  }
+}

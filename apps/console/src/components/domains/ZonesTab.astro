@@ -1,0 +1,87 @@
+---
+import type { ZoneList } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import EmptyState from "../ui/EmptyState.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import TableWrap from "../ui/TableWrap.astro";
+
+/**
+ * The DNS zones tab (spec 10.8): Zone with its nameservers, Status, Records, Health, and Records,
+ * Apply and Remove zone per row; Apply all zones with two or more; a banner names zones in error.
+ * A published zone the internet doesn't reach yet reads "Delegation pending" with why, what to
+ * do at the registrar (glue records included) and what ready needs (G3-10).
+ */
+interface Props {
+  zones: ZoneList;
+  canManage: boolean;
+}
+
+const { zones, canManage } = Astro.props;
+const pill = {
+  live: "ok",
+  delegation_pending: "warn",
+  not_applied: "warn",
+  needs_attention: "fail",
+} as const;
+---
+
+<div data-zones-tab>
+  {zones.banner && <p class="nz-inline-note nz-warn-note mb-3">{zones.banner}</p>}
+  {
+    zones.zones.length === 0 ? (
+      <EmptyState title="No DNS zones yet" text="Connect a zone to let Nearzero create its records and give apps names like web.example.com.">
+        {canManage && <Button variant="primary" data-dialog-open="nz-zone-connect">Connect a DNS zone</Button>}
+      </EmptyState>
+    ) : (
+      <>
+        {canManage && zones.canApplyAll && (
+          <div class="nz-toolbar"><Button variant="outline" data-zone-apply-all>Apply all zones</Button></div>
+        )}
+        <TableWrap label="DNS zones" class="nz-settings-table nz-domain-tab-table">
+          <thead>
+            <tr>
+              <th>Zone</th>
+              <th>Status</th>
+              <th>Records</th>
+              <th>Health</th>
+              <th class="nz-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zones.zones.map((zone) => (
+              <tr>
+                <td>
+                  <span class="font-medium">{zone.name}</span>
+                  <span class="nz-small nz-dim nz-block">{zone.nameservers.join(", ")}</span>
+                </td>
+                <td><StatusPill status={pill[zone.status] ?? "idle"} label={zone.statusLabel} /></td>
+                <td>{zone.records}</td>
+                <td class="nz-dim">
+                  {zone.health}
+                  {zone.error && <span class="nz-danger-text nz-block">{zone.error}</span>}
+                  {zone.status === "delegation_pending" && (
+                    <>
+                      <span class="nz-small nz-block" data-zone-delegation>{zone.delegation}</span>
+                      {zone.readiness && <span class="nz-small nz-dim nz-block">{zone.readiness.note}</span>}
+                    </>
+                  )}
+                </td>
+                <td class="nz-col-actions">
+                  <span class="nz-backup-actions">
+                    <Button variant="ghost" data-zone-records={zone.id} data-zone-name={zone.name}>Records</Button>
+                    {canManage && <Button variant="ghost" data-zone-apply={zone.id}>Apply</Button>}
+                    {canManage && (
+                      <Button variant="ghost" data-dialog-open="nz-zone-remove" data-dialog-fill={JSON.stringify({ zoneId: zone.id, zone: zone.name })}>
+                        Remove zone
+                      </Button>
+                    )}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </TableWrap>
+      </>
+    )
+  }
+</div>

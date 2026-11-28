@@ -1,0 +1,52 @@
+---
+import AuthFrame from "../../components/auth/AuthFrame.astro";
+import Button from "../../components/ui/Button.astro";
+import Field from "../../components/ui/Field.astro";
+import FocusLayout from "../../layouts/FocusLayout.astro";
+import { isApiError } from "../../lib/api-error.ts";
+import { formText, onboardingContext } from "../../lib/page.ts";
+
+// Invited member onboarding (spec 4.3): one name step. The API skips it when the account
+// already has a real name, so this page only opens when one is needed.
+const ctx = await onboardingContext(Astro, "name");
+if (ctx instanceof Response) return ctx;
+const { data, viewer, workspace } = ctx;
+
+let name = viewer.hasRealName ? viewer.name : "";
+let error: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  name = formText(form, "name", 200);
+  if (!name) error = "Enter your name.";
+  else {
+    try {
+      await data.saveOnboardingName(name);
+      return Astro.redirect("/", 303);
+    } catch (problem) {
+      if (!isApiError(problem)) throw problem;
+      if (problem.code === "control_unreachable") return Astro.rewrite("/unavailable");
+      error = problem.field("name") ?? problem.message;
+    }
+  }
+}
+---
+
+<FocusLayout title="Welcome to the team" description="Tell your new team what to call you.">
+  <AuthFrame heading="Welcome to the team">
+    {workspace && <p slot="note">You're in {workspace.name}. What should everyone call you?</p>}
+    <form method="post" class="nz-form" data-validate novalidate data-astro-reload>
+      <Field
+        id="nz-welcome-name"
+        name="name"
+        label="Your name"
+        value={name}
+        autocomplete="name"
+        maxlength={100}
+        error={error}
+        data-required="Enter your name."
+        autofocus
+      />
+      <Button variant="primary" type="submit" block>Finish</Button>
+    </form>
+  </AuthFrame>
+</FocusLayout>

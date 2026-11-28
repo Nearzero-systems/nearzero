@@ -1,0 +1,38 @@
+---
+/**
+ * A modal dialog (spec 21.5, 21.10): `raised` fill, 1px line, no shadow, moonlight in Dusk, no
+ * close button; the buttons sit in a footer band (.nz-dialog-foot). Escape and a click on the
+ * backdrop close it, never a re-render of its own content under the pointer; focus stays inside
+ * and returns to the opener (client/dialogs.ts).
+ */
+interface Props {
+  id: string;
+  title: string;
+  description?: string;
+  wide?: boolean;
+  /** Opens as the page loads, for a form the server sent back with errors. */
+  openOnLoad?: boolean;
+  class?: string;
+}
+
+const { id, title, description, wide = false, openOnLoad = false, class: className } = Astro.props;
+---
+
+<dialog
+  id={id}
+  class:list={["nz-dialog", "nz-moonlit", wide && "nz-dialog--wide", className]}
+  aria-labelledby={`${id}-title`}
+  aria-describedby={description ? `${id}-desc` : undefined}
+  data-dialog
+  data-open-on-load={openOnLoad ? "" : undefined}
+>
+  <div class="nz-dialog-body">
+    <div class="nz-dialog-head">
+      <div class="min-w-0">
+        <h2 id={`${id}-title`} class="nz-dialog-title">{title}</h2>
+        {description && <p id={`${id}-desc`} class="nz-dialog-desc">{description}</p>}
+      </div>
+    </div>
+    <slot />
+  </div>
+</dialog>

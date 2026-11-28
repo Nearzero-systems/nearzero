@@ -1,0 +1,50 @@
+---
+import type { Viewer, WorkspaceSummary } from "../../lib/data/index.ts";
+import type { NavState } from "../../lib/nav-state.ts";
+import Icon from "../ui/Icon.astro";
+import NavList from "./NavList.astro";
+import type { NavKey } from "./nav-items.ts";
+import UserMenu from "./UserMenu.astro";
+
+/**
+ * The primary sidebar (272px with its hairline, spec 21.10). On the Agent and project pages it
+ * collapses to a 52px icon rail from a 20px round button on its right edge; its state comes from
+ * the server so the first paint is already right (spec 21.6).
+ */
+interface Props {
+  viewer: Viewer;
+  workspace: WorkspaceSummary;
+  active?: NavKey;
+  /** Whether Tasks is for this person (R3-31). */
+  tasks?: boolean;
+  /** Present on rail pages: whether the sidebar is open, and the round toggle is shown. */
+  railState?: NavState;
+}
+
+const { viewer, workspace, active, railState, tasks = true } = Astro.props;
+const state = railState ?? "open";
+const toggleLabel = state === "open" ? "Collapse sidebar" : "Expand sidebar";
+---
+
+<nav class="nz-nav" aria-label="Main" data-primary-nav data-state={state}>
+  <div class="nz-nav-scroll">
+    <NavList workspace={workspace.slug} active={active} analytics={viewer.isInstanceAdmin} tasks={tasks} />
+  </div>
+  <div class="nz-nav-foot">
+    <UserMenu viewer={viewer} workspace={workspace} id="nz-user-menu" />
+  </div>
+  {
+    railState && (
+      <button
+        type="button"
+        class="nz-nav-collapse"
+        data-nav-toggle
+        aria-label={toggleLabel}
+        title={toggleLabel}
+        aria-expanded={state === "open" ? "true" : "false"}
+      >
+        <Icon name="chevron-left" />
+      </button>
+    )
+  }
+</nav>

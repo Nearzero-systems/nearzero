@@ -1,0 +1,154 @@
+---
+import { DEPLOYMENT_STATUS_LABELS, DEPLOYMENT_STATUSES } from "@nearzero/shared/browser";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import PageHead from "../../../../components/ui/PageHead.astro";
+import StatusPill from "../../../../components/ui/StatusPill.astro";
+import TableWrap from "../../../../components/ui/TableWrap.astro";
+import Time from "../../../../components/ui/Time.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { DeploymentPage } from "../../../../lib/data/index.ts";
+import {
+  deploymentsQuery,
+  PAGE_SIZES,
+  pageHref,
+  TYPE_FILTERS,
+} from "../../../../lib/deployments-page.ts";
+import {
+  deploymentPill,
+  deploymentPillLabel,
+  durationLabel,
+  TRIGGER_LABELS,
+} from "../../../../lib/deploys.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { dashboardPath } from "../../../../lib/routes.ts";
+
+// Deployments (spec 11.1): every deployment of the services the person can see, filtered and
+// paged on the server, with running and queued rows updating live (client/deployments.ts).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const query = deploymentsQuery(Astro.url.searchParams);
+let page: DeploymentPage | null = null;
+let failure: string | null = null;
+try {
+  page = await ctx.data.deployments(query);
+} catch (error) {
+  if (!isApiError(error) || error.code === "control_unreachable") throw error;
+  failure = error.message;
+}
+const slug = ctx.workspace.slug;
+const base = dashboardPath(slug, "deployments");
+const now = new Date();
+const pages = page ? Math.max(1, Math.ceil(page.total / page.pageSize)) : 1;
+const statusOptions = [
+  { value: "all", label: "All statuses" },
+  ...DEPLOYMENT_STATUSES.map((value) => ({ value, label: DEPLOYMENT_STATUS_LABELS[value] })),
+];
+---
+
+<AppShell ctx={ctx} title="Deployments" active="deployments">
+  <div class="nz-fill" data-deployments-page data-base={base}>
+    <PageHead title="Deployments" />
+    <form class="nz-strip nz-toolbar" method="get" action={base} data-deployments-filters>
+      <label class="nz-toolbar-search">
+        <span class="nz-visually-hidden">Search deployments</span>
+        <input
+          type="search"
+          name="q"
+          class="nz-input nz-input--search"
+          placeholder="Search by service, project, environment, server..."
+          value={query.search ?? ""}
+          autocomplete="off"
+          data-deployments-search
+        />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter">
+        <span class="nz-visually-hidden">Status</span>
+        <select class="nz-select nz-select--toolbar" name="status" aria-label="Status" data-deployments-filter>
+          {statusOptions.map((option) => <option value={option.value} selected={option.value === (query.status ?? "all")}>{option.label}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter">
+        <span class="nz-visually-hidden">Type</span>
+        <select class="nz-select nz-select--toolbar" name="type" aria-label="Type" data-deployments-filter>
+          {TYPE_FILTERS.map((option) => <option value={option.value} selected={option.value === (query.type ?? "all")}>{option.label}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter nz-toolbar-filter--narrow">
+        <span class="nz-visually-hidden">Page size</span>
+        <select class="nz-select nz-select--toolbar" name="pageSize" aria-label="Page size" data-deployments-filter>
+          {PAGE_SIZES.map((size) => <option value={String(size)} selected={size === (query.pageSize ?? 50)}>{size}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+    </form>
+
+    {
+      failure ? (
+        <div class="nz-body"><EmptyState title="Could not load deployments" text={failure} /></div>
+      ) : !page || page.deployments.length === 0 ? (
+        <div class="nz-body"><EmptyState title="No deployments found" text="Deployment history and queued deployments appear here." /></div>
+      ) : (
+        <>
+          <TableWrap label="Deployments" class="nz-deployments-table nz-table-wrap--flush">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Type</th>
+                <th>Project</th>
+                <th>Environment</th>
+                <th>Server</th>
+                <th>Deployed</th>
+                <th>Duration</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {page.deployments.map((item) => (
+                <tr data-deployment-row={item.id} data-status={item.status} data-started={item.startedAt ?? item.createdAt}>
+                  <td>
+                    <a class="nz-row-link nz-deploy-cell" href={`${base}/${encodeURIComponent(item.id)}`}>
+                      <span class="nz-truncate">{item.service.name}</span>
+                      <span class="nz-dim nz-truncate">
+                        {item.title}
+                        {item.shortCommit && <> · <span class="nz-code">{item.shortCommit}</span></>}
+                        {item.trigger !== "manual" && <>{" · "}{TRIGGER_LABELS[item.trigger] ?? item.trigger}</>}
+                      </span>
+                    </a>
+                  </td>
+                  <td><span class="nz-type-pill">{item.service.kindLabel}</span></td>
+                  <td class="nz-truncate nz-cell-dim">{item.project.name}</td>
+                  <td class="nz-truncate nz-cell-dim">{item.environment.name}</td>
+                  <td class="nz-truncate nz-cell-dim">{item.server.name}</td>
+                  <td class="nz-cell-dim"><Time date={item.createdAt} now={now} /></td>
+                  <td class="nz-cell-dim" data-duration={item.running ? "running" : undefined} data-duration-ms={item.durationMs ?? ""}>
+                    {durationLabel(item.durationMs, item.running)}
+                  </td>
+                  <td data-status-cell>
+                    <StatusPill status={deploymentPill(item.status)} label={deploymentPillLabel(item.status, item.statusLabel)} kind="deploy" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+          <div class="nz-strip nz-strip--foot">
+            <span data-deployments-total>{page.total} total</span>
+            <span class="flex items-center gap-2">
+              {pages > 1 && <span class="nz-dim nz-pager-at">Page {page.page} of {pages}</span>}
+              <Button variant="outline" href={pageHref(base, query, page.page - 1)} disabled={page.page <= 1}>
+                Previous
+              </Button>
+              <Button variant="outline" href={pageHref(base, query, page.page + 1)} disabled={page.page >= pages}>
+                Next
+              </Button>
+            </span>
+          </div>
+        </>
+      )
+    }
+  </div>
+</AppShell>

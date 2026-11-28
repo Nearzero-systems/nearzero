@@ -1,0 +1,44 @@
+---
+import AgentApp from "../../../components/agent/AgentApp.tsx";
+import type { Initial } from "../../../components/agent/store.ts";
+import AppShell from "../../../layouts/AppShell.astro";
+import { dashboardContext } from "../../../lib/page.ts";
+import { HOME_TITLE } from "../../../lib/page-meta.ts";
+import { hourIn, knownTimeZone } from "../../../lib/time.ts";
+
+// The Agent (spec 19.1, 21.10): sessions on the left and the chat beside them; the empty home
+// holds the message box under its greeting, a conversation docks it at the bottom. The page
+// renders the home, the list and an opened session (?session=)
+// on the server, so the first paint is complete; the chat then runs in the browser
+// (components/agent/AgentApp.tsx) and follows a running answer live. It is the console's home,
+// so its title is "Nearzero" alone (spec 21.9b).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const { data, viewer, workspace } = ctx;
+
+const sessionId = Astro.url.searchParams.get("session");
+const [home, list, detail] = await Promise.all([
+  data.agentHome(),
+  data.agentSessionList(),
+  sessionId ? data.agentSession(sessionId) : Promise.resolve(null),
+]);
+
+const initial: Initial = {
+  workspace: workspace.slug,
+  viewerId: viewer.id,
+  viewerName: viewer.name,
+  home,
+  list,
+  detail,
+  detailError: sessionId && !detail ? "This session doesn't exist, or you can't open it." : null,
+  hour: hourIn(knownTimeZone(Astro.cookies.get("nz_tz")?.value)),
+  // Without the person's zone the server's clock is a guess the browser corrects (B3-11).
+  hourKnown: knownTimeZone(Astro.cookies.get("nz_tz")?.value) !== undefined,
+  greetingVariant: Math.floor(Math.random() * 4),
+  renderedAt: Date.now(),
+};
+---
+
+<AppShell ctx={ctx} title={HOME_TITLE} active="agent" rail="agent" padded={false}>
+  <AgentApp client:load initial={initial} />
+</AppShell>

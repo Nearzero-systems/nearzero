@@ -1,0 +1,8 @@
+---
+import { legacyInvitationPath } from "../../lib/legacy-paths.ts";
+
+// 0.1.x's path form of the invitation link (spec 29.5, 30a R1-08): the invitation page takes the
+// token from its query and moves it into a cookie at once.
+const token = Astro.params.token ?? "";
+return Astro.redirect(legacyInvitationPath(token, Astro.url.search), 301);
+---

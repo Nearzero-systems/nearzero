@@ -1,0 +1,48 @@
+---
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Delete one service (spec 05 5.2): its plan, the copies in other environments the person can
+ * open (all unticked), the typed service name, then the delete in the background. Opened by any
+ * element with `data-service-delete-open` carrying data-service-id, and data-after-delete (where
+ * to go once it's gone; else the page refreshes). See client/service-delete.ts.
+ */
+---
+
+<Dialog id="nz-service-delete" title="Delete service" description="This service and its data will be removed.">
+  <div data-service-delete>
+    <div class="nz-teardown-loading" data-sd-loading>
+      <span class="nz-spinner" aria-hidden="true"></span>
+      <span>Loading what will be deleted…</span>
+    </div>
+    <form data-scripted class="nz-form" data-sd-form hidden novalidate>
+      <p data-sd-text></p>
+      <p class="nz-inline-note" data-sd-compose hidden>Deleting a Compose service always removes its volumes.</p>
+      <div class="nz-stack-sm" data-sd-notes></div>
+      <fieldset class="nz-choice-list" data-sd-copies hidden>
+        <legend class="nz-label">The same service in other environments</legend>
+        <div class="nz-stack-sm" data-sd-copy-list></div>
+        <p class="nz-hint" data-sd-copies-hint>Only this environment's copy is deleted unless you tick others.</p>
+      </fieldset>
+      <div data-field data-sd-confirm-field>
+        <label for="nz-sd-confirm" class="nz-label" data-sd-confirm-label>Type the service name to confirm</label>
+        <input id="nz-sd-confirm" name="confirm" class="nz-input" autocomplete="off" spellcheck="false" />
+        <p class="nz-field-error" data-field-error hidden></p>
+      </div>
+      <FormError />
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-dialog-close>Cancel</Button>
+        <Button variant="danger" type="submit" data-sd-submit disabled>Delete service</Button>
+      </div>
+    </form>
+    <div data-sd-run hidden>
+      <p class="font-medium" data-sd-message></p>
+      <ul class="nz-teardown-list mt-3" data-sd-items aria-live="polite"></ul>
+      <div class="nz-dialog-foot">
+        <Button variant="primary" data-dialog-close>Close</Button>
+      </div>
+    </div>
+  </div>
+</Dialog>

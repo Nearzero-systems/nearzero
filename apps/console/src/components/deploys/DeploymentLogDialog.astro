@@ -1,0 +1,18 @@
+---
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import DeployLog from "./DeployLog.astro";
+
+/**
+ * "Deployment logs" (spec 6.3): opened from a Deployments row; the row's deployment id starts the
+ * log (client/service-page.ts). Copy and Close.
+ */
+---
+
+<Dialog id="nz-deployment-log" title="Deployment logs" wide>
+  <p class="nz-dim nz-truncate"><span data-fill-text="title"></span> · <span data-fill-text="status"></span></p>
+  <DeployLog full />
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+  </div>
+</Dialog>

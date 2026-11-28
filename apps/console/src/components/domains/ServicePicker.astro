@@ -1,0 +1,59 @@
+---
+import Icon from "../ui/Icon.astro";
+
+/**
+ * Project → Environment → Service pickers, plus the Compose inner service, Port and Path (spec
+ * 10.5 step 2, Connect a service). client/domains-page.ts fills them from the API as they are
+ * chosen, so the page needn't load every project up front.
+ */
+interface Props {
+  prefix: string;
+}
+
+const { prefix } = Astro.props;
+---
+
+<div class="nz-stack-sm" data-service-picker>
+  <div class="nz-form-grid-2">
+    <div data-field>
+      <label class="nz-label" for={`${prefix}-project`}>Project</label>
+      <span class="nz-select-wrap">
+        <select class="nz-select" id={`${prefix}-project`} data-pick="project"><option value="">Loading…</option></select>
+        <Icon name="chevron-down" />
+      </span>
+    </div>
+    <div data-field>
+      <label class="nz-label" for={`${prefix}-environment`}>Environment</label>
+      <span class="nz-select-wrap">
+        <select class="nz-select" id={`${prefix}-environment`} data-pick="environment"></select>
+        <Icon name="chevron-down" />
+      </span>
+    </div>
+    <div data-field>
+      <label class="nz-label" for={`${prefix}-service`}>Service</label>
+      <span class="nz-select-wrap">
+        <select class="nz-select" id={`${prefix}-service`} name="serviceId" data-pick="service"></select>
+        <Icon name="chevron-down" />
+      </span>
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+    <div data-field data-pick-compose-wrap hidden>
+      <label class="nz-label" for={`${prefix}-compose`}>Compose service</label>
+      <span class="nz-select-wrap">
+        <select class="nz-select" id={`${prefix}-compose`} name="composeService" data-pick="compose"></select>
+        <Icon name="chevron-down" />
+      </span>
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+    <div data-field>
+      <label class="nz-label" for={`${prefix}-port`}>Port</label>
+      <input class="nz-input" id={`${prefix}-port`} name="port" inputmode="numeric" data-pick="port" />
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+    <div data-field>
+      <label class="nz-label" for={`${prefix}-path`}>Path</label>
+      <input class="nz-input" id={`${prefix}-path`} name="path" value="/" autocomplete="off" data-pick="path" />
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+  </div>
+</div>

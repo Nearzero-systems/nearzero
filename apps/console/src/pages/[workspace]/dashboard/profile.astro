@@ -1,0 +1,291 @@
+---
+import {
+  AVATAR_COLORS,
+  AVATAR_CUSTOM_COLOR,
+  AVATAR_IMAGE_MAX_BYTES,
+  type AvatarColor,
+  avatarTextColor,
+  NAME_MAX,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+} from "@nearzero/shared";
+import TwoFactorDialogs from "../../../components/profile/TwoFactorDialogs.astro";
+import Field from "../../../components/ui/Field.astro";
+import FormError from "../../../components/ui/FormError.astro";
+import Icon from "../../../components/ui/Icon.astro";
+import SettingsLayout from "../../../layouts/SettingsLayout.astro";
+import { dashboardContext } from "../../../lib/page.ts";
+
+// Profile (spec 4.6, 21.10): one "My Account" form in the settings layout. Names, email (with the
+// current password), a new password and the avatar save together with one Save; "Enable 2FA"
+// (or "Manage 2FA") sits at the top right. client/profile.ts sends only what changed. A new email
+// counts once its link is opened (30a R1-02): until then the old one stays, with "Send link
+// again" and "Cancel change"; an unconfirmed address offers "Send confirmation link", but only
+// when the server can email the link; otherwise the hint says who confirms or changes it.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const { viewer } = ctx;
+const colorLabels: Record<AvatarColor, string> = {
+  violet: "Violet",
+  blue: "Blue",
+  teal: "Teal",
+  green: "Green",
+  amber: "Amber",
+  orange: "Orange",
+  rose: "Rose",
+  slate: "Slate",
+};
+const colors = AVATAR_COLORS.map((color) => ({ color, label: colorLabels[color] }));
+// Any other color (spec 4.6): the picker beside the swatches; it starts at the saved custom
+// color, or violet's.
+const customColor = AVATAR_CUSTOM_COLOR.test(viewer.avatar.color) ? viewer.avatar.color : null;
+// Initials on the starting color draw as the neutral square, as everywhere else (Avatar.astro).
+const namedColor =
+  customColor || viewer.avatar.color === "violet" ? undefined : viewer.avatar.color;
+const kind = viewer.avatar.kind;
+const twoFactor = viewer.twoFactor;
+const backupLeft = `${twoFactor.backupCodesLeft} ${twoFactor.backupCodesLeft === 1 ? "backup code is" : "backup codes are"} left`;
+---
+
+<SettingsLayout ctx={ctx} current={null} title="Profile" active="profile">
+  <form
+    method="post"
+    class="nz-form nz-account"
+    data-profile-form
+    data-scripted
+    data-validate
+    novalidate
+    data-first-name={viewer.firstName}
+    data-last-name={viewer.lastName}
+    data-email={viewer.email}
+    data-avatar-kind={kind}
+    data-avatar-color={viewer.avatar.color}
+  >
+    <div class="nz-account-head">
+      <div class="nz-account-heading">
+        <h2 class="nz-account-title">
+          <Icon name="user" />
+          <span>My Account</span>
+        </h2>
+        <p class="nz-account-desc">Change the details of your profile here.</p>
+        {twoFactor.enabled && <p class="nz-account-desc">Two-factor sign-in is on. {backupLeft}.</p>}
+      </div>
+      {
+        twoFactor.enabled ? (
+          <button type="button" class="nz-btn nz-btn--ghost nz-account-2fa" data-dialog-open="nz-2fa-manage">
+            <Icon name="key" />
+            Manage 2FA
+          </button>
+        ) : (
+          <button type="button" class="nz-btn nz-btn--ghost nz-account-2fa" data-dialog-open="nz-2fa-enable">
+            <Icon name="key" />
+            Enable 2FA
+          </button>
+        )
+      }
+    </div>
+    <FormError />
+    <Field
+      id="nz-profile-first"
+      name="firstName"
+      label="First Name"
+      value={viewer.firstName}
+      class="nz-input--filled"
+      autocomplete="given-name"
+      maxlength={NAME_MAX}
+      data-required="Enter your first name."
+    />
+    <Field
+      id="nz-profile-last"
+      name="lastName"
+      label="Last Name"
+      value={viewer.lastName}
+      placeholder="Doe"
+      class="nz-input--filled"
+      autocomplete="family-name"
+      maxlength={NAME_MAX}
+    />
+    <Field
+      id="nz-profile-email"
+      name="email"
+      type="email"
+      label="Email"
+      value={viewer.email}
+      class="nz-input--filled"
+      autocomplete="email"
+      inputmode="email"
+      hint={viewer.pendingEmail
+        ? undefined
+        : !viewer.canEmailLinks
+          ? viewer.emailVerified
+            ? "This server can't send email, so a Nearzero administrator changes it for you in Members."
+            : "Not confirmed yet. This server can't send email, so ask a Nearzero administrator to confirm it in Members."
+          : viewer.emailVerified
+            ? "A change counts once you open the link sent to the new address."
+            : "Not confirmed yet. Invitations to it need the link from the invitation email."}
+      data-required="Enter your email address."
+      data-email="Use a valid email address."
+    />
+    {
+      // Without email there's no link to send, so nothing is offered (30a R1-02).
+      (viewer.pendingEmail || (!viewer.emailVerified && viewer.canEmailLinks)) && (
+        <div class="nz-email-status" data-email-status>
+          <p class="nz-small nz-dim">
+            {viewer.pendingEmail
+              ? `Open the link sent to ${viewer.pendingEmail} to make it your address. Until then ${viewer.email} stays in use.`
+              : `Confirm ${viewer.email} to see invitations to it in your notifications.`}
+          </p>
+          <div class="nz-email-status-actions">
+            <button type="button" class="nz-btn nz-btn--outline" data-email-send-link>
+              {viewer.pendingEmail ? "Send link again" : "Send confirmation link"}
+            </button>
+            {viewer.pendingEmail && (
+              <button type="button" class="nz-btn nz-btn--ghost" data-email-cancel-change>
+                Cancel change
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+    <Field
+      id="nz-profile-current-password"
+      name="currentPassword"
+      type="password"
+      label="Current Password"
+      placeholder="Current Password"
+      class="nz-input--filled"
+      autocomplete="current-password"
+    />
+    <Field
+      id="nz-profile-new-password"
+      name="newPassword"
+      type="password"
+      label="Password"
+      placeholder="Password"
+      class="nz-input--filled"
+      autocomplete="new-password"
+      maxlength={PASSWORD_MAX}
+      data-minlength={String(PASSWORD_MIN)}
+      data-minlength-message={`Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`}
+    />
+    <fieldset class="nz-avatar-pick">
+      <legend class="nz-label">Avatar</legend>
+      <div class="nz-avatar-options">
+        <label class="nz-avatar-option" title="Your initials">
+          <input type="radio" name="avatarKind" value="initials" checked={kind === "initials"} aria-label="Initials" />
+          <span
+            class="nz-avatar-face nz-avatar-face--initials"
+            data-avatar-initials
+            data-color={customColor ? "custom" : namedColor}
+            style={customColor ? `background:${customColor};color:${avatarTextColor(customColor)}` : undefined}
+            aria-hidden="true">{viewer.avatar.initials}</span
+          >
+        </label>
+        <label class="nz-avatar-option" title="Upload an image (PNG, JPEG, GIF or WebP under 2 MB)">
+          <input
+            type="radio"
+            name="avatarKind"
+            value="image"
+            checked={kind === "image"}
+            aria-label="An image"
+            data-avatar-image
+          />
+          <span class="nz-avatar-face nz-avatar-face--upload" aria-hidden="true">
+            {kind === "image" && viewer.avatar.imageUrl ? (
+              <img src={viewer.avatar.imageUrl} alt="" referrerpolicy="no-referrer" />
+            ) : (
+              <Icon name="plus" />
+            )}
+          </span>
+        </label>
+        <button
+          type="button"
+          class="nz-avatar-option nz-avatar-face nz-avatar-face--palette"
+          title="Initials color"
+          aria-label="Initials color"
+          aria-expanded="false"
+          aria-controls="nz-avatar-colors"
+          data-avatar-palette
+        >
+          <Icon name="palette" />
+        </button>
+        <label class="nz-avatar-option" title={`The picture Gravatar has for ${viewer.email}`}>
+          <input type="radio" name="avatarKind" value="gravatar" checked={kind === "gravatar"} aria-label="Gravatar" />
+          <span class="nz-avatar-face nz-avatar-face--gravatar" aria-hidden="true">
+            {kind === "gravatar" && viewer.avatar.imageUrl ? (
+              <img src={viewer.avatar.imageUrl} alt="" referrerpolicy="no-referrer" />
+            ) : (
+              <svg viewBox="0 0 48 48" width="20" height="20" focusable="false">
+                <path
+                  d="M24 12.5v10.5M18 15.6a10.5 10.5 0 1 0 12 0"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                />
+              </svg>
+            )}
+          </span>
+        </label>
+      </div>
+      <div id="nz-avatar-colors" class="nz-swatches" role="radiogroup" aria-label="Initials color" data-open="false">
+        {
+          colors.map(({ color, label }) => (
+            <label class="nz-swatch" data-color={color} title={label}>
+              <input
+                type="radio"
+                name="avatarColor"
+                value={color}
+                checked={viewer.avatar.color === color}
+                aria-label={label}
+              />
+            </label>
+          ))
+        }
+        <label
+          class="nz-swatch nz-swatch--custom"
+          title="Any color"
+          data-avatar-custom-swatch
+          data-chosen={customColor ? "true" : undefined}
+          style={customColor ? `background:${customColor}` : undefined}
+        >
+          <input
+            type="radio"
+            name="avatarColor"
+            value={customColor ?? "#7c3aed"}
+            checked={customColor !== null}
+            aria-label="Any color"
+            data-avatar-custom-radio
+          />
+        </label>
+        <label class="nz-color-pick">
+          <span class="nz-visually-hidden">Pick any color</span>
+          <input type="color" value={customColor ?? "#7c3aed"} data-avatar-custom />
+          <span class="nz-small nz-dim" aria-hidden="true">Any color</span>
+        </label>
+      </div>
+      <input
+        id="nz-avatar-file"
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        class="nz-visually-hidden"
+        tabindex="-1"
+        data-avatar-file
+        data-max-bytes={AVATAR_IMAGE_MAX_BYTES}
+      />
+      {
+        kind === "image" && (
+          <div class="nz-avatar-image-actions">
+            <label for="nz-avatar-file" class="nz-btn nz-btn--ghost">Replace image</label>
+            <button type="button" class="nz-btn nz-btn--ghost" data-avatar-remove>Remove image</button>
+          </div>
+        )
+      }
+    </fieldset>
+    <div class="nz-account-actions">
+      <button type="submit" class="nz-btn nz-btn--primary">Save</button>
+    </div>
+  </form>
+  <TwoFactorDialogs slot="dialogs" email={viewer.email} />
+</SettingsLayout>

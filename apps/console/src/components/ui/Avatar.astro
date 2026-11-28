@@ -1,0 +1,43 @@
+---
+import { AVATAR_CUSTOM_COLOR, avatarTextColor } from "@nearzero/shared";
+import type { Avatar as AvatarView } from "../../lib/data/index.ts";
+
+/**
+ * A person's avatar (spec 4.6, 21.10): their initials, their uploaded image, or Gravatar, on a
+ * 28px rounded square (6px corners). Initials on the default color sit on the neutral fill with
+ * dark initials, as in the original; another named color or any #rrggbb the person picked keeps
+ * its color.
+ */
+interface Props {
+  avatar: AvatarView;
+  size?: "small" | "large";
+  class?: string;
+}
+
+const { avatar, size = "small", class: className } = Astro.props;
+// A custom color (#rrggbb) is drawn inline, with whichever text color reads better on it.
+const custom = AVATAR_CUSTOM_COLOR.test(avatar.color) ? avatar.color : null;
+// "violet" is every account's starting color; it reads as the neutral square.
+const named = custom || avatar.color === "violet" ? undefined : avatar.color;
+---
+
+{
+  avatar.imageUrl ? (
+    <img
+      class:list={["nz-avatar", "nz-avatar--image", size === "large" && "nz-avatar--large", className]}
+      src={avatar.imageUrl}
+      alt=""
+      referrerpolicy="no-referrer"
+      loading="lazy"
+    />
+  ) : (
+    <span
+      class:list={["nz-avatar", size === "large" && "nz-avatar--large", className]}
+      data-color={custom ? "custom" : named}
+      style={custom ? `background:${custom};color:${avatarTextColor(custom)}` : undefined}
+      aria-hidden="true"
+    >
+      {avatar.initials}
+    </span>
+  )
+}

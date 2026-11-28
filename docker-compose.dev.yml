@@ -1,0 +1,26 @@
+# Local development database for Nearzero. Only PostgreSQL: jobs live in it too (spec 25, D1.2).
+#   docker compose -f docker-compose.dev.yml up -d
+# The port is unusual on purpose so it never collides with a PostgreSQL you already run.
+# These credentials are for this local container only; never reuse them anywhere else.
+name: nearzero-next-dev
+
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    environment:
+      POSTGRES_USER: nearzero
+      POSTGRES_PASSWORD: nearzero-dev
+      POSTGRES_DB: nearzero
+    ports:
+      - "127.0.0.1:55440:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nearzero -d nearzero"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

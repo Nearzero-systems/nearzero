@@ -1,0 +1,41 @@
+/* Utilities come from the console's own source only, so words in tests and sweeps don't add any. */
+@import "tailwindcss" source("../");
+@import "./tokens.css";
+@import "./base.css";
+@import "./components.css";
+@import "./shell.css";
+@import "./agent.css";
+@import "./pages.css";
+@import "./auth.css";
+@import "./people.css";
+@import "./profile.css";
+@import "./projects.css";
+@import "./git.css";
+@import "./operations.css";
+@import "./server-setup.css";
+@import "./backups.css";
+@import "./m10.css";
+@import "./compose.css";
+@import "./motion.css";
+
+/* Dark covers Dark and Dusk (Dusk is layered on Dark); `dusk:` targets Dusk alone. */
+@custom-variant dark (&:where([data-tone="dark"], [data-tone="dark"] *));
+@custom-variant dusk (&:where([data-theme="dusk"], [data-theme="dusk"] *));
+
+@theme inline {
+  --color-page: var(--nz-page);
+  --color-raised: var(--nz-raised);
+  --color-muted: var(--nz-muted);
+  --color-hover: var(--nz-hover);
+  --color-line: var(--nz-line);
+  --color-line-strong: var(--nz-line-strong);
+  --color-card-line: var(--nz-card-line);
+  --color-surface: var(--nz-surface);
+  --color-fg: var(--nz-text);
+  --color-fg-dim: var(--nz-text-dim);
+  --color-fg-faint: var(--nz-text-faint);
+  --color-danger: var(--nz-danger-text);
+  --font-sans: var(--nz-font-ui);
+  --font-mono: var(--nz-font-code);
+  --breakpoint-chat: 45rem;
+}

@@ -1,0 +1,18 @@
+---
+import { agentPath, NO_ACCESS_MESSAGE } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import EmptyState from "../ui/EmptyState.astro";
+
+/** A settings entry opened by address by someone it is hidden from (spec 18.1). */
+interface Props {
+  workspace: string;
+  /** The entry's own reason, where the spec gives one (API keys, 4.8). */
+  reason?: string;
+}
+
+const { workspace, reason } = Astro.props;
+---
+
+<EmptyState icon="alert" title={NO_ACCESS_MESSAGE} text={reason}>
+  <Button variant="outline" href={agentPath(workspace)}>Back to Agent</Button>
+</EmptyState>

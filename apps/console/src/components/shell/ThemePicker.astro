@@ -1,0 +1,40 @@
+---
+import { resolveTheme, THEME_COOKIE } from "../../lib/theme.ts";
+import Icon from "../ui/Icon.astro";
+
+/**
+ * Light, Dark, Dusk as a three-way radio group: three equal segments, each with its icon (a sun,
+ * a moon, a sunset) and its word (spec 21.2, 21.10).
+ */
+interface Props {
+  /** Radio groups need a unique name per picker on the page. */
+  name: string;
+}
+
+const { name } = Astro.props;
+const { theme } = resolveTheme(Astro.cookies.get(THEME_COOKIE)?.value);
+const options = [
+  { value: "light", label: "Light", icon: "sun" },
+  { value: "dark", label: "Dark", icon: "moon" },
+  { value: "dusk", label: "Dusk", icon: "sunset" },
+] as const;
+---
+
+<div class="nz-theme-picker" role="radiogroup" aria-label="Theme">
+  {
+    options.map((option) => (
+      <label class="nz-theme-option">
+        <input
+          type="radio"
+          name={name}
+          value={option.value}
+          checked={theme === option.value}
+          data-theme-choice
+          aria-label={option.label}
+        />
+        <Icon name={option.icon} />
+        <span aria-hidden="true">{option.label}</span>
+      </label>
+    ))
+  }
+</div>

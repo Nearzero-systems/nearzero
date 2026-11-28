@@ -1,0 +1,32 @@
+{
+  "name": "@nearzero/control",
+  "version": "1.0.0-dev",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "build": "bun build src/main.ts src/cli.ts --target=bun --outdir=dist --sourcemap=linked --external cpu-features",
+    "typecheck": "tsc --noEmit -p .",
+    "cli": "bun src/cli.ts"
+  },
+  "dependencies": {
+    "@nearzero/shared": "workspace:*",
+    "hono": "4.13.17",
+    "kysely": "0.29.8",
+    "nodemailer": "7.0.10",
+    "pg": "8.23.1",
+    "qrcode": "1.5.4",
+    "ssh2": "1.17.0",
+    "unpdf": "2.1.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "7.0.3",
+    "@types/pg": "8.23.1",
+    "@types/qrcode": "1.5.6",
+    "@types/ssh2": "1.15.5"
+  }
+}

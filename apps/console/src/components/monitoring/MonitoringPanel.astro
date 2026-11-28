@@ -1,0 +1,118 @@
+---
+import {
+  MONITORING_MESSAGES,
+  MONITORING_POINT_LABELS,
+  MONITORING_POINTS,
+  MONITORING_REFRESH_SECONDS,
+} from "@nearzero/shared/browser";
+import Button from "../ui/Button.astro";
+import Icon from "../ui/Icon.astro";
+
+/**
+ * One server's monitoring (spec 14.2, 14.3, 24 P2/P3): cards for uptime, CPU, RAM and storage,
+ * system information, CPU and RAM history, the data points and refresh controls, and the alert
+ * thresholds with "Send a test alert" for people who may change them. The same view serves
+ * About Nearzero (the host) and every server's details.
+ *
+ * Mount it anywhere: with `target` ("host" or a server id) it loads at once; without, it waits
+ * for a `nz:monitoring-target` event on its element (the server Details dialog sends one when it
+ * opens a server) and stops refreshing when its dialog closes. client/monitoring.ts drives it.
+ */
+interface Props {
+  /** "host", a server id, or nothing (set later by the event). */
+  target?: string;
+  intro: string;
+  /** Unique within the page, for field ids. */
+  idPrefix: string;
+}
+const { target = "", intro, idPrefix } = Astro.props;
+const id = (name: string) => `${idPrefix}-${name}`;
+---
+
+<div class="nz-monitoring" data-monitoring data-target={target}>
+  <div class="nz-monitoring-head">
+    <p class="nz-dim min-w-0">{intro}</p>
+    <div class="nz-monitoring-controls">
+      <label class="nz-select-wrap">
+        <span class="nz-visually-hidden">Data points</span>
+        <select class="nz-select" aria-label="Data points" data-monitoring-points>
+          {MONITORING_POINTS.map((value) => <option value={value} selected={value === "50"}>{MONITORING_POINT_LABELS[value]}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+      <label class="nz-select-wrap">
+        <span class="nz-visually-hidden">Refresh</span>
+        <select class="nz-select" aria-label="Refresh" data-monitoring-refresh>
+          {MONITORING_REFRESH_SECONDS.map((seconds) => <option value={String(seconds)} selected={seconds === 5}>Every {seconds} seconds</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+    </div>
+  </div>
+  <p class="nz-inline-error nz-small" role="alert" data-monitoring-error hidden>
+    <span class="nz-monitoring-error-text">
+      <span>{MONITORING_MESSAGES.fetchError}</span>
+      <span data-monitoring-error-reason></span>
+    </span>
+  </p>
+  <p class="nz-dim nz-small" data-monitoring-empty hidden>{MONITORING_MESSAGES.noSamples}</p>
+  <p class="nz-inline-note nz-small" role="status" data-monitoring-stale hidden></p>
+  <div class="nz-monitoring-cards">
+    <section class="nz-card nz-stat" aria-label="Uptime">
+      <p class="nz-stat-label">Uptime</p>
+      <p class="nz-stat-value" data-metric="uptime">—</p>
+    </section>
+    <section class="nz-card nz-stat" aria-label="CPU usage">
+      <p class="nz-stat-label">CPU usage</p>
+      <p class="nz-stat-value" data-metric="cpu">—</p>
+      <span class="nz-meter" aria-hidden="true"><span data-meter="cpu"></span></span>
+    </section>
+    <section class="nz-card nz-stat" aria-label="RAM usage">
+      <p class="nz-stat-label">RAM usage</p>
+      <p class="nz-stat-value" data-metric="memory">—</p>
+      <p class="nz-small nz-dim" data-metric="memory-detail"></p>
+      <span class="nz-meter" aria-hidden="true"><span data-meter="memory"></span></span>
+    </section>
+    <section class="nz-card nz-stat" aria-label="Storage usage">
+      <p class="nz-stat-label">Storage usage</p>
+      <p class="nz-stat-value" data-metric="disk">—</p>
+      <p class="nz-small nz-dim" data-metric="disk-detail"></p>
+      <span class="nz-meter" aria-hidden="true"><span data-meter="disk"></span></span>
+    </section>
+  </div>
+  <section class="nz-monitoring-system" aria-labelledby={id("system")}>
+    <h3 class="nz-setup-heading" id={id("system")}>System information</h3>
+    <dl class="nz-facts" data-monitoring-system></dl>
+  </section>
+  <div class="nz-monitoring-charts">
+    <section class="nz-card nz-section" aria-labelledby={id("cpu-title")}>
+      <h3 class="nz-subtitle" id={id("cpu-title")}>CPU history</h3>
+      <div data-monitoring-chart="cpu"></div>
+    </section>
+    <section class="nz-card nz-section" aria-labelledby={id("ram-title")}>
+      <h3 class="nz-subtitle" id={id("ram-title")}>RAM history</h3>
+      <div data-monitoring-chart="memory"></div>
+    </section>
+  </div>
+  <form class="nz-form nz-monitoring-alerts" novalidate data-scripted data-monitoring-alerts hidden>
+    <h3 class="nz-setup-heading">Alerts</h3>
+    <div class="nz-monitoring-alert-fields">
+      <div data-field>
+        <label class="nz-label" for={id("cpu")}>{MONITORING_MESSAGES.cpuLabel}</label>
+        <input id={id("cpu")} class="nz-input" type="number" name="cpuThreshold" min="1" max="100" step="1" inputmode="numeric" placeholder="Off" />
+        <p class="nz-field-error" data-field-error hidden></p>
+      </div>
+      <div data-field>
+        <label class="nz-label" for={id("memory")}>{MONITORING_MESSAGES.memoryLabel}</label>
+        <input id={id("memory")} class="nz-input" type="number" name="memoryThreshold" min="1" max="100" step="1" inputmode="numeric" placeholder="Off" />
+        <p class="nz-field-error" data-field-error hidden></p>
+      </div>
+    </div>
+    <p class="nz-hint">{MONITORING_MESSAGES.thresholdHint} <span data-monitoring-channels></span></p>
+    <p class="nz-small nz-inline-error" data-form-error hidden><span data-form-error-text></span></p>
+    <div class="nz-monitoring-alert-actions">
+      <Button variant="primary" type="submit">Save alerts</Button>
+      <Button variant="outline" icon="bell" data-monitoring-test>Send a test alert</Button>
+    </div>
+  </form>
+</div>

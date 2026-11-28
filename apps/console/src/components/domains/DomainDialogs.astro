@@ -1,0 +1,286 @@
+---
+import { RECORD_TYPES, WIZARD_STEP_LABELS, WIZARD_STEPS } from "../../lib/domains.ts";
+import { settingsPath } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Icon from "../ui/Icon.astro";
+import ServicePicker from "./ServicePicker.astro";
+
+/**
+ * The Domains page's dialogs (spec 10.4–10.8): the Add domain wizard (Hostname → Service → DNS →
+ * HTTPS), Connect a service, hostname Details, Disconnect and Remove hostname, Connect a DNS
+ * zone, a zone's Records, Remove zone, an environment default's Change, and uploading, editing
+ * and deleting certificates. client/domains-page.ts runs them.
+ */
+interface Props {
+  workspace: string;
+  startFrom: string[];
+  options: { value: string; label: string }[];
+  prefixHint: string;
+  servers: { id: string; name: string }[];
+}
+
+const { workspace, startFrom, options, prefixHint, servers } = Astro.props;
+const about = settingsPath(workspace);
+---
+
+<dialog id="nz-domain-wizard" class="nz-dialog nz-moonlit nz-dialog--wide" aria-labelledby="nz-wizard-title" data-dialog data-domain-wizard data-about={about}>
+  <div class="nz-dialog-body">
+    <div class="nz-dialog-head">
+      <div class="min-w-0">
+        <h2 id="nz-wizard-title" class="nz-dialog-title">Add domain</h2>
+        <p class="nz-dialog-desc">A hostname for a service, with HTTPS once DNS points at its server.</p>
+      </div>
+    </div>
+    <ol class="nz-stepper" aria-label="Steps">
+      {
+        WIZARD_STEPS.map((step, index) => (
+          <>
+            {index > 0 && <li class="nz-step-sep" aria-hidden="true"><Icon name="chevron-right" /></li>}
+            <li class="nz-step" data-wizard-mark={step} aria-current={index === 0 ? "step" : undefined}>{WIZARD_STEP_LABELS[step]}</li>
+          </>
+        ))
+      }
+    </ol>
+    <form class="nz-form" data-scripted novalidate data-wizard-form>
+      <div class="nz-stack-sm" data-wizard-step="hostname">
+        {
+          startFrom.length > 0 && (
+            <div class="nz-chip-row">
+              <span class="nz-small nz-dim">Start from:</span>
+              {startFrom.map((parent) => (
+                <button type="button" class="nz-chip" data-wizard-parent={parent}>.{parent}</button>
+              ))}
+            </div>
+          )
+        }
+        <div data-field>
+          <label class="nz-label" for="nz-wizard-host">Hostname</label>
+          <input class="nz-input" id="nz-wizard-host" name="hostname" placeholder="app.example.com" autocomplete="off" spellcheck="false" inputmode="url" data-wizard-host />
+          <p class="nz-field-error" data-field-error hidden></p>
+        </div>
+      </div>
+
+      <div class="nz-stack-sm" data-wizard-step="service" hidden>
+        <label class="nz-check">
+          <input type="checkbox" checked data-wizard-connect />
+          <span>Connect it to a service now</span>
+        </label>
+        <div data-wizard-connect-on>
+          <ServicePicker prefix="nz-wizard" />
+        </div>
+        <div data-field data-wizard-connect-off hidden>
+          <label class="nz-label" for="nz-wizard-server">Server it points to</label>
+          <span class="nz-select-wrap">
+            <select class="nz-select" id="nz-wizard-server" name="serverId" data-wizard-server>
+              {servers.map((server) => <option value={server.id}>{server.name}</option>)}
+            </select>
+            <Icon name="chevron-down" />
+          </span>
+        </div>
+      </div>
+
+      <div class="nz-stack-sm" data-wizard-step="dns" hidden>
+        <fieldset class="nz-choice-list" data-wizard-managed hidden>
+          <legend class="nz-label">DNS record</legend>
+          <label class="nz-check"><input type="radio" name="dns" value="managed" checked /><span data-wizard-managed-label="managed"></span></label>
+          <label class="nz-check"><input type="radio" name="dns" value="external" /><span data-wizard-managed-label="external"></span></label>
+        </fieldset>
+        <div class="nz-record-card" data-wizard-record>
+          <p class="nz-small">Add this record at your DNS provider (TTL Auto or 300, DNS only):</p>
+          <div data-wizard-record-row></div>
+          <p class="nz-hint" data-wizard-hint></p>
+          <p class="nz-inline-note nz-warn-note" data-wizard-proxy hidden></p>
+        </div>
+        <p class="nz-small" data-wizard-dns-status aria-live="polite"></p>
+        <p class="nz-small" data-wizard-address hidden>
+          <span data-wizard-address-text></span>
+          <a class="nz-text-link" href={about}>Fix it under About Nearzero</a>
+        </p>
+        <div><Button variant="outline" icon="refresh" data-wizard-check>Check again</Button></div>
+      </div>
+
+      <div class="nz-stack-sm" data-wizard-step="https" hidden>
+        <p data-wizard-https-status aria-live="polite">Waiting for the certificate…</p>
+        <p hidden data-wizard-open><a class="nz-text-link" href="#" target="_blank" rel="noopener noreferrer" data-wizard-open-link></a></p>
+      </div>
+
+      <FormError />
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-wizard-back hidden>Back</Button>
+        <Button variant="outline" data-dialog-close data-wizard-cancel>Cancel</Button>
+        <Button variant="primary" data-wizard-next>Next</Button>
+        <Button variant="primary" type="submit" data-wizard-add hidden>Add domain</Button>
+        <Button variant="primary" data-dialog-close data-wizard-done hidden>Close</Button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<Dialog id="nz-connect-service" title="Connect a service">
+  <form class="nz-form" data-scripted novalidate data-connect-form>
+    <input type="hidden" name="hostnameId" value="" />
+    <p class="nz-dim">Route <span class="nz-code" data-fill-text="hostname"></span> to:</p>
+    <ServicePicker prefix="nz-connect" />
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Connect</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-hostname-details" title="Hostname details" wide>
+  <div class="nz-stack" data-details-body><p class="nz-dim">Loading…</p></div>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+  </div>
+</Dialog>
+
+<Dialog id="nz-disconnect-hostname" title="Disconnect service?">
+  <form class="nz-form" data-api="POST /domains/hostnames/{hostnameId}/disconnect" novalidate>
+    <input type="hidden" name="hostnameId" value="" />
+    <p class="nz-dim">
+      <span class="nz-code" data-fill-text="hostname"></span> stops serving traffic until you connect a service again.
+    </p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Disconnect service</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-remove-hostname" title="Remove hostname?">
+  <form class="nz-form" data-api="DELETE /domains/hostnames/{hostnameId}" novalidate>
+    <input type="hidden" name="hostnameId" value="" />
+    <p class="nz-dim">
+      <span class="nz-code" data-fill-text="hostname"></span> stops serving at once. Its route, its certificate and any DNS
+      record Nearzero manages for it are removed.
+    </p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Remove hostname</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-zone-connect" title="Connect a DNS zone" description="Point a domain's nameservers to Nearzero.">
+  <form class="nz-form" data-api="POST /domains/zones" data-api-manual data-zone-connect-form novalidate>
+    <Field id="nz-zone-domain" name="domain" label="Domain" placeholder="example.com" autocomplete="off" spellcheck="false" />
+    <Field id="nz-zone-email" name="adminEmail" label="DNS admin email" type="email" autocomplete="off" hint="Stored in the zone file. Not used for login." />
+    <Field id="nz-zone-ns" name="nameservers" label="Nameservers" placeholder="Optional: ns1.example.com, ns2.example.com" autocomplete="off" spellcheck="false" hint="Leave empty for ns1 and ns2 under the platform domain or the zone." data-list-field />
+    <p class="nz-hint">Then delegate the zone at your registrar and allow TCP and UDP port 53 on the Nearzero host.</p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Connect zone</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-zone-records" title="Records" wide>
+  <p class="nz-small nz-dim" data-records-status aria-live="polite"></p>
+  <div class="nz-table-wrap" role="region" aria-label="Records" tabindex="0">
+    <table class="nz-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Value</th><th>TTL</th><th class="nz-col-actions"><span class="nz-visually-hidden">Actions</span></th></tr></thead>
+      <tbody data-records-rows></tbody>
+    </table>
+  </div>
+  <form class="nz-form mt-3" data-scripted novalidate data-record-form>
+    <p class="nz-label">Add a record</p>
+    <div class="nz-record-form-grid">
+      <input class="nz-input" name="name" placeholder="@ or www" aria-label="Name" autocomplete="off" />
+      <span class="nz-select-wrap">
+        <select class="nz-select" name="type" aria-label="Type" data-record-type>
+          {RECORD_TYPES.map((type) => <option value={type}>{type}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </span>
+      <input class="nz-input" name="value" placeholder="Value" aria-label="Value" autocomplete="off" spellcheck="false" />
+      <input class="nz-input" name="ttl" value="300" inputmode="numeric" aria-label="TTL" />
+      <input class="nz-input" name="priority" placeholder="Priority" inputmode="numeric" aria-label="Priority (MX)" data-record-priority hidden />
+      <Button variant="outline" type="submit" icon="plus">Add</Button>
+    </div>
+    <p class="nz-hint">Changes are published when you press Apply. Records Nearzero manages are published at once.</p>
+    <FormError />
+  </form>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+    <Button variant="primary" data-records-apply>Apply</Button>
+  </div>
+</Dialog>
+
+<Dialog id="nz-zone-remove" title="Remove zone?">
+  <form class="nz-form" data-api="DELETE /domains/zones/{zoneId}" data-api-toast="Zone removed" novalidate>
+    <input type="hidden" name="zoneId" value="" />
+    <p class="nz-dim">Nearzero stops serving <span class="nz-code" data-fill-text="zone"></span>. It is refused while services still use hostnames in it.</p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Remove zone</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-default-change" title="Change">
+  <form class="nz-form" data-api="PUT /domains/defaults/{environmentId}" novalidate>
+    <input type="hidden" name="environmentId" value="" />
+    <p class="nz-dim" data-fill-text="label"></p>
+    <Field id="nz-default-source" name="source" label="App hostnames from" as="select" options={options.map((option) => ({ value: option.value, label: option.label }))} />
+    <Field id="nz-default-prefix" name="prefix" label="Name prefix" placeholder="Optional" autocomplete="off" hint={prefixHint || 'With "staging", apps get web.staging.example.com'} />
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Save</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-certificate-upload" title="Upload certificate" description="Only for wildcards or your own CA." wide>
+  <form class="nz-form" data-api="POST /domains/certificates" data-api-toast="Certificate uploaded" novalidate>
+    <div class="nz-form-grid-2">
+      <Field id="nz-cert-name" name="name" label="Name" autocomplete="off" />
+      <Field id="nz-cert-server" name="serverId" label="Server" as="select" options={servers.map((server) => ({ value: server.id, label: server.name }))} hint="Fixed after upload." />
+    </div>
+    <Field id="nz-cert-pem" name="certificate" label="Certificate (PEM)" as="textarea" rows={5} class="nz-code-input" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----" />
+    <Field id="nz-cert-key" name="privateKey" label="Private key (PEM)" as="textarea" rows={5} class="nz-code-input" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----" data-1p-ignore />
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Upload</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-certificate-edit" title="Edit certificate" wide>
+  <form class="nz-form" data-api="PATCH /domains/certificates/{certificateId}" data-api-toast="Certificate updated" novalidate>
+    <input type="hidden" name="certificateId" value="" />
+    <Field id="nz-cert-edit-name" name="name" label="Name" autocomplete="off" />
+    <Field id="nz-cert-edit-pem" name="certificate" label="Certificate (PEM)" as="textarea" rows={5} class="nz-code-input" spellcheck="false" placeholder="Leave blank to keep the stored certificate" data-omit-empty />
+    <Field id="nz-cert-edit-key" name="privateKey" label="Private key (PEM)" as="textarea" rows={4} class="nz-code-input" spellcheck="false" placeholder="Leave blank to keep the stored private key" data-omit-empty data-1p-ignore />
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Save</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-certificate-delete" title="Delete certificate?">
+  <form class="nz-form" data-api="DELETE /domains/certificates/{certificateId}" novalidate>
+    <input type="hidden" name="certificateId" value="" />
+    <p class="nz-dim">
+      The router stops using <span class="font-medium" data-fill-text="name"></span>. Hostnames it covered get Let's Encrypt
+      certificates again.
+    </p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete certificate</Button>
+    </div>
+  </form>
+</Dialog>

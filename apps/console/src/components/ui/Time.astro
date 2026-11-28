@@ -1,0 +1,36 @@
+---
+import { calendarTime, dateTime, fullDate, knownTimeZone } from "../../lib/time.ts";
+
+/**
+ * A time as the original shows it (spec 21.10): "Today, 8:23 PM" in tables and on service pages,
+ * or a full "11/26/2026, 8:33:41 PM" in the bell. Rendered in the person's time zone (the
+ * `nz_tz` cookie) and redrawn in the browser's own zone (client/local-times.ts).
+ */
+interface Props {
+  date: Date | string;
+  format?: "calendar" | "full";
+  now?: Date;
+  class?: string;
+}
+
+const { date, format = "calendar", now = new Date(), class: className } = Astro.props;
+const at = typeof date === "string" ? new Date(date) : date;
+const zone = knownTimeZone(Astro.cookies.get("nz_tz")?.value);
+const valid = !Number.isNaN(at.getTime());
+const text = valid ? (format === "full" ? dateTime(at, zone) : calendarTime(at, now, zone)) : "";
+---
+
+{
+  valid ? (
+    <time
+      class={className}
+      datetime={at.toISOString()}
+      data-time-format={format}
+      title={fullDate(at)}
+    >
+      {text}
+    </time>
+  ) : (
+    <span class={className}>—</span>
+  )
+}

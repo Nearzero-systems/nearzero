@@ -1,0 +1,74 @@
+---
+import type { WorkspaceSummary } from "../../lib/data/index.ts";
+import { pathAfterWorkspace } from "../../lib/routes.ts";
+import Icon from "../ui/Icon.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+
+/**
+ * The workspace switcher (spec 4.4, 21.10): the plain name with an up/down chevron; the menu is
+ * headed "Organizations" (the original's word), with a check on the active one. Switching keeps
+ * the current page under the new address. Add organization is for instance administrators;
+ * Rename organization for instance administrators who are an owner or admin of the active one.
+ */
+interface Props {
+  workspace: WorkspaceSummary;
+  workspaces: WorkspaceSummary[];
+  canAdd: boolean;
+  canRename: boolean;
+}
+
+const { workspace, workspaces, canAdd, canRename } = Astro.props;
+const keepPath = pathAfterWorkspace(Astro.url.pathname);
+const list = workspaces.some((item) => item.id === workspace.id)
+  ? workspaces
+  : [workspace, ...workspaces];
+---
+
+<button
+  type="button"
+  class="nz-crumb"
+  popovertarget="nz-workspace-menu"
+  aria-haspopup="menu"
+  aria-expanded="false"
+  aria-label={`Organization: ${workspace.name}`}
+>
+  {
+    workspace.logoUrl && (
+      <img class="nz-crumb-logo" src={workspace.logoUrl} alt="" referrerpolicy="no-referrer" />
+    )
+  }
+  <span class="nz-crumb-name nz-crumb-name--workspace">{workspace.name}</span>
+  <Icon name="chevrons-up-down" />
+</button>
+<Menu id="nz-workspace-menu" label="Organizations" class="nz-workspace-menu" data-gap="6">
+  <p class="nz-menu-heading nz-menu-eyebrow">Organizations</p>
+  {
+    list.map((item) => (
+      <form method="post" action="/session/workspace" data-astro-reload>
+        <input type="hidden" name="workspaceId" value={item.id} />
+        <input type="hidden" name="path" value={keepPath} />
+        <MenuItem type="submit" checked={item.id === workspace.id}>
+          {item.name}
+        </MenuItem>
+      </form>
+    ))
+  }
+  {
+    (canAdd || canRename) && (
+      <>
+        <hr class="nz-menu-sep" />
+        {canAdd && (
+          <MenuItem icon="plus" muted data-dialog-open="nz-add-workspace">
+            Add organization
+          </MenuItem>
+        )}
+        {canRename && (
+          <MenuItem icon="edit" muted data-dialog-open="nz-rename-workspace">
+            Rename organization
+          </MenuItem>
+        )}
+      </>
+    )
+  }
+</Menu>

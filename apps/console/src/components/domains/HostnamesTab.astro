@@ -1,0 +1,187 @@
+---
+import type { HostnameList } from "../../lib/data/index.ts";
+import {
+  checkedAtLabel,
+  dnsPill,
+  HOSTNAME_FILTERS,
+  httpsPill,
+  serviceLine,
+} from "../../lib/domains.ts";
+import { servicePath } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import EmptyState from "../ui/EmptyState.astro";
+import Icon from "../ui/Icon.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import TableWrap from "../ui/TableWrap.astro";
+import VisitButton from "../ui/VisitButton.astro";
+
+/**
+ * The Hostnames tab (spec 10.4): search, Show, "Checked at HH:MM" with Refresh, the table
+ * (Hostname, Service, DNS, HTTPS) with Details and a row menu, and the services that have no
+ * domain, each with Add domain.
+ */
+interface Props {
+  list: HostnameList;
+  q: string;
+  show: string;
+  base: string;
+  workspace: string;
+}
+
+const { list, q, show, base, workspace } = Astro.props;
+const filtered = q !== "" || show !== "all";
+// With no hostnames at all there is nothing to search: the tab opens with its sentence.
+const bare = list.hostnames.length === 0 && !filtered;
+---
+
+<div data-hostnames-tab class="nz-hostnames">
+  <p class="nz-hostnames-intro">Every hostname Nearzero routes, the service behind it, and whether DNS and HTTPS are ready.</p>
+  <form class="nz-toolbar nz-hostnames-tools" method="get" action={base} data-filter-form hidden={bare}>
+    <input type="hidden" name="tab" value="hostnames" data-default="hostnames" />
+    <label class="nz-toolbar-search">
+      <span class="nz-visually-hidden">Search hostnames or services</span>
+      <input type="search" name="q" class="nz-input nz-input--search" placeholder="Search hostnames or services" value={q} autocomplete="off" />
+    </label>
+    <label class="nz-select-wrap nz-toolbar-filter">
+      <span class="nz-visually-hidden">Show</span>
+      <select class="nz-select nz-select--toolbar" name="show" aria-label="Show" data-default="all">
+        {HOSTNAME_FILTERS.map((option) => <option value={option.value} selected={option.value === show}>{option.label}</option>)}
+      </select>
+      <Icon name="chevron-down" />
+    </label>
+    <span class="nz-small nz-dim nz-checked-at" data-checked-at={list.checkedAt ?? ""}>{checkedAtLabel(list.checkedAt)}</span>
+    <Button variant="outline" data-hostnames-refresh>Refresh</Button>
+  </form>
+  {list.unreadableMessage && <p class="nz-inline-note nz-warn-note mb-3">{list.unreadableMessage}</p>}
+
+  {
+    list.hostnames.length === 0 ? (
+      filtered ? (
+        <div class="nz-hostnames-empty">
+          <EmptyState title="No hostnames match" text="Try another search or Show filter." />
+        </div>
+      ) : (
+        <div class="nz-hostnames-empty">
+          <EmptyState
+            title="No hostnames yet"
+            text="Add a hostname you own, like app.example.com. Nearzero shows the DNS record to create, checks it, and gets the certificate."
+          >
+            <Button variant="primary" data-wizard-open>Add domain</Button>
+          </EmptyState>
+        </div>
+      )
+    ) : (
+      <TableWrap label="Hostnames" class="nz-hostnames-table">
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>Service</th>
+            <th>DNS</th>
+            <th>HTTPS</th>
+            <th class="nz-col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.hostnames.map((item) => {
+            const menu = `nz-host-menu-${item.id}`;
+            const serviceHref = item.service
+              ? servicePath(workspace, item.service.projectId, item.service.environmentId, item.service.id)
+              : null;
+            const fill = JSON.stringify({ hostnameId: item.id, hostname: item.hostname, service: item.service?.name ?? "" });
+            return (
+              <tr data-hostname-row={item.id}>
+                <td>
+                  <span class="nz-host-cell">
+                    <a class="nz-text-link nz-truncate font-medium" href={item.url} target="_blank" rel="noopener noreferrer">{item.hostname}</a>
+                    <CopyButton text={item.url} what="URL" />
+                    <VisitButton href={item.url} />
+                  </span>
+                  <span class="nz-small nz-dim nz-block">{item.sourceLabel}</span>
+                </td>
+                <td>
+                  {item.service ? (
+                    <span class="nz-stack-sm">
+                      {serviceHref ? <a class="nz-text-link font-medium" href={serviceHref}>{item.service.name}{item.service.composeService ? ` · ${item.service.composeService}` : ""}</a> : <span>{item.service.name}</span>}
+                      <span class="nz-small nz-dim">{serviceLine(item)}</span>
+                    </span>
+                  ) : (
+                    <span class="nz-stack-sm">
+                      <span class="nz-dim">Not connected</span>
+                      {item.can.manage && (
+                        <span><Button variant="ghost" data-dialog-open="nz-connect-service" data-dialog-fill={fill} data-connect-service={item.id}>Connect a service</Button></span>
+                      )}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <span class="nz-stack-sm">
+                    <StatusPill status={dnsPill(item.dns.status)} label={item.dns.label} />
+                    <span class="nz-small nz-dim nz-clamp-2" title={item.dns.note}>{item.dns.note}</span>
+                  </span>
+                </td>
+                <td>
+                  <span class="nz-stack-sm">
+                    <StatusPill status={httpsPill(item.https.state)} label={item.https.label} />
+                    <span class="nz-small nz-dim nz-clamp-2" title={item.https.note}>{item.https.note}</span>
+                  </span>
+                </td>
+                <td class="nz-col-actions">
+                  <span class="flex gap-1">
+                    <Button variant="ghost" data-hostname-details={item.id}>Details</Button>
+                    <Button variant="icon" icon="more" label={`Actions for ${item.hostname}`} popovertarget={menu} aria-haspopup="menu" aria-expanded="false" />
+                  </span>
+                  <Menu id={menu} label={`Actions for ${item.hostname}`} placement="bottom-end">
+                    <MenuItem icon="refresh" data-hostname-action="check-dns" data-hostname-id={item.id}>Check DNS</MenuItem>
+                    {item.can.retry && <MenuItem icon="lock" data-hostname-action="retry" data-hostname-id={item.id}>Retry certificate</MenuItem>}
+                    {serviceHref && <MenuItem icon="app" href={serviceHref}>Open service</MenuItem>}
+                    {item.can.manage && !item.automatic && (
+                      <MenuItem icon="link" data-dialog-open="nz-connect-service" data-dialog-fill={fill} data-connect-service={item.id}>
+                        {item.service ? "Move to another service" : "Connect a service"}
+                      </MenuItem>
+                    )}
+                    {item.can.manage && item.service && (
+                      <MenuItem icon="close" data-dialog-open="nz-disconnect-hostname" data-dialog-fill={fill}>Disconnect service</MenuItem>
+                    )}
+                    <MenuItem icon="external" href={item.url} target="_blank">Open site</MenuItem>
+                    {item.can.manage && (
+                      <MenuItem icon="trash" danger data-dialog-open="nz-remove-hostname" data-dialog-fill={fill}>Remove hostname</MenuItem>
+                    )}
+                  </Menu>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </TableWrap>
+    )
+  }
+
+  {
+    list.withoutDomain.count > 0 && (
+      <details class="nz-without-domain" aria-labelledby="nz-without-domain">
+        <summary id="nz-without-domain">
+          <span class="nz-disclosure-mark" aria-hidden="true"></span>
+          {list.withoutDomain.message ?? `${list.withoutDomain.count} services have no domain`}
+        </summary>
+        <ul class="nz-without-domain-list">
+          {list.withoutDomain.services.map((service) => (
+            <li>
+              <span class="min-w-0">
+                <span class="font-medium">{service.name}</span>
+                <span class="nz-dim"> · {service.projectName} / {service.environmentName}</span>
+              </span>
+              {service.canAdd && (
+                <Button variant="outline" data-wizard-open data-wizard-service={service.id} data-wizard-service-name={service.name}>
+                  Add domain
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </details>
+    )
+  }
+</div>

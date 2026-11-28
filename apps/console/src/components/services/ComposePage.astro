@@ -1,0 +1,470 @@
+---
+import { CONTAINER_ROW_ACTIONS, composeOverview } from "../../lib/data/compose.ts";
+import type {
+  DeploymentView,
+  ServiceDetail,
+  ServiceHostnames,
+  ServiceVariablesView,
+  WebhookView,
+} from "../../lib/data/index.ts";
+import { confirmText, headerActions, liveUrl } from "../../lib/deploys.ts";
+import { composeFile, composeFormat } from "../../lib/projects.ts";
+import { dashboardPath } from "../../lib/routes.ts";
+import DeployLive from "../deploys/DeployLive.astro";
+import DeploymentsPanel from "../deploys/DeploymentsPanel.astro";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Icon from "../ui/Icon.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import Tabs from "../ui/Tabs.astro";
+import BackupsPanel from "./BackupsPanel.astro";
+import DangerZone from "./DangerZone.astro";
+import GitUrlSourceTab from "./GitUrlSourceTab.astro";
+import HostnameRows from "./HostnameRows.astro";
+import LiveAt from "./LiveAt.astro";
+import LogsPanel from "./LogsPanel.astro";
+import ProviderSourceTab from "./ProviderSourceTab.astro";
+import ServiceVariables from "./ServiceVariables.astro";
+
+/**
+ * The Compose page (spec 07 7.2, 21.10), one scrolling page in the original's own layout (no
+ * project menu, no service strip): the service's name (spec 7.2 Header; B3-25) over "Deploy
+ * Settings", with the Compose or Stack pill and a row of large
+ * buttons (Deploy, Reload, Stop, Open Terminal, Autodeploy); "Provider" with Preview Compose (the
+ * person's file and Nearzero's additions, with warnings for privileged options), text tabs for
+ * the four Git providers, Git (a plain Git URL) and Raw, and a short grey YAML box; "Logs" with
+ * the container picker and a terminal box; the Variables card; "Containers" with its table and row menu; Volume backups;
+ * then what 1.0 adds: Deployments, Domains per inner service, the deploy webhook (repositories)
+ * and the Danger zone. Preview, the containers and their actions load in the browser
+ * (client/compose.ts); every action asks "Confirm action" first (client/deploys.ts).
+ */
+interface Props {
+  service: ServiceDetail;
+  variables: ServiceVariablesView;
+  workspace: string;
+  sharedHref: string;
+  afterDelete: string;
+  canManageDestinations: boolean;
+  hostnames?: ServiceHostnames | null;
+  deployments?: DeploymentView[];
+  webhook?: WebhookView | null;
+  /** A generated hostname is available for Create URL. */
+  canGenerate?: boolean;
+  /** The workspace's SSH keys for the Git tab, or null when the person can't use them. */
+  sshKeys?: { id: string; name: string }[] | null;
+}
+
+const {
+  service,
+  variables,
+  workspace,
+  sharedHref,
+  afterDelete,
+  canManageDestinations,
+  hostnames = null,
+  deployments = [],
+  webhook = null,
+  canGenerate = false,
+  sshKeys = null,
+} = Astro.props;
+const overview = await composeOverview(Astro, service.id);
+const file = composeFile(service);
+const providers = ["GitHub", "GitLab", "Bitbucket", "Gitea"];
+// A Compose file from a repository opens on its provider's tab (spec 7.2).
+const repoSource = service.settings.source as { type?: string; provider?: string } | null;
+const fromRepository = repoSource?.type === "provider" || repoSource?.type === "git";
+const selectedTab =
+  repoSource?.type === "provider" && typeof repoSource.provider === "string"
+    ? repoSource.provider
+    : repoSource?.type === "git"
+      ? "git"
+      : "raw";
+// The original's tab names: Github, Gitlab, Bitbucket, Gitea, Git, Raw.
+const tabLabels: Record<string, string> = {
+  github: "Github",
+  gitlab: "Gitlab",
+  bitbucket: "Bitbucket",
+  gitea: "Gitea",
+};
+const tabs = [
+  ...providers.map((name) => ({
+    id: name.toLowerCase(),
+    label: tabLabels[name.toLowerCase()] ?? name,
+  })),
+  { id: "git", label: "Git" },
+  { id: "raw", label: "Raw" },
+];
+const format = composeFormat(service);
+const actions = headerActions({ ...service, format });
+const environment = service.environment.name;
+const visit = hostnames ? liveUrl(hostnames.hostnames) : null;
+const createUrl = !visit && canGenerate && (hostnames?.canAdd ?? false);
+const inProgress = service.deploy?.inProgress ?? null;
+const deploySettings = (service.settings.deploy ?? {}) as { autodeploy?: boolean };
+const autodeploy = deploySettings.autodeploy !== false;
+const hostList = hostnames?.hostnames ?? [];
+const idle = service.status === "idle";
+const innerServices = overview?.services ?? [];
+---
+
+<div class="nz-compose" data-compose-page={service.id} data-service-name={service.name}>
+  <section class="nz-cs-section nz-cs-section--first" aria-labelledby="nz-compose-title">
+  <header class="nz-cs-section-head nz-service-head">
+    <div class="min-w-0">
+      <h1 class="nz-cs-title" id="nz-compose-title">{service.name}</h1>
+      <p class="nz-cs-desc">Deploy Settings. Create a compose file to deploy your compose</p>
+    </div>
+    <span class="nz-badge nz-cs-pill" title={`${service.name} in ${environment}`}>
+      {format === "stack" ? "Stack" : "Compose"}
+    </span>
+  </header>
+
+  <div class="nz-cs-body nz-cs-actions">
+    {
+      actions.primary && (
+        <Button
+          variant="primary"
+          data-service-action="deploy"
+          data-service-id={service.id}
+          data-confirm-text={confirmText("deploy", service, environment)}
+          data-confirm-label="Deploy"
+          disabled={actions.busy}
+        >
+          Deploy
+        </Button>
+      )
+    }
+    {
+      actions.redeploy && (
+        <Button
+          variant="muted"
+          data-service-action="redeploy"
+          data-service-id={service.id}
+          data-confirm-text={confirmText("redeploy", service, environment)}
+          data-confirm-label="Reload (redeploy)"
+          disabled={actions.busy}
+        >
+          Reload
+        </Button>
+      )
+    }
+    {
+      actions.runtime.map((action) => (
+        <Button
+          variant={action === "stop" ? "danger" : "outline"}
+          data-service-action={action}
+          data-service-id={service.id}
+          data-confirm-text={confirmText(action, service, environment)}
+          data-confirm-label={action === "stop" ? "Stop" : action === "start" ? "Start" : "Reload"}
+          data-confirm-danger={action === "stop" ? "true" : undefined}
+        >
+          {action === "stop" ? "Stop" : action === "start" ? "Start" : "Reload"}
+        </Button>
+      ))
+    }
+    {
+      service.can.deploy && inProgress && (
+        <Button
+          variant="outline"
+          data-service-action="cancel"
+          data-deployment-id={inProgress.id}
+          data-confirm-text={confirmText("cancel", service, environment)}
+          data-confirm-label="Cancel deployment"
+          data-confirm-danger="true"
+        >
+          Cancel
+        </Button>
+      )
+    }
+    {
+      actions.terminal && (
+        <Button variant="outline" data-terminal-open={service.id} data-terminal-name={service.name}>
+          Open Terminal
+        </Button>
+      )
+    }
+    {
+      service.can.configure && (
+        <label class="nz-cs-check">
+          <span>Autodeploy</span>
+          <input
+            type="checkbox"
+            checked={autodeploy}
+            data-deploy-setting="autodeploy"
+            data-service-id={service.id}
+            title={fromRepository ? "Deploy on every push to the repository's branch." : "Deploy on every push once the file comes from a repository."}
+          />
+        </label>
+      )
+    }
+    {visit && <Button variant="outline" href={visit} target="_blank">Visit</Button>}
+    {
+      createUrl && (
+        <Button variant="outline" data-create-url={service.id}>
+          Create URL
+        </Button>
+      )
+    }
+  </div>
+  <div class="nz-cs-notes">
+    <LiveAt serviceId={service.id} />
+    {
+      overview?.formatNote && (
+        <p class="nz-inline-note nz-compose-note">
+          <Icon name="info" />
+          <span>{overview.formatNote}</span>
+        </p>
+      )
+    }
+    {
+      /* Only once the stack has run: before its first deploy, Deploy says it all (spec 21.10). */
+      overview?.needsDeploy && overview.deploymentId && overview.needsDeployMessage && (
+        <p class="nz-hint" data-compose-needs-deploy>{overview.needsDeployMessage}</p>
+      )
+    }
+    <DeployLive service={service} open={false} />
+  </div>
+  </section>
+
+  <section class="nz-cs-section" id="nz-compose-source" aria-labelledby="nz-compose-source-title">
+    <div class="nz-cs-section-head">
+      <div class="min-w-0">
+        <h2 class="nz-cs-title" id="nz-compose-source-title">Provider</h2>
+        <p class="nz-cs-desc">Select the source of your code</p>
+      </div>
+      <Button
+        variant="outline"
+        data-compose-preview={service.id}
+        data-dialog-open="nz-compose-preview"
+        disabled={!overview?.source.type}
+        title={overview?.source.type ? undefined : "Paste a Compose file or connect a repository first."}
+      >
+        Preview Compose
+      </Button>
+    </div>
+    <div class="nz-cs-body nz-cs-tabs">
+      <Tabs id={`nz-compose-tabs-${service.id}`} label="Source" tabs={tabs} selected={selectedTab}>
+        <ProviderSourceTab slot="github" service={service} workspace={workspace} kind="github" compose />
+        <ProviderSourceTab slot="gitlab" service={service} workspace={workspace} kind="gitlab" compose />
+        <ProviderSourceTab slot="bitbucket" service={service} workspace={workspace} kind="bitbucket" compose />
+        <ProviderSourceTab slot="gitea" service={service} workspace={workspace} kind="gitea" compose />
+        <GitUrlSourceTab slot="git" service={service} sshKeys={sshKeys} compose />
+        <div slot="raw">
+          <form class="nz-form nz-form--flush" data-api="PATCH /services/{serviceId}" data-api-toast="Compose file saved" data-validate novalidate>
+            <input type="hidden" name="serviceId" value={service.id} />
+            <Field
+              id="nz-compose-raw"
+              name="settings.composeFile"
+              label="Compose file (YAML)"
+              as="textarea"
+              rows={2}
+              class="nz-code-input nz-cs-yaml"
+              value={file}
+              spellcheck="false"
+              data-required="Paste the Compose file."
+              disabled={!service.can.configure}
+              title={innerServices.length > 0 ? `Services in the file: ${innerServices.map((item) => (item.port !== null ? `${item.name}:${item.port}` : item.name)).join(", ")}` : undefined}
+            />
+            <FormError />
+            {
+              service.can.configure && (
+                <div class="nz-form-actions">
+                  <Button variant="primary" type="submit">Save</Button>
+                </div>
+              )
+            }
+          </form>
+        </div>
+      </Tabs>
+    </div>
+  </section>
+
+  <LogsPanel service={service} containers />
+
+  <div class="nz-cs-vars" id="nz-compose-variables">
+    <ServiceVariables service={service} variables={variables} sharedHref={sharedHref} />
+  </div>
+
+  <section
+    class="nz-cs-section"
+    id="nz-compose-containers"
+    aria-labelledby="nz-compose-containers-title"
+    data-compose-containers={idle ? undefined : service.id}
+    data-can-act={service.can.deploy ? "true" : "false"}
+  >
+    <div class="nz-cs-section-head">
+      <div class="min-w-0">
+        <h2 class="nz-cs-title" id="nz-compose-containers-title">Containers</h2>
+        <p class="nz-cs-desc">Inspect each container in this compose and run basic lifecycle actions.</p>
+      </div>
+      <Button variant="outline" data-compose-refresh disabled={idle}>Refresh</Button>
+    </div>
+    <div class="nz-cs-body">
+      <div class="nz-table-wrap nz-cs-table" role="region" aria-label={`Containers of ${service.name}`} tabindex="0">
+        <table class="nz-table">
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              <th scope="col">State</th>
+              <th scope="col">Status</th>
+              <th scope="col">Container ID</th>
+              <th scope="col"><span class="nz-visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody data-compose-rows data-compose-table hidden></tbody>
+        </table>
+        <p class="nz-cs-table-empty" data-compose-containers-status aria-live="polite">
+          {idle ? "No containers found. Deploy the compose to see containers here." : "Loading the containers…"}
+        </p>
+      </div>
+      <span data-compose-icon-more hidden><Icon name="more" /></span>
+      {
+        !idle && (
+          <Menu id="nz-compose-container-menu" label="Container actions" placement="bottom-end" data-compose-menu>
+            <MenuItem data-compose-row-action="logs">View logs</MenuItem>
+            {service.can.deploy &&
+              CONTAINER_ROW_ACTIONS.map((item) => (
+                <MenuItem danger={item.action === "kill"} data-compose-row-action={item.action}>
+                  {item.label}
+                </MenuItem>
+              ))}
+          </Menu>
+        )
+      }
+    </div>
+  </section>
+
+  {
+    service.can.backups !== false && (
+      <div class="nz-cs-backups" id="nz-compose-backups">
+        <BackupsPanel service={service} workspace={workspace} canManageDestinations={canManageDestinations} />
+      </div>
+    )
+  }
+
+  <section class="nz-cs-section" id="nz-compose-deployments" aria-labelledby="nz-compose-deployments-title">
+    <div class="nz-cs-section-head">
+      <div class="min-w-0">
+        <h2 class="nz-cs-title" id="nz-compose-deployments-title">Deployments</h2>
+        <p class="nz-cs-desc">Every deploy of this compose, newest first, with its status and log.</p>
+      </div>
+    </div>
+    <div class="nz-cs-body">
+      <div class="nz-folds">
+        <DeploymentsPanel serviceName={service.name} deployments={deployments} open />
+      </div>
+    </div>
+  </section>
+
+  <section class="nz-cs-section" id="nz-compose-domains" aria-labelledby="nz-compose-domains-title">
+    <div class="nz-cs-section-head">
+      <div class="min-w-0">
+        <h2 class="nz-cs-title" id="nz-compose-domains-title">Domains</h2>
+        <p class="nz-cs-desc">Each hostname routes to one service inside the Compose file, picked in Add domain.</p>
+      </div>
+      {
+        (hostnames?.canAdd ?? service.can.deploy) && (
+          <Button
+            variant="outline"
+            data-dialog-open="nz-add-domain"
+            data-dialog-fill={JSON.stringify({ serviceId: service.id, mode: "generate" })}
+          >
+            Add domain
+          </Button>
+        )
+      }
+    </div>
+    <div class="nz-cs-body">
+      <HostnameRows hostnames={hostList} domainsHref={dashboardPath(workspace, "domains")} serviceName={service.name} />
+    </div>
+  </section>
+
+  {
+    fromRepository && webhook && (
+      <section class="nz-cs-section" id="nz-compose-webhook" aria-labelledby="nz-compose-webhook-title">
+        <div class="nz-cs-section-head">
+          <div class="min-w-0">
+            <h2 class="nz-cs-title" id="nz-compose-webhook-title">Deploy webhook</h2>
+            <p class="nz-cs-desc">For GitLab, Bitbucket and Gitea, add this URL as a push webhook at your Git host.</p>
+          </div>
+        </div>
+        <div class="nz-cs-body">
+          <div class="nz-webhook" data-webhook data-service-id={service.id}>
+            {webhook.visible ? (
+              <>
+                {webhook.url ? (
+                  <div class="nz-secret-row">
+                    <code class="nz-url-text" data-webhook-url data-url={webhook.url}>
+                      {"•".repeat(24)}
+                    </code>
+                    <Button variant="outline" data-webhook-show aria-pressed="false">Show URL</Button>
+                    <Button variant="icon" icon="copy" label="Copy webhook URL" data-copy={webhook.url} />
+                  </div>
+                ) : (
+                  <p class="nz-dim">{webhook.message}</p>
+                )}
+                {webhook.warnings.map((warning) => (
+                  <p class="nz-inline-note nz-warn-note">{warning}</p>
+                ))}
+                {service.can.configure && (
+                  <div>
+                    <Button variant="outline" data-webhook-replace data-replacing={webhook.url ? "true" : "false"}>
+                      {webhook.url ? "Replace URL" : "Create URL"}
+                    </Button>
+                  </div>
+                )}
+                <p class="nz-hint">GitHub repositories connected through the GitHub App deploy on push without this.</p>
+              </>
+            ) : (
+              <p class="nz-dim">{webhook.message}</p>
+            )}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  {
+    service.can.delete && (
+      <section class="nz-cs-section nz-cs-section--last" aria-label="Danger zone">
+        <div class="nz-cs-body">
+          <div class="nz-folds">
+            <DangerZone service={service} afterDelete={afterDelete} />
+          </div>
+        </div>
+      </section>
+    )
+  }
+</div>
+
+<Dialog id="nz-compose-preview" title="Preview Compose" description="The files Nearzero runs: yours as it is, and Nearzero's additions merged on top." wide>
+  <div class="nz-compose-preview" data-compose-preview-body aria-live="polite">
+    <p class="nz-dim" data-compose-preview-status>Reading the Compose file…</p>
+    <div class="nz-stack-sm" data-compose-preview-alerts></div>
+    <div class="nz-compose-files" data-compose-preview-files hidden>
+      <div class="nz-tabs nz-tabs--lined" role="tablist" aria-label="Files" data-compose-file-tabs></div>
+      <div class="nz-compose-file">
+        <div class="nz-compose-file-head">
+          <p class="nz-small nz-dim nz-truncate" data-compose-file-description></p>
+          <Button variant="outline" icon="copy" data-compose-file-copy>Copy</Button>
+        </div>
+        <pre class="nz-log nz-compose-code" tabindex="0" data-compose-file-content></pre>
+      </div>
+    </div>
+    <div class="nz-stack-sm" data-compose-preview-details></div>
+  </div>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+  </div>
+</Dialog>
+
+<Dialog id="nz-compose-confirm" title="Kill this container?">
+  <p class="nz-dim" data-compose-confirm-text></p>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Cancel</Button>
+    <Button variant="danger" data-compose-confirm-go>Kill</Button>
+  </div>
+</Dialog>

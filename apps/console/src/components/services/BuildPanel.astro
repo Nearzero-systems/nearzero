@@ -1,0 +1,87 @@
+---
+import {
+  BUILDER_LABELS,
+  BUILDER_TYPES,
+  HEROKU_STACKS,
+  RAILPACK_VERSIONS,
+} from "@nearzero/shared/browser";
+import type { ServiceDetail } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Field from "../ui/Field.astro";
+import Fold from "../ui/Fold.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The Build panel (spec 6.4), not for image sources: the builder and its fields, and custom
+ * Install, Build and Start commands. Saving makes the choice explicit (PUT …/build).
+ */
+interface Props {
+  service: ServiceDetail;
+}
+
+const { service } = Astro.props;
+const build = (service.settings.build ?? { type: "automatic" }) as Record<string, unknown>;
+const commands = (service.settings.commands ?? {}) as Record<string, string>;
+const type = typeof build.type === "string" ? build.type : "automatic";
+const text = (key: string, fallback = "") =>
+  typeof build[key] === "string" ? (build[key] as string) : fallback;
+const disabled = !service.can.configure;
+---
+
+<Fold title="Build" info="How the image is built from the repository: the builder and its commands.">
+  <form class="nz-form" data-build-form data-service-id={service.id} data-scripted novalidate>
+    <div class="nz-form-grid-2">
+      <Field
+        id="nz-build-type"
+        name="type"
+        label="Builder"
+        as="select"
+        options={BUILDER_TYPES.map((value) => ({ value, label: BUILDER_LABELS[value], selected: value === type }))}
+        hint="Automatic uses a Dockerfile at the build path when there is one; otherwise the language is detected."
+        disabled={disabled}
+        data-builder-type
+      />
+    </div>
+    <div class="nz-form-grid-2" data-builder-fields="dockerfile" hidden={type !== "dockerfile"}>
+      <Field id="nz-build-dockerfile" name="dockerfilePath" label="Dockerfile path" value={text("dockerfilePath", "Dockerfile")} disabled={disabled} />
+      <Field id="nz-build-context" name="contextPath" label="Build context path" value={text("contextPath")} placeholder="Empty for the build path" disabled={disabled} />
+      <Field id="nz-build-stage" name="stage" label="Build stage" value={text("stage")} placeholder="Optional" disabled={disabled} />
+    </div>
+    <div class="nz-form-grid-2" data-builder-fields="railpack" hidden={type !== "railpack"}>
+      <Field
+        id="nz-build-railpack"
+        name="version"
+        label="Railpack version"
+        as="select"
+        options={RAILPACK_VERSIONS.map((value) => ({ value, label: value, selected: value === text("version", RAILPACK_VERSIONS[0]) }))}
+        disabled={disabled}
+      />
+    </div>
+    <div class="nz-form-grid-2" data-builder-fields="nixpacks" hidden={type !== "nixpacks"}>
+      <Field id="nz-build-publish" name="publishDirectory" label="Publish directory" value={text("publishDirectory")} placeholder="Optional, like dist" disabled={disabled} />
+    </div>
+    <div class="nz-form-grid-2" data-builder-fields="heroku" hidden={type !== "heroku"}>
+      <Field
+        id="nz-build-stack"
+        name="stack"
+        label="Stack version"
+        as="select"
+        options={HEROKU_STACKS.map((value) => ({ value, label: `heroku-${value}`, selected: value === text("stack", HEROKU_STACKS[0]) }))}
+        disabled={disabled}
+      />
+    </div>
+    <div data-builder-fields="static" hidden={type !== "static"}>
+      <label class="nz-check">
+        <input type="checkbox" name="spa" checked={build.spa === true} disabled={disabled} />
+        <span>Single-page app (serve index.html for unknown paths)</span>
+      </label>
+    </div>
+    <div class="nz-form-grid-2">
+      <Field id="nz-build-install" name="install" label="Install command" value={commands.install ?? ""} placeholder="Optional" autocomplete="off" spellcheck="false" disabled={disabled} />
+      <Field id="nz-build-build" name="build" label="Build command" value={commands.build ?? ""} placeholder="Optional" autocomplete="off" spellcheck="false" disabled={disabled} />
+      <Field id="nz-build-start" name="start" label="Start command" value={commands.start ?? ""} placeholder="Optional" autocomplete="off" spellcheck="false" disabled={disabled} />
+    </div>
+    <FormError />
+    {!disabled && <div class="nz-form-actions"><Button variant="outline" type="submit">Save build</Button></div>}
+  </form>
+</Fold>

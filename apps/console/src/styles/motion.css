@@ -1,0 +1,646 @@
+/*
+ * Motion and loading (spec 21.7). Interface motion is short and quiet: transform and opacity only
+ * (plus the sidebar's width and expandable heights, as the spec says), ease-out, never a shadow,
+ * and nothing running while idle. Every duration is a CSS transition, so a change midway reverses
+ * from where it is instead of jumping, and reduced motion (the unlayered block at the end) makes
+ * all of them 0. Scripts only set start and end states: client/sidebar.ts, client/menus.ts,
+ * client/toasts.ts, client/tab-glider.ts and the Agent's components/agent/motion.ts.
+ *
+ * The rules here come after components.css and shell.css in the components layer, so they take
+ * over the older one-off animations there (menus, dialogs, the sheet, toasts).
+ */
+
+@keyframes nz-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nz-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes nz-pop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes nz-appear {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
+}
+
+@keyframes nz-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@keyframes nz-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The router swaps pages instantly; the content fades in on its own (180ms, 4px rise). */
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation: none;
+}
+
+/* While the next page loads the current one stays as it is and takes no clicks. */
+html[data-navigating],
+html[data-navigating] * {
+  cursor: progress;
+}
+
+html[data-navigating] [data-shell] {
+  pointer-events: none;
+}
+
+/* The 2px bar along the top of the window. */
+.nz-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  height: 2px;
+  pointer-events: none;
+}
+
+.nz-progress-bar {
+  width: 0;
+  height: 100%;
+  opacity: 0;
+  background: var(--nz-progress);
+}
+
+@layer components {
+  /* Content swapped in by in-app navigation fades in over 180ms with a 4px rise. A page's first
+     paint never animates (client/motion.ts marks swapped pages). */
+  :root[data-swapped] [data-page-content] {
+    animation: nz-rise-in 180ms ease-out;
+  }
+
+  /* ---------- Hover, press and focus: 120ms ---------- */
+  /* Zero specificity, so a component that animates something else keeps its own list. */
+  :where(
+    a,
+    button,
+    summary,
+    input,
+    select,
+    textarea,
+    .nz-tab,
+    .nz-nav-item,
+    .nz-menu-item,
+    .nz-crumb,
+    .nz-theme-option
+  ) {
+    transition:
+      color 120ms ease-out,
+      background-color 120ms ease-out,
+      border-color 120ms ease-out;
+  }
+
+  /* Buttons nudge to 98% while pressed (the scale property, so it adds to any transform a button
+     already has). */
+  .nz-btn {
+    transition:
+      color 120ms ease-out,
+      background-color 120ms ease-out,
+      border-color 120ms ease-out,
+      opacity 120ms ease-out,
+      scale 120ms ease-out;
+  }
+
+  .nz-btn:active:not(:disabled, [aria-disabled="true"]) {
+    scale: 0.98;
+  }
+
+  .nz-input,
+  .nz-select,
+  .nz-textarea {
+    transition:
+      color 120ms ease-out,
+      background-color 120ms ease-out,
+      border-color 120ms ease-out;
+  }
+
+  /* ---------- Sidebar: 200ms width, labels out first and back in last ---------- */
+  .nz-nav {
+    transition: width 200ms ease-out;
+  }
+
+  .nz-nav .nz-nav-scroll {
+    overflow-x: hidden;
+  }
+
+  .nz-nav .nz-nav-label,
+  .nz-nav .nz-user-text {
+    white-space: nowrap;
+    transition: opacity 100ms ease-out 100ms;
+  }
+
+  .nz-nav .nz-user-chevron {
+    transition:
+      opacity 100ms ease-out 100ms,
+      transform 120ms ease-out;
+  }
+
+  .nz-nav[data-state="closed"] .nz-nav-label,
+  .nz-nav[data-state="closed"] .nz-user-text,
+  .nz-nav[data-state="closed"] .nz-user-chevron {
+    opacity: 0;
+    transition-delay: 0s;
+  }
+
+  .nz-nav .nz-nav-collapse svg {
+    transition: transform 200ms ease-out;
+  }
+
+  /* The rail's hairline between the groups fades in once the labels have gone. */
+  .nz-nav .nz-nav-group {
+    position: relative;
+  }
+
+  .nz-nav .nz-nav-group::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--nz-line);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease-out;
+  }
+
+  .nz-nav[data-state="closed"] .nz-nav-group {
+    background: transparent;
+  }
+
+  .nz-nav[data-state="closed"] .nz-nav-group::after {
+    opacity: 1;
+    transition-delay: 100ms;
+  }
+
+  /* While it moves (data-motion), its parts slide from where they were to where they will be
+     (client/sidebar.ts, as long as the width takes) and the labels stay drawn while they fade. */
+  .nz-nav[data-motion] .nz-nav-foot {
+    overflow: hidden;
+  }
+
+  /* Collapsing: the rail's layout, with items left-aligned so nothing drifts as the width
+     shrinks, and each label beside its icon until it has faded. */
+  .nz-nav[data-state="closed"][data-motion] .nz-nav-item {
+    position: relative;
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  .nz-nav[data-state="closed"][data-motion] .nz-nav-label,
+  .nz-nav[data-state="closed"][data-motion] .nz-user-text,
+  .nz-nav[data-state="closed"][data-motion] .nz-user-chevron {
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+
+  .nz-nav[data-state="closed"][data-motion] .nz-nav-item .nz-nav-label {
+    left: 36px;
+    top: 4px;
+  }
+
+  /* The group label sits where it did above the items under it (its padding is 8px 8px 4px). */
+  .nz-nav[data-state="closed"][data-motion] .nz-nav-group .nz-nav-label {
+    left: 8px;
+    bottom: 4px;
+  }
+
+  .nz-nav[data-state="closed"][data-motion] .nz-user-trigger {
+    position: relative;
+    justify-content: flex-start;
+  }
+
+  .nz-nav[data-state="closed"][data-motion] .nz-user-text {
+    left: 36px;
+    top: -1px;
+  }
+
+  .nz-nav[data-state="closed"][data-motion] .nz-user-chevron {
+    left: calc(var(--nz-nav-w) - 47px);
+    top: 7px;
+  }
+
+  /* Expanding: the open layout at its final width, uncovered as the sidebar grows. */
+  .nz-nav[data-state="open"][data-motion] .nz-user-trigger {
+    width: calc(var(--nz-nav-w) - 17px);
+    flex: none;
+  }
+
+  /* ---------- Secondary columns (the Agent's sessions, a project's menu) ---------- */
+  /* They open and close as in-app navigation adds or removes them, the way the sidebar does:
+     client/sidebar.ts sets data-column on the frame and the widths as custom properties. */
+  .nz-secondary {
+    transition: width 200ms ease-out;
+  }
+
+  .nz-frame[data-column] .nz-secondary {
+    overflow: hidden;
+  }
+
+  .nz-frame[data-column] .nz-secondary > * {
+    flex-shrink: 0;
+    min-width: var(--nz-column-inner, 0);
+    transition: opacity 100ms ease-out 100ms;
+  }
+
+  .nz-frame[data-column="measure"] .nz-secondary,
+  .nz-frame[data-column="measure"] .nz-secondary > * {
+    transition: none;
+  }
+
+  .nz-frame[data-column="from"] .nz-secondary {
+    width: var(--nz-column-from);
+    transition: none;
+  }
+
+  .nz-frame[data-column="from"] .nz-secondary > * {
+    opacity: 0;
+    transition: none;
+  }
+
+  /* A column the new page no longer has: a stand-in that folds away, then is removed. */
+  .nz-secondary[data-closing] {
+    width: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .nz-secondary[data-closing] > * {
+    flex-shrink: 0;
+    min-width: var(--nz-column-inner, 0);
+    opacity: 0;
+    transition: opacity 100ms ease-out;
+  }
+
+  /* ---------- Phone navigation sheet: in from its edge over 220ms, out over 180ms ---------- */
+  .nz-sheet:not(.nz-sheet--right) {
+    transform: translateX(-100%);
+    transition: transform 180ms ease-out;
+  }
+
+  .nz-sheet:not(.nz-sheet--right)[open] {
+    transform: none;
+    animation: none;
+    transition-duration: 220ms;
+  }
+
+  .nz-sheet:not(.nz-sheet--right)::backdrop {
+    opacity: 0;
+    transition: opacity 180ms ease-out;
+  }
+
+  .nz-sheet:not(.nz-sheet--right)[open]::backdrop {
+    opacity: 1;
+    transition-duration: 220ms;
+  }
+
+  @starting-style {
+    .nz-sheet:not(.nz-sheet--right)[open] {
+      transform: translateX(-100%);
+    }
+
+    .nz-sheet:not(.nz-sheet--right)[open]::backdrop {
+      opacity: 0;
+    }
+  }
+
+  /* The Agent's sessions slide-over below 720px (components/agent/AgentApp.tsx). */
+  .nz-sheet-panel {
+    transition: transform 180ms ease-out;
+  }
+
+  .nz-sheet-backdrop {
+    transition: opacity 180ms ease-out;
+  }
+
+  .nz-sheet-layer[data-open="true"] .nz-sheet-panel,
+  .nz-sheet-layer[data-open="true"] .nz-sheet-backdrop {
+    transition-duration: 220ms;
+  }
+
+  /* ---------- Dialogs and sheets: the panel 180ms from 98%, the backdrop 160ms, closing 120ms */
+  .nz-dialog,
+  .nz-sheet--right {
+    opacity: 0;
+    transform: scale(0.98);
+    transition:
+      opacity 120ms ease-out,
+      transform 120ms ease-out;
+  }
+
+  .nz-sheet--right {
+    transform-origin: 100% 50%;
+  }
+
+  .nz-dialog[open],
+  .nz-sheet--right[open] {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    transition-duration: 180ms;
+  }
+
+  .nz-dialog::backdrop,
+  .nz-sheet--right::backdrop {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+
+  .nz-dialog[open]::backdrop,
+  .nz-sheet--right[open]::backdrop {
+    opacity: 1;
+    transition-duration: 160ms;
+  }
+
+  @starting-style {
+    .nz-dialog[open],
+    .nz-sheet--right[open] {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+
+    .nz-dialog[open]::backdrop,
+    .nz-sheet--right[open]::backdrop {
+      opacity: 0;
+    }
+  }
+
+  /* A dialog or sheet on its way out takes no clicks, nor does its fading backdrop (which
+     inherits nothing from it). */
+  dialog:not([open]) {
+    pointer-events: none;
+  }
+
+  dialog:not([open])::backdrop {
+    pointer-events: none;
+  }
+
+  /* Where the browser can keep a closed dialog in the top layer while it fades (the overlay
+     property), closing animates too; elsewhere it closes at once. */
+  @supports (overlay: auto) {
+    .nz-sheet:not(.nz-sheet--right),
+    .nz-sheet:not(.nz-sheet--right)::backdrop {
+      transition-property: transform, opacity, display, overlay;
+      transition-behavior: allow-discrete;
+    }
+
+    .nz-dialog,
+    .nz-sheet--right,
+    .nz-dialog::backdrop,
+    .nz-sheet--right::backdrop {
+      transition-property: opacity, transform, display, overlay;
+      transition-behavior: allow-discrete;
+    }
+  }
+
+  /* ---------- Menus and popovers: in over 140ms with a 4px drop, out over 100ms ---------- */
+  /* The drop moves away from the button: down for a menu below it, up for one above
+     (data-side, client/menus.ts). */
+  .nz-pop {
+    --nz-pop-drop: -4px;
+    transition:
+      opacity 140ms ease-out,
+      transform 140ms ease-out;
+  }
+
+  .nz-pop[data-side="top"] {
+    --nz-pop-drop: 4px;
+  }
+
+  .nz-pop:popover-open {
+    animation: none;
+  }
+
+  .nz-pop[data-motion="from"] {
+    opacity: 0;
+    transform: translateY(var(--nz-pop-drop));
+    transition: none;
+  }
+
+  .nz-pop[data-motion="out"],
+  .nz-dropdown-panel[data-motion="out"] {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 100ms ease-out;
+  }
+
+  @supports (overlay: auto) {
+    .nz-pop[popover][data-motion="out"] {
+      transition-property: opacity, display, overlay;
+      transition-behavior: allow-discrete;
+    }
+  }
+
+  /* Menus the Agent mounts while open (a session's menu, a picker's list) start from here. */
+  .nz-dropdown-panel {
+    --nz-pop-drop: -4px;
+    transition:
+      opacity 140ms ease-out,
+      transform 140ms ease-out;
+  }
+
+  @starting-style {
+    .nz-pop:not([popover]),
+    .nz-dropdown-panel {
+      opacity: 0;
+      transform: translateY(var(--nz-pop-drop));
+    }
+  }
+
+  /* ---------- Toasts: rise 8px and fade in over 180ms, fade out over 140ms ---------- */
+  .nz-toast {
+    animation: none;
+    transition:
+      opacity 180ms ease-out,
+      transform 180ms ease-out;
+  }
+
+  /* Only a new toast rises: one moved into a dialog or onto a new page keeps still. */
+  @starting-style {
+    .nz-toast:not([data-shown]) {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  .nz-toast[data-leaving] {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 140ms ease-out;
+  }
+
+  /* ---------- Expandable parts: their height over 180ms ---------- */
+  .nz-expand {
+    display: flow-root;
+    transition: height 180ms ease-out;
+  }
+
+  [data-height-motion] {
+    overflow: hidden;
+    transition: height 180ms ease-out;
+  }
+
+  /* The fold's chevron turns with it. */
+  .nz-fold-chevron {
+    transition: transform 180ms ease-out;
+  }
+
+  /* ---------- Tabs: the highlight or underline slides over 180ms ---------- */
+  .nz-tabs {
+    position: relative;
+  }
+
+  .nz-tab-glider {
+    position: absolute;
+    z-index: 0;
+    border-radius: 6px;
+    background: var(--nz-active-fill);
+    transform-origin: 0 0;
+    pointer-events: none;
+    transition: transform 180ms ease-out;
+  }
+
+  .nz-tabs--underline > .nz-tab-glider {
+    border-radius: 0;
+    border-bottom: 2px solid var(--nz-text);
+    background: transparent;
+  }
+
+  .nz-tabs[data-gliding] > .nz-tab {
+    position: relative;
+    z-index: 1;
+  }
+
+  .nz-tabs[data-gliding] > .nz-tab[aria-selected="true"],
+  .nz-tabs[data-gliding] > .nz-tab[aria-current="page"] {
+    background: transparent;
+    border-bottom-color: transparent;
+  }
+}
+
+/* Collapsible sections (<details>) open and close by their height where the browser can animate
+   to the content's natural height; elsewhere they open at once. In the components layer too,
+   kept apart because older browsers drop a rule naming a pseudo-element they don't know. */
+@layer components {
+  @supports (interpolate-size: allow-keywords) {
+    details {
+      interpolate-size: allow-keywords;
+    }
+
+    /* Clipped while it moves, with room for a focus ring at its edges. */
+    details::details-content {
+      height: 0;
+      overflow: clip;
+      overflow-clip-margin: 4px;
+      transition:
+        height 180ms ease-out,
+        content-visibility 180ms allow-discrete;
+    }
+
+    details[open]::details-content {
+      height: auto;
+    }
+  }
+}
+
+/* Changes that must not animate: a theme switch changes every color at once, not over the 120ms
+   hover easing (client/motion.ts sets this on the root for a frame), a new page's sidebar is
+   first laid out as the old page's was (client/sidebar.ts), and a dialog the server opened is
+   there on first paint (client/dialogs.ts). Unlayered, so it wins over every component's
+   transition. */
+[data-motion-pause],
+[data-motion-pause] *,
+[data-motion-pause] *::before,
+[data-motion-pause] *::after {
+  transition: none;
+}
+
+[data-motion-pause]::backdrop {
+  transition: none;
+}
+
+/*
+ * Reduced motion: every transition and animation above takes no time (content just appears).
+ * These rules are unlayered, so they win over every component's own durations without
+ * !important. The progress bar is handled in client/navigation.ts.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s;
+    animation-iteration-count: 1;
+    animation-delay: 0s;
+    transition-duration: 0s;
+    transition-delay: 0s;
+    scroll-behavior: auto;
+  }
+
+  ::backdrop {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+
+  [data-page-content],
+  .nz-dialog[open],
+  .nz-sheet[open],
+  .nz-pop:popover-open,
+  .nz-toast,
+  .nz-moon,
+  .nz-session-working,
+  .nz-pill[data-status="run"]::before {
+    animation: none;
+  }
+
+  /* Still hidden for 150ms so fast loads never flash, but with no pulse or spin. */
+  .nz-placeholder,
+  .nz-spinner {
+    animation: nz-appear 0s linear 150ms both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::details-content {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+}

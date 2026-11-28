@@ -1,0 +1,143 @@
+---
+import LoadFailed from "../../../../components/settings/LoadFailed.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Button from "../../../../components/ui/Button.astro";
+import Field from "../../../../components/ui/Field.astro";
+import FormError from "../../../../components/ui/FormError.astro";
+import StatusPill from "../../../../components/ui/StatusPill.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { KeyView } from "../../../../lib/data/index.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { fullDate } from "../../../../lib/time.ts";
+
+// Settings → API keys (spec 04 4.8): the Agent's model key (OpenRouter) and the research key
+// (Firecrawl). Saved keys are only ever shown masked (spec 23.4).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const allowed = ctx.access.can.manageApiKeys;
+if (!allowed) Astro.response.status = 403;
+
+let keys: KeyView[] | null = null;
+let failure: string | null = null;
+if (allowed) {
+  try {
+    keys = await ctx.data.keys();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+
+const cards = {
+  model: {
+    title: "OpenRouter",
+    need: "Required",
+    text: "Runs the Agent's model. Without it the Agent can't answer; an owner or admin is asked for it in the chat. Get a key at",
+    placeholder: "sk-or-v1-…",
+    link: { href: "https://openrouter.ai/keys", label: "openrouter.ai" },
+    warning: "Removing it stops the Agent from answering until a key is added again.",
+  },
+  research: {
+    title: "Firecrawl",
+    need: "Optional",
+    text: "Lets the Agent search the web and read documentation when research is on. Without it, research stays off. Get a key at",
+    placeholder: "fc-…",
+    link: { href: "https://www.firecrawl.dev", label: "firecrawl.dev" },
+    warning: "Removing it turns web research off until a key is added again.",
+  },
+} as const;
+const badge = {
+  not_added: { status: "idle", label: "Not added" },
+  added: { status: "ok", label: "Added" },
+  unreadable: { status: "warn", label: "Add it again" },
+} as const;
+---
+
+<SettingsLayout ctx={ctx} current="api-keys">
+  {
+    !allowed ? (
+      <NoAccess workspace={ctx.workspace.slug} reason="Only owners and admins can see the workspace's API keys." />
+    ) : !keys ? (
+      <LoadFailed detail={failure} />
+    ) : (
+      <div class="nz-keys">
+        <p class="nz-dim nz-keys-intro">
+          Keys your organization brings for the Agent. Nearzero ships no keys of its own and never reads one from the
+          server's environment. Keys are stored encrypted, and only owners and admins can see or change them; the full
+          key is never shown again after you save it.
+        </p>
+        {keys.map((key) => {
+          const card = cards[key.kind];
+          const state = badge[key.status];
+          const has = key.status !== "not_added";
+          return (
+            <section class="nz-card nz-key-card" aria-labelledby={`nz-key-${key.kind}`} data-key-card={key.kind}>
+              <div class="nz-key-head">
+                <h2 id={`nz-key-${key.kind}`} class="nz-key-title">{card.title}</h2>
+                <span class="nz-pill">{card.need}</span>
+                <StatusPill status={state.status} label={state.label} />
+              </div>
+              <p class="nz-dim">
+                {card.text}
+                {card.link && (
+                  <>
+                    {" "}
+                    <a class="nz-text-link" href={card.link.href} target="_blank" rel="noopener noreferrer">
+                      {card.link.label}
+                    </a>
+                    .
+                  </>
+                )}
+              </p>
+              {has && (
+                <p class="nz-key-saved">
+                  {key.masked && <code class="nz-code">{key.masked}</code>}
+                  {key.addedAt && (
+                    <span class="nz-dim" title={fullDate(new Date(key.addedAt))}>
+                      Added {new Date(key.addedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}
+                      {key.addedBy && ` by ${key.addedBy.name}`}
+                    </span>
+                  )}
+                </p>
+              )}
+              {key.status === "unreadable" && (
+                <p class="nz-inline-error mt-2" role="alert">
+                  The saved key can't be read on this server anymore (its secret changed). Paste it again.
+                </p>
+              )}
+              <form method="post" class="nz-form nz-key-form" data-api={`PUT /workspace/keys/${key.kind}`} data-validate novalidate>
+                <FormError />
+                <div class="nz-key-row">
+                  <Field
+                    id={`nz-key-input-${key.kind}`}
+                    name="key"
+                    type="password"
+                    label={has ? "New key" : "Key"}
+                    hideLabel
+                    placeholder={card.placeholder}
+                    autocomplete="off"
+                    maxlength={512}
+                    class="nz-input--filled nz-code-input"
+                    wrapClass="min-w-0"
+                    data-required="Paste the whole key."
+                    data-minlength="8"
+                    data-minlength-message="Paste the whole key."
+                  />
+                  <Button variant={has ? "outline" : "primary"} type="submit">{has ? "Replace" : "Add key"}</Button>
+                  {has && (
+                    <Button variant="ghost" data-key-remove={key.kind} data-key-warning={card.warning}>
+                      Remove
+                    </Button>
+                  )}
+                </div>
+                <p class="nz-hint" data-key-warning-text hidden></p>
+              </form>
+            </section>
+          );
+        })}
+      </div>
+    )
+  }
+</SettingsLayout>

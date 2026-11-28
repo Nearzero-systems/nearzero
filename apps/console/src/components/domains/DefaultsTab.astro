@@ -1,0 +1,61 @@
+---
+import type { EnvironmentDefaults } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import EmptyState from "../ui/EmptyState.astro";
+import TableWrap from "../ui/TableWrap.astro";
+
+/**
+ * The Environment defaults tab (spec 10.8): Project, Environment, "App hostnames from", Name
+ * prefix, and Change (the dialog in DomainDialogs).
+ */
+interface Props {
+  defaults: EnvironmentDefaults;
+  canManage: boolean;
+}
+
+const { defaults, canManage } = Astro.props;
+---
+
+{
+  defaults.defaults.length === 0 ? (
+    <EmptyState title="No environments yet" text="Each project's environments show here with where their apps' automatic hostnames come from." />
+  ) : (
+    <TableWrap label="Environment defaults" class="nz-settings-table nz-domain-tab-table">
+      <thead>
+        <tr>
+          <th>Project</th>
+          <th>Environment</th>
+          <th>App hostnames from</th>
+          <th>Name prefix</th>
+          <th class="nz-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {defaults.defaults.map((row) => (
+          <tr>
+            <td>{row.projectName}</td>
+            <td>{row.environmentName}</td>
+            <td>{row.sourceLabel}{!row.saved && <span class="nz-small nz-dim"> (default)</span>}</td>
+            <td>{row.prefix ? <span class="nz-code">{row.prefix}</span> : <span class="nz-dim">—</span>}</td>
+            <td class="nz-col-actions">
+              {canManage && (
+                <Button
+                  variant="ghost"
+                  data-dialog-open="nz-default-change"
+                  data-dialog-fill={JSON.stringify({
+                    environmentId: row.environmentId,
+                    source: row.source,
+                    prefix: row.prefix,
+                    label: `${row.projectName} / ${row.environmentName}`,
+                  })}
+                >
+                  Change
+                </Button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </TableWrap>
+  )
+}

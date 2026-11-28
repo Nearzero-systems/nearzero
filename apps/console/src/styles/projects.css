@@ -1,0 +1,1475 @@
+/*
+ * The project area (spec 5, 6, 7, 8): dialogs that create and delete, the variables editor and
+ * the service pages. Flat, 1px lines, 6px corners, compact controls (spec 21.1).
+ */
+
+@layer components {
+  .nz-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .nz-stack-sm {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-stack-sm:empty {
+    display: none;
+  }
+
+  .nz-form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .nz-section-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .nz-hint[data-tone="ok"] {
+    color: var(--nz-ok);
+  }
+
+  .nz-hint[data-tone="error"] {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-warn-note {
+    border-color: color-mix(in srgb, var(--nz-warn-dot) 35%, var(--nz-line));
+    color: var(--nz-warn);
+  }
+
+  .nz-code-input {
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: pre;
+    overflow-wrap: normal;
+    tab-size: 2;
+  }
+
+  /* Values stay hidden while typing (spec 05 5.5), without becoming password fields. */
+  .nz-masked {
+    -webkit-text-security: disc;
+  }
+
+  .nz-empty--compact {
+    padding: 20px 12px;
+  }
+
+  .nz-row-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .nz-row-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .nz-node-link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .nz-node-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* ---------- Teardown and delete dialogs ---------- */
+  .nz-teardown-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 0;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-teardown-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 16rem;
+    overflow: auto;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+  }
+
+  .nz-teardown-row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-teardown-row:first-child {
+    border-top: 0;
+  }
+
+  .nz-teardown-marks {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-teardown-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .nz-teardown-row > :nth-child(2) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+
+  /* ---------- Create dialogs (spec 21.10) ---------- */
+  /* The fields sit right above the footer band, 12px away. */
+  #nz-create-project .nz-dialog-foot,
+  .nz-dialog--create .nz-dialog-body > form > .nz-dialog-foot:last-child {
+    margin-top: 0;
+  }
+
+  #nz-create-project .nz-form {
+    margin-top: 0;
+  }
+
+  #nz-create-project .nz-textarea,
+  .nz-dialog--create .nz-textarea {
+    resize: none;
+  }
+
+  /* The database dialog: 512px, the type as a 3 by 2 grid of equal outlined buttons. */
+  .nz-dialog.nz-dialog--create {
+    width: min(32rem, calc(100vw - 2rem));
+  }
+
+  .nz-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 7.5rem), 1fr));
+    gap: 6px;
+  }
+
+  .nz-type-grid.nz-type-grid--buttons {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px 8px;
+    margin: 10px 0 -2px;
+  }
+
+  .nz-type-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--nz-line-strong);
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .nz-type-option input {
+    accent-color: var(--nz-primary);
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-type-grid.nz-type-grid--buttons {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .nz-type-grid--buttons .nz-type-option {
+    justify-content: center;
+    min-height: 25px;
+    padding: 3px 8px;
+    border-color: var(--nz-field-line);
+    font-weight: 400;
+    text-align: center;
+  }
+
+  .nz-type-grid--buttons .nz-type-option input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .nz-type-grid--buttons .nz-type-option:has(input:focus-visible:not([data-quiet-focus])) {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 1px;
+  }
+
+  .nz-type-option:has(input:checked) {
+    background: var(--nz-active-fill);
+    color: var(--nz-active-text);
+    border-color: var(--nz-text-faint);
+  }
+
+  .nz-type-grid--buttons .nz-type-option:has(input:checked) {
+    background: transparent;
+    color: var(--nz-text);
+    border-color: var(--nz-text);
+  }
+
+  :root[data-theme="dusk"] .nz-type-option:has(input:checked) {
+    border-color: rgb(167 139 250 / 0.6);
+  }
+
+  :root[data-theme="dusk"] .nz-type-grid--buttons .nz-type-option:has(input:checked) {
+    border-color: var(--nz-accent-light);
+  }
+
+  .nz-env-copy-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+
+  .nz-env-copy-row .nz-select-wrap {
+    flex: 1 1 10rem;
+  }
+
+  /* ---------- Services list ---------- */
+  .nz-row-check {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    accent-color: var(--nz-primary);
+  }
+
+  .nz-flow--single {
+    display: block;
+    max-width: 14rem;
+  }
+
+  [data-draggable] {
+    touch-action: pan-y;
+  }
+
+  [data-draggable][data-dragging="true"] {
+    position: relative;
+    z-index: 2;
+    cursor: grabbing;
+    user-select: none;
+  }
+
+  /* ---------- Variables ---------- */
+  .nz-var-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+  }
+
+  .nz-var-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    padding: 6px 8px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-var-row:first-child {
+    border-top: 0;
+  }
+
+  .nz-var-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+  }
+
+  .nz-var-mark {
+    font-family: var(--nz-font-ui);
+    color: var(--nz-text-dim);
+  }
+
+  .nz-var-value {
+    min-width: 0;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-var-value[data-empty="true"] {
+    font-family: var(--nz-font-ui);
+    font-style: italic;
+    color: var(--nz-text-faint);
+  }
+
+  /* A service's Variables card (spec 21.10): at most about 890px wide, 20px in. */
+  .nz-vars-card {
+    max-width: 894px;
+    padding: 16px 20px 18px;
+  }
+
+  .nz-vars-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .nz-vars-card-head .nz-subtitle {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .nz-vars--inline {
+    margin-top: 14px;
+  }
+
+  .nz-vars--inline + .nz-vars--inline,
+  .nz-vars--inline + .nz-vars-note {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-vars-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 6px;
+  }
+
+  .nz-vars-title {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .nz-vars-tools {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .nz-vars-note {
+    margin: 4px 0 6px;
+    color: var(--nz-text-dim);
+  }
+
+  /* Two columns: the name in mono, the masked value about 270px to its right. */
+  /* 28px rows, plus the hairline between them. */
+  .nz-var-list--table .nz-var-row {
+    display: grid;
+    grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+    gap: 8px;
+    min-height: 29px;
+    padding: 6px 8px;
+  }
+
+  .nz-var-list--table .nz-var-row:first-child {
+    min-height: 28px;
+  }
+
+  .nz-var-list--table .nz-var-value {
+    max-width: none;
+    color: var(--nz-text-dim);
+  }
+
+  /* Dark and Dusk draw each code cell on its strip, the value in the text colour. */
+  :root[data-tone="dark"] .nz-var-list--table .nz-var-name,
+  :root[data-tone="dark"] .nz-var-list--table .nz-var-value {
+    background: var(--nz-muted);
+  }
+
+  :root[data-tone="dark"] .nz-var-list--table .nz-var-value[data-empty="false"] {
+    color: var(--nz-text);
+  }
+
+  .nz-var-empty {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 42px;
+    padding: 6px 8px;
+    border: 1px solid var(--nz-line);
+    border-top-width: 2px;
+    border-radius: 6px;
+  }
+
+  /* Phones (spec 21.10): each variable is the name with its masked value on the line under it,
+     and Show values moves under the card's description. */
+  @media (max-width: 639.98px) {
+    .nz-var-list--table .nz-var-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
+    }
+
+    .nz-vars-card-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+  }
+
+  /* Rows of the Settings folds: the port as a quiet mono value that edits in place. */
+  .nz-fold-row-tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  /* Two classes, so it wins over .nz-fold-row below (B3-05): the Hostnames block runs the
+     card's width, left-aligned like the rows around it. */
+  .nz-fold-row.nz-fold-row--block {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  .nz-fold-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .nz-fold-row--block .nz-host-rows {
+    margin-top: 4px;
+  }
+
+  .nz-port-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+  }
+
+  .nz-input.nz-port-input {
+    width: 72px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--nz-text-dim);
+    font-family: var(--nz-font-code);
+    text-align: right;
+  }
+
+  .nz-input.nz-port-input:hover:not(:disabled),
+  .nz-input.nz-port-input:focus-visible {
+    border-color: var(--nz-field-line);
+    background: var(--nz-field);
+    color: var(--nz-text);
+  }
+
+  .nz-input.nz-port-input:disabled {
+    opacity: 1;
+    cursor: default;
+  }
+
+  /* Save port shows while the port is being edited. */
+  .nz-port-save {
+    display: none;
+  }
+
+  .nz-port-form:focus-within .nz-port-save,
+  .nz-port-form:has([aria-invalid="true"]) .nz-port-save {
+    display: inline-flex;
+  }
+
+  .nz-port-form .nz-field-error,
+  .nz-port-form .nz-inline-error {
+    margin-top: 2px;
+  }
+
+  .nz-fold-tools {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .nz-fold-tools > .nz-btn {
+    flex: none;
+  }
+
+  .nz-form.nz-form--flush,
+  .nz-fold-body > .nz-form:first-child {
+    margin-top: 0;
+  }
+
+  .nz-fold-body > .nz-switch-list:first-child {
+    margin-top: 0;
+  }
+
+  .nz-vars-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .nz-vars-editor[hidden] {
+    display: none;
+  }
+
+  .nz-var-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .nz-var-edit-row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) 26px;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .nz-var-edit-row .nz-input {
+    font-family: var(--nz-font-code);
+  }
+
+  .nz-var-comment {
+    margin: 2px 0 -2px;
+    padding: 2px 8px;
+    border-left: 2px solid var(--nz-line-strong);
+    color: var(--nz-text-dim);
+    font-family: var(--nz-font-code);
+    font-size: 11px;
+    line-height: 16px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-var-status {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .nz-var-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nz-var-tools-end {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-var-edit-row {
+      grid-template-columns: minmax(0, 1fr) 26px;
+    }
+
+    .nz-var-edit-row .nz-var-value-input {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .nz-var-tools-end {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
+
+  /* ---------- Service pages ---------- */
+  /* The service page's strips (spec 21.10): the title strip and a project's Overview and
+     Services strips are 48px above their hairline. */
+  .nz-strip.nz-service-strip,
+  .nz-strip.nz-strip--small {
+    min-height: 49px;
+  }
+
+  .nz-service-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .nz-service-title .nz-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nz-back {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    flex: none;
+    border-radius: 6px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-back:hover {
+    background: var(--nz-hover);
+    color: var(--nz-text);
+  }
+
+  .nz-back svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .nz-service-bar {
+    gap: 8px 12px;
+  }
+
+  .nz-service-tabs {
+    flex: 0 1 auto;
+  }
+
+  .nz-service-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .nz-facts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+    gap: 10px 16px;
+  }
+
+  .nz-fact {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-fact > :last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- A service's summary card (spec 21.10) ---------- */
+  /* One row of facts (an app's Domain is wider), a hairline, then Container. */
+  .nz-summary {
+    padding: 16px 20px 18px;
+  }
+
+  .nz-summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .nz-summary-row--app {
+    grid-template-columns: minmax(0, 2.2fr) repeat(4, minmax(0, 1fr));
+  }
+
+  .nz-summary-row--below {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-fact-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+  }
+
+  .nz-fact-status::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--nz-idle-dot);
+  }
+
+  .nz-fact-status[data-status="ok"]::before {
+    background: #10b981;
+  }
+
+  .nz-fact-status[data-status="run"]::before {
+    background: var(--nz-run-dot);
+  }
+
+  .nz-fact-status[data-status="fail"]::before {
+    background: var(--nz-fail-dot);
+  }
+
+  /* "Add a DNS domain": an underlined grey text link. */
+  .nz-fact-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--nz-text-dim);
+    font: inherit;
+    text-align: left;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+
+  .nz-fact-link:hover {
+    color: var(--nz-text);
+  }
+
+  /* A code value on its strip: transparent in Light, #141416 in Dark, #111017 in Dusk. */
+  .nz-code-strip {
+    display: block;
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  :root[data-tone="dark"] .nz-code-strip {
+    background: var(--nz-muted);
+  }
+
+  /* A small grey outlined pill (a database's TYPE). */
+  .nz-type-tag {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 9999px;
+    color: var(--nz-text-dim);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* ---------- A service's backups (spec 21.10) ---------- */
+  /* A bordered box: the title, what a run does and the actions sit right on its edge, then the
+     schedules, or a dashed box saying there are none. */
+  .nz-backups-panel {
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  .nz-backups-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin: -1px -1px 0;
+  }
+
+  .nz-backups-title {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+
+  .nz-backups-desc {
+    max-width: 620px;
+    margin-top: 2px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-backups-desc .nz-code {
+    font-size: 12px;
+  }
+
+  .nz-backups-actions {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 1px;
+  }
+
+  .nz-backups-body {
+    margin: 13px -1px -1px;
+  }
+
+  .nz-backups-body > :not(.nz-backups-empty, .nz-table-wrap) {
+    margin-left: 13px;
+    margin-right: 13px;
+  }
+
+  .nz-backups-body > :last-child:not(.nz-backups-empty, .nz-table-wrap) {
+    margin-bottom: 13px;
+  }
+
+  .nz-backups-empty {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px;
+    color: var(--nz-text-dim);
+    border: 1px dashed var(--nz-line);
+    border-radius: 6px;
+  }
+
+  .nz-backups-error {
+    margin: 13px;
+  }
+
+  /* ---------- A database's Connection card (spec 21.10) ---------- */
+  .nz-conn {
+    padding: 16px 20px 19px;
+  }
+
+  .nz-conn-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 15px;
+  }
+
+  .nz-conn-row {
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .nz-conn-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .nz-conn-value {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-conn-url {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .nz-conn-url .nz-url-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-right: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
+  :root[data-tone="dark"] .nz-conn .nz-url-text {
+    background: var(--nz-muted);
+  }
+
+  .nz-conn .nz-btn--icon {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    border-color: var(--nz-line);
+  }
+
+  .nz-conn .nz-btn--icon svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .nz-conn-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .nz-conn-creds {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px 16px;
+    margin-top: 15px;
+    padding-top: 14px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-conn-creds .nz-fact {
+    gap: 8px;
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-conn {
+      padding: 14px 14px 16px;
+    }
+
+    .nz-conn-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 6px;
+    }
+
+    .nz-conn-label {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0 8px;
+    }
+
+    .nz-conn-hint {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .nz-conn-creds {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* ---------- Folds: a service page's collapsible rows in one box (spec 21.10) ---------- */
+  .nz-folds {
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  .nz-folds > .nz-fold + .nz-fold,
+  .nz-folds > .nz-fold + :not(.nz-fold) {
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-fold-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 27px;
+    padding: 0 12px 0 9px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .nz-fold-head::-webkit-details-marker {
+    display: none;
+  }
+
+  .nz-fold-head:focus-visible {
+    outline-offset: -2px;
+  }
+
+  .nz-fold-chevron {
+    flex: none;
+    color: var(--nz-text);
+    transition: transform 120ms ease;
+  }
+
+  .nz-fold[open] > .nz-fold-head .nz-fold-chevron {
+    transform: rotate(90deg);
+  }
+
+  .nz-fold[open] > .nz-fold-head {
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  .nz-fold-title {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+
+  .nz-fold--danger .nz-fold-title {
+    color: var(--nz-logout);
+  }
+
+  :root[data-tone="dark"] .nz-fold--danger .nz-fold-title {
+    color: #f87171;
+  }
+
+  .nz-fold-info {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 2px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-fold-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .nz-fold-body {
+    padding: 12px;
+  }
+
+  .nz-fold--rows > .nz-fold-body {
+    padding: 0;
+  }
+
+  .nz-fold-empty {
+    padding: 12px 20px;
+    color: var(--nz-text-dim);
+  }
+
+  /* Deployment rows in a fold: 41px, edge to edge, the title at 20px. */
+  .nz-fold .nz-deploy-row {
+    gap: 12px;
+    min-height: 41px;
+    padding: 6px 14px 6px 20px;
+    border: 0;
+    border-top: 1px solid var(--nz-line);
+    border-radius: 0;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .nz-fold li:first-child > .nz-deploy-row {
+    border-top: 0;
+  }
+
+  .nz-fold .nz-deploy-row-main > .nz-truncate {
+    font-weight: 500;
+  }
+
+  /* Label-over-value rows (Runtime settings, Domains). */
+  .nz-fold-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nz-fold-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+    padding: 8px 0;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-fold-row:first-child {
+    border-top: 0;
+    padding-top: 4px;
+  }
+
+  .nz-fold-row:last-child {
+    padding-bottom: 4px;
+  }
+
+  .nz-fold-row-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .nz-fold-row-label {
+    font-weight: 500;
+  }
+
+  .nz-fold-row-value {
+    color: var(--nz-text-dim);
+    overflow-wrap: anywhere;
+  }
+
+  .nz-fold-row-value.nz-code,
+  .nz-fold-row-side.nz-code {
+    font-size: 12px;
+  }
+
+  :root[data-tone="dark"] .nz-fold-row-value.nz-code {
+    align-self: flex-start;
+    min-width: 116px;
+    padding-right: 8px;
+    background: var(--nz-muted);
+  }
+
+  .nz-fold-row-side {
+    flex: none;
+    color: var(--nz-text-dim);
+  }
+
+  /* Phones: one fact per row; a deployment's pill drops under its title. */
+  @media (max-width: 639.98px) {
+    .nz-summary {
+      padding: 16px 20px;
+    }
+
+    .nz-summary-row,
+    .nz-summary-row--app {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .nz-fold .nz-deploy-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      row-gap: 10px;
+      padding: 12px 20px 10px;
+    }
+
+    .nz-fold .nz-deploy-row > .nz-pill {
+      grid-column: 1;
+      justify-self: start;
+    }
+  }
+
+  .nz-connection {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nz-connection-block {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .nz-connection-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .nz-secret-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 3px 4px 3px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+  }
+
+  .nz-secret-row .nz-url-text {
+    user-select: all;
+  }
+
+  .nz-cred-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+    align-items: center;
+  }
+
+  .nz-pending-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .nz-disabled-group {
+    opacity: 0.6;
+  }
+
+  .nz-collapsible > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .nz-collapsible > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .nz-collapsible > summary > svg {
+    transition: transform 120ms ease;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-collapsible[open] > summary > svg {
+    transform: rotate(180deg);
+  }
+
+  .nz-collapsible[open] > summary {
+    margin-bottom: 10px;
+  }
+
+  .nz-danger-zone {
+    border-color: color-mix(in srgb, var(--nz-danger) 40%, var(--nz-card-line));
+  }
+
+  .nz-anchor-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  /* ---------- New application ---------- */
+  .nz-stepper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 14px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    font-weight: 500;
+  }
+
+  .nz-step[aria-current="step"] {
+    background: var(--nz-active-fill);
+    color: var(--nz-active-text);
+    border-color: var(--nz-line-strong);
+  }
+
+  .nz-step-sep {
+    color: var(--nz-text-faint);
+  }
+
+  .nz-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 10px;
+  }
+
+  .nz-provider-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+
+  .nz-provider-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px;
+  }
+
+  .nz-or {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0;
+    color: var(--nz-text-faint);
+    font-family: var(--nz-font-small);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+  }
+
+  .nz-or::before,
+  .nz-or::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--nz-line);
+  }
+
+  /* The new-application page (spec 21.10): a top row with "← Overview", the centred title and
+     "Create without Git"; the provider step is a centred 350px column. */
+  .nz-new-app.nz-body {
+    padding: 0 16px 24px;
+  }
+
+  .nz-newapp-top {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    width: min(100%, 1044px);
+    min-height: 62px;
+    margin: 0 auto;
+    padding-top: 2px;
+  }
+
+  .nz-newapp-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    justify-self: start;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-newapp-back:hover,
+  .nz-newapp-mode:hover {
+    color: var(--nz-text);
+  }
+
+  .nz-newapp-title {
+    font-family: var(--nz-font-grotesk);
+    font-size: 17px;
+    line-height: 24px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    text-align: center;
+  }
+
+  /* "Create without Git": a text link over its own (invisible) checkbox. */
+  .nz-newapp-mode {
+    position: relative;
+    justify-self: end;
+    color: var(--nz-text-dim);
+    cursor: pointer;
+  }
+
+  .nz-newapp-mode-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .nz-newapp-mode:has(:focus-visible:not([data-quiet-focus])) {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .nz-newapp-mode-on,
+  .nz-newapp-mode:has(:checked) .nz-newapp-mode-off {
+    display: none;
+  }
+
+  .nz-newapp-mode:has(:checked) .nz-newapp-mode-on {
+    display: inline;
+  }
+
+  .nz-newapp-git:has(> [data-step="provider"]:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100dvh - var(--nz-header-h) - 62px - 24px);
+  }
+
+  .nz-newapp-git:has(> [data-step="provider"]:not([hidden])) .nz-stepper {
+    display: none;
+  }
+
+  .nz-newapp-git > .nz-stepper,
+  .nz-newapp-git > .nz-app-form,
+  .nz-new-app > .nz-app-form {
+    width: min(100%, 46rem);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .nz-newapp-column {
+    width: min(100% - 48px, 352px);
+    padding: 52px 0 32px;
+  }
+
+  .nz-newapp-intro {
+    margin-bottom: 8px;
+    color: var(--nz-text-dim);
+    text-align: center;
+  }
+
+  .nz-newapp-providers {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+
+  .nz-newapp-provider-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid var(--nz-field-line);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--nz-text);
+    font: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .nz-newapp-provider-btn:hover:not(:disabled) {
+    background: var(--nz-hover);
+  }
+
+  .nz-newapp-provider-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .nz-newapp-logo {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    color: var(--nz-text);
+  }
+
+  .nz-newapp-logo svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nz-logo-eyes {
+    fill: var(--nz-surface);
+  }
+
+  .nz-newapp-column .nz-or {
+    margin: 10px 0 14px;
+  }
+
+  .nz-newapp-column .nz-form {
+    gap: 12px;
+  }
+
+  .nz-app-form {
+    max-width: 46rem;
+  }
+
+  .nz-env-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+}

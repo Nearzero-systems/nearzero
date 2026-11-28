@@ -1,0 +1,7 @@
+---
+import { projectPath } from "../../../../../../lib/routes.ts";
+
+// An environment's own address opens its Overview.
+const { workspace = "", project = "", environment = "" } = Astro.params;
+return Astro.redirect(projectPath(workspace, project, environment));
+---

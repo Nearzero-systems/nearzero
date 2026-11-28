@@ -1,0 +1,18 @@
+---
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+
+/**
+ * "Confirm action" (spec 06 6.2): every header action asks first. Openers carry
+ * `data-confirm-deploy="<service id>"` and `data-confirm-text`; client/deploys.ts fills this in
+ * and the confirm button starts the deploy.
+ */
+---
+
+<Dialog id="nz-confirm-action" title="Confirm action">
+  <p data-confirm-action-text></p>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Cancel</Button>
+    <Button variant="primary" data-confirm-action-go>Confirm</Button>
+  </div>
+</Dialog>

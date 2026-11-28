@@ -1,0 +1,41 @@
+{
+  "name": "@nearzero/console",
+  "version": "1.0.0-dev",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 bun --bun astro dev",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 bun --bun astro build",
+    "start": "bun ./dist/server/entry.mjs",
+    "typecheck": "ASTRO_TELEMETRY_DISABLED=1 bun --bun astro check",
+    "sweep": "bun ./sweep/run.ts",
+    "e2e": "bun test ./e2e/people.e2e.ts --timeout=180000",
+    "stack": "bun ./test-support/serve.ts",
+    "sweep:install": "bunx --bun playwright install chromium-headless-shell"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.11",
+    "@astrojs/react": "7.1.9",
+    "@nearzero/shared": "workspace:*",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "astro": "7.4.9",
+    "marked": "18.1.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "@fontsource-variable/space-grotesk": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/instrument-serif": "5.3.0",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "playwright": "1.65.1",
+    "tailwindcss": "4.3.5"
+  }
+}

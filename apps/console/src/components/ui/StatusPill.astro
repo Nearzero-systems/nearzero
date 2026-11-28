@@ -1,0 +1,20 @@
+---
+/**
+ * A status (spec 21.5, 21.10), in one of the original's three styles:
+ * - `label` (default): an 18px outlined label with no dot (Pending, Setup Needed, Owner);
+ * - `deploy`: a fully round filled pill with a 6px dot, for deployment states (Active, Error);
+ * - `text`: plain colored text with a dot ("● Running"), for canvas and list statuses.
+ */
+export type PillStatus = "ok" | "run" | "warn" | "fail" | "idle";
+
+interface Props {
+  status: PillStatus;
+  label: string;
+  kind?: "label" | "deploy" | "text";
+  class?: string;
+}
+
+const { status, label, kind = "label", class: className } = Astro.props;
+---
+
+<span class:list={["nz-pill", className]} data-status={status} data-kind={kind}>{label}</span>

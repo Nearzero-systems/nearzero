@@ -1,0 +1,52 @@
+---
+import Button from "../ui/Button.astro";
+import Icon from "../ui/Icon.astro";
+
+/**
+ * The Terminal dialog (spec 6.7, 8.2, 9.1): Options (container and shell), then a shell in the
+ * running container over a WebSocket (client/terminal.ts, xterm.js). Closing an open session asks
+ * "Close terminal?"; the session ends when the dialog closes. Opened by any
+ * `data-terminal-open="<service id>"` (or `data-terminal-server="<server id>"` for a container on a
+ * server) button; `data-terminal-ssh="<server id>"` opens an SSH shell on the server itself.
+ */
+---
+
+<dialog id="nz-terminal" class="nz-dialog nz-moonlit nz-dialog--wide nz-terminal-dialog" aria-labelledby="nz-terminal-title" data-dialog data-terminal>
+  <div class="nz-dialog-body">
+    <div class="nz-dialog-head">
+      <div class="min-w-0">
+        <h2 id="nz-terminal-title" class="nz-dialog-title">Terminal</h2>
+        <p class="nz-dialog-desc nz-truncate" data-terminal-subject></p>
+      </div>
+      <Button variant="icon" icon="close" label="Close" data-terminal-close />
+    </div>
+    <details class="nz-collapsible nz-terminal-options" data-terminal-options open>
+      <summary><span class="nz-label">Options</span><Icon name="chevron-down" /></summary>
+      <div class="nz-terminal-option-row">
+        <label class="nz-select-wrap">
+          <span class="nz-visually-hidden">Container</span>
+          <select class="nz-select" data-terminal-container aria-label="Container"></select>
+          <Icon name="chevron-down" />
+        </label>
+        <label class="nz-select-wrap" data-terminal-shell-wrap>
+          <span class="nz-visually-hidden">Shell</span>
+          <select class="nz-select" data-terminal-shell aria-label="Shell">
+            <option value="sh">sh</option>
+            <option value="bash">bash</option>
+          </select>
+          <Icon name="chevron-down" />
+        </label>
+        <Button variant="primary" data-terminal-connect>Connect</Button>
+      </div>
+    </details>
+    <p class="nz-small nz-dim" data-terminal-status aria-live="polite"></p>
+    <div class="nz-terminal-screen" data-terminal-screen></div>
+    <div class="nz-terminal-confirm" data-terminal-confirm hidden role="alertdialog" aria-label="Close terminal?">
+      <span class="font-medium">Close terminal?</span>
+      <span class="nz-dim">The shell session ends.</span>
+      <span class="flex-1"></span>
+      <Button variant="outline" data-terminal-keep>Keep open</Button>
+      <Button variant="danger" data-terminal-end>Close terminal</Button>
+    </div>
+  </div>
+</dialog>

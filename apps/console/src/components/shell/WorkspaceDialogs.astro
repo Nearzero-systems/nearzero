@@ -1,0 +1,86 @@
+---
+import { WORKSPACE_NAME_MAX } from "@nearzero/shared";
+import type { DashboardContext } from "../../lib/page.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Add organization and Rename organization (spec 4.4, the original's word per 21.10), opened from
+ * the switcher. Both are for instance administrators; the API refuses everyone else with its own
+ * words.
+ */
+interface Props {
+  ctx: DashboardContext;
+}
+
+const { ctx } = Astro.props;
+const { workspace } = ctx;
+---
+
+{
+  ctx.access.can.rename && (
+    <Dialog id="nz-rename-workspace" title="Rename organization" description="The name everyone in this organization sees.">
+      <form method="post" class="nz-form" data-api="PATCH /workspace" data-api-then="workspace" data-validate novalidate>
+        <FormError />
+        <Field
+          id="nz-rename-workspace-name"
+          name="name"
+          label="Name"
+          value={workspace.name}
+          maxlength={WORKSPACE_NAME_MAX}
+          data-required="Enter an organization name."
+          autofocus
+        />
+        <Field
+          id="nz-rename-workspace-logo"
+          name="logoUrl"
+          type="url"
+          label="Logo URL"
+          value={workspace.logoUrl ?? ""}
+          placeholder="https://example.com/logo.png"
+          hint="Leave empty to remove the logo."
+          maxlength={2048}
+        />
+        <p class="nz-hint">The organization's web address follows its name. Old addresses keep working.</p>
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Save name</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+{
+  ctx.canAddWorkspace && (
+    <Dialog id="nz-add-workspace" title="Add organization" description="You become its owner. Its web address follows its name.">
+      <form method="post" class="nz-form" data-api="POST /workspaces" data-api-then="new-workspace" data-validate novalidate>
+        <FormError />
+        <Field
+          id="nz-add-workspace-name"
+          name="name"
+          label="Name"
+          placeholder="Acme Inc."
+          maxlength={WORKSPACE_NAME_MAX}
+          data-required="Enter an organization name."
+          autofocus
+        />
+        <Field
+          id="nz-add-workspace-logo"
+          name="logoUrl"
+          type="url"
+          label="Logo URL"
+          placeholder="https://example.com/logo.png"
+          hint="Optional."
+          maxlength={2048}
+          data-omit-empty
+        />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Create</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}

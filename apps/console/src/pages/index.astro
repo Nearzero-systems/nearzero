@@ -1,0 +1,15 @@
+---
+import { consoleData } from "../lib/data/index.ts";
+import { destinationAfter } from "../lib/next-step.ts";
+import { sessionOrUnavailable } from "../lib/page.ts";
+
+// The root address (spec 4.1): a signed-in person goes to the Agent of their active workspace
+// (or the invitation or onboarding step that comes first), everyone else to sign-in.
+consoleData(Astro);
+const session = await sessionOrUnavailable(Astro);
+if (session instanceof Response) return session;
+if (!session.signedIn) return Astro.redirect("/sign-in");
+return Astro.redirect(
+  destinationAfter({ next: session.next, workspaceSlug: session.workspace?.slug ?? null }),
+);
+---

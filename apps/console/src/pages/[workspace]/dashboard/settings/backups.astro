@@ -1,0 +1,153 @@
+---
+import DestinationDialogs from "../../../../components/backups/DestinationDialogs.astro";
+import LoadFailed from "../../../../components/settings/LoadFailed.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import TableWrap from "../../../../components/ui/TableWrap.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { DestinationList } from "../../../../lib/data/index.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { settingsVisibility } from "../../../../lib/routes.ts";
+import { fullDate } from "../../../../lib/time.ts";
+
+// Settings → Backups (spec 17.1): the workspace's backup destinations, for people with
+// destination rights. Keys are never shown; editing leaves them blank to keep them (spec 23.4).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const visible = settingsVisibility(ctx.access).backups;
+
+let list: DestinationList | null = null;
+let failure: string | null = null;
+if (visible) {
+  try {
+    list = await ctx.data.destinations();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+const allowed = visible && (list !== null || failure !== null);
+if (!allowed) Astro.response.status = 403;
+const can = list?.can ?? { use: false, manage: false };
+
+const fillFor = (destination: DestinationList["destinations"][number]) =>
+  JSON.stringify({
+    id: destination.id,
+    name: destination.name,
+    provider: destination.provider,
+    endpoint: destination.endpoint,
+    bucket: destination.bucket,
+    region: destination.region,
+    accessKeyId: "",
+    secretAccessKey: "",
+  });
+const savedOn = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+---
+
+<SettingsLayout ctx={ctx} current="backups" title="Backup destinations">
+  {
+    !allowed ? (
+      <NoAccess workspace={ctx.workspace.slug} />
+    ) : !list ? (
+      <LoadFailed detail={failure} />
+    ) : (
+      <div class="nz-backups-page" data-destinations>
+        <div class="nz-settings-intro">
+          <p class="nz-dim min-w-0">Backups are written to these buckets. Schedule them from a database's Backups tab.</p>
+          {can.manage && (
+            <Button variant="primary" data-destination-open="add">
+              Add destination
+            </Button>
+          )}
+        </div>
+        {list.destinations.length === 0 ? (
+          <EmptyState
+            title="No destinations yet"
+            text={
+              can.manage
+                ? "Add an S3-compatible bucket (Amazon S3, Cloudflare R2, MinIO and others) to back up databases and volumes."
+                : "Ask an owner or admin to add a backup destination."
+            }
+          />
+        ) : (
+          <TableWrap label="Backup destinations" class="nz-settings-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Provider</th>
+                <th>Bucket</th>
+                <th>Endpoint</th>
+                <th class="nz-col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.destinations.map((destination) => (
+                <tr data-destination-row={destination.id}>
+                  <td>
+                    <p
+                      class="font-medium nz-truncate"
+                      title={[
+                        destination.schedules === 0
+                          ? "No backup schedules"
+                          : destination.schedules === 1
+                            ? "1 backup schedule"
+                            : `${destination.schedules} backup schedules`,
+                        `Keys saved ${savedOn(destination.keys.savedAt)}${destination.keys.savedBy ? ` by ${destination.keys.savedBy}` : ""} (${fullDate(new Date(destination.keys.savedAt))})`,
+                      ].join("\n")}
+                    >
+                      {destination.name}
+                    </p>
+                  </td>
+                  <td class="nz-dim">{destination.providerLabel}</td>
+                  <td>
+                    <code class="nz-code nz-dim">{destination.bucket}</code>
+                  </td>
+                  <td class="nz-backup-endpoint">
+                    <span class="nz-truncate nz-code nz-dim">{destination.endpoint}</span>
+                    {!destination.keys.readable && (
+                      <span class="nz-small nz-inline-error">The keys can't be read any more. Edit it and paste them again.</span>
+                    )}
+                  </td>
+                  <td class="nz-cell-actions">
+                    <div class="nz-backup-actions">
+                      <Button variant="ghost" data-destination-test={destination.id} data-destination-name={destination.name}>
+                        Test
+                      </Button>
+                      {can.manage && (
+                        <>
+                          <Button variant="ghost" data-destination-open="edit" data-dialog-fill={fillFor(destination)}>
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            data-dialog-open="nz-destination-delete"
+                            data-destination-delete={destination.schedules}
+                            data-dialog-fill={JSON.stringify({ id: destination.id, name: destination.name })}
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    <p class="nz-small nz-backup-test" data-destination-result={destination.id} aria-live="polite" hidden></p>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+        )}
+        {list.destinations.length > 0 && <p class="nz-settings-total">{list.destinations.length} total</p>}
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">{allowed && can.manage && <DestinationDialogs />}</Fragment>
+</SettingsLayout>

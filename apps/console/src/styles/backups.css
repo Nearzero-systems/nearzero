@@ -1,0 +1,157 @@
+/*
+ * Backups (spec 08 8.3, 17): Settings → Backups, a service's Backups panel and its dialogs.
+ * Flat, 1px lines, 6px corners (spec 21.1); wide tables scroll in their own box (21.5).
+ */
+
+@layer components {
+  /* Settings pages with a table (Backups, Channels; spec 21.10): an intro with the main button
+     on the same row, a 32px grey header with Actions at the right, 48px rows, grey text
+     buttons, and "N total" under the table. */
+  .nz-settings-intro {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .nz-settings-intro--end {
+    justify-content: flex-end;
+  }
+
+  .nz-settings-table tbody td {
+    height: 48px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .nz-settings-table .nz-backup-actions .nz-btn {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-settings-total {
+    margin-top: 18px;
+    font-size: 12px;
+  }
+
+  .nz-channel-events-cell {
+    color: var(--nz-text-dim);
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-settings-intro {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .nz-settings-intro--end {
+      align-items: flex-end;
+    }
+
+    .nz-settings-table td,
+    .nz-settings-table th {
+      white-space: normal;
+    }
+
+    .nz-settings-table .nz-truncate {
+      white-space: normal;
+    }
+
+    .nz-settings-table .nz-code {
+      overflow-wrap: anywhere;
+    }
+
+    .nz-settings-table .nz-cell-actions {
+      white-space: nowrap;
+    }
+  }
+
+  .nz-backup-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .nz-backup-endpoint {
+    max-width: 22rem;
+  }
+
+  .nz-backup-endpoint > span {
+    display: block;
+  }
+
+  .nz-backup-test {
+    margin-top: 4px;
+    max-width: 22rem;
+    text-align: right;
+    white-space: normal;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-backup-test[data-ok="true"] {
+    color: var(--nz-ok);
+  }
+
+  .nz-backup-test[data-ok="false"] {
+    color: var(--nz-danger-text);
+  }
+
+  /* Test connection in the Add / Edit destination dialog (spec 17.1). */
+  [data-destination-check][data-ok="true"] {
+    color: var(--nz-ok);
+  }
+
+  [data-destination-check][data-ok="false"] {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-backup-error {
+    max-width: 18rem;
+    white-space: normal;
+  }
+
+  .nz-backup-volume {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .nz-nowrap {
+    white-space: nowrap;
+  }
+
+  .nz-restore-files {
+    max-height: 16rem;
+    overflow-y: auto;
+  }
+
+  /* A run's log: monospace, wrapped, scrolling inside its own box. */
+  .nz-run-log {
+    margin: 0;
+    min-height: 8rem;
+    max-height: 22rem;
+    overflow: auto;
+    padding: 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-code);
+    color: var(--nz-text);
+    font-family: var(--nz-font-code);
+    font-size: 11.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  [data-run-log-state][data-status="ok"],
+  [data-restore-state][data-status="ok"] {
+    color: var(--nz-ok);
+  }
+
+  [data-run-log-state][data-status="fail"],
+  [data-restore-state][data-status="fail"] {
+    color: var(--nz-danger-text);
+  }
+}

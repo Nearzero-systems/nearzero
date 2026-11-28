@@ -1,0 +1,23 @@
+---
+import AuthFrame from "../components/auth/AuthFrame.astro";
+import Button from "../components/ui/Button.astro";
+import FocusLayout from "../layouts/FocusLayout.astro";
+import { consoleData } from "../lib/data/index.ts";
+import { sessionOrUnavailable } from "../lib/page.ts";
+
+// A signed-in person who belongs to no workspace (every account normally keeps one).
+consoleData(Astro);
+const session = await sessionOrUnavailable(Astro);
+if (session instanceof Response) return session;
+if (!session.signedIn) return Astro.redirect("/sign-in");
+if (session.workspace) return Astro.redirect("/");
+---
+
+<FocusLayout title="No workspace" description="This account doesn't belong to any workspace yet.">
+  <AuthFrame heading="No workspace yet">
+    <p slot="note">You don't belong to any workspace. Ask a workspace owner to invite you.</p>
+    <form method="post" action="/sign-out" class="nz-gate-actions nz-gate-actions--block" data-astro-reload>
+      <Button variant="outline" type="submit">Log out</Button>
+    </form>
+  </AuthFrame>
+</FocusLayout>

@@ -1,0 +1,24 @@
+---
+import Button from "../ui/Button.astro";
+
+/**
+ * One DNS record for copying (spec 9.5, 10.3, 21.8): name, then type and value, then Copy name and
+ * Copy value. On phones the three parts read as three lines.
+ */
+interface Props {
+  record: { type: string; name: string; value: string | null };
+  /** The copy button's word for the value ("IP" for A records of servers). */
+  valueWord?: string;
+}
+
+const { record, valueWord = "value" } = Astro.props;
+---
+
+<div class="nz-record-line">
+  <span class="nz-record-name nz-code">{record.name}</span>
+  <span class="nz-record-tv nz-code">{record.type} {record.value ?? "(server address unknown)"}</span>
+  <span class="nz-record-tools">
+    <Button variant="outline" icon="copy" data-copy={record.name}>Copy name</Button>
+    <Button variant="outline" icon="copy" data-copy={record.value ?? ""} disabled={!record.value}>Copy {valueWord}</Button>
+  </span>
+</div>

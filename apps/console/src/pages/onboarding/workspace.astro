@@ -1,0 +1,89 @@
+---
+import { WORKSPACE_NAME_MAX } from "@nearzero/shared";
+import AuthFrame from "../../components/auth/AuthFrame.astro";
+import Button from "../../components/ui/Button.astro";
+import Field from "../../components/ui/Field.astro";
+import Icon from "../../components/ui/Icon.astro";
+import FocusLayout from "../../layouts/FocusLayout.astro";
+import { isApiError } from "../../lib/api-error.ts";
+import { formText, onboardingContext } from "../../lib/page.ts";
+
+// Owner onboarding, step 1 of 2 (spec 4.3): name the person and the workspace. Saving gives the
+// workspace a matching web address.
+const ctx = await onboardingContext(Astro, "workspace");
+if (ctx instanceof Response) return ctx;
+const { data, viewer } = ctx;
+
+let name = viewer.hasRealName ? viewer.name : "";
+let workspaceName = "";
+try {
+  workspaceName = (await data.onboarding()).suggestedWorkspaceName ?? "";
+} catch {
+  // The suggestion is a convenience; the field just starts empty.
+}
+const errors: { name?: string; workspaceName?: string; form?: string } = {};
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  name = formText(form, "name", 200);
+  workspaceName = formText(form, "workspaceName", 200);
+  if (!name) errors.name = "Enter your name.";
+  if (!workspaceName) errors.workspaceName = "Enter a workspace name.";
+  if (!errors.name && !errors.workspaceName) {
+    try {
+      await data.saveOnboardingWorkspace({ name, workspaceName });
+      return Astro.redirect("/onboarding/team", 303);
+    } catch (error) {
+      if (!isApiError(error)) throw error;
+      if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+      errors.name = error.field("name");
+      errors.workspaceName = error.field("workspaceName");
+      if (!errors.name && !errors.workspaceName) errors.form = error.message;
+    }
+  }
+}
+---
+
+<FocusLayout
+  title="Set up your workspace"
+  description="Name yourself and your workspace to start using Nearzero."
+>
+  <AuthFrame heading="Set up your workspace">
+    <div slot="note" class="nz-steps-note">
+      <div class="nz-steps" aria-hidden="true"><span data-done="true"></span><span></span></div>
+      <p>Step 1 of 2</p>
+    </div>
+    <form method="post" class="nz-form" data-validate novalidate data-astro-reload>
+      {
+        errors.form && (
+          <p class="nz-inline-error" role="alert">
+            <Icon name="alert" />
+            <span>{errors.form}</span>
+          </p>
+        )
+      }
+      <Field
+        id="nz-onboarding-name"
+        name="name"
+        label="Your name"
+        value={name}
+        autocomplete="name"
+        maxlength={100}
+        error={errors.name}
+        data-required="Enter your name."
+        autofocus
+      />
+      <Field
+        id="nz-onboarding-workspace"
+        name="workspaceName"
+        label="Workspace name"
+        value={workspaceName}
+        placeholder="Acme Inc."
+        maxlength={WORKSPACE_NAME_MAX}
+        hint="Everyone you invite sees this name. It also becomes the workspace's web address."
+        error={errors.workspaceName}
+        data-required="Enter a workspace name."
+      />
+      <Button variant="primary" type="submit" block>Continue</Button>
+    </form>
+  </AuthFrame>
+</FocusLayout>

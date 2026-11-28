@@ -1,0 +1,139 @@
+---
+import Button from "../ui/Button.astro";
+import Field from "../ui/Field.astro";
+import Icon from "../ui/Icon.astro";
+import AuthFrame from "./AuthFrame.astro";
+
+/**
+ * The sign-in page's frame and form (spec 4.1, 21.10): "Sign in to Nearzero", the line about
+ * who can sign up right under the title, then the form. It posts (never GET), checks fields in
+ * the browser first, and switches to the authentication code step when the account has
+ * two-factor sign-in; that step keeps the email on screen, read-only, with the hint (30a R1-07). The code step's challenge rides in an HttpOnly cookie the API set, never
+ * in the page. The first field takes focus without a ring until the person uses the keyboard or
+ * the pointer (data-quiet-focus, spec 21.10).
+ */
+export type SignInFooter =
+  | { kind: "no-owner" }
+  | { kind: "invite-only" }
+  | { kind: "sign-up"; workspace: string; href: string }
+  | { kind: "existing"; workspace: string; email: string };
+
+interface Props {
+  step?: "password" | "code";
+  footer: SignInFooter;
+  email?: string;
+  error?: string | null;
+  action?: string;
+  /** Unique ids when several cards share a page (the style guide). */
+  idPrefix?: string;
+  focus?: boolean;
+  /** Only the title, note and form rows (the style guide). */
+  compact?: boolean;
+}
+
+const {
+  step = "password",
+  footer,
+  email = "",
+  error,
+  action,
+  idPrefix = "nz-sign-in",
+  focus = true,
+  compact = false,
+} = Astro.props;
+const prefilled = footer.kind === "existing" ? footer.email : email;
+---
+
+<AuthFrame heading="Sign in to Nearzero" compact={compact}>
+  <p slot="note">
+    {
+      footer.kind === "no-owner" ? (
+        <>
+          No admin account yet. On the server, run <code>sudo nearzero create-owner</code>, then
+          sign in here.
+        </>
+      ) : footer.kind === "sign-up" ? (
+        <>
+          Don't have an account? <a href={footer.href}>Sign up to join {footer.workspace}</a>
+        </>
+      ) : footer.kind === "existing" ? (
+        <>Sign in as {footer.email} to accept your invitation to {footer.workspace}.</>
+      ) : (
+        <>New accounts are by invitation. Ask a workspace owner to invite you.</>
+      )
+    }
+  </p>
+  <form method="post" action={action} class="nz-form" data-validate novalidate data-astro-reload>
+    {
+      error && (
+        <p class="nz-inline-error" role="alert">
+          <Icon name="alert" />
+          <span>{error}</span>
+        </p>
+      )
+    }
+    {
+      step === "password" ? (
+        <>
+          <input type="hidden" name="step" value="password" />
+          <Field
+            id={`${idPrefix}-email`}
+            name="email"
+            type="email"
+            label="Email"
+            value={prefilled}
+            placeholder="you@company.com"
+            autocomplete="username"
+            inputmode="email"
+            data-required="Enter your email address."
+            data-email="Use a valid email address."
+            autofocus={focus && !prefilled}
+            data-quiet-focus={focus && !prefilled ? "" : undefined}
+          />
+          <Field
+            id={`${idPrefix}-password`}
+            name="password"
+            type="password"
+            label="Password"
+            placeholder="Your password"
+            autocomplete="current-password"
+            data-required="Enter your password."
+            data-minlength="8"
+            data-minlength-message="Password must be at least 8 characters."
+            autofocus={focus && Boolean(prefilled)}
+            data-quiet-focus={focus && Boolean(prefilled) ? "" : undefined}
+          />
+          <Button variant="primary" type="submit" block>Sign in</Button>
+        </>
+      ) : (
+        <>
+          <input type="hidden" name="step" value="code" />
+          {email && (
+            <Field
+              id={`${idPrefix}-email`}
+              name="email"
+              type="email"
+              label="Email"
+              value={email}
+              autocomplete="username"
+              readonly
+            />
+          )}
+          <Field
+            id={`${idPrefix}-code`}
+            name="code"
+            label="Authentication code"
+            placeholder="6-digit code or backup code"
+            hint="Enter the code from your authenticator app, or one of your backup codes."
+            autocomplete="one-time-code"
+            inputmode="text"
+            data-required="Enter your authentication code."
+            autofocus={focus}
+            data-quiet-focus={focus ? "" : undefined}
+          />
+          <Button variant="primary" type="submit" block>Verify</Button>
+        </>
+      )
+    }
+  </form>
+</AuthFrame>

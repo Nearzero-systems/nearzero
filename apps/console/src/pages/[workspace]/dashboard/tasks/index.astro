@@ -1,0 +1,228 @@
+---
+import { TASK_MESSAGES, TASK_PAGE_SIZES, taskListEmptyState } from "@nearzero/shared/browser";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import TaskDialogs from "../../../../components/tasks/TaskDialogs.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import PageHead from "../../../../components/ui/PageHead.astro";
+import StatusPill from "../../../../components/ui/StatusPill.astro";
+import TableWrap from "../../../../components/ui/TableWrap.astro";
+import Time from "../../../../components/ui/Time.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { TaskList, TaskPlaces } from "../../../../lib/data/index.ts";
+import { RUN_PILLS } from "../../../../lib/m10.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { dashboardPath } from "../../../../lib/routes.ts";
+
+// Tasks (spec 12.1): every task the person can reach, in a service's container, on a server or
+// on the Nearzero host, with the same form and checks as the Agent. client/tasks.ts runs the
+// dialogs, Run, Delete and the Run history panel.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+// Someone with nowhere to run a task doesn't see Tasks in the sidebar; its address gets the
+// standard no-access answer (spec 12.1, 24 G8, R3-31).
+const allowed = ctx.access.can.tasks;
+const params = Astro.url.searchParams;
+const pick = <T extends string>(value: string | null, allowed: readonly T[], fallback: T): T =>
+  value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+const query = {
+  search: (params.get("q") ?? "").slice(0, 200),
+  status: pick(params.get("status"), ["all", "enabled", "disabled"] as const, "all"),
+  place: pick(params.get("place"), ["all", "services", "servers", "host"] as const, "all"),
+  sort: pick(
+    params.get("sort"),
+    ["name", "schedule", "timezone", "status", "created"] as const,
+    "created",
+  ),
+  order: pick(params.get("order"), ["asc", "desc"] as const, "desc"),
+  page: Math.max(1, Number.parseInt(params.get("page") ?? "1", 10) || 1),
+  pageSize: Number(pick(params.get("pageSize"), TASK_PAGE_SIZES.map(String), "50")),
+};
+let list: TaskList | null = null;
+let places: TaskPlaces = { services: [], servers: [], host: false };
+let failure: string | null = null;
+try {
+  if (allowed) [list, places] = await Promise.all([ctx.data.tasks(query), ctx.data.taskPlaces()]);
+} catch (error) {
+  if (!isApiError(error) || error.code === "control_unreachable") throw error;
+  failure = error.message;
+}
+const base = dashboardPath(ctx.workspace.slug, "tasks");
+const emptyState = taskListEmptyState(query);
+const now = new Date();
+const pages = list ? Math.max(1, Math.ceil(list.total / list.pageSize)) : 1;
+const href = (changes: Record<string, string | number>) => {
+  const next = new URLSearchParams();
+  const all = {
+    q: query.search,
+    status: query.status,
+    place: query.place,
+    sort: query.sort,
+    order: query.order,
+    pageSize: query.pageSize,
+    page: query.page,
+    ...changes,
+  };
+  for (const [key, value] of Object.entries(all)) {
+    const text = String(value);
+    if (
+      text === "" ||
+      (key === "status" && text === "all") ||
+      (key === "place" && text === "all") ||
+      (key === "page" && text === "1") ||
+      (key === "pageSize" && text === "50") ||
+      (key === "sort" && text === "created" && all.order === "desc") ||
+      (key === "order" && text === "desc" && all.sort === "created")
+    )
+      continue;
+    next.set(key, text);
+  }
+  const text = next.toString();
+  return text ? `${base}?${text}` : base;
+};
+const sortHref = (key: string) =>
+  href({ sort: key, order: query.sort === key && query.order === "asc" ? "desc" : "asc", page: 1 });
+const sortState = (key: string) =>
+  query.sort === key ? (query.order === "asc" ? "ascending" : "descending") : undefined;
+// Headers are plain sort buttons; the arrow shows only once someone picks a sort.
+const sorted = params.has("sort");
+const arrow = (key: string) =>
+  sorted && query.sort === key ? (query.order === "asc" ? "arrow-up" : "arrow-down") : null;
+const sortColumns = [
+  { key: "schedule", label: "Cron" },
+  { key: "timezone", label: "Timezone" },
+  { key: "status", label: "Status" },
+];
+const canCreate = list?.can.create ?? false;
+---
+
+<AppShell ctx={ctx} title="Tasks" active="tasks">
+  {!allowed ? (
+  <>
+    <PageHead title="Tasks" />
+    <div class="nz-body"><NoAccess workspace={ctx.workspace.slug} /></div>
+  </>
+  ) : (
+  <div class="nz-fill" data-tasks-page data-base={base}>
+    <PageHead title="Tasks">
+      {canCreate && <Button variant="primary" data-task-open="add">Add task</Button>}
+    </PageHead>
+    <form class="nz-strip nz-toolbar" method="get" action={base} data-tasks-filters>
+      <label class="nz-toolbar-search">
+        <span class="nz-visually-hidden">Search tasks</span>
+        <input type="search" name="q" class="nz-input nz-input--search" placeholder="Search by name, cron, timezone..." value={query.search} autocomplete="off" data-tasks-search />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter">
+        <span class="nz-visually-hidden">Status</span>
+        <select class="nz-select nz-select--toolbar" name="status" aria-label="Status" data-tasks-filter>
+          {[["all", "All statuses"], ["enabled", "Enabled"], ["disabled", "Disabled"]].map(([value, label]) => <option value={value} selected={value === query.status}>{label}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter">
+        <span class="nz-visually-hidden">Place</span>
+        <select class="nz-select nz-select--toolbar" name="place" aria-label="Place" data-tasks-filter>
+          {[["all", "All places"], ["services", "Services"], ["servers", "Servers"], ["host", "Nearzero host"]].map(([value, label]) => <option value={value} selected={value === query.place}>{label}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter nz-toolbar-filter--narrow">
+        <span class="nz-visually-hidden">Page size</span>
+        <select class="nz-select nz-select--toolbar" name="pageSize" aria-label="Page size" data-tasks-filter>
+          {TASK_PAGE_SIZES.map((size) => <option value={String(size)} selected={size === query.pageSize}>{size}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+      <input type="hidden" name="sort" value={query.sort} />
+      <input type="hidden" name="order" value={query.order} />
+    </form>
+
+    {
+      failure ? (
+        <div class="nz-body"><EmptyState title="Could not load tasks" text={failure} /></div>
+      ) : !list || list.tasks.length === 0 ? (
+        <div class="nz-body">
+          <EmptyState title={emptyState.title} text={emptyState.text}>
+            {canCreate && list?.total === 0 && !emptyState.filtered && (
+              <Button variant="primary" data-task-open="add">Add task</Button>
+            )}
+          </EmptyState>
+        </div>
+      ) : (
+        <>
+          <TableWrap label="Tasks" class="nz-tasks-table nz-table-wrap--flush">
+            <thead>
+              <tr>
+                <th aria-sort={sortState("name")}><a class="nz-sort-link" href={sortHref("name")}>Name{arrow("name") && <Icon name={arrow("name") ?? "sort"} />}</a></th>
+                <th class="nz-col-optional">Description</th>
+                <th class="nz-col-optional">Runs on</th>
+                {sortColumns.map((column) => <th class="nz-col-optional" aria-sort={sortState(column.key)}><a class="nz-sort-link" href={sortHref(column.key)}>{column.label}{arrow(column.key) && <Icon name={arrow(column.key) ?? "sort"} />}</a></th>)}
+                <th class="nz-col-optional">Last run</th>
+                <th class="nz-col-optional" aria-sort={sortState("created")}><a class="nz-sort-link" href={sortHref("created")}>Created{arrow("created") && <Icon name={arrow("created") ?? "sort"} />}</a></th>
+                <th class="nz-tasks-actions-head">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.tasks.map((task) => (
+                <tr data-task-row={task.id}>
+                  <td class="nz-task-name">
+                    <span class="nz-truncate">{task.name}</span>
+                  </td>
+                  <td class="nz-col-optional nz-cell-dim nz-task-description">
+                    <span class="nz-truncate" title={task.description || undefined}>{task.description || "-"}</span>
+                  </td>
+                  <td class="nz-col-optional">
+                    <span class="nz-task-place">
+                      <span class="nz-truncate">{task.runsOn.service ? `${task.runsOn.service.name}${task.runsOn.service.innerService ? ` · ${task.runsOn.service.innerService}` : ""}` : task.runsOn.label}</span>
+                      {task.runsOn.service && <span class="nz-dim nz-truncate">{task.runsOn.service.projectName} / {task.runsOn.service.environmentName}</span>}
+                    </span>
+                  </td>
+                  <td class="nz-col-optional">
+                    <span class="nz-code nz-cell-dim" title={[task.scheduleText, task.nextRunText ? `Next run: ${task.nextRunText}` : ""].filter(Boolean).join(". ")}>{task.cron}</span>
+                  </td>
+                  <td class="nz-col-optional nz-cell-dim nz-truncate">{task.timeZone}</td>
+                  <td class="nz-col-optional">
+                    <span class="nz-task-status" data-enabled={task.enabled ? "true" : "false"}>{task.statusLabel}</span>
+                  </td>
+                  <td class="nz-col-optional nz-cell-dim">
+                    {task.lastRun ? (
+                      <span class="nz-task-last">
+                        <StatusPill status={RUN_PILLS[task.lastRun.status]} label={task.lastRun.statusLabel} kind="text" />
+                        <Time date={task.lastRun.at} now={now} />
+                      </span>
+                    ) : (
+                      TASK_MESSAGES.never
+                    )}
+                  </td>
+                  <td class="nz-col-optional nz-cell-dim"><Time date={task.createdAt} format="full" now={now} /></td>
+                  <td class="nz-cell-actions nz-tasks-actions-cell">
+                    <div class="nz-task-actions">
+                      <Button variant="ghost" data-task-history={task.id} data-task-name={task.name}>History</Button>
+                      <Button variant="ghost" data-task-run={task.id} data-task-name={task.name}>Run</Button>
+                      <Button variant="ghost" data-task-open="edit" data-task-id={task.id}>Edit</Button>
+                      <Button variant="ghost" data-task-delete={task.id} data-task-name={task.name}>Delete</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </TableWrap>
+          <div class="nz-strip nz-strip--foot">
+            <span>{list.total} total</span>
+            <span class="flex items-center gap-2">
+              {pages > 1 && <span class="nz-dim nz-pager-at">Page {list.page} of {pages}</span>}
+              <Button variant="outline" href={href({ page: list.page - 1 })} disabled={list.page <= 1}>Previous</Button>
+              <Button variant="outline" href={href({ page: list.page + 1 })} disabled={list.page >= pages}>Next</Button>
+            </span>
+          </div>
+        </>
+      )
+    }
+  </div>
+  )}
+  <Fragment slot="dialogs">
+    {allowed && <TaskDialogs places={places} />}
+  </Fragment>
+</AppShell>

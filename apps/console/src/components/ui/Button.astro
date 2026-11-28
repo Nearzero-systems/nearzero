@@ -1,0 +1,92 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import type { IconName } from "../../lib/icons.ts";
+import Icon from "./Icon.astro";
+
+/**
+ * Buttons (spec 21.5, 21.10): 26px, 4px by 8px, 12px weight 500, 6px corners, and text only:
+ * a leading `icon` is drawn on icon-only buttons and nowhere else. `iconEnd` stays for menu
+ * buttons that carry a small chevron ("Add New", "More"). `secondary` is the half-strength filled
+ * button (a database's Deploy), `muted` the light grey one (Compose's Reload), `ghost` the plain
+ * grey text button used for row actions.
+ */
+type Variant = "primary" | "secondary" | "muted" | "outline" | "ghost" | "danger" | "icon";
+
+type Props = Omit<HTMLAttributes<"button">, "type"> & {
+  variant?: Variant;
+  /** Renders a link that looks like a button. */
+  href?: string;
+  target?: string;
+  rel?: string;
+  type?: "button" | "submit" | "reset";
+  icon?: IconName;
+  iconEnd?: IconName;
+  /** The accessible name of an icon-only button. */
+  label?: string;
+  block?: boolean;
+  /** Icon-only buttons get a 1px outline. */
+  outlined?: boolean;
+};
+
+const {
+  variant = "outline",
+  href,
+  target,
+  rel,
+  type = "button",
+  icon,
+  iconEnd,
+  label,
+  block = false,
+  outlined = false,
+  class: className,
+  disabled,
+  ...rest
+} = Astro.props;
+
+const classes = [
+  "nz-btn",
+  `nz-btn--${variant}`,
+  variant === "icon" && outlined ? "nz-btn--outline" : "",
+  block ? "nz-btn--block" : "",
+  className ?? "",
+]
+  .filter(Boolean)
+  .join(" ");
+const title = variant === "icon" ? (rest.title ?? label) : rest.title;
+const leading = variant === "icon" ? icon : undefined;
+// Only a menu button's small chevron trails the text; arrows and external marks are dropped.
+const trailing = iconEnd === "chevron-down" || iconEnd === "chevron-up" ? iconEnd : undefined;
+---
+
+{
+  href ? (
+    <a
+      href={disabled ? undefined : href}
+      target={target}
+      rel={rel ?? (target === "_blank" ? "noopener noreferrer" : undefined)}
+      class={classes}
+      aria-label={label}
+      aria-disabled={disabled ? "true" : undefined}
+      title={title}
+      {...(rest as HTMLAttributes<"a">)}
+    >
+      {leading && <Icon name={leading} />}
+      <slot />
+      {trailing && <Icon name={trailing} class="nz-btn-chevron" />}
+    </a>
+  ) : (
+    <button
+      type={type}
+      class={classes}
+      aria-label={label}
+      disabled={disabled}
+      {...rest}
+      title={title}
+    >
+      {leading && <Icon name={leading} />}
+      <slot />
+      {trailing && <Icon name={trailing} class="nz-btn-chevron" />}
+    </button>
+  )
+}

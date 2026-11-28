@@ -1,0 +1,124 @@
+---
+import EnvironmentDialogs from "../components/projects/EnvironmentDialogs.astro";
+import type { Crumbs } from "../components/shell/Header.astro";
+import LinkTabs from "../components/ui/LinkTabs.astro";
+import type { ProjectPage } from "../lib/project-page.ts";
+import {
+  dashboardPath,
+  newApplicationPath,
+  type ProjectSection,
+  projectPath,
+} from "../lib/routes.ts";
+import AppShell from "./AppShell.astro";
+
+/**
+ * A project's pages (spec 5.2, 21.10): the rail, a 272px project column titled with the
+ * project's name (Overview, Services; the shared variables open from a service's Variables tab),
+ * which becomes a row of tabs below 1024px, and the project / environment crumbs in the header
+ * with the environment menu and its dialogs. The Compose page and the new-application page show
+ * the rail only (`menu={false}`), with no project tabs on narrow screens either.
+ */
+interface Props {
+  page: ProjectPage;
+  /** Where the environment switcher keeps you: the same section, or Overview from a service. */
+  section: ProjectSection | "new-application" | "service";
+  title: string;
+  /** The project column beside the rail; off on the Compose and new-application pages. */
+  menu?: boolean;
+}
+
+const { page, section, title, menu = true } = Astro.props;
+const { ctx, project, environment, environments } = page;
+const slug = ctx.workspace.slug;
+const hrefFor = (environmentId: string) =>
+  section === "new-application"
+    ? newApplicationPath(slug, project.id, environmentId)
+    : projectPath(slug, project.id, environmentId, section === "service" ? "overview" : section);
+// The project switcher (spec 5.2): every project the person can see; picking one opens the
+// same section in that project (its opening environment), Overview from a service's page.
+const keep = section === "service" || section === "new-application" ? "overview" : section;
+const projects = await ctx.data
+  .projects()
+  .then((list) => list.projects)
+  .catch(() => []);
+const crumbs: Crumbs = {
+  project: {
+    name: project.name,
+    href: projectPath(slug, project.id, environment.id),
+    options: projects.map((item) => ({
+      name: item.name,
+      href:
+        item.id === project.id
+          ? projectPath(slug, project.id, environment.id, keep)
+          : `${dashboardPath(slug, `projects/${encodeURIComponent(item.id)}`)}${keep === "overview" ? "" : `?section=${keep}`}`,
+      current: item.id === project.id,
+    })),
+  },
+  environment: {
+    current: environment,
+    options: environments.map((env) => ({
+      name: env.name,
+      href: hrefFor(env.id),
+      current: env.id === environment.id,
+    })),
+    canAdd: page.canCreateEnvironment,
+    canRename: environment.can.rename,
+    canDelete: environment.can.delete && !environment.isDefault,
+  },
+};
+const sections: { key: ProjectSection; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "services", label: "Services" },
+];
+const current =
+  section === "service" ? "services" : section === "new-application" ? "overview" : section;
+const items = sections.map((item) => ({
+  label: item.label,
+  href: projectPath(slug, project.id, environment.id, item.key),
+  current: item.key === current,
+}));
+---
+
+<AppShell
+  ctx={ctx}
+  title={`${title} · ${project.name}`}
+  description={`The ${project.name} project's ${environment.name} environment and its services.`}
+  active="projects"
+  rail="project"
+  crumbs={crumbs}
+  plainCrumbs={section === "new-application"}
+>
+  {
+    menu && (
+      <aside slot="secondary" class="nz-secondary nz-secondary--project" aria-label="Project">
+        <div class="nz-column-head">
+          <h2 class="nz-column-title" title={project.name}>{project.name}</h2>
+        </div>
+        <nav class="nz-column-list" aria-label="Project sections">
+          {items.map((item) => (
+            <a href={item.href} class="nz-nav-item" aria-current={item.current ? "page" : undefined}>
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      </aside>
+    )
+  }
+  {
+    menu && (
+      <div slot="subnav" class="nz-subnav">
+        <LinkTabs label="Project sections" items={items} class="w-full" />
+      </div>
+    )
+  }
+  <slot />
+  <Fragment slot="dialogs">
+    <EnvironmentDialogs
+      project={project}
+      environment={environment}
+      environments={environments}
+      canCreate={page.canCreateEnvironment}
+    />
+    <slot name="dialogs" />
+  </Fragment>
+</AppShell>

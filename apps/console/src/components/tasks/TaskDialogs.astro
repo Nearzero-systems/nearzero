@@ -1,0 +1,117 @@
+---
+import { TASK_MESSAGES, TASK_SCHEDULE_PRESETS } from "@nearzero/shared/browser";
+import type { TaskPlaces } from "../../lib/data/index.ts";
+import { COMMON_ZONES } from "../../lib/m10.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Icon from "../ui/Icon.astro";
+import Switch from "../ui/Switch.astro";
+
+/**
+ * The Tasks page's dialogs (spec 12.2, 12.3): "Add task" / "Edit task" with "Check and save"
+ * (which becomes "Save anyway" after warnings), the delete confirmation, and the Run history
+ * side panel. client/tasks.ts drives them.
+ */
+interface Props {
+  places: TaskPlaces;
+}
+const { places } = Astro.props;
+const placeData = JSON.stringify(places);
+---
+
+<Dialog id="nz-task" title="Add task" wide class="nz-task-dialog">
+  <form class="nz-form" novalidate data-scripted data-task-form data-places={placeData}>
+    <input type="hidden" name="id" value="" />
+    <Field id="nz-task-name" name="name" label="Name" maxlength={100} autocomplete="off" required />
+    <Field id="nz-task-description" name="description" label="Description" as="textarea" rows={2} maxlength={500} hint="Optional." />
+    <div data-field>
+      <label class="nz-label" for="nz-task-place">Runs on</label>
+      <span class="nz-select-wrap">
+        <select id="nz-task-place" class="nz-select" name="placeKey" data-task-place>
+          {places.services.length > 0 && (
+            <optgroup label="Services">
+              {places.services.map((service) => <option value={`service:${service.id}`}>{service.label}</option>)}
+            </optgroup>
+          )}
+          {places.servers.length > 0 && (
+            <optgroup label="Servers">
+              {places.servers.map((server) => <option value={`server:${server.id}`}>{server.name}</option>)}
+            </optgroup>
+          )}
+          {places.host && <option value="host">Nearzero host</option>}
+        </select>
+        <Icon name="chevron-down" />
+      </span>
+      <p class="nz-hint" data-task-place-hint>Where it runs can't be changed later.</p>
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+    <div data-field data-task-inner hidden>
+      <label class="nz-label" for="nz-task-inner">Compose service</label>
+      <span class="nz-select-wrap">
+        <select id="nz-task-inner" class="nz-select" name="innerService"></select>
+        <Icon name="chevron-down" />
+      </span>
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+    <fieldset class="nz-task-shell" data-task-shell>
+      <legend class="nz-label">Shell</legend>
+      <label class="nz-radio"><input type="radio" name="shell" value="bash" checked /> bash</label>
+      <label class="nz-radio"><input type="radio" name="shell" value="sh" /> sh</label>
+    </fieldset>
+    <div class="nz-task-schedule">
+      <div data-field>
+        <label class="nz-label" for="nz-task-preset">Schedule</label>
+        <span class="nz-select-wrap">
+          <select id="nz-task-preset" class="nz-select" data-task-preset>
+            {TASK_SCHEDULE_PRESETS.map((preset) => <option value={preset.cron}>{preset.label}</option>)}
+            <option value="">Custom cron</option>
+          </select>
+          <Icon name="chevron-down" />
+        </span>
+      </div>
+      <Field id="nz-task-cron" name="cron" label="Cron" value="0 0 * * *" autocomplete="off" spellcheck="false" class="nz-code" hint="Minute, hour, day of month, month, day of week." />
+    </div>
+    <Field id="nz-task-zone" name="timeZone" label="Time zone" placeholder="UTC" list="nz-task-zones" autocomplete="off" spellcheck="false" hint="An IANA name like Europe/Berlin; UTC when empty." />
+    <datalist id="nz-task-zones">
+      {COMMON_ZONES.map((zone) => <option value={zone} />)}
+    </datalist>
+    <p class="nz-small nz-task-next" data-task-next aria-live="polite"></p>
+    <Field id="nz-task-script" name="script" label="Script" as="textarea" rows={9} class="nz-code nz-task-script" spellcheck="false" autocomplete="off" hint="For a service, a command run in its container; for a server or the host, a script. Checked by the shell before saving." />
+    <Switch id="nz-task-enabled" name="enabled" label="Enabled" description="Runs on its schedule while on." checked data-json="bool" />
+    <ul class="nz-task-notes" data-task-notes hidden></ul>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" data-task-submit>{TASK_MESSAGES.checkAndSave}</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-task-delete" title="Delete task">
+  <form class="nz-form" novalidate data-scripted data-task-delete-form>
+    <input type="hidden" name="id" value="" />
+    <p class="font-medium" data-fill-text="title"></p>
+    <p class="nz-dim">Its schedule stops and its run history is deleted.</p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete</Button>
+    </div>
+  </form>
+</Dialog>
+
+<dialog id="nz-task-history" class="nz-sheet nz-sheet--right nz-run-panel" aria-labelledby="nz-task-history-title" data-sheet data-task-panel>
+  <div class="nz-sheet-head">
+    <div class="min-w-0">
+      <h2 id="nz-task-history-title" class="nz-dialog-title">Run history</h2>
+      <p class="nz-small nz-dim nz-truncate" data-task-panel-name></p>
+    </div>
+    <span class="flex gap-2">
+      <Button variant="outline" icon="refresh" data-task-panel-refresh>Refresh</Button>
+      <Button variant="icon" icon="close" label="Close" data-dialog-close />
+    </span>
+  </div>
+  <div class="nz-sheet-body nz-run-list" data-task-runs aria-live="polite"></div>
+</dialog>

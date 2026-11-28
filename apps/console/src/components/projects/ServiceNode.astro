@@ -1,0 +1,56 @@
+---
+import type { ServiceView } from "../../lib/data/index.ts";
+import { canvasDetail, isDatabase, SERVICE_STATUS, serviceKindName } from "../../lib/projects.ts";
+import StatusPill from "../ui/StatusPill.astro";
+
+/**
+ * A service card on the canvas (spec 5.2, 21.10): a 12px kind glyph and the name, a hairline,
+ * then the type with the status as coloured text, and Framework (apps) or Runtime (the rest).
+ * Databases get the sky-blue border.
+ */
+interface Props {
+  service: ServiceView;
+  href: string;
+}
+
+const { service, href } = Astro.props;
+const status = SERVICE_STATUS[service.status];
+const detail = canvasDetail(service);
+const glyph = isDatabase(service) ? "database" : service.kind === "compose" ? "compose" : "app";
+---
+
+<div class="nz-node" data-node="service" data-glyph={glyph}>
+  <div class="nz-node-head">
+    <span class="nz-node-glyph" aria-hidden="true">
+      {
+        glyph === "app" ? (
+          <svg viewBox="0 0 12 12" width="12" height="12">
+            <rect x="2" y="2.5" width="8" height="7" rx="1" fill="none" stroke="currentColor" />
+            <path d="M6 2.5v7" stroke="currentColor" />
+          </svg>
+        ) : glyph === "compose" ? (
+          <svg viewBox="0 0 12 12" width="12" height="12">
+            <rect x="2" y="2.5" width="8" height="7" rx="1" fill="currentColor" opacity="0.45" />
+            <path d="M2 5h8M2 7h8" stroke="currentColor" opacity="0.8" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 12 12" width="12" height="12">
+            <rect x="2" y="2.5" width="8" height="7" rx="1" fill="currentColor" opacity="0.55" />
+            <path d="M2 6h8" stroke="currentColor" />
+          </svg>
+        )
+      }
+    </span>
+    <a class="nz-node-name nz-node-link" href={href} title={service.name}>{service.name}</a>
+  </div>
+  <div class="nz-node-rows">
+    <div class="nz-node-row">
+      <span class="nz-node-kind">{serviceKindName(service.kind)}</span>
+      <StatusPill status={status.pill} label={status.label} kind="text" />
+    </div>
+    <div class="nz-node-row nz-dim">
+      <span>{detail.label}</span>
+      <span class="nz-truncate" title={detail.value}>{detail.value}</span>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,31 @@
+---
+import type { Viewer, WorkspaceSummary } from "../../lib/data/index.ts";
+import NavList from "./NavList.astro";
+import type { NavKey } from "./nav-items.ts";
+import UserMenu from "./UserMenu.astro";
+
+/**
+ * Below 1024px there is no sidebar or rail: the header's menu button opens this 232px sheet with
+ * the sidebar's items and the user button at the bottom, which opens the same user menu upward.
+ * No header row and no close button: Escape or a tap beside it closes it, and so does navigating
+ * (spec 21.8, 21.10).
+ */
+interface Props {
+  viewer: Viewer;
+  workspace: WorkspaceSummary;
+  active?: NavKey;
+  /** Whether Tasks is for this person (R3-31). */
+  tasks?: boolean;
+}
+
+const { viewer, workspace, active, tasks = true } = Astro.props;
+---
+
+<dialog id="nz-nav-sheet" class="nz-sheet nz-only-small" aria-label="Navigation" data-sheet>
+  <div class="nz-sheet-body">
+    <NavList workspace={workspace.slug} active={active} analytics={viewer.isInstanceAdmin} tasks={tasks} />
+  </div>
+  <div class="nz-sheet-foot">
+    <UserMenu viewer={viewer} workspace={workspace} id="nz-sheet-user-menu" />
+  </div>
+</dialog>

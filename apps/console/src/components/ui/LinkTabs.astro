@@ -1,0 +1,22 @@
+---
+/** A row of links styled as tabs (project menu on small screens, settings links, list filters). */
+interface Props {
+  label: string;
+  items: { label: string; href: string; current?: boolean; count?: number }[];
+  lined?: boolean;
+  class?: string;
+}
+
+const { label, items, lined = false, class: className } = Astro.props;
+---
+
+<nav class:list={["nz-tabs", lined && "nz-tabs--lined", className]} aria-label={label} data-scroll-current>
+  {
+    items.map((item) => (
+      <a href={item.href} class="nz-tab" aria-current={item.current ? "page" : undefined}>
+        {item.label}
+        {item.count !== undefined && <span class="nz-count">{item.count}</span>}
+      </a>
+    ))
+  }
+</nav>

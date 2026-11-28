@@ -1,0 +1,71 @@
+---
+/**
+ * The frame of the sign-in, registration, invitation and onboarding pages (spec 4.1 to 4.5,
+ * 21.10): a full page of hairlines, a 375px centre column crossed by full-width rows with small
+ * diamonds where the lines meet, and no card. From the top: an empty row, the title, a row for
+ * the line that used to sit under the form (who can sign up, a step, a short note), the form,
+ * and empty rows to the bottom of the window. `compact` draws only the title, note and form rows
+ * (the style guide shows several side by side). `mark` puts the owner's mark (the brand kit's
+ * icon.svg, spec 21.9b) above the title, as the 404 and 500 pages do.
+ */
+interface Props {
+  heading: string;
+  compact?: boolean;
+  /** Ids for the heading, when several frames share a page. */
+  headingId?: string;
+  mark?: boolean;
+}
+
+const { heading, compact = false, headingId, mark = false } = Astro.props;
+const hasNote = Astro.slots.has("note");
+---
+
+<div class:list={["nz-gate", compact && "nz-gate--compact"]}>
+  {
+    !compact && (
+      <div class="nz-gate-row nz-gate-row--top" aria-hidden="true">
+        <span class="nz-gate-cell" />
+        <span class="nz-gate-cell nz-gate-cell--mid" />
+        <span class="nz-gate-cell" />
+      </div>
+    )
+  }
+  <div class="nz-gate-row nz-gate-row--title">
+    <span class="nz-gate-cell" aria-hidden="true"></span>
+    <div class:list={["nz-gate-cell nz-gate-cell--mid", mark && "nz-gate-cell--marked"]}>
+      {mark && <img class="nz-gate-mark" src="/icon.svg" width="40" height="40" alt="Nearzero" />}
+      <h1 id={headingId} class="nz-gate-title">{heading}</h1>
+    </div>
+    <span class="nz-gate-cell" aria-hidden="true"></span>
+  </div>
+  <div class="nz-gate-row nz-gate-row--note">
+    <span class="nz-gate-cell" aria-hidden="true"></span>
+    <div class="nz-gate-cell nz-gate-cell--mid">
+      {hasNote && <div class="nz-gate-note"><slot name="note" /></div>}
+    </div>
+    <span class="nz-gate-cell" aria-hidden="true"></span>
+  </div>
+  <div class="nz-gate-row nz-gate-row--body">
+    <span class="nz-gate-cell" aria-hidden="true"></span>
+    <div class="nz-gate-cell nz-gate-cell--mid">
+      <slot />
+    </div>
+    <span class="nz-gate-cell" aria-hidden="true"></span>
+  </div>
+  {
+    !compact && (
+      <>
+        <div class="nz-gate-row nz-gate-row--gap" aria-hidden="true">
+          <span class="nz-gate-cell" />
+          <span class="nz-gate-cell nz-gate-cell--mid" />
+          <span class="nz-gate-cell" />
+        </div>
+        <div class="nz-gate-row nz-gate-row--rest" aria-hidden="true">
+          <span class="nz-gate-cell" />
+          <span class="nz-gate-cell nz-gate-cell--mid" />
+          <span class="nz-gate-cell" />
+        </div>
+      </>
+    )
+  }
+</div>

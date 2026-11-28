@@ -1,0 +1,63 @@
+---
+import { DEPLOY_TRIGGER_LABELS } from "@nearzero/shared/browser";
+import type { DeploymentView } from "../../lib/data/index.ts";
+import { deploymentPill, deploymentPillLabel } from "../../lib/deploys.ts";
+import Fold from "../ui/Fold.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import Time from "../ui/Time.astro";
+
+/**
+ * A service's Deployments list (spec 6.3, 8.2, 21.10), a fold of the service page's box: title
+ * (the commit subject), what started it (Push, Tag, Webhook, Agent, Redeploy) and the short commit
+ * when there is one, the calendar time and a round status pill. A row opens "Deployment logs"
+ * (DeploymentLogDialog) with Copy and Close.
+ */
+interface Props {
+  serviceName: string;
+  deployments: DeploymentView[];
+  open?: boolean;
+}
+
+const { serviceName, deployments, open = true } = Astro.props;
+const now = new Date();
+---
+
+<Fold
+  title="Deployments"
+  info={`Each deploy of ${serviceName}, newest first, with its status and log.`}
+  open={open}
+  class="nz-fold--rows"
+>
+  {
+    deployments.length === 0 ? (
+      <p class="nz-fold-empty">No deployments yet. Each deploy of {serviceName} shows here with its status and log.</p>
+    ) : (
+      <ul class="nz-deploy-rows">
+        {deployments.map((item) => (
+          <li>
+            <button
+              type="button"
+              class="nz-deploy-row"
+              data-dialog-open="nz-deployment-log"
+              data-deployment-log-open={item.id}
+              data-deployment-live={item.status === "queued" || item.status === "building" ? "true" : "false"}
+              data-dialog-fill={JSON.stringify({ title: item.title, status: item.statusLabel })}
+            >
+              <span class="nz-deploy-row-main">
+                <span class="nz-truncate">{item.title}</span>
+                {(item.trigger !== "manual" || item.shortCommit) && (
+                  <span class="nz-small nz-dim">
+                    <span>{DEPLOY_TRIGGER_LABELS[item.trigger] ?? "Manual"}</span>
+                    {item.shortCommit && <> · <span class="nz-code">{item.shortCommit}</span></>}
+                  </span>
+                )}
+              </span>
+              <Time date={item.createdAt} now={now} class="nz-dim nz-deploy-row-time" />
+              <StatusPill status={deploymentPill(item.status)} label={deploymentPillLabel(item.status, item.statusLabel)} kind="deploy" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</Fold>

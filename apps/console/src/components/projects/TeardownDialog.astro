@@ -1,0 +1,58 @@
+---
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The background teardown dialog (spec 05 5.1, 5.2) for deleting a project, or several services
+ * of one environment. It loads the plan (every service with its server, marked "Production" or
+ * "No access"), asks for the project name, then follows the delete service by service. Opened by
+ * any element with `data-teardown-open` (client/teardown.ts):
+ *   data-teardown-open="project" data-project-id data-project-name
+ *   data-teardown-open="services" data-environment-id (the ticked rows give the services)
+ */
+interface Props {
+  /** Server id → name, for the plan's rows. */
+  servers: Record<string, string>;
+}
+
+const { servers } = Astro.props;
+---
+
+<Dialog id="nz-teardown" title="Delete project" wide>
+  <div class="nz-teardown" data-teardown data-servers={JSON.stringify(servers)}>
+    <div class="nz-teardown-loading" data-teardown-loading>
+      <span class="nz-spinner" aria-hidden="true"></span>
+      <span>Loading what will be deleted…</span>
+    </div>
+
+    <div data-teardown-plan hidden>
+      <p data-teardown-summary></p>
+      <div class="nz-stack-sm mt-3" data-teardown-notes></div>
+      <ul class="nz-teardown-list mt-3" data-teardown-services aria-label="Services that will be removed"></ul>
+      <form data-scripted class="nz-form" data-teardown-form novalidate>
+        <div data-field data-teardown-confirm-field>
+          <label for="nz-teardown-confirm" class="nz-label" data-teardown-confirm-label>Type the project name to confirm</label>
+          <input id="nz-teardown-confirm" name="confirm" class="nz-input" autocomplete="off" spellcheck="false" />
+          <p class="nz-field-error" data-field-error hidden></p>
+        </div>
+        <FormError />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="danger" type="submit" data-teardown-submit disabled>Delete project</Button>
+        </div>
+      </form>
+    </div>
+
+    <div data-teardown-run hidden>
+      <p class="font-medium" data-teardown-message></p>
+      <p class="nz-dim mt-1" data-teardown-detail hidden></p>
+      <ul class="nz-teardown-list mt-3" data-teardown-items aria-live="polite" aria-label="What happened to each service"></ul>
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-teardown-retry hidden>Try again</Button>
+        <Button variant="outline" data-teardown-restart hidden>Start it again</Button>
+        <Button variant="primary" data-dialog-close>Close</Button>
+      </div>
+    </div>
+  </div>
+</Dialog>

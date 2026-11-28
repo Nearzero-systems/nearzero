@@ -1,0 +1,58 @@
+---
+import type { ServiceDetail, ServiceHostnames } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import VisitButton from "../ui/VisitButton.astro";
+
+/**
+ * The Overview's Domain fact (spec 6.3, 21.10): the first hostname with "+N" more, Copy and Visit;
+ * or the suggested hostname a Create URL would give; or "Add a DNS domain" as an underlined grey
+ * link that opens Add domain.
+ */
+interface Props {
+  service: ServiceDetail;
+  hostnames: ServiceHostnames | null;
+  suggested: string | null;
+}
+
+const { service, hostnames, suggested } = Astro.props;
+const list = (hostnames?.hostnames ?? []).filter((item) => item.service !== null);
+const first = list[0] ?? null;
+const canAdd = hostnames?.canAdd ?? false;
+---
+
+<div class="nz-fact">
+  <span class="nz-eyebrow">Domain</span>
+  {
+    first ? (
+      <span class="nz-domain-fact">
+        <span class="nz-url-text" title={first.url}>{first.hostname}</span>
+        {list.length > 1 && <span class="nz-badge">+{list.length - 1}</span>}
+        <CopyButton text={first.url} what="URL" />
+        <VisitButton href={first.url} />
+      </span>
+    ) : suggested ? (
+      <span class="nz-domain-fact">
+        <span class="nz-url-text nz-dim" title="Suggested hostname">{suggested}</span>
+        {canAdd && (
+          <Button variant="ghost" data-create-url={service.id}>
+            Create URL
+          </Button>
+        )}
+      </span>
+    ) : canAdd ? (
+      <span>
+        <button
+          type="button"
+          class="nz-fact-link"
+          data-dialog-open="nz-add-domain"
+          data-dialog-fill={JSON.stringify({ serviceId: service.id, mode: "generate" })}
+        >
+          Add a DNS domain
+        </button>
+      </span>
+    ) : (
+      <span class="nz-dim">No domain yet</span>
+    )
+  }
+</div>

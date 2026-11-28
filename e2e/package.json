@@ -1,0 +1,23 @@
+{
+  "name": "@nearzero/e2e",
+  "version": "1.0.0-dev",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun test ./smoke/stack.e2e.ts --timeout=60000",
+    "typecheck": "tsc --noEmit -p .",
+    "test:install": "bun test ./install/install.e2e.ts --timeout=1800000",
+    "test:runner": "bun test ./runner/runner.e2e.ts --timeout=1800000",
+    "test:domains": "bun test ./domains/domains.e2e.ts --timeout=1800000",
+    "test:deploys": "bun test ./deploys/deploys.e2e.ts --timeout=3600000",
+    "test:server-setup": "bun test ./server-setup/setup.e2e.ts --timeout=3600000",
+    "test:backups": "bun test ./backups/backups.e2e.ts --timeout=3600000",
+    "test:m10": "bun test ./m10/m10.e2e.ts --timeout=3600000",
+    "test:compose": "bun test ./compose/compose.e2e.ts --timeout=3600000",
+    "test:db-restart": "bun test ./control/db-restart.e2e.ts --timeout=900000"
+  },
+  "dependencies": {
+    "@nearzero/shared": "workspace:*"
+  }
+}

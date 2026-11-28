@@ -1,0 +1,1124 @@
+/*
+ * Tasks, Analytics, monitoring and notification channels (spec 12–15). Flat, 1px lines, 6px
+ * corners, compact controls (spec 21.1–21.5); every color is a theme token, so Light, Dark and
+ * Dusk each render right; phone widths stack (spec 21.8).
+ */
+@layer components {
+  /* ---------- Tasks ---------- */
+  /* Edge to edge with 48px rows; the actions sit in their own column behind a hairline. */
+  .nz-tasks-table tbody td {
+    height: 48px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .nz-task-name {
+    font-weight: 500;
+  }
+
+  .nz-task-name > span,
+  .nz-task-description > span {
+    display: block;
+    max-width: 16rem;
+  }
+
+  .nz-task-place {
+    display: flex;
+    flex-direction: column;
+    max-width: 14rem;
+  }
+
+  .nz-tasks-table .nz-sort-link {
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+
+  .nz-tasks-table .nz-sort-link:hover {
+    background: var(--nz-hover);
+  }
+
+  .nz-tasks-table .nz-tasks-actions-head,
+  .nz-tasks-table .nz-tasks-actions-cell {
+    width: 1%;
+    border-left: 1px solid var(--nz-line);
+  }
+
+  @media (min-width: 640px) {
+    .nz-tasks-table .nz-tasks-actions-head {
+      min-width: 16rem;
+    }
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-tasks-table .nz-tasks-actions-head,
+    .nz-tasks-table .nz-tasks-actions-cell {
+      border-left: 0;
+    }
+  }
+
+  /* Enabled is a filled green label with no dot; Disabled a grey one. */
+  .nz-task-status {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: 4px;
+    background: var(--nz-hover);
+    color: var(--nz-text-dim);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .nz-task-status[data-enabled="true"] {
+    background: color-mix(in srgb, #059669 20%, var(--nz-panel));
+    color: #059669;
+  }
+
+  :root[data-tone="dark"] .nz-task-status[data-enabled="true"] {
+    background: color-mix(in srgb, #10b981 15%, var(--nz-panel));
+    color: #10b981;
+  }
+
+  .nz-task-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .nz-task-actions .nz-btn {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-tasks-table .nz-cell-actions {
+    white-space: nowrap;
+  }
+
+  .nz-task-last {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .nz-sort-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: inherit;
+  }
+
+  .nz-sort-link svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.6;
+  }
+
+  .nz-task-dialog .nz-form {
+    gap: 12px;
+  }
+
+  .nz-task-shell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nz-task-shell[hidden] {
+    display: none;
+  }
+
+  .nz-task-shell legend {
+    float: left;
+    margin-right: 8px;
+  }
+
+  .nz-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--nz-font-code);
+    cursor: pointer;
+  }
+
+  .nz-task-schedule {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .nz-task-next {
+    margin-top: -4px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-task-next[data-problem="true"] {
+    color: var(--nz-danger-text);
+  }
+
+  /* As tall as its 9 rows (spec 21.5, 21.9a: text areas size by their row count). */
+  .nz-task-script {
+    font-family: var(--nz-font-code);
+    font-size: 11.5px;
+    line-height: 16px;
+    tab-size: 2;
+  }
+
+  .nz-task-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-task-notes li {
+    padding: 4px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+  }
+
+  .nz-task-notes li[data-tone="error"] {
+    border-color: color-mix(in srgb, var(--nz-fail-dot) 40%, transparent);
+    color: var(--nz-danger-text);
+  }
+
+  .nz-task-notes li[data-tone="warning"] {
+    border-color: color-mix(in srgb, var(--nz-warn-dot) 45%, transparent);
+    color: var(--nz-warn);
+  }
+
+  /* The side panels: run history, the request drawer. */
+  .nz-run-panel {
+    width: min(34rem, 100vw);
+  }
+
+  .nz-run-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .nz-run {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  .nz-run-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nz-run-toggle {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .nz-run-toggle:focus-visible {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  .nz-run-when {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .nz-run-error {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-run-log {
+    max-height: 24rem;
+  }
+
+  .nz-run-empty {
+    padding: 8px 4px;
+  }
+
+  /* ---------- Analytics (spec 13, 21.10) ---------- */
+  /* One padded column: the title row, the filters, the stats strip, the chart and hosts, and
+     the requests table in its own card with a footer. */
+  .nz-analytics {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 16px 16px;
+  }
+
+  .nz-analytics-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .nz-analytics-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .nz-analytics-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--nz-text-dim);
+    font-size: 12px;
+  }
+
+  .nz-analytics-state::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: var(--nz-text-faint);
+  }
+
+  .nz-analytics-state[data-on="true"]::before {
+    background: var(--nz-ok-dot);
+  }
+
+  .nz-analytics-settings {
+    padding: 4px;
+  }
+
+  .nz-analytics-settings-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-analytics-settings-actions .nz-btn {
+    justify-content: flex-start;
+  }
+
+  .nz-danger-text {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-analytics-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* The range: one bordered group of segments split by hairlines, the current one filled. */
+  .nz-segmented.nz-range-group {
+    flex-wrap: nowrap;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    border-color: var(--nz-line);
+  }
+
+  .nz-range-group .nz-segment {
+    height: 24px;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 0;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .nz-range-group .nz-segment[hidden] {
+    display: none;
+  }
+
+  .nz-range-group .nz-segment + .nz-segment {
+    border-left: 1px solid var(--nz-line);
+  }
+
+  .nz-range-group .nz-segment[data-active="true"],
+  .nz-range-group .nz-segment:has(input:checked) {
+    background: var(--nz-muted);
+    color: var(--nz-text);
+  }
+
+  .nz-analytics-dates {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nz-analytics-dates .nz-analytics-date {
+    width: 136px;
+  }
+
+  .nz-analytics-search {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+
+  .nz-status-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  .nz-status-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    color: var(--nz-text-dim);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .nz-status-chip:hover {
+    background: var(--nz-hover);
+  }
+
+  .nz-status-chip[data-active="true"],
+  .nz-status-chip:has(input:checked) {
+    border-color: var(--nz-line-strong);
+    background: var(--nz-active-fill);
+    color: var(--nz-active-text);
+  }
+
+  .nz-status-chip:has(input:focus-visible:not([data-quiet-focus])) {
+    outline: 2px solid var(--nz-focus-ring);
+  }
+
+  .nz-analytics-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 16px 12px 12px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+  }
+
+  /* The stats: one bordered strip of four cells split by hairlines. */
+  .nz-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  .nz-stat-strip > .nz-stat + .nz-stat {
+    border-left: 1px solid var(--nz-line);
+  }
+
+  .nz-stat-grid,
+  .nz-monitoring-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .nz-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 10px 12px;
+  }
+
+  .nz-stat-strip .nz-stat {
+    gap: 0;
+    min-height: 68px;
+    padding: 12px;
+  }
+
+  .nz-stat-label {
+    color: var(--nz-text-dim);
+    font-family: var(--nz-font-small);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .nz-stat-strip .nz-stat-label {
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 18px;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .nz-stat-value {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 26px;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-stat-strip .nz-stat-value {
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .nz-stat-note {
+    color: var(--nz-text-faint);
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .nz-stat-unit {
+    color: var(--nz-text-dim);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .nz-analytics-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 256px;
+    gap: 12px;
+  }
+
+  .nz-analytics-grid > .nz-card,
+  .nz-monitoring-charts > .nz-card {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .nz-analytics-chart,
+  .nz-analytics-hosts {
+    position: relative;
+    padding: 12px;
+  }
+
+  .nz-analytics-card-title {
+    margin: 0;
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 500;
+  }
+
+  .nz-analytics-hosts > p {
+    margin-top: 2px;
+  }
+
+  /* The chart's legend sits at the top right, beside its title; Requests is drawn in the
+     text color and Errors in red, with the interface font on both axes. */
+  .nz-analytics-chart .nz-chart {
+    margin-top: 20px;
+  }
+
+  .nz-analytics-chart .nz-chart-legend {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font-size: 12px;
+  }
+
+  .nz-analytics-chart .nz-chart--accent {
+    stroke: var(--nz-text);
+    color: var(--nz-text);
+  }
+
+  .nz-analytics-chart .nz-chart-plot {
+    height: 136px;
+  }
+
+  .nz-busy-hosts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-busy-host {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    overflow: hidden;
+    border-radius: 6px;
+    color: inherit;
+  }
+
+  .nz-busy-host:hover {
+    background: var(--nz-hover);
+  }
+
+  .nz-busy-host-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: var(--share);
+    height: 2px;
+    background: var(--nz-text-faint);
+    opacity: 0.6;
+  }
+
+  /* The requests table always shows its header, an empty line when nothing matches, and a
+     footer with the count and Previous / Next. */
+  .nz-requests-card {
+    overflow: hidden;
+  }
+
+  .nz-requests-table thead th {
+    height: 32px;
+  }
+
+  .nz-requests-table .nz-requests-wide {
+    width: 100%;
+  }
+
+  @media (min-width: 640px) {
+    .nz-requests-table th:nth-child(1) {
+      min-width: 168px;
+    }
+
+    .nz-requests-table th:nth-child(4) {
+      min-width: 94px;
+    }
+
+    .nz-requests-table th:nth-child(6) {
+      min-width: 129px;
+    }
+  }
+
+  .nz-requests-table .nz-sort-link svg {
+    width: 12px;
+    height: 12px;
+    opacity: 1;
+  }
+
+  .nz-requests-empty {
+    padding: 32px 12px;
+    color: var(--nz-text-dim);
+    text-align: center;
+  }
+
+  .nz-requests-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    min-height: 42px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-analytics-note {
+    margin-top: -4px;
+    color: var(--nz-text-dim);
+    font-size: 12px;
+  }
+
+  /* Narrow charts keep only the first and last time on the axis. */
+  .nz-chart {
+    container-type: inline-size;
+  }
+
+  @container (max-width: 560px) {
+    .nz-chart-x > span:not(:first-child):not(:last-child) {
+      display: none;
+    }
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-analytics {
+      padding: 12px;
+    }
+
+    .nz-analytics-dates {
+      flex: 1 1 100%;
+    }
+
+    .nz-analytics-dates .nz-analytics-date {
+      flex: 1 1 0;
+      width: auto;
+      min-width: 0;
+    }
+
+    .nz-analytics-search {
+      flex: 1 1 100%;
+    }
+
+    .nz-status-toggles {
+      margin-left: 0;
+    }
+
+    .nz-analytics-notice {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .nz-stat-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .nz-stat-strip > .nz-stat:nth-child(3) {
+      border-left: 0;
+    }
+
+    .nz-stat-strip > .nz-stat:nth-child(n + 3) {
+      border-top: 1px solid var(--nz-line);
+    }
+
+    .nz-analytics-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .nz-request-row {
+    cursor: pointer;
+  }
+
+  .nz-request-row:hover,
+  .nz-request-row:focus-visible {
+    background: var(--nz-hover);
+  }
+
+  .nz-request-row:focus-visible {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: -2px;
+  }
+
+  .nz-request-cell {
+    max-width: 28rem;
+  }
+
+  .nz-nowrap {
+    white-space: nowrap;
+  }
+
+  .nz-request-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 12px;
+  }
+
+  .nz-request-body .nz-facts {
+    margin-top: 6px;
+  }
+
+  .nz-request-json {
+    max-height: 22rem;
+    margin-top: 6px;
+  }
+
+  /* ---------- Charts ---------- */
+  .nz-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+    border-radius: 6px;
+  }
+
+  .nz-chart:focus-visible {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 4px;
+  }
+
+  .nz-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--nz-text-dim);
+    font-size: 11px;
+  }
+
+  .nz-chart-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nz-chart-swatch {
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+  }
+
+  .nz-chart-body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .nz-chart-y {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-width: 2rem;
+    margin: -6px 0;
+    color: var(--nz-text-faint);
+    font-size: 11px;
+    line-height: 12px;
+    text-align: right;
+  }
+
+  .nz-chart-plot {
+    position: relative;
+    height: 160px;
+    border-bottom: 1px solid var(--nz-line);
+    touch-action: pan-y;
+  }
+
+  .nz-chart-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .nz-chart-grid {
+    stroke: var(--nz-line);
+    vector-effect: non-scaling-stroke;
+  }
+
+  .nz-chart-line {
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .nz-chart--accent {
+    stroke: var(--nz-accent, var(--nz-run-dot));
+    color: var(--nz-accent, var(--nz-run-dot));
+  }
+
+  .nz-chart--danger {
+    stroke: var(--nz-fail-dot);
+    color: var(--nz-fail-dot);
+  }
+
+  .nz-chart--muted {
+    stroke: var(--nz-text-faint);
+    color: var(--nz-text-faint);
+  }
+
+  .nz-chart-cross {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--nz-line-strong);
+    pointer-events: none;
+  }
+
+  .nz-chart-tip {
+    position: absolute;
+    top: 6px;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 8rem;
+    padding: 4px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-raised);
+    font-size: 11px;
+    pointer-events: none;
+    transform: translateX(8px);
+    white-space: nowrap;
+  }
+
+  .nz-chart-tip[data-side="left"] {
+    transform: translateX(calc(-100% - 8px));
+  }
+
+  .nz-chart-tip[hidden],
+  .nz-chart-cross[hidden] {
+    display: none;
+  }
+
+  .nz-chart-tip-time {
+    color: var(--nz-text-dim);
+    font-family: var(--nz-font-code);
+  }
+
+  .nz-chart-tip-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .nz-chart-x {
+    display: flex;
+    justify-content: space-between;
+    margin-left: calc(2rem + 6px);
+    color: var(--nz-text-faint);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Monitoring ---------- */
+  .nz-monitoring {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .nz-monitoring-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .nz-monitoring-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .nz-monitoring-controls .nz-select-wrap {
+    min-width: 0;
+  }
+
+  /* "Error fetching metrics", with the platform's reason under it (30c R3-33). */
+  .nz-monitoring-error-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-monitoring-error-text > span:empty {
+    display: none;
+  }
+
+  .nz-details-dialog .nz-monitoring-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nz-meter {
+    display: block;
+    height: 4px;
+    margin-top: 6px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--nz-muted);
+  }
+
+  .nz-meter > span {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: var(--nz-accent, var(--nz-run-dot));
+    transition: width 300ms ease-out;
+  }
+
+  .nz-meter > span[data-level="mid"] {
+    background: var(--nz-warn-dot);
+  }
+
+  .nz-meter > span[data-level="high"] {
+    background: var(--nz-fail-dot);
+  }
+
+  .nz-monitoring-system .nz-facts {
+    margin-top: 6px;
+  }
+
+  .nz-monitoring-charts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .nz-details-dialog .nz-monitoring-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nz-monitoring-alerts {
+    padding-top: 10px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-monitoring-alert-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 12rem));
+    gap: 12px;
+  }
+
+  .nz-monitoring-alert-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ---------- Channels ---------- */
+  .nz-channel-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nz-channel-fields[hidden] {
+    display: none;
+  }
+
+  .nz-channel-events {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nz-check-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    cursor: pointer;
+  }
+
+  .nz-check-row input {
+    margin-top: 2px;
+  }
+
+  .nz-check-row > span {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nz-header-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .nz-header-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .nz-header-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    gap: 6px;
+  }
+
+  .nz-header-rows > .nz-btn {
+    align-self: flex-start;
+  }
+
+  .nz-channel-test[data-tone="ok"] {
+    color: var(--nz-ok);
+  }
+
+  .nz-channel-test[data-tone="fail"] {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-channel-foot {
+    flex-wrap: wrap;
+  }
+
+  .nz-channel-events,
+  .nz-channels-total {
+    margin-top: 4px;
+  }
+
+  td.nz-channel-events {
+    color: var(--nz-text-dim);
+  }
+
+  /* ---------- Phones and tablets (spec 21.8) ---------- */
+  @media (max-width: 1023px) {
+    .nz-stat-grid,
+    .nz-monitoring-cards {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .nz-analytics-grid,
+    .nz-monitoring-charts {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 639px) {
+    .nz-task-schedule,
+    .nz-monitoring-alert-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .nz-analytics-search {
+      flex: 1 1 100%;
+      max-width: none;
+    }
+
+    .nz-analytics-custom .nz-input {
+      flex: 1 1 9rem;
+    }
+
+    .nz-stat-value {
+      font-size: 17px;
+    }
+
+    .nz-monitoring-controls {
+      width: 100%;
+    }
+
+    .nz-monitoring-controls .nz-select-wrap {
+      flex: 1 1 0;
+    }
+
+    .nz-header-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .nz-header-row [data-header-value] {
+      grid-column: 1;
+    }
+  }
+}

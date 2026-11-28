@@ -1,0 +1,150 @@
+---
+import { SSH_USER_HINT, SSH_USER_PLACEHOLDER } from "@nearzero/shared";
+import type { SshKeyRecord } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The Servers page's dialogs (spec 9.2, 9.6, 9.1): Add server, Edit server, Delete server with
+ * "Also delete all attached services on this server" and each service's removal as it happens
+ * (docs/api/server-setup.md, GET /servers/:id/removal), the read-only Router files tree, and a
+ * fallback that shows the server's join command and details while the setup and details dialogs
+ * (the server setup milestone) aren't on the page. Every refusal shows the API's own words.
+ */
+interface Props {
+  keys: SshKeyRecord[];
+}
+
+const { keys } = Astro.props;
+const keyOptions = [
+  { value: "", label: keys.length > 0 ? "Choose a key" : "No SSH keys yet" },
+  ...keys.map((key) => ({ value: key.id, label: key.name })),
+];
+---
+
+<Dialog id="nz-server-add" title="Create Server" description="Create a server to deploy your applications remotely." class="nz-server-dialog">
+  <form class="nz-form" data-api="POST /servers" data-api-then="none" data-server-form="add" data-validate data-fill-to-submit novalidate>
+    <Field id="nz-server-add-name" name="name" label="Name" placeholder="Production server" class="nz-input--filled" data-required="Enter a name for the server." autocomplete="off" maxlength={100} />
+    <Field id="nz-server-add-description" name="description" label="Description" placeholder="This server is for databases..." as="textarea" rows={4} class="nz-textarea--plain" maxlength={1000} />
+    <Field id="nz-server-add-key" name="sshKeyId" label="SSH key" as="select" options={[{ value: "", label: "Select an SSH key" }, ...keyOptions.slice(1)]} data-required="Choose an SSH key. Add one under SSH keys first." />
+    <div class="nz-server-address-row">
+      <Field id="nz-server-add-address" name="address" label="IP address" placeholder="192.168.1.100" class="nz-input--filled" autocomplete="off" spellcheck="false" data-required="Enter an IP address or hostname without a protocol, path, or port" />
+      <Field id="nz-server-add-port" name="port" label="Port" value="22" class="nz-input--filled" inputmode="numeric" data-json="number" />
+    </div>
+    <div data-field>
+      <label for="nz-server-add-user" class="nz-label">SSH user</label>
+      <input id="nz-server-add-user" name="sshUser" class="nz-input nz-input--filled" placeholder={SSH_USER_PLACEHOLDER} autocomplete="off" spellcheck="false" aria-describedby="nz-server-add-user-hint" data-required="Enter the SSH user, like ubuntu or root." />
+      <p class="nz-hint" id="nz-server-add-user-hint">
+        The user Nearzero logs in as. AWS Ubuntu servers use <code>ubuntu</code>, Amazon Linux uses <code>ec2-user</code>,
+        Debian on AWS uses <code>admin</code>, and most VPS providers use <code>root</code>. A user other than root needs
+        passwordless sudo; setup adds it to the Docker group.
+      </p>
+      <p class="nz-field-error" id="nz-server-add-user-error" data-field-error hidden></p>
+    </div>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" disabled>Create</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-server-edit" title="Edit server" class="nz-server-dialog">
+  <form class="nz-form" data-api="PATCH /servers/{serverId}" data-api-then="none" data-server-form="edit" data-validate novalidate>
+    <input type="hidden" name="serverId" value="" />
+    <Field id="nz-server-edit-name" name="name" label="Name" placeholder="Production server" class="nz-input--filled" data-required="Enter a name for the server." autocomplete="off" maxlength={100} />
+    <Field id="nz-server-edit-description" name="description" label="Description" placeholder="This server is for databases..." as="textarea" rows={4} class="nz-textarea--plain" maxlength={1000} />
+    <Field id="nz-server-edit-key" name="sshKeyId" label="SSH key" as="select" options={keyOptions} />
+    <div class="nz-server-address-row">
+      <Field id="nz-server-edit-address" name="address" label="IP address" placeholder="192.168.1.100" class="nz-input--filled" autocomplete="off" spellcheck="false" />
+      <Field id="nz-server-edit-port" name="port" label="Port" class="nz-input--filled" inputmode="numeric" data-json="number" />
+    </div>
+    <Field
+      id="nz-server-edit-public-ip"
+      name="publicIPv4"
+      label="Public IPv4 (optional)"
+      placeholder="Leave blank to use its address"
+      class="nz-input--filled"
+      autocomplete="off"
+      spellcheck="false"
+      inputmode="decimal"
+      hint="Where its hostnames point and what Let's Encrypt checks. Set it when the address above is a hostname or a private address."
+    />
+    <Field id="nz-server-edit-user" name="sshUser" label="SSH user" placeholder={SSH_USER_PLACEHOLDER} class="nz-input--filled" autocomplete="off" spellcheck="false" hint={SSH_USER_HINT} />
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Update</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-server-delete" title="Delete server" description="This server will be removed from your workspace.">
+  <form class="nz-form" data-scripted data-server-delete-form novalidate>
+    <input type="hidden" name="serverId" value="" />
+    <div class="nz-stack-sm" data-server-delete-ask>
+      <p class="nz-dim" data-server-delete-none>This will delete the server and all associated data.</p>
+      <div class="nz-stack-sm" data-server-delete-some hidden>
+        <span data-fill-text="services" hidden></span>
+        <p>
+          This server has <span data-server-delete-count></span>. Deleting it also permanently deletes every
+          attached service and its Docker resources.
+        </p>
+        <p class="nz-inline-note nz-warn-note">This cannot be undone. Back up anything important first.</p>
+        <label class="nz-check">
+          <input type="checkbox" name="deleteServices" data-server-delete-tick />
+          <span>Also delete all attached services on this server</span>
+        </label>
+      </div>
+    </div>
+    <div class="nz-stack-sm" data-server-removal hidden aria-live="polite">
+      <p data-server-removal-message></p>
+      <div class="nz-teardown-list" data-server-removal-items></div>
+    </div>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close data-server-delete-cancel>Cancel</Button>
+      <Button variant="danger" type="submit" data-server-delete-go>Delete server</Button>
+      <Button variant="primary" data-dialog-close data-server-removal-close hidden>Close</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-router-files" title="Router files" description="The router's configuration on this server, read-only." wide>
+  <p class="nz-small nz-dim" data-router-files-status aria-live="polite"></p>
+  <div class="nz-file-browser">
+    <ul class="nz-file-tree" data-router-files-tree aria-label="Files"></ul>
+    <pre class="nz-log nz-file-view" data-router-files-view tabindex="0" aria-label="File contents"></pre>
+  </div>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+  </div>
+</Dialog>
+
+<Dialog id="nz-server-connect" title="Connect this server" description="Run this once on the server to install and join its runner." wide>
+  <p class="nz-dim" data-server-connect-status>Asking for a join command…</p>
+  <div class="nz-secret-row" data-server-connect-row hidden>
+    <code class="nz-url-text" data-server-connect-command></code>
+    <Button variant="icon" icon="copy" label="Copy command" data-copy="" data-server-connect-copy />
+  </div>
+  <div class="nz-stack-sm" data-server-connect-token-row hidden>
+    <p class="nz-label">Join token (paste it when the command asks)</p>
+    <div class="nz-secret-row">
+      <code class="nz-url-text" data-server-connect-token></code>
+      <Button variant="icon" icon="copy" label="Copy join token" data-copy="" data-server-connect-token-copy />
+    </div>
+  </div>
+  <p class="nz-hint" data-server-connect-note></p>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+  </div>
+</Dialog>
+
+<Dialog id="nz-server-view" title="Server details" wide>
+  <dl class="nz-detail-list" data-server-view-list></dl>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Close</Button>
+  </div>
+</Dialog>

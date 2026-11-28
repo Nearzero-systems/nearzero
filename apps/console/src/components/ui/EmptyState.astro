@@ -1,0 +1,23 @@
+---
+import type { IconName } from "../../lib/icons.ts";
+
+/**
+ * An empty state (spec 21.10): plain centred text, a small semibold title and one grey line,
+ * with any action under it. No icon tile and no dashed box. `icon` is accepted for callers
+ * written before the change and is not drawn.
+ */
+interface Props {
+  title: string;
+  text?: string;
+  icon?: IconName;
+  class?: string;
+}
+
+const { title, text, class: className } = Astro.props;
+---
+
+<div class:list={["nz-empty", className]}>
+  <p class="nz-empty-title">{title}</p>
+  {text && <p class="nz-empty-text">{text}</p>}
+  <slot />
+</div>

@@ -1,0 +1,177 @@
+---
+import DeployLive from "../../../../../../../../components/deploys/DeployLive.astro";
+import DeploymentLogDialog from "../../../../../../../../components/deploys/DeploymentLogDialog.astro";
+import TerminalDialog from "../../../../../../../../components/deploys/TerminalDialog.astro";
+import AddDomainDialog from "../../../../../../../../components/projects/AddDomainDialog.astro";
+import DeleteServiceDialog from "../../../../../../../../components/projects/DeleteServiceDialog.astro";
+import AdvancedPanel from "../../../../../../../../components/services/AdvancedPanel.astro";
+import AppOverview from "../../../../../../../../components/services/AppOverview.astro";
+import AppSettings from "../../../../../../../../components/services/AppSettings.astro";
+import BackupsPanel from "../../../../../../../../components/services/BackupsPanel.astro";
+import ComposePage from "../../../../../../../../components/services/ComposePage.astro";
+import ConfirmActionDialog from "../../../../../../../../components/services/ConfirmActionDialog.astro";
+import DatabaseOverview from "../../../../../../../../components/services/DatabaseOverview.astro";
+import DatabaseSettings from "../../../../../../../../components/services/DatabaseSettings.astro";
+import LogsPanel from "../../../../../../../../components/services/LogsPanel.astro";
+import ServiceHeader from "../../../../../../../../components/services/ServiceHeader.astro";
+import ServiceVariables from "../../../../../../../../components/services/ServiceVariables.astro";
+import ProjectLayout from "../../../../../../../../layouts/ProjectLayout.astro";
+import { dashboardContext } from "../../../../../../../../lib/page.ts";
+import { loadProjectPage, loadService } from "../../../../../../../../lib/project-page.ts";
+import { isDatabase, isRoutable } from "../../../../../../../../lib/projects.ts";
+import {
+  projectPath,
+  SERVICE_TAB_LABELS,
+  SERVICE_TABS,
+  type ServiceTab,
+  servicePath,
+} from "../../../../../../../../lib/routes.ts";
+
+// A service's page (spec 6.2–6.10 applications, 7.2 Compose, 8.2 databases, 21.10). Applications
+// and databases have the service strips and tabs; Compose is one page of sections with its own
+// header (ComposePage). An unknown tab goes to Overview.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const page = await loadProjectPage(Astro, ctx);
+if (page instanceof Response) return page;
+const service = await loadService(Astro, page);
+if (service instanceof Response) return service;
+const { project, environment } = page;
+const slug = ctx.workspace.slug;
+const group =
+  service.kind === "application"
+    ? "application"
+    : service.kind === "compose"
+      ? "compose"
+      : "database";
+// The Backups tab only for people who may see this service's backups (spec 6.2, 8.3).
+const canSeeBackups = service.can.backups !== false;
+const tabs: readonly ServiceTab[] = SERVICE_TABS[group].filter(
+  (key) => key !== "backups" || canSeeBackups,
+);
+const tab = (Astro.params.tab ?? "overview") as ServiceTab;
+if (!tabs.includes(tab)) {
+  return Astro.redirect(servicePath(slug, project.id, environment.id, service.id));
+}
+const servicesHref = projectPath(slug, project.id, environment.id, "services");
+const sharedHref = projectPath(slug, project.id, environment.id, "variables");
+const needsVariables = tab === "variables" || service.kind === "compose";
+const routable = isRoutable(service);
+const database = isDatabase(service);
+const overview = tab === "overview";
+const [variables, server, hostnames, deployments, connection, webhook, sshKeys] = await Promise.all(
+  [
+    needsVariables ? ctx.data.serviceVariables(service.id) : Promise.resolve(null),
+    database && tab === "settings" ? ctx.data.server(service.serverId) : Promise.resolve(null),
+    routable ? ctx.data.serviceHostnames(service.id).catch(() => null) : Promise.resolve(null),
+    overview ? ctx.data.serviceDeployments(service.id).catch(() => []) : Promise.resolve([]),
+    database && overview
+      ? ctx.data.connection(service.id).catch(() => null)
+      : Promise.resolve(null),
+    (service.kind === "application" && tab === "settings") || service.kind === "compose"
+      ? ctx.data.webhook(service.id).catch(() => null)
+      : Promise.resolve(null),
+    (service.kind === "application" && overview) || service.kind === "compose"
+      ? ctx.data.sshKeys().catch(() => null)
+      : Promise.resolve(null),
+  ],
+);
+// The Advanced tab's "Volume of another app" (31b G2-08).
+const shareable =
+  tab === "advanced" && service.kind === "application" && service.can.configure
+    ? await ctx.data.shareableVolumes(service.id).catch(() => [])
+    : [];
+// Create URL and the Domain fact's suggestion (spec 6.2, 6.3): only when there is no hostname.
+const suggestion =
+  routable && hostnames && hostnames.hostnames.length === 0 && hostnames.canAdd
+    ? await ctx.data.hostnameSuggestion(service.id).catch(() => null)
+    : null;
+const manager = ctx.access.role === "owner" || ctx.access.role === "admin";
+const canManageDestinations =
+  manager || ctx.access.capabilities.includes("backups.manage-destinations");
+const items = tabs.map((key) => ({
+  label: SERVICE_TAB_LABELS[key],
+  href: servicePath(slug, project.id, environment.id, service.id, key),
+  current: key === tab,
+}));
+const title = tab === "overview" ? service.name : `${SERVICE_TAB_LABELS[tab]} · ${service.name}`;
+---
+
+<ProjectLayout page={page} section="service" title={title} menu={service.kind !== "compose"}>
+  {
+    service.kind !== "compose" && (
+      <ServiceHeader
+        service={service}
+        backHref={servicesHref}
+        hostnames={hostnames}
+        canGenerate={suggestion?.available === true}
+        tabs={items}
+      />
+    )
+  }
+  <div class:list={["nz-body nz-service-body", service.kind === "compose" && "nz-body--flush"]}>
+  {/* Other tabs follow a running deploy too, folded (spec 6.2); Overview shows it open. */}
+  {tab !== "overview" && service.kind !== "compose" && <DeployLive service={service} open={false} />}
+
+  {
+    service.kind === "compose" && variables && (
+      <ComposePage
+        service={service}
+        variables={variables}
+        workspace={slug}
+        sharedHref={sharedHref}
+        afterDelete={servicesHref}
+        canManageDestinations={canManageDestinations}
+        hostnames={hostnames}
+        deployments={deployments}
+        webhook={webhook}
+        canGenerate={suggestion?.available === true}
+        sshKeys={sshKeys}
+      />
+    )
+  }
+  {
+    service.kind === "application" && tab === "overview" && (
+      <AppOverview
+        service={service}
+        workspace={slug}
+        hostnames={hostnames}
+        suggested={suggestion?.available ? (suggestion.hostname ?? null) : null}
+        deployments={deployments}
+        sshKeys={sshKeys}
+      />
+    )
+  }
+  {
+    database && tab === "overview" && (
+      <DatabaseOverview service={service} connection={connection} deployments={deployments} />
+    )
+  }
+  {service.kind !== "compose" && tab === "logs" && <LogsPanel service={service} />}
+  {
+    service.kind !== "compose" && tab === "variables" && variables && (
+      <ServiceVariables service={service} variables={variables} sharedHref={sharedHref} />
+    )
+  }
+  {tab === "advanced" && <AdvancedPanel service={service} shareable={shareable} />}
+  {
+    service.kind !== "compose" && tab === "backups" && (
+      <BackupsPanel service={service} workspace={slug} canManageDestinations={canManageDestinations} />
+    )
+  }
+  {
+    service.kind === "application" && tab === "settings" && (
+      <AppSettings service={service} afterDelete={servicesHref} workspace={slug} hostnames={hostnames} webhook={webhook} />
+    )
+  }
+  {isDatabase(service) && tab === "settings" && <DatabaseSettings service={service} server={server} afterDelete={servicesHref} />}
+  </div>
+
+  <Fragment slot="dialogs">
+    <ConfirmActionDialog />
+    <DeploymentLogDialog />
+    <TerminalDialog />
+    <DeleteServiceDialog />
+    {routable && <AddDomainDialog workspace={slug} services={[service]} />}
+  </Fragment>
+</ProjectLayout>

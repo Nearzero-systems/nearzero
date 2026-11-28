@@ -1,0 +1,165 @@
+---
+import { DESCRIPTION_MAX, ENVIRONMENT_NAME_MAX } from "@nearzero/shared/browser";
+import type { EnvironmentView, ProjectView } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Add, rename and delete an environment (spec 05 5.3), opened from the environment menu in the
+ * header. Names follow the shared rules with a live hint; client/environments.ts sends them.
+ */
+interface Props {
+  project: ProjectView;
+  environment: EnvironmentView;
+  environments: EnvironmentView[];
+  canCreate: boolean;
+}
+
+const { project, environment, environments, canCreate } = Astro.props;
+const names = JSON.stringify(environments.map((env) => env.name));
+const others = JSON.stringify(
+  environments.filter((env) => env.id !== environment.id).map((env) => env.name),
+);
+const services = environment.serviceCount;
+---
+
+{
+  canCreate && (
+    <Dialog id="nz-env-add" title="Add environment" description="Each environment has its own services and variables.">
+      <form data-scripted class="nz-form" data-env-form="add" data-project-id={project.id} data-taken={names} novalidate>
+        <div data-field>
+          <label for="nz-env-add-name" class="nz-label">Name</label>
+          <input
+            id="nz-env-add-name"
+            name="name"
+            class="nz-input"
+            placeholder="staging"
+            autocomplete="off"
+            maxlength={ENVIRONMENT_NAME_MAX * 2}
+            aria-describedby="nz-env-add-hint"
+            data-env-name
+          />
+          <p id="nz-env-add-hint" class="nz-hint" data-env-hint aria-live="polite">
+            Use letters, numbers and dashes, like staging or qa-2.
+          </p>
+          <p class="nz-field-error" data-field-error hidden />
+        </div>
+        <fieldset class="nz-choice-list" data-env-variables>
+          <legend class="nz-label">Variables</legend>
+          <label class="nz-check">
+            <input type="radio" name="variablesFrom" value="" checked />
+            Start empty
+          </label>
+          <div class="nz-env-copy-row">
+            <label class="nz-check">
+              <input type="radio" name="variablesFrom" value="copy" />
+              Copy names from
+            </label>
+            <span class="nz-select-wrap">
+              <select class="nz-select" name="variablesSource" aria-label="Environment to copy from" data-env-source>
+                {environments.map((env) => (
+                  <option value={env.id} selected={env.id === environment.id}>
+                    {env.name}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </div>
+          <label class="nz-check" data-env-values hidden>
+            <input type="checkbox" name="variablesValues" />
+            Also copy the values
+          </label>
+          <p class="nz-hint" data-env-variables-hint hidden />
+        </fieldset>
+        <Field
+          id="nz-env-add-description"
+          name="description"
+          label="Description"
+          as="textarea"
+          rows={2}
+          maxlength={DESCRIPTION_MAX}
+          hint="Optional, up to 1,000 characters."
+        />
+        <FormError />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit" label="Create environment">Create</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+{
+  environment.can.rename && (
+    <Dialog id="nz-env-rename" title={`Rename ${environment.name}`} description="The same name rules apply to every environment.">
+      <form data-scripted class="nz-form" data-env-form="rename" data-environment-id={environment.id} data-taken={others} novalidate>
+        <div data-field>
+          <label for="nz-env-rename-name" class="nz-label">Name</label>
+          <input
+            id="nz-env-rename-name"
+            name="name"
+            class="nz-input"
+            value={environment.name}
+            autocomplete="off"
+            maxlength={ENVIRONMENT_NAME_MAX * 2}
+            aria-describedby="nz-env-rename-hint"
+            data-env-name
+          />
+          <p id="nz-env-rename-hint" class="nz-hint" data-env-hint aria-live="polite">Looks good.</p>
+          <p class="nz-field-error" data-field-error hidden />
+        </div>
+        <FormError />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Rename environment</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+{
+  environment.can.delete && !environment.isDefault && (
+    <Dialog id="nz-env-delete" title={`Delete ${environment.name}`} description="Its shared variables are deleted with it.">
+      <form data-scripted
+        class="nz-form"
+        data-env-form="delete"
+        data-environment-id={environment.id}
+        data-project-id={project.id}
+        data-confirm={environment.name}
+        novalidate
+      >
+        {services > 0 ? (
+          <p class="nz-inline-note">
+            Delete or move its {services} {services === 1 ? "service" : "services"} first.
+          </p>
+        ) : (
+          <>
+            <p>
+              Delete the environment <strong>{environment.name}</strong> of {project.name}? This cannot be undone.
+            </p>
+            <Field
+              id="nz-env-delete-confirm"
+              name="confirm"
+              label={`Type ${environment.name} to confirm`}
+              autocomplete="off"
+              data-env-confirm
+            />
+          </>
+        )}
+        <FormError />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          {services === 0 && (
+            <Button variant="danger" type="submit" data-env-delete-submit disabled>
+              Delete environment
+            </Button>
+          )}
+        </div>
+      </form>
+    </Dialog>
+  )
+}

@@ -1,0 +1,53 @@
+---
+/**
+ * Tabs that switch panels in place. Panels are slots named after each tab's id; arrow keys,
+ * Home and End move between tabs (client/tabs.ts).
+ */
+interface Props {
+  id: string;
+  label: string;
+  tabs: { id: string; label: string; count?: number }[];
+  selected?: string;
+  /** Underline tabs with counts (Members & access, spec 21.10) instead of pill tabs. */
+  underline?: boolean;
+}
+
+const { id, label, tabs, selected = tabs[0]?.id, underline = false } = Astro.props;
+const panels = await Promise.all(
+  tabs.map(async (tab) => ({ ...tab, html: await Astro.slots.render(tab.id) })),
+);
+---
+
+<div data-tabs id={id}>
+  <div class:list={["nz-tabs", underline ? "nz-tabs--underline" : "nz-tabs--lined"]} role="tablist" aria-label={label}>
+    {
+      panels.map((tab) => (
+        <button
+          type="button"
+          role="tab"
+          class="nz-tab"
+          id={`${id}-tab-${tab.id}`}
+          aria-controls={`${id}-panel-${tab.id}`}
+          aria-selected={tab.id === selected ? "true" : "false"}
+          tabindex={tab.id === selected ? 0 : -1}
+        >
+          {tab.label}
+          {tab.count !== undefined && <span class="nz-count">{tab.count}</span>}
+        </button>
+      ))
+    }
+  </div>
+  {
+    panels.map((tab) => (
+      <div
+        role="tabpanel"
+        id={`${id}-panel-${tab.id}`}
+        aria-labelledby={`${id}-tab-${tab.id}`}
+        hidden={tab.id !== selected}
+        class="pt-3"
+        tabindex="0"
+        set:html={tab.html}
+      />
+    ))
+  }
+</div>

@@ -1,0 +1,259 @@
+/*
+ * Profile (spec 4.6, 21.10): one "My Account" form in the settings layout. The heading row has the
+ * icon, "My Account" and its line on the left and "Enable 2FA" on the right, inside 24px of
+ * padding; full-width grey fields follow, then four round avatar choices and Save at the right.
+ */
+
+@layer components {
+  /* An unconfirmed or changing address (30a R1-02): the line and its two buttons under Email. */
+  .nz-email-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: -8px;
+  }
+
+  .nz-email-status p {
+    min-width: 0;
+    flex: 1 1 16rem;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-email-status-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .nz-account {
+    gap: 16px;
+    margin-top: 0;
+  }
+
+  .nz-account-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 22px 24px 8px;
+  }
+
+  .nz-account-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .nz-account-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-family: var(--nz-font-grotesk);
+    font-size: 20px;
+    line-height: 24px;
+    font-weight: 600;
+    letter-spacing: -0.4px;
+    color: var(--nz-text);
+  }
+
+  .nz-account-title svg {
+    width: 22px;
+    height: 22px;
+    flex: none;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-account-desc {
+    margin: 0;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-account-2fa {
+    flex: none;
+    color: var(--nz-text);
+  }
+
+  .nz-account-2fa svg {
+    width: 12px;
+    height: 12px;
+    color: var(--nz-text-dim);
+  }
+
+  /* Grey-filled fields with the hairline border (the original's form fields). */
+  .nz-account .nz-input--filled {
+    border-color: var(--nz-line);
+  }
+
+  .nz-avatar-pick {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .nz-avatar-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nz-avatar-option {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    cursor: pointer;
+  }
+
+  .nz-avatar-option > input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .nz-avatar-face {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    overflow: hidden;
+    border: 1px solid var(--nz-line);
+    /* Avatars are rounded squares, never circles (spec 21.10). */
+    border-radius: 10px;
+    background: var(--nz-surface);
+    color: var(--nz-text-dim);
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .nz-avatar-face svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .nz-avatar-face img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .nz-avatar-face--initials {
+    background: var(--nz-code);
+    color: var(--nz-text);
+  }
+
+  .nz-avatar-face--initials[data-color] {
+    border-color: transparent;
+    color: #ffffff;
+  }
+
+  /* The same named colors as the swatches and every other avatar (people.css). */
+  .nz-avatar-face[data-color="violet"] {
+    background: #7c3aed;
+  }
+  .nz-avatar-face[data-color="blue"] {
+    background: #2563eb;
+  }
+  .nz-avatar-face[data-color="teal"] {
+    background: #0f766e;
+  }
+  .nz-avatar-face[data-color="green"] {
+    background: #15803d;
+  }
+  .nz-avatar-face[data-color="amber"] {
+    background: #b45309;
+  }
+  .nz-avatar-face[data-color="orange"] {
+    background: #c2410c;
+  }
+  .nz-avatar-face[data-color="rose"] {
+    background: #be123c;
+  }
+  .nz-avatar-face[data-color="slate"] {
+    background: #475569;
+  }
+
+  .nz-avatar-face--upload {
+    border-style: dashed;
+    border-color: var(--nz-line-strong);
+    background: var(--nz-muted);
+  }
+
+  .nz-avatar-face--palette {
+    padding: 0;
+    font: inherit;
+  }
+
+  .nz-avatar-face--palette:hover,
+  .nz-avatar-face--palette[aria-expanded="true"] {
+    background: var(--nz-hover);
+    color: var(--nz-text);
+  }
+
+  /* Gravatar's placeholder is drawn in the interface's own grey, not a brand blue
+     (principle 5: no hues beyond the accent and status colors). */
+  .nz-avatar-face--gravatar {
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+  }
+
+  /* The chosen avatar: a ring around its square. */
+  .nz-avatar-option:has(> input:checked) > .nz-avatar-face {
+    outline: 2px solid var(--nz-text);
+    outline-offset: 2px;
+  }
+
+  .nz-avatar-option:has(> input:focus-visible:not([data-quiet-focus])) > .nz-avatar-face,
+  .nz-avatar-face--palette:focus-visible {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+  }
+
+  :root[data-theme="dusk"] .nz-avatar-option:has(> input:checked) > .nz-avatar-face {
+    outline-color: var(--nz-accent-soft);
+  }
+
+  /* The initials' colors open under the squares from the palette. */
+  .nz-avatar-pick .nz-swatches {
+    align-items: center;
+    margin-top: 12px;
+    padding-left: 0;
+  }
+
+  .nz-avatar-pick .nz-swatches[data-open="false"] {
+    display: none;
+  }
+
+  .nz-avatar-image-actions {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .nz-account-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+/* Phones: the heading stacks with "Enable 2FA" under it, and the avatar squares are centred. */
+@media (max-width: 639.98px) {
+  .nz-account-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .nz-avatar-options,
+  .nz-avatar-pick .nz-swatches {
+    justify-content: center;
+  }
+}

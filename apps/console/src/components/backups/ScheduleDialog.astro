@@ -1,0 +1,135 @@
+---
+import { CRON_HINT, SCHEDULE_PRESETS } from "@nearzero/shared/browser";
+import type { BackupsPanelView } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Switch from "../ui/Switch.astro";
+
+/**
+ * Add / Edit a backup schedule (spec 08 8.3, 17.3): destination, the database to dump or the
+ * volume to copy (with "Stop the service while copying"), the schedule (a preset or a 5-field
+ * cron, in the server's time zone), the folder, Keep, and On. One dialog serves both;
+ * client/backups.ts switches it and keeps the cron field in step with the preset.
+ */
+interface Props {
+  panel: BackupsPanelView;
+}
+
+const { panel } = Astro.props;
+const database = panel.kind === "database";
+const kind = panel.service.kind;
+const destinations = panel.destinations.map((item, index) => ({
+  value: item.id,
+  label: `${item.name} (${item.bucket})`,
+  selected: index === 0,
+}));
+const presets = [
+  ...SCHEDULE_PRESETS.map((preset) => ({
+    value: preset.key,
+    label: preset.label,
+    selected: preset.key === "daily",
+  })),
+  { value: "custom", label: "Custom (cron)" },
+];
+const volumes = (panel.volumes?.volumes ?? []).map((volume, index) => ({
+  value: volume.name,
+  label: volume.name,
+  selected: index === 0,
+}));
+const cronByPreset = JSON.stringify(
+  Object.fromEntries(SCHEDULE_PRESETS.map((preset) => [preset.key, preset.cron])),
+);
+const databaseHint =
+  kind === "mongodb"
+    ? "Which database to dump; leave it blank for all of them."
+    : "Which database to dump.";
+---
+
+<Dialog id="nz-schedule" title="Add backup" description={database ? "A scheduled dump of this database." : "A scheduled copy of one of this service's volumes."}>
+  <form
+    method="post"
+    class="nz-form"
+    data-schedule-form
+    data-service-id={panel.service.id}
+    data-api={`POST /services/${panel.service.id}/backup-schedules`}
+    data-api-toast="Backup schedule saved"
+    data-cron-presets={cronByPreset}
+    data-validate
+    novalidate
+  >
+    <FormError />
+    <input type="hidden" name="id" value="" />
+    <Field id="nz-schedule-destination" name="destinationId" label="Destination" as="select" options={destinations} />
+    {
+      database && kind !== "libsql" && (
+        <Field
+          id="nz-schedule-database"
+          name="database"
+          label="Database"
+          hint={databaseHint}
+          value={panel.defaultDatabase ?? ""}
+          data-default={panel.defaultDatabase ?? ""}
+          placeholder={kind === "mongodb" ? "All databases" : ""}
+          autocomplete="off"
+          spellcheck="false"
+        />
+      )
+    }
+    {
+      !database && (
+        <>
+          <Field id="nz-schedule-volume" name="volume" label="Volume" as="select" options={volumes} />
+          <Switch
+            id="nz-schedule-stop"
+            name="stopService"
+            label="Stop the service while copying"
+            description="For consistent copies. It starts again as soon as the copy is made."
+          />
+        </>
+      )
+    }
+    <Field id="nz-schedule-preset" name="preset" label="Schedule" as="select" options={presets} data-schedule-preset />
+    <Field
+      id="nz-schedule-cron"
+      name="cron"
+      label="Cron schedule"
+      value="0 3 * * *"
+      hint={`${panel.timeZoneHint} ${CRON_HINT}`}
+      autocomplete="off"
+      spellcheck="false"
+      data-required="Enter a cron schedule with five fields."
+      data-schedule-cron
+    />
+    <div class="nz-form-grid-2">
+      <Field
+        id="nz-schedule-folder"
+        name="folder"
+        label="Folder"
+        value="nightly"
+        hint={`Files go to ${panel.service.appName}/<folder>/.`}
+        autocomplete="off"
+        spellcheck="false"
+        data-required="Enter a folder, like nightly."
+      />
+      <Field
+        id="nz-schedule-keep"
+        name="keep"
+        label="Keep"
+        type="number"
+        min="1"
+        max="1000"
+        inputmode="numeric"
+        placeholder="All"
+        hint="Blank keeps all. Older files are deleted after each successful run."
+        data-json="number"
+      />
+    </div>
+    <Switch id="nz-schedule-enabled" name="enabled" label="On" description="Paused schedules don't run until switched on again." checked />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" data-schedule-submit>Add backup</Button>
+    </div>
+  </form>
+</Dialog>

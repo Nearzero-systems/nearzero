@@ -1,0 +1,228 @@
+---
+import {
+  APP_NAME_BASE_MAX,
+  DATABASE_DEFAULTS,
+  DATABASE_KINDS,
+  DESCRIPTION_MAX,
+  SERVICE_KIND_LABELS,
+  SERVICE_NAME_MAX,
+  suggestAppNameBase,
+} from "@nearzero/shared/browser";
+import { NO_SERVER_MESSAGE, type ServerChoice } from "../../lib/projects.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The database dialog (spec 08 8.1, 21.10), from Add New → Database: the type as a 3 by 2 grid
+ * of buttons (Postgres first), then one field per row: Name, Select a Server, App Name,
+ * Description, and the fields that type has. Empty Database Name, Database User and Docker image
+ * fields use the type's defaults (shown as the image's placeholder); passwords left empty are
+ * generated (24 letters and digits) by the control plane. Fields that belong to other types are
+ * hidden and never sent (client/create-service.ts).
+ */
+interface Props {
+  environmentId: string;
+  projectName: string;
+  servers: ServerChoice[];
+  /** Where a new service's page lives: this prefix plus its id. */
+  serviceBase: string;
+}
+
+const { environmentId, projectName, servers, serviceBase } = Astro.props;
+const defaults = JSON.stringify(DATABASE_DEFAULTS);
+const sql = "postgres mysql mariadb";
+const withUser = "postgres mysql mariadb mongodb libsql";
+const pg = DATABASE_DEFAULTS.postgres;
+// "App Name" starts as the project's part and a dash, then follows the name (spec 21.10).
+const appNamePrefix = suggestAppNameBase(projectName, "x").replace(/-x$/, "");
+// The type picker uses the original's short names (spec 21.10), in its 3 by 2 order.
+const typeNames: Record<string, string> = {
+  postgres: "Postgres",
+  mysql: "Mysql",
+  mongodb: "Mongo",
+  redis: "Redis",
+  mariadb: "Mariadb",
+  libsql: "LibSQL",
+};
+const typeOrder = Object.keys(typeNames);
+const rank = (kind: string) =>
+  typeOrder.includes(kind) ? typeOrder.indexOf(kind) : typeOrder.length;
+const kinds = [...DATABASE_KINDS].sort((a, b) => rank(a) - rank(b));
+---
+
+<Dialog id="nz-database-create" title="Databases" class="nz-dialog--create">
+  <form data-scripted
+    class="nz-form nz-form--flush"
+    data-create-service="database"
+    data-environment-id={environmentId}
+    data-project-name={projectName}
+    data-service-base={serviceBase}
+    data-defaults={defaults}
+    data-has-servers={servers.length > 0 ? "true" : "false"}
+    data-deploy-after="true"
+    novalidate
+  >
+    <fieldset class="nz-choice-list">
+      <legend class="nz-visually-hidden">Type</legend>
+      <div class="nz-type-grid nz-type-grid--buttons">
+        {
+          kinds.map((kind) => (
+            <label class="nz-type-option">
+              <input type="radio" name="kind" value={kind} checked={kind === "postgres"} data-database-kind />
+              <span>{typeNames[kind] ?? SERVICE_KIND_LABELS[kind]}</span>
+            </label>
+          ))
+        }
+      </div>
+    </fieldset>
+
+    <Field
+      id="nz-db-name"
+      name="name"
+      label="Name"
+      autocomplete="off"
+      maxlength={SERVICE_NAME_MAX}
+      data-required="Enter a name for the service."
+      data-service-name
+    />
+    {
+      servers.length > 0 ? (
+        <Field
+          id="nz-db-server"
+          name="serverId"
+          label="Select a Server"
+          as="select"
+          options={servers.map((server, index) => ({ value: server.id, label: server.label, selected: index === 0 }))}
+        />
+      ) : (
+        <div data-field>
+          <span class="nz-label">Select a Server</span>
+          <p class="nz-inline-note">{NO_SERVER_MESSAGE}</p>
+        </div>
+      )
+    }
+    <Field
+      id="nz-db-app-name"
+      name="appName"
+      label="App Name"
+      value={`${appNamePrefix}-`}
+      autocomplete="off"
+      spellcheck="false"
+      maxlength={APP_NAME_BASE_MAX}
+      title="A unique suffix is added automatically."
+      data-app-name
+      data-omit-empty
+    />
+    <Field
+      id="nz-db-description"
+      name="description"
+      label="Description"
+      as="textarea"
+      rows={4}
+      maxlength={DESCRIPTION_MAX}
+    />
+    <Field
+      id="nz-db-database"
+      name="settings.databaseName"
+      label="Database Name"
+      autocomplete="off"
+      spellcheck="false"
+      wrapClass="nz-kind-field"
+      data-kinds={sql}
+      data-default-of="databaseName"
+      placeholder={`Default ${pg.databaseName}`}
+      data-default-placeholder="Default {value}"
+    />
+    <Field
+      id="nz-db-user"
+      name="settings.user"
+      label="Database User"
+      autocomplete="off"
+      spellcheck="false"
+      wrapClass="nz-kind-field"
+      data-kinds={withUser}
+      data-default-of="user"
+      placeholder={`Default ${pg.user}`}
+      data-default-placeholder="Default {value}"
+    />
+    <Field
+      id="nz-db-password"
+      name="settings.password"
+      label="Database Password"
+      type="password"
+      placeholder="Generated if left empty"
+      autocomplete="new-password"
+      spellcheck="false"
+      data-password
+      data-1p-ignore
+      data-lpignore="true"
+    />
+    <Field
+      id="nz-db-root-password"
+      name="settings.rootPassword"
+      label="Database Root Password"
+      type="password"
+      placeholder="Generated if left empty"
+      autocomplete="new-password"
+      spellcheck="false"
+      wrapClass="nz-kind-field"
+      data-kinds="mysql mariadb"
+      data-password
+      data-1p-ignore
+      data-lpignore="true"
+    />
+    <Field
+      id="nz-db-image"
+      name="settings.image"
+      label="Docker image"
+      placeholder={`Default ${pg.image}`}
+      autocomplete="off"
+      spellcheck="false"
+      data-default-of="image"
+      data-default-placeholder="Default {value}"
+    />
+
+    <label class="nz-check nz-kind-field" data-kinds="mongodb" hidden>
+      <input type="checkbox" name="settings.replicaSet" data-json="bool" />
+      Use replica set (only at creation; it always runs with authentication)
+    </label>
+
+    <div class="nz-kind-field nz-stack-sm" data-kinds="libsql" hidden>
+      <div class="nz-form-grid-2">
+        <Field
+          id="nz-db-node-role"
+          name="settings.nodeRole"
+          label="Node role"
+          as="select"
+          options={[
+            { value: "primary", label: "Primary", selected: true },
+            { value: "replica", label: "Replica" },
+          ]}
+          data-node-role
+        />
+        <Field
+          id="nz-db-primary-url"
+          name="settings.primaryUrl"
+          label="Primary URL"
+          placeholder="http://primary-host:8080"
+          autocomplete="off"
+          wrapClass="nz-kind-field"
+          data-replica-only
+        />
+      </div>
+      <label class="nz-check">
+        <input type="checkbox" name="settings.namespaces" data-json="bool" />
+        Enable namespaces
+      </label>
+      <p class="nz-hint">Node role, primary URL and namespaces are chosen once, at creation.</p>
+    </div>
+
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" disabled={servers.length === 0} label="Create database">Create</Button>
+    </div>
+  </form>
+</Dialog>

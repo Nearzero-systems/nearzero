@@ -1,0 +1,53 @@
+---
+import type { DatabaseConnection, DeploymentView, ServiceDetail } from "../../lib/data/index.ts";
+import { SERVICE_STATUS } from "../../lib/projects.ts";
+import DeployLive from "../deploys/DeployLive.astro";
+import DeploymentsPanel from "../deploys/DeploymentsPanel.astro";
+import ConnectionCard from "./ConnectionCard.astro";
+
+/**
+ * A database's Overview (spec 08 8.2, 21.10): the summary card (Status, Type as a small grey
+ * pill, External port, then Container), the build log while deploying, the Connection card, and
+ * the Deployments fold (closed) with its log dialog.
+ */
+interface Props {
+  service: ServiceDetail;
+  connection: DatabaseConnection | null;
+  deployments: DeploymentView[];
+}
+
+const { service, connection, deployments } = Astro.props;
+const status = SERVICE_STATUS[service.status];
+---
+
+<div class="nz-stack">
+  <DeployLive service={service} />
+  <section class="nz-card nz-summary" aria-labelledby="nz-db-facts">
+    <h2 class="nz-visually-hidden" id="nz-db-facts">Summary</h2>
+    <div class="nz-summary-row">
+      <div class="nz-fact">
+        <span class="nz-eyebrow">Status</span>
+        <span class="nz-fact-status" data-status={status.pill}>{status.label}</span>
+      </div>
+      <div class="nz-fact">
+        <span class="nz-eyebrow">Type</span>
+        <span class="nz-type-tag">{service.kindLabel}</span>
+      </div>
+      <div class="nz-fact">
+        <span class="nz-eyebrow">External port</span>
+        <span>{service.publicPort ?? "Private"}</span>
+      </div>
+    </div>
+    {service.publicPortNote && <p class="nz-inline-note mt-3">{service.publicPortNote}</p>}
+    <div class="nz-summary-row nz-summary-row--below">
+      <div class="nz-fact">
+        <span class="nz-eyebrow">Container</span>
+        {service.status === "idle" ? <span class="nz-dim">Not deployed</span> : <span class="nz-code-strip">{service.appName}</span>}
+      </div>
+    </div>
+  </section>
+  <ConnectionCard service={service} connection={connection} />
+  <div class="nz-folds">
+    <DeploymentsPanel serviceName={service.name} deployments={deployments} open={false} />
+  </div>
+</div>

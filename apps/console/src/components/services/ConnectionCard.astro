@@ -1,0 +1,127 @@
+---
+import { DATABASE_DEFAULTS, type DatabaseKind } from "@nearzero/shared/browser";
+import { MASK } from "../../lib/connection.ts";
+import type { DatabaseConnection, ServiceDetail } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+
+/**
+ * A database's Connection card (spec 08 8.2, 21.10), from GET …/connection: the public URL ("From
+ * anywhere") with its firewall hint and Make private / Make public, and the internal URL ("From
+ * apps on this server"), each label at the left and the masked URL with small outlined eye and
+ * copy buttons at the right; then User, Password and Database in three columns. The password
+ * comes from POST …/connection/reveal only when asked for (client/connection.ts). Make public /
+ * Make private confirm first, then the API restarts a deployed database in the background and the
+ * card shows the new state.
+ */
+interface Props {
+  service: ServiceDetail;
+  connection: DatabaseConnection | null;
+}
+
+const { service, connection } = Astro.props;
+const kind = service.kind as DatabaseKind;
+const hasRoot = DATABASE_DEFAULTS[kind]?.hasRootPassword ?? false;
+const isPublic = connection?.public.enabled ?? service.publicPort !== null;
+const actionLabel = isPublic ? "Make private" : "Make public";
+const confirm = isPublic
+  ? `Make ${service.name} private? Its public port closes${service.status === "idle" ? "" : " and it restarts in the background"}.`
+  : `Make ${service.name} public? It gets a port from 20000 to 29999 on its server${service.status === "idle" ? "" : " and restarts in the background"}.`;
+---
+
+<section class="nz-card nz-conn" aria-labelledby="nz-connection-title" data-connection data-service-id={service.id}>
+  <h2 class="nz-eyebrow" id="nz-connection-title">Connection</h2>
+  {
+    connection === null ? (
+      <p class="nz-inline-note mt-3">The connection details couldn't be loaded. Try refreshing the page.</p>
+    ) : (
+      <>
+        {connection.notice && <p class="nz-inline-note mt-3">{connection.notice}</p>}
+        <div class="nz-conn-rows">
+          <div class="nz-conn-row">
+            <div class="nz-conn-label">
+              <span class="font-medium">Public URL</span>
+              <span class="nz-dim">{connection.public.label}</span>
+            </div>
+            <div class="nz-conn-value">
+              {connection.public.url ? (
+                <span class="nz-conn-url">
+                  <code class="nz-url-text" data-conn-url="public">{connection.public.url}</code>
+                  <Button variant="icon" outlined icon="eye" label="Show password" data-conn-reveal aria-pressed="false" />
+                  <Button variant="icon" outlined icon="copy" label="Copy public URL" data-conn-copy="public" />
+                </span>
+              ) : (
+                <span class="nz-dim">{isPublic ? "Not reachable yet" : "Private"}</span>
+              )}
+              <span class="nz-conn-hint">
+                <span class="nz-dim">{connection.public.hint}</span>
+                {service.can.configure && (
+                  <Button
+                    variant="outline"
+                    data-service-action={isPublic ? "make-private" : "make-public"}
+                    data-service-id={service.id}
+                    data-confirm-text={confirm}
+                    data-confirm-label={actionLabel}
+                  >
+                    {actionLabel}
+                  </Button>
+                )}
+              </span>
+            </div>
+          </div>
+          <div class="nz-conn-row">
+            <div class="nz-conn-label">
+              <span class="font-medium">Internal URL</span>
+              <span class="nz-dim">{connection.internal.label}</span>
+            </div>
+            <div class="nz-conn-value">
+              <span class="nz-conn-url">
+                <code class="nz-url-text" data-conn-url="internal">{connection.internal.url}</code>
+                <Button variant="icon" outlined icon="eye" label="Show password" data-conn-reveal aria-pressed="false" />
+                <Button variant="icon" outlined icon="copy" label="Copy internal URL" data-conn-copy="internal" />
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="nz-conn-creds">
+          {connection.user !== null && (
+            <div class="nz-fact">
+              <span class="nz-eyebrow">User</span>
+              <span class="nz-conn-url">
+                <code class="nz-url-text">{connection.user}</code>
+                <Button variant="icon" outlined icon="copy" label="Copy user" data-copy={connection.user} />
+              </span>
+            </div>
+          )}
+          <div class="nz-fact">
+            <span class="nz-eyebrow">Password</span>
+            <span class="nz-conn-url">
+              <code class="nz-url-text" data-conn-secret="password">{MASK}</code>
+              <Button variant="icon" outlined icon="eye" label="Show password" data-conn-reveal aria-pressed="false" />
+              <Button variant="icon" outlined icon="copy" label="Copy password" data-conn-copy="password" />
+            </span>
+          </div>
+          {hasRoot && (
+            <div class="nz-fact">
+              <span class="nz-eyebrow">Root password</span>
+              <span class="nz-conn-url">
+                <code class="nz-url-text" data-conn-secret="rootPassword">{MASK}</code>
+                <Button variant="icon" outlined icon="eye" label="Show root password" data-conn-reveal aria-pressed="false" />
+                <Button variant="icon" outlined icon="copy" label="Copy root password" data-conn-copy="rootPassword" />
+              </span>
+            </div>
+          )}
+          {connection.database !== null && (
+            <div class="nz-fact">
+              <span class="nz-eyebrow">Database</span>
+              <span class="nz-conn-url">
+                <code class="nz-url-text">{connection.database}</code>
+                <Button variant="icon" outlined icon="copy" label="Copy database name" data-copy={connection.database} />
+              </span>
+            </div>
+          )}
+        </div>
+      </>
+    )
+  }
+</section>

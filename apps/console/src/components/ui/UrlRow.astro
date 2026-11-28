@@ -1,0 +1,20 @@
+---
+import CopyButton from "./CopyButton.astro";
+import VisitButton from "./VisitButton.astro";
+
+/** A service address with Copy and Visit beside it (spec 21.1, rule 7). */
+interface Props {
+  url: string;
+  class?: string;
+  withLabels?: boolean;
+}
+
+const { url, class: className, withLabels = false } = Astro.props;
+const href = /^https?:\/\//.test(url) ? url : `https://${url}`;
+---
+
+<div class:list={["nz-url", className]}>
+  <span class="nz-url-text" title={url}>{url}</span>
+  <CopyButton text={href} what="URL" withLabel={withLabels} />
+  <VisitButton href={href} withLabel={withLabels} />
+</div>

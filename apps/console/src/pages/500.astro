@@ -1,0 +1,25 @@
+---
+import AuthFrame from "../components/auth/AuthFrame.astro";
+import Button from "../components/ui/Button.astro";
+import FocusLayout from "../layouts/FocusLayout.astro";
+import { wayBack } from "../lib/error-page.ts";
+import { safeLocalPath } from "../lib/next-step.ts";
+
+// A page that failed on the server (spec 21.9b): in this browser's theme, with the owner's mark,
+// Try again, and a way back (the person's projects, or sign-in when signed out). Nothing about
+// the error itself is shown, and nothing here calls the control plane, which may be what failed.
+const back = await wayBack(Astro, { lookup: false });
+const again = new URL(Astro.url);
+for (const secret of ["password", "code"]) again.searchParams.delete(secret);
+const retry = safeLocalPath(`${again.pathname}${again.search}`) ?? "/";
+---
+
+<FocusLayout title="Something went wrong" description="This page failed to load because of an error on the server.">
+  <AuthFrame heading="Something went wrong" mark>
+    <p slot="note">This page couldn't be loaded. Try again, or go back and start from there.</p>
+    <div class="nz-gate-actions nz-gate-actions--block">
+      <Button variant="primary" href={back.href} data-astro-reload>{back.label}</Button>
+      <Button variant="outline" href={retry} data-astro-reload>Try again</Button>
+    </div>
+  </AuthFrame>
+</FocusLayout>

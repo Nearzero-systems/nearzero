@@ -1,0 +1,155 @@
+---
+import type { ServiceDetail } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Fold from "../ui/Fold.astro";
+import Icon from "../ui/Icon.astro";
+
+/**
+ * The Logs tab (spec 06 6.7, 08 8.2) and the Compose page's Logs section (07 7.2), drawn in the
+ * original's style (spec 21.10): live output of the running container in a terminal box, with a
+ * line count (100, 500, 1,000, all since start), "Since", search, follow on or off, Copy and
+ * Download, and a container picker when there are several (client/runtime-logs.ts streams
+ * GET /services/:id/logs). On a service page it is one open fold; on the Compose page
+ * (`containers`) it is a section with "Container", a full-width picker reading "Select a
+ * container", and the box saying so until one is picked; the line count, since, search, follow,
+ * Copy and Download then show along the top of the box, not in a toolbar row of their own.
+ */
+interface Props {
+  service: ServiceDetail;
+  /** Compose: the section, whose picker lists the stack's containers. */
+  containers?: boolean;
+}
+
+const { service, containers = false } = Astro.props;
+const never = service.status === "idle";
+const id = service.id;
+const emptyText = `${service.name} hasn't been deployed, so it has no output. Its live log shows here once it runs.`;
+---
+
+{
+  containers ? (
+    <section
+      class="nz-cs-section"
+      id="nz-compose-logs"
+      aria-labelledby={`nz-logs-${id}`}
+      data-runtime-logs={never ? undefined : id}
+      data-logs-pick
+      data-service-name={service.appName}
+    >
+      <div class="nz-cs-section-head">
+        <div class="min-w-0">
+          <h2 class="nz-cs-title" id={`nz-logs-${id}`}>Logs</h2>
+          <p class="nz-cs-desc">Watch the logs of the application in real time</p>
+        </div>
+      </div>
+      <div class="nz-cs-body">
+        <label class="nz-label" for={`nz-logs-container-${id}`}>Container</label>
+        <span class="nz-select-wrap nz-select-wrap--native nz-cs-select" data-logs-container-wrap>
+          <select
+            class="nz-select nz-select--filled"
+            id={`nz-logs-container-${id}`}
+            data-logs-container
+            disabled={never}
+          >
+            <option value="">Select a container</option>
+          </select>
+          <Icon name="chevron-down" />
+        </span>
+        <p class="nz-small nz-dim nz-logs-status" data-logs-status aria-live="polite"></p>
+        <div class="nz-cs-term">
+          {
+            !never && (
+              <div class="nz-logs-tools nz-cs-term-tools" data-logs-tools hidden>
+                <label class="nz-select-wrap nz-logs-tool">
+                  <span class="nz-visually-hidden">Lines</span>
+                  <select class="nz-select nz-select--toolbar" data-logs-tail aria-label="Lines">
+                    <option value="100" selected>100 lines</option>
+                    <option value="500">500 lines</option>
+                    <option value="1000">1,000 lines</option>
+                    <option value="all">All since start</option>
+                  </select>
+                  <Icon name="chevron-down" />
+                </label>
+                <label class="nz-logs-tool nz-logs-since">
+                  <span class="nz-visually-hidden">Since</span>
+                  <input type="datetime-local" class="nz-input nz-input--search" data-logs-since aria-label="Since" title="Since" />
+                </label>
+                <label class="nz-logs-tool nz-logs-search">
+                  <span class="nz-visually-hidden">Search the log</span>
+                  <input type="search" class="nz-input nz-input--search" placeholder="Search logs..." data-logs-search autocomplete="off" />
+                </label>
+                <label class="nz-check nz-logs-follow">
+                  <input type="checkbox" checked data-logs-follow />
+                  <span>Follow</span>
+                </label>
+                <Button variant="ghost" data-logs-copy>Copy</Button>
+                <Button variant="ghost" data-logs-download>Download</Button>
+              </div>
+            )
+          }
+          <div
+            class="nz-terminal"
+            role="log"
+            aria-label={`Logs of ${service.name}`}
+            tabindex="0"
+            data-logs-lines
+            data-logs-placeholder="Select a container to view logs."
+          >{"Select a container to view logs."}</div>
+        </div>
+        {never && <p class="nz-hint">{emptyText}</p>}
+      </div>
+    </section>
+  ) : (
+    <div class="nz-folds">
+      <Fold
+        title="Logs"
+        info="Live output of the running container."
+        open
+        data-runtime-logs={never ? undefined : id}
+        data-service-name={service.appName}
+      >
+        {never ? (
+          <p class="nz-dim">{emptyText}</p>
+        ) : (
+          <>
+            <div class="nz-logs-tools">
+              <label class="nz-select-wrap nz-logs-tool" data-logs-container-wrap hidden>
+                <span class="nz-visually-hidden">Container</span>
+                <select class="nz-select nz-select--toolbar" data-logs-container aria-label="Container">
+                  <option value="">Current container</option>
+                </select>
+                <Icon name="chevron-down" />
+              </label>
+              <label class="nz-select-wrap nz-logs-tool">
+                <span class="nz-visually-hidden">Lines</span>
+                <select class="nz-select nz-select--toolbar" data-logs-tail aria-label="Lines">
+                  <option value="100" selected>100 lines</option>
+                  <option value="500">500 lines</option>
+                  <option value="1000">1,000 lines</option>
+                  <option value="all">All since start</option>
+                </select>
+                <Icon name="chevron-down" />
+              </label>
+              <label class="nz-logs-tool nz-logs-since">
+                <span class="nz-visually-hidden">Since</span>
+                <input type="datetime-local" class="nz-input nz-input--search" data-logs-since aria-label="Since" title="Since" />
+              </label>
+              <label class="nz-logs-tool nz-logs-search">
+                <span class="nz-visually-hidden">Search the log</span>
+                <input type="search" class="nz-input nz-input--search" placeholder="Search logs..." data-logs-search autocomplete="off" />
+              </label>
+              <label class="nz-check nz-logs-follow">
+                <input type="checkbox" checked data-logs-follow />
+                <span>Follow</span>
+              </label>
+              <Button variant="outline" data-logs-copy>Copy</Button>
+              <Button variant="outline" data-logs-download>Download</Button>
+            </div>
+            <p class="nz-small nz-dim nz-logs-status" data-logs-status aria-live="polite"></p>
+            <div class="nz-terminal" role="log" aria-label={`Logs of ${service.name}`} tabindex="0" data-logs-lines></div>
+          </>
+        )}
+      </Fold>
+    </div>
+  )
+}

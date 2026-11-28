@@ -1,0 +1,221 @@
+---
+import type { Role } from "@nearzero/shared";
+import { accessNote, invitationStatus, roleLabel } from "../../lib/access-text.ts";
+import type { Member, WorkspaceInvitation } from "../../lib/data/index.ts";
+import Avatar from "../ui/Avatar.astro";
+import Button from "../ui/Button.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import TableWrap from "../ui/TableWrap.astro";
+import Time from "../ui/Time.astro";
+
+/**
+ * Members & access → People (spec 04 4.7): the filter, Add user, the members table with access
+ * notes and row menus, and the invitations table.
+ */
+interface Props {
+  members: Member[];
+  invitations: WorkspaceInvitation[];
+  /** The signed-in person's role here: owners and admins differ in what they may change. */
+  viewerRole: Role;
+  /** An instance administrator on a server that can't send email sets addresses (31a G1-02). */
+  canSetEmail?: boolean;
+}
+
+const { members, invitations, viewerRole, canSetEmail = false } = Astro.props;
+const now = new Date();
+
+function actionsFor(member: Member) {
+  const changeRole =
+    !member.isYou &&
+    member.role !== "owner" &&
+    (viewerRole === "owner" || (viewerRole === "admin" && member.role === "member"));
+  const access = !member.isYou && member.role === "member";
+  // The same people a role change reaches, never the owner (31a G1-02).
+  const email =
+    canSetEmail &&
+    !member.isYou &&
+    member.role !== "owner" &&
+    (viewerRole === "owner" || (viewerRole === "admin" && member.role === "member"));
+  const remove =
+    !member.isYou &&
+    member.role !== "owner" &&
+    (viewerRole === "owner" || (viewerRole === "admin" && member.role === "member"));
+  return { changeRole, access, email, remove };
+}
+const fill = (member: Member) =>
+  JSON.stringify({
+    personId: member.person.id,
+    name: member.person.name,
+    role: member.role === "admin" ? "admin" : "member",
+    email: member.person.email,
+  });
+---
+
+<div data-people>
+  <div class="nz-toolbar nz-people-tools">
+    <label class="nz-toolbar-search">
+      <span class="nz-visually-hidden">Filter by name or email</span>
+      <input class="nz-input nz-input--filled" type="search" placeholder="Filter by name or email" data-people-filter autocomplete="off" />
+    </label>
+    <Button variant="primary" data-dialog-open="nz-add-user">Add user</Button>
+  </div>
+
+  <h2 class="nz-subtitle nz-people-heading">Members <span class="nz-count">{members.length}</span></h2>
+  <TableWrap label="Members">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Role</th>
+        <th class="nz-col-optional">Joined</th>
+        <th class="nz-col-actions"><span class="nz-visually-hidden">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        members.map((member) => {
+          const actions = actionsFor(member);
+          const any = actions.changeRole || actions.access || actions.email || actions.remove;
+          const menuId = `nz-member-menu-${member.person.id}`;
+          return (
+            <tr data-people-row data-search={`${member.person.name} ${member.person.email}`.toLowerCase()}>
+              <td>
+                <div class="nz-person">
+                  <Avatar avatar={member.person.avatar} />
+                  <div class="min-w-0">
+                    <p class="nz-truncate font-medium">
+                      {member.person.name}
+                      {member.isYou && <span class="nz-pill nz-you">You</span>}
+                    </p>
+                    {member.person.name !== member.person.email && (
+                      <p class="nz-truncate nz-dim">{member.person.email}</p>
+                    )}
+                    {member.emailConfirmed === false && (
+                      <p class="nz-dim nz-small" data-member-unconfirmed>Email not confirmed</p>
+                    )}
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="nz-pill">{roleLabel(member.role)}</span>
+                <p class="nz-dim nz-access-note">{accessNote(member)}</p>
+              </td>
+              <td class="nz-col-optional">
+                <Time date={member.joinedAt} now={now} class="nz-dim" />
+              </td>
+              <td class="nz-cell-actions">
+                {any && (
+                  <>
+                    <Button
+                      variant="icon"
+                      icon="more"
+                      label={`Actions for ${member.person.name}`}
+                      popovertarget={menuId}
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                    />
+                    <Menu id={menuId} label={`Actions for ${member.person.name}`} placement="bottom-end">
+                      {actions.changeRole && (
+                        <MenuItem icon="users" data-dialog-open="nz-member-role" data-dialog-fill={fill(member)}>
+                          Change role
+                        </MenuItem>
+                      )}
+                      {actions.access && (
+                        <MenuItem icon="key" data-member-access={member.person.id} data-member-name={member.person.name}>
+                          Access
+                        </MenuItem>
+                      )}
+                      {actions.email && (
+                        <MenuItem icon="edit" data-dialog-open="nz-member-email" data-dialog-fill={fill(member)}>
+                          {member.emailConfirmed === false ? "Change or confirm email" : "Change email"}
+                        </MenuItem>
+                      )}
+                      {actions.remove && (
+                        <>
+                          <hr class="nz-menu-sep" />
+                          <MenuItem icon="trash" danger data-dialog-open="nz-member-remove" data-dialog-fill={fill(member)}>
+                            Remove from workspace
+                          </MenuItem>
+                        </>
+                      )}
+                    </Menu>
+                  </>
+                )}
+              </td>
+            </tr>
+          );
+        })
+      }
+    </tbody>
+  </TableWrap>
+  <p class="nz-empty-line" data-people-no-match hidden>No one matches this filter.</p>
+
+  <h2 class="nz-subtitle nz-people-heading">Invitations <span class="nz-count">{invitations.length}</span></h2>
+  {
+    invitations.length === 0 ? (
+      <p class="nz-dim" data-invitations-empty>No pending invitations.</p>
+    ) : (
+      <TableWrap label="Invitations">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Role</th>
+            <th class="nz-col-optional">Status</th>
+            <th class="nz-col-optional nz-col-actions"><span class="nz-visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {invitations.map((invitation) => {
+            const status = invitationStatus(invitation, now);
+            const expired = status.label === "Expired";
+            return (
+              <tr data-people-row data-search={invitation.email.toLowerCase()}>
+                <td>
+                  <div class="nz-person">
+                    <span class="nz-avatar" aria-hidden="true">{invitation.email.charAt(0).toUpperCase()}</span>
+                    <div class="min-w-0">
+                      <p class="nz-truncate">{invitation.email}</p>
+                      <p class="nz-dim" title={invitation.lastEmailedAt ? undefined : "Not emailed: share its link with Copy link."}>
+                        Sent <Time date={invitation.lastEmailedAt ?? invitation.createdAt} now={now} />
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="nz-pill">{roleLabel(invitation.role)}</span>
+                  {invitation.policies.length > 0 && (
+                    <p class="nz-dim nz-access-note">
+                      {invitation.policies.map((policy) => policy.name).join(", ")}
+                    </p>
+                  )}
+                </td>
+                <td class="nz-col-optional">
+                  <StatusPill status={expired ? "fail" : "warn"} label={status.label} />
+                  <p class="nz-dim mt-1">{status.detail}</p>
+                </td>
+                <td class="nz-cell-actions nz-col-optional">
+                  <div class="flex justify-end gap-1">
+                    <Button variant="outline" data-invitation-copy={invitation.id} data-invitation-email={invitation.email}>
+                      Copy link
+                    </Button>
+                    <Button variant="outline" data-invitation-resend={invitation.id} data-invitation-email={invitation.email}>
+                      {expired ? "Send again" : "Resend"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      data-dialog-open="nz-invitation-cancel"
+                      data-dialog-fill={JSON.stringify({ invitationId: invitation.id, email: invitation.email })}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </TableWrap>
+    )
+  }
+</div>

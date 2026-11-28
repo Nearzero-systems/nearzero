@@ -1,0 +1,97 @@
+---
+import type { ProjectView } from "../../lib/data/index.ts";
+import { openingEnvironment, servicesLabel } from "../../lib/projects.ts";
+import { projectPath } from "../../lib/routes.ts";
+import { fullDate, relativeTime } from "../../lib/time.ts";
+import Button from "../ui/Button.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+
+/**
+ * A project card (spec 5.1, 21.10): the name (and its description, when it has one) with the
+ * "···" menu, a hairline, then "Created …" at the left and the service count at the right. The
+ * whole card opens the project unless no environment can.
+ */
+interface Props {
+  workspace: string;
+  project: ProjectView;
+  now: Date;
+  hidden?: boolean;
+}
+
+const { workspace, project, now, hidden = false } = Astro.props;
+const environment = openingEnvironment(project);
+const href = environment ? projectPath(workspace, project.id, environment.id) : null;
+const menuId = `nz-project-menu-${project.id}`;
+const hasMenu = project.can.update || project.can.delete;
+---
+
+<article
+  class="nz-card nz-project-card"
+  data-project-card
+  hidden={hidden}
+  data-openable={href ? "true" : "false"}
+  data-name={project.name.toLowerCase()}
+  data-created={project.createdAt.getTime()}
+  data-services={project.serviceCount}
+  data-search={`${project.name}\n${project.description}`.toLowerCase()}
+>
+  <div class="nz-project-top">
+    <div class="min-w-0 flex-1">
+      <h2 class="nz-project-name">
+        {href ? <a href={href}>{project.name}</a> : <span>{project.name}</span>}
+      </h2>
+      {project.description && <p class="nz-project-desc" title={project.description}>{project.description}</p>}
+    </div>
+    {
+      hasMenu && (
+        <div class="nz-project-menu">
+          <Button
+            variant="icon"
+            icon="more"
+            label={`Actions for ${project.name}`}
+            popovertarget={menuId}
+            aria-haspopup="menu"
+            aria-expanded="false"
+          />
+          <Menu id={menuId} label={`Actions for ${project.name}`} placement="bottom-end">
+            {project.can.update && (
+              <MenuItem
+                data-dialog-open="nz-update-project"
+                data-dialog-fill={JSON.stringify({
+                  projectId: project.id,
+                  name: project.name,
+                  description: project.description,
+                })}
+              >
+                Update
+              </MenuItem>
+            )}
+            {project.can.delete && (
+              <MenuItem
+                danger
+                data-teardown-open="project"
+                data-project-id={project.id}
+                data-project-name={project.name}
+              >
+                Delete
+              </MenuItem>
+            )}
+          </Menu>
+        </div>
+      )
+    }
+  </div>
+  <div class="nz-project-meta">
+    {
+      href ? (
+        <>
+          <span title={fullDate(project.createdAt)}>Created {relativeTime(project.createdAt, now)}</span>
+          <span>{servicesLabel(project.serviceCount)}</span>
+        </>
+      ) : (
+        <span>No environments available</span>
+      )
+    }
+  </div>
+</article>

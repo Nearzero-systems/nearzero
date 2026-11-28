@@ -1,0 +1,269 @@
+---
+import AddDomainDialog from "../../../../../../components/projects/AddDomainDialog.astro";
+import Canvas from "../../../../../../components/projects/Canvas.astro";
+import ComposeDialog from "../../../../../../components/projects/ComposeDialog.astro";
+import DatabaseDialog from "../../../../../../components/projects/DatabaseDialog.astro";
+import DeleteServiceDialog from "../../../../../../components/projects/DeleteServiceDialog.astro";
+import ServicesList from "../../../../../../components/projects/ServicesList.astro";
+import TeardownDialog from "../../../../../../components/projects/TeardownDialog.astro";
+import Button from "../../../../../../components/ui/Button.astro";
+import EmptyState from "../../../../../../components/ui/EmptyState.astro";
+import Icon from "../../../../../../components/ui/Icon.astro";
+import Menu from "../../../../../../components/ui/Menu.astro";
+import MenuItem from "../../../../../../components/ui/MenuItem.astro";
+import PageHead from "../../../../../../components/ui/PageHead.astro";
+import VariablesPanel from "../../../../../../components/variables/VariablesPanel.astro";
+import ProjectLayout from "../../../../../../layouts/ProjectLayout.astro";
+import type { EnvironmentVariablesView, ServiceView } from "../../../../../../lib/data/index.ts";
+import { canvasHostname } from "../../../../../../lib/domains.ts";
+import { dashboardContext } from "../../../../../../lib/page.ts";
+import { loadProjectPage } from "../../../../../../lib/project-page.ts";
+import {
+  inServiceOrder,
+  isRoutable,
+  onCanvas,
+  serverChoices,
+  serviceIcon,
+} from "../../../../../../lib/projects.ts";
+import {
+  dashboardPath,
+  isProjectSection,
+  newApplicationPath,
+  projectPath,
+  type ServiceTab,
+  servicePath,
+} from "../../../../../../lib/routes.ts";
+import { variableCount } from "../../../../../../lib/variables-editor.ts";
+
+// A project's Overview, Services and Variables (spec 5.2, 5.5). Unknown sections go to Overview.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const page = await loadProjectPage(Astro, ctx);
+if (page instanceof Response) return page;
+const { project, environment } = page;
+const slug = ctx.workspace.slug;
+const section = Astro.params.section;
+if (!isProjectSection(section))
+  return Astro.redirect(projectPath(slug, project.id, environment.id));
+
+const [{ list: services, canCreate }, targets] = await Promise.all([
+  ctx.data.services(environment.id),
+  section === "variables" ? Promise.resolve([]) : ctx.data.targets(),
+]);
+const variables: EnvironmentVariablesView | null =
+  section === "variables" ? await ctx.data.environmentVariables(environment.id) : null;
+
+const hrefFor = (service: ServiceView, tab: ServiceTab = "overview") =>
+  servicePath(slug, project.id, environment.id, service.id, tab);
+const hrefs = Object.fromEntries(services.map((service) => [service.id, hrefFor(service)]));
+const active = services.filter(onCanvas);
+// Domain cards for the canvas's apps and Compose services (spec 5.2, 10).
+const hostnameLists =
+  section === "overview"
+    ? await Promise.all(
+        active
+          .filter(isRoutable)
+          .map(
+            async (service) =>
+              [service.id, await ctx.data.serviceHostnames(service.id).catch(() => null)] as const,
+          ),
+      )
+    : [];
+const hostnames = Object.fromEntries(
+  hostnameLists.map(([id, list]) => [
+    id,
+    (list?.hostnames ?? []).filter((item) => item.service).map(canvasHostname),
+  ]),
+);
+const routable = services.filter(isRoutable);
+const servers = serverChoices(targets);
+const serviceBase = `${dashboardPath(slug, `projects/${encodeURIComponent(project.id)}/${encodeURIComponent(environment.id)}/services`)}/`;
+const servicesPath = projectPath(slug, project.id, environment.id, "services");
+const serverNames = Object.fromEntries(targets.map((target) => [target.id, target.name]));
+const titles = {
+  overview: "Overview",
+  services: "Services",
+  variables: "Shared variables",
+} as const;
+// Shown literally: how to use a shared variable inside another value.
+const envVar = ["$", "{{environment.NAME}}"].join("");
+---
+
+<ProjectLayout page={page} section={section} title={titles[section]}>
+  {
+    section === "overview" && (
+      <>
+        <PageHead title="Overview" size="small">
+          {canCreate && (
+            <>
+              <Button
+                variant="outline"
+                iconEnd="chevron-down"
+                popovertarget="nz-add-new"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
+                Add New
+              </Button>
+              <Menu id="nz-add-new" label="Add new" placement="bottom-end" class="nz-add-new-menu">
+                <MenuItem href={newApplicationPath(slug, project.id, environment.id)}>Application</MenuItem>
+                <MenuItem data-dialog-open="nz-database-create">Database</MenuItem>
+                {routable.length > 0 ? (
+                  <MenuItem
+                    data-dialog-open="nz-add-domain"
+                    data-dialog-fill={JSON.stringify({ serviceId: routable[0]?.id, mode: "generate" })}
+                  >
+                    Domain
+                  </MenuItem>
+                ) : (
+                  <>
+                    <MenuItem aria-disabled="true" aria-describedby="nz-domain-hint">
+                      Domain
+                    </MenuItem>
+                    <p id="nz-domain-hint" class="nz-menu-heading" style="max-width: 15rem">
+                      Deploy an application or Compose service before adding a domain.
+                    </p>
+                  </>
+                )}
+                <MenuItem data-dialog-open="nz-compose-create">Compose</MenuItem>
+              </Menu>
+            </>
+          )}
+        </PageHead>
+        <div class="nz-body">
+        {active.length === 0 ? (
+          <EmptyState
+            title="No active services"
+            text="Deploy a service successfully to see live applications, databases, and compose services here."
+          >
+            {canCreate && (
+              <Button variant="primary" href={newApplicationPath(slug, project.id, environment.id)}>
+                Deploy your first application →
+              </Button>
+            )}
+          </EmptyState>
+        ) : (
+          <Canvas services={active} hostnames={hostnames} hrefFor={hrefFor} />
+        )}
+        <div class="mt-3">
+          {services.length === 0 ? (
+            <section class="nz-card nz-services--card" aria-labelledby="nz-all-services">
+              <div class="nz-services-head">
+                <h2 class="nz-services-title" id="nz-all-services">All services</h2>
+                <a class="nz-btn nz-btn--ghost" href={servicesPath}>View all</a>
+              </div>
+              <p class="nz-dim nz-services-empty">No services in {environment.name} yet.</p>
+            </section>
+          ) : (
+            <ServicesList
+              services={inServiceOrder(services).slice(0, 6)}
+              hrefs={hrefs}
+              environmentId={environment.id}
+              afterDelete={projectPath(slug, project.id, environment.id)}
+              heading={{ title: "All services", href: servicesPath }}
+            />
+          )}
+        </div>
+        </div>
+      </>
+    )
+  }
+  {
+    section === "services" && (
+      <>
+        <PageHead title="Services" size="small" />
+        <div class:list={["nz-body", services.length > 0 && "nz-body--flush"]}>
+        {services.length === 0 ? (
+          <EmptyState title="No services yet" text={`Services you add to ${environment.name} appear here.`}>
+            {canCreate && (
+              <Button variant="outline" href={projectPath(slug, project.id, environment.id)}>
+                Add one from Overview
+              </Button>
+            )}
+          </EmptyState>
+        ) : (
+          <ServicesList
+            services={services}
+            hrefs={hrefs}
+            environmentId={environment.id}
+            selectable
+            afterDelete={servicesPath}
+          />
+        )}
+        </div>
+      </>
+    )
+  }
+  {
+    section === "variables" && variables && (
+      <>
+        <PageHead title="Shared variables" description={`Only for ${environment.name}. Other environments have their own.`} />
+        <div class="nz-body">
+        {!variables.readable ? (
+          <EmptyState title="No access" text={variables.message} />
+        ) : (
+          <div class="nz-stack">
+            <p class="nz-dim">
+              Every service in {environment.name} gets these on each deploy. A service's own variable with the same
+              name wins. To use one inside another value, write <code class="nz-code">{envVar}</code>.
+            </p>
+            {variables.notice && <p class="nz-inline-note nz-warn-note">{variables.notice}</p>}
+            {variables.message && <p class="nz-inline-note">{variables.message}</p>}
+            <VariablesPanel
+              id="nz-shared-variables"
+              title="Shared variables"
+              apiPath={`/environments/${environment.id}/variables`}
+              variables={variables.shared}
+              canEdit={variables.can.edit}
+              readOnly={!(variables.can.reveal ?? variables.can.edit)}
+              emptyTitle="No shared variables yet"
+            />
+            <section class="nz-card nz-section" aria-labelledby="nz-service-variables">
+              <div class="nz-section-head">
+                <h2 class="nz-subtitle" id="nz-service-variables">Service variables</h2>
+              </div>
+              {variables.services.length === 0 ? (
+                <p class="nz-dim">No services in {environment.name} yet.</p>
+              ) : (
+                <ul class="nz-var-list">
+                  {variables.services.map((service) => (
+                    <li class="nz-var-row">
+                      <a
+                        class="nz-row-link flex min-w-0 items-center gap-2"
+                        href={servicePath(slug, project.id, environment.id, service.id, "variables")}
+                      >
+                        <span class="nz-node-icon"><Icon name={serviceIcon(service.kind)} /></span>
+                        <span class="nz-truncate font-medium">{service.name}</span>
+                      </a>
+                      <span class="nz-dim">{variableCount(service.count)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        )}
+        </div>
+      </>
+    )
+  }
+
+  <Fragment slot="dialogs">
+    {
+      section === "overview" && canCreate && (
+        <>
+          <DatabaseDialog
+            environmentId={environment.id}
+            projectName={project.name}
+            servers={servers}
+            serviceBase={serviceBase}
+          />
+          <ComposeDialog workspace={slug} environmentId={environment.id} servers={servers} serviceBase={serviceBase} />
+        </>
+      )
+    }
+    {section === "overview" && routable.length > 0 && <AddDomainDialog workspace={slug} services={routable} />}
+    {section !== "variables" && <DeleteServiceDialog />}
+    {section === "services" && <TeardownDialog servers={serverNames} />}
+  </Fragment>
+</ProjectLayout>

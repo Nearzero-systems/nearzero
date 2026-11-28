@@ -1,0 +1,24 @@
+---
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import Icon from "../ui/Icon.astro";
+
+/** The "Live at" banner a service page shows once after the creation page or Create URL. */
+interface Props {
+  serviceId: string;
+}
+
+const { serviceId } = Astro.props;
+---
+
+<div class="nz-live-at" data-live-at={serviceId} hidden role="status">
+  <Icon name="check" />
+  <span class="nz-live-at-text">
+    Live at <span class="nz-code" data-live-at-url></span>
+  </span>
+  <span class="nz-live-at-tools">
+    <CopyButton text="" what="URL" />
+    <Button variant="icon" icon="external" href="#" target="_blank" label="Visit" data-live-at-visit />
+    <Button variant="icon" icon="close" label="Dismiss" data-live-at-dismiss />
+  </span>
+</div>

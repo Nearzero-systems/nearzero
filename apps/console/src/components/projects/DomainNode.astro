@@ -1,0 +1,52 @@
+---
+import type { HostnameView } from "../../lib/data/index.ts";
+import CopyButton from "../ui/CopyButton.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import VisitButton from "../ui/VisitButton.astro";
+
+/**
+ * A domain card on the canvas (spec 5.2, 21.10), framed like a service card: the hostname, a
+ * dashed hairline, then its state as coloured text ("Live", "Needs DNS record" with the A record
+ * to add, or "Checking…" while the 4-second DNS check is still out) with Copy and Visit.
+ */
+interface Props {
+  hostname: HostnameView;
+}
+
+const { hostname } = Astro.props;
+const url = `https://${hostname.host}`;
+const state =
+  hostname.state === "live"
+    ? { status: "ok" as const, label: "Live" }
+    : hostname.state === "needs-dns"
+      ? { status: "warn" as const, label: "Needs DNS record" }
+      : { status: "idle" as const, label: "Checking…" };
+---
+
+<div class="nz-node nz-node--domain" data-node="domain">
+  <div class="nz-node-head">
+    <span class="nz-node-glyph" aria-hidden="true">
+      <svg viewBox="0 0 12 12" width="12" height="12">
+        <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" />
+        <path d="M1.5 6h9M6 1.5c-1.6 1.6-1.6 7.4 0 9M6 1.5c1.6 1.6 1.6 7.4 0 9" fill="none" stroke="currentColor" />
+      </svg>
+    </span>
+    <span class="nz-node-name" title={hostname.host}>{hostname.host}</span>
+  </div>
+  <div class="nz-node-body">
+    <div class="nz-node-row">
+      <StatusPill status={state.status} label={state.label} kind="text" />
+      <span class="nz-node-tools">
+        <CopyButton text={url} what="URL" />
+        <VisitButton href={url} />
+      </span>
+    </div>
+    {
+      hostname.state === "needs-dns" && hostname.record && (
+        <p class="nz-dim">
+          Add an A record <code>{hostname.record.name}</code> pointing to <code>{hostname.record.value}</code>.
+        </p>
+      )
+    }
+  </div>
+</div>

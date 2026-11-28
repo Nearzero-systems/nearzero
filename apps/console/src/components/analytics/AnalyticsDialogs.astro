@@ -1,0 +1,75 @@
+---
+import { deleteLogsWarning, loggingSwitchWarning } from "@nearzero/shared/browser";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Analytics' confirmations (spec 13.1): turning request logging on or off (the router restarts
+ * in the background; turning it off keeps what was recorded until the next cleanup) and deleting
+ * every recorded request, which says whether logging stays on or off (G3-16), plus the drawer (Request,
+ * Response, Client, Routing, all fields as JSON, Copy JSON, Download JSON).
+ */
+interface Props {
+  enabled: boolean;
+}
+const { enabled } = Astro.props;
+---
+
+<Dialog id="nz-analytics-logging" title={enabled ? "Turn off request logging?" : "Turn on request logging?"} description={loggingSwitchWarning(enabled)}>
+  <form class="nz-form" data-api="PATCH /analytics/settings" novalidate>
+    <input type="checkbox" name="enabled" data-json="bool" class="nz-visually-hidden" checked={!enabled} tabindex="-1" aria-hidden="true" />
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">{enabled ? "Turn off request logging" : "Turn on request logging"}</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-analytics-delete" title="Delete all request logs?" description={deleteLogsWarning(enabled)}>
+  <form class="nz-form" data-api="POST /analytics/delete-all" novalidate>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete all request logs</Button>
+    </div>
+  </form>
+</Dialog>
+
+<dialog id="nz-request-drawer" class="nz-sheet nz-sheet--right nz-run-panel" aria-labelledby="nz-request-title" data-sheet data-request-drawer>
+  <div class="nz-sheet-head">
+    <div class="min-w-0">
+      <h2 id="nz-request-title" class="nz-dialog-title">Request</h2>
+      <p class="nz-small nz-dim nz-truncate" data-request-summary></p>
+    </div>
+    <Button variant="icon" icon="close" label="Close" data-dialog-close />
+  </div>
+  <div class="nz-sheet-body nz-request-body">
+    <section aria-labelledby="nz-request-section-request">
+      <h3 class="nz-setup-heading" id="nz-request-section-request">Request</h3>
+      <dl class="nz-facts" data-request-facts="request"></dl>
+    </section>
+    <section aria-labelledby="nz-request-section-response">
+      <h3 class="nz-setup-heading" id="nz-request-section-response">Response</h3>
+      <dl class="nz-facts" data-request-facts="response"></dl>
+    </section>
+    <section aria-labelledby="nz-request-section-client">
+      <h3 class="nz-setup-heading" id="nz-request-section-client">Client</h3>
+      <dl class="nz-facts" data-request-facts="client"></dl>
+    </section>
+    <section aria-labelledby="nz-request-section-routing">
+      <h3 class="nz-setup-heading" id="nz-request-section-routing">Routing</h3>
+      <dl class="nz-facts" data-request-facts="routing"></dl>
+    </section>
+    <section aria-labelledby="nz-request-section-json">
+      <div class="nz-details-section-head">
+        <h3 class="nz-setup-heading" id="nz-request-section-json">All fields (JSON)</h3>
+        <span class="flex-1"></span>
+        <Button variant="outline" icon="copy" data-request-copy>Copy JSON</Button>
+        <Button variant="outline" icon="download" data-request-download>Download JSON</Button>
+      </div>
+      <pre class="nz-log nz-request-json" tabindex="0" data-request-json></pre>
+    </section>
+  </div>
+</dialog>

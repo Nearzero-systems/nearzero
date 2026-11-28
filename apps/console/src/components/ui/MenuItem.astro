@@ -1,0 +1,72 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import type { IconName } from "../../lib/icons.ts";
+import Icon from "./Icon.astro";
+
+type Props = Omit<HTMLAttributes<"button">, "type"> & {
+  href?: string;
+  target?: string;
+  icon?: IconName;
+  danger?: boolean;
+  /** Grey text, for secondary actions under a list (Add organization). */
+  muted?: boolean;
+  checked?: boolean;
+  type?: "button" | "submit";
+  form?: string;
+};
+
+const {
+  href,
+  target,
+  icon,
+  danger = false,
+  muted = false,
+  checked,
+  type = "button",
+  class: className,
+  ...rest
+} = Astro.props;
+const classes = [
+  "nz-menu-item",
+  danger ? "nz-menu-item--danger" : "",
+  muted ? "nz-menu-item--muted" : "",
+  className ?? "",
+]
+  .filter(Boolean)
+  .join(" ");
+const role = checked === undefined ? "menuitem" : "menuitemradio";
+---
+
+{
+  href ? (
+    <a
+      href={href}
+      target={target}
+      rel={target === "_blank" ? "noopener noreferrer" : undefined}
+      class={classes}
+      role={role}
+      aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
+      {...(rest as HTMLAttributes<"a">)}
+    >
+      {icon && <Icon name={icon} />}
+      <span class="nz-truncate">
+        <slot />
+      </span>
+      {checked && <Icon name="check" class="nz-menu-check" />}
+    </a>
+  ) : (
+    <button
+      type={type}
+      class={classes}
+      role={role}
+      aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
+      {...rest}
+    >
+      {icon && <Icon name={icon} />}
+      <span class="nz-truncate">
+        <slot />
+      </span>
+      {checked && <Icon name="check" class="nz-menu-check" />}
+    </button>
+  )
+}

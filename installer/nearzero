@@ -1,0 +1,1228 @@
+#!/usr/bin/env bash
+#
+# The nearzero server command (spec 03 3.4), installed by the Nearzero installer at
+# /usr/local/bin/nearzero. Run `sudo nearzero help` for the commands.
+#
+# None of the commands prints a password or a secret. Commands that read credentials take them
+# from the terminal, or from standard input when there is no terminal (over SSH, in scripts).
+
+set -o pipefail
+
+NZC_DIR="${NEARZERO_INSTALL_DIR:-/opt/nearzero}"
+NZC_ENV="$NZC_DIR/.env"
+NZC_INSTALL_COMMAND="curl -fsSL https://cdn.nearzero.dev/install.sh | sudo bash"
+NZC_SERVICES="control runner postgres router dns"
+NZC_REQUIRED_KEYS="NEARZERO_IMAGE NEARZERO_AUTH_SECRET NEARZERO_DATA_MODE DATABASE_URL COMPOSE_PROFILES"
+
+nzc_usage() {
+  cat <<EOF
+Usage: sudo nearzero [command]
+
+Commands:
+  status                 Show Nearzero's services and their state (the default)
+  logs [service...] [--tail N] [--since TIME] [--timestamps]
+                         Follow the logs of every service, or of the ones named: control, runner,
+                         postgres, router, dns (0.1.x's platform and console mean control,
+                         traefik router). Starts from the last 200 lines unless --tail says.
+  audit [--since DATE] [--until DATE]
+                         Print the audit record (sign-ins, member and policy changes, Agent
+                         actions, deletes and more) as JSON lines, oldest first. Dates are
+                         YYYY-MM-DD or ISO times; secret-looking fields are redacted.
+  restart                Restart the console and API, and start anything that is stopped.
+                         Apps and databases you deployed keep running.
+  update                 Download the configured release again and restart. It never moves to a
+                         newer version; to upgrade, run the install command again:
+                           $NZC_INSTALL_COMMAND
+  create-owner           Create the admin account when there is none yet. Asks for an email (the
+                         settings' NEARZERO_ADMIN_EMAIL when Enter is pressed) and a password, or
+                         reads them as two lines from standard input.
+  reset-password [email] Set a new password for an account and sign out its other sessions. Without
+                         an email it asks which account (Enter: the owner); without a terminal it
+                         reads two lines, the email (empty: the owner) and the password.
+  set-email <old> <new>  Change an account's email address. It counts as confirmed, and the
+                         account's sessions are signed out. For servers that can't send email.
+  reset-2fa [email]      Turn off two-factor sign-in for an account (the owner's by default) that
+                         lost its authenticator and backup codes. Add --yes to skip the question.
+  backup-db [file]       Save the bundled database to a file (default: $NZC_DIR/nearzero-db-<time>.sql)
+  restore-db <file>      Replace the bundled database with a file made by backup-db. Asks first;
+                         add --yes to skip the question.
+  import [--dry-run] <file>
+                         Import a 0.1.x export made on another server (moving to a new machine).
+                         Asks for its passphrase, or reads NEARZERO_MIGRATION_PASSPHRASE.
+  migrate status         Show how the move from 0.1.x stands, one line per service
+  migrate retry          Try the services that failed to move again
+  migrate rollback       Go back to 0.1.x, from its untouched data (until finalize). Asks first;
+                         add --yes to skip the question.
+  migrate finalize       Delete the 0.1.x data once everything works on 1.0. Asks you to type
+                         "delete" first; add --yes to skip the question.
+  runner-link status     Show the runner link certificate's fingerprint, the next one while it
+                         is being replaced, and the servers that don't hold the next one yet
+  runner-link rotate     Make a new runner link certificate. Within a minute every connected
+                         server is given its fingerprint over its current link
+  runner-link switch [--force]
+                         Use the new certificate and restart Nearzero. Refuses while a server
+                         doesn't hold its fingerprint yet, unless --force
+  runner-link cancel     Drop the new certificate without using it
+  help                   Show this help
+EOF
+}
+
+nzc_err() {
+  local line
+  for line in "$@"; do printf '%s\n' "$line" >&2; done
+}
+
+nzc_die() {
+  nzc_err "$@"
+  exit 1
+}
+
+nzc_has() { command -v "$1" >/dev/null 2>&1; }
+
+nzc_has_terminal() { [ -t 0 ] && (exec 4</dev/tty) 2>/dev/null; }
+
+# --- Configuration -----------------------------------------------------------------------------
+
+# Reads .env without evaluating it: KEY=value lines, comments and blank lines only. Values land in
+# NZC_VALUE_<KEY>. A broken file stops every command before it runs (spec 03 3.4).
+nzc_read_config() {
+  if [ ! -f "$NZC_ENV" ]; then
+    nzc_die "Nearzero isn't installed on this server ($NZC_ENV is missing)." \
+      "Install it with: $NZC_INSTALL_COMMAND"
+  fi
+  local line key number=0 seen
+  while IFS= read -r line || [ -n "$line" ]; do
+    number=$((number + 1))
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    if ! [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+      nzc_die "line $number of $NZC_ENV isn't a KEY=value line; fix it, then rerun the installer: $NZC_INSTALL_COMMAND"
+    fi
+    key="${line%%=*}"
+    seen="NZC_LINE_$key"
+    if [ -n "${!seen}" ]; then
+      nzc_die "duplicate $key in $NZC_ENV; rerun the installer: $NZC_INSTALL_COMMAND"
+    fi
+    printf -v "$seen" '%s' "$number"
+    printf -v "NZC_VALUE_$key" '%s' "${line#*=}"
+  done <"$NZC_ENV"
+  local required="$NZC_REQUIRED_KEYS"
+  [ "$(nzc_value NEARZERO_DATA_MODE)" = local ] && required="$required NEARZERO_DATABASE_PASSWORD"
+  for key in $required; do
+    if [ -z "$(nzc_value "$key")" ]; then
+      nzc_die "missing $key in $NZC_ENV; rerun the installer: $NZC_INSTALL_COMMAND"
+    fi
+  done
+}
+
+nzc_value() {
+  local name="NZC_VALUE_$1"
+  printf '%s' "${!name}"
+}
+
+nzc_profile_on() {
+  case ",$(nzc_value COMPOSE_PROFILES)," in *,"$1",*) return 0 ;; esac
+  return 1
+}
+
+nzc_console_address() {
+  local url host bind port ip
+  url=$(nzc_value NEARZERO_CONSOLE_URL)
+  if [ -n "$url" ]; then
+    printf '%s' "${url%/}"
+    return
+  fi
+  host=$(nzc_value NEARZERO_MANAGEMENT_HOSTNAME)
+  bind=$(nzc_value NEARZERO_MANAGEMENT_BIND_ADDRESS)
+  port=$(nzc_value NEARZERO_CONSOLE_PORT)
+  ip=$(nzc_value NEARZERO_PUBLIC_IP)
+  if [ -n "$host" ]; then
+    printf 'https://%s' "$host"
+  elif [ "$bind" = 127.0.0.1 ]; then
+    printf 'http://localhost:%s' "${port:-4321}"
+  elif [ -n "$bind" ] && [ "$bind" != 0.0.0.0 ]; then
+    printf 'http://%s:%s' "$bind" "${port:-4321}"
+  else
+    printf 'http://%s:%s' "${ip:-<server address>}" "${port:-4321}"
+  fi
+}
+
+# --- Docker ------------------------------------------------------------------------------------
+
+nzc_compose() {
+  docker compose --project-directory "$NZC_DIR" --file "$NZC_DIR/compose.yml" --env-file "$NZC_ENV" "$@"
+}
+
+nzc_require_docker() {
+  nzc_has docker || nzc_die "Docker isn't installed on this server. Run the install command again: $NZC_INSTALL_COMMAND"
+  docker info >/dev/null 2>&1 ||
+    nzc_die "Docker isn't running on this server. Start it (for example: sudo systemctl start docker), then try again."
+}
+
+nzc_running() {
+  [ "$(docker inspect --format '{{.State.Running}}' "$1" 2>/dev/null)" = true ]
+}
+
+nzc_require_running() {
+  if ! nzc_running nearzero-control; then
+    nzc_die "Nearzero is not running. Start it with: sudo nearzero restart"
+  fi
+}
+
+# Services that run with this configuration. The router isn't one: the runner keeps it running.
+nzc_active_services() {
+  local services="control runner"
+  nzc_profile_on database && services="postgres $services"
+  nzc_profile_on dns && services="$services dns"
+  printf '%s' "$services"
+}
+
+# The router's line for status, in the same columns as the services above it.
+nzc_router_status() {
+  local state status
+  state=$(docker inspect --format '{{.State.Status}}' nearzero-router 2>/dev/null) || state="missing"
+  if [ "$state" = missing ]; then
+    status="the runner starts it"
+  else
+    status=$(docker ps -a --filter name=^nearzero-router$ --format '{{.Status}}' 2>/dev/null)
+  fi
+  printf '%-10s %-10s %s (kept by the runner)\n' router "$state" "$status"
+}
+
+# Waits for the console and API to report healthy.
+nzc_wait_healthy() {
+  local timeout started health restarts
+  timeout=$(nzc_value NEARZERO_STARTUP_TIMEOUT)
+  timeout="${timeout:-300}"
+  started=$(date +%s)
+  while :; do
+    health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' nearzero-control 2>/dev/null)
+    [ "$health" = healthy ] && return 0
+    restarts=$(docker inspect --format '{{.RestartCount}}' nearzero-control 2>/dev/null)
+    if [ "${restarts:-0}" -ge 5 ] || [ $(($(date +%s) - started)) -ge "$timeout" ]; then
+      nzc_err "Nearzero did not start. Its last log lines:"
+      nzc_compose logs --no-color --tail 60 control >&2
+      nzc_err "" "Fix the problem above, then run: sudo nearzero restart"
+      return 1
+    fi
+    sleep 2
+  done
+}
+
+# --- Commands ----------------------------------------------------------------------------------
+
+nzc_status() {
+  printf 'Nearzero %s\n' "$(nzc_value NEARZERO_VERSION)"
+  printf 'Console: %s\n\n' "$(nzc_console_address)"
+  nzc_compose --profile '*' ps --all --format 'table {{.Service}}\t{{.State}}\t{{.Status}}' ||
+    nzc_die "Couldn't read the state of Nearzero's services."
+  nzc_router_status
+  nzc_dns_status
+  if ! nzc_running nearzero-control; then
+    printf '\nNearzero is not running. Start it with: sudo nearzero restart\n'
+    return 1
+  fi
+}
+
+# The DNS server when the runner started it for a zone connected in the console (C2-20): a
+# container of the same name made outside compose, which compose's logs and ps don't see.
+nzc_runner_dns() {
+  local project
+  project=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' nearzero1-dns 2>/dev/null) || return 1
+  [ -z "$project" ]
+}
+
+# The DNS server's line for status when the runner started it, as for the router.
+nzc_dns_status() {
+  nzc_runner_dns || return 0
+  local state status
+  state=$(docker inspect --format '{{.State.Status}}' nearzero1-dns 2>/dev/null)
+  status=$(docker ps -a --filter name=^nearzero1-dns$ --format '{{.Status}}' 2>/dev/null)
+  printf '%-10s %-10s %s (started by the runner for a zone)\n' dns "$state" "$status"
+}
+
+# Follows the logs of the services named (all when none): several at once, with Docker's own
+# --tail, --since and --timestamps (G4-23), the router and a runner-made DNS server included.
+nzc_logs() {
+  local tail=200 since="" timestamps="" arg services=() name
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    shift
+    case "$arg" in
+      --tail | -n)
+        [ "$#" -gt 0 ] || nzc_die "--tail needs a number of lines (or all)."
+        tail="$1"
+        shift
+        ;;
+      --tail=*) tail="${arg#--tail=}" ;;
+      --since)
+        [ "$#" -gt 0 ] || nzc_die "--since needs a time, like 10m or 2026-11-28T09:00."
+        since="$1"
+        shift
+        ;;
+      --since=*) since="${arg#--since=}" ;;
+      --timestamps | -t) timestamps=1 ;;
+      --follow | -f) ;;
+      -*) nzc_die "logs doesn't know $arg. Use: sudo nearzero logs [service...] [--tail N] [--since TIME] [--timestamps]" ;;
+      *) services+=("$arg") ;;
+    esac
+  done
+  case "$tail" in
+    all) ;;
+    '' | *[!0-9]*) nzc_die "--tail needs a number of lines, or all; it is \"$tail\"." ;;
+  esac
+  local options=(--follow --tail "$tail")
+  [ -n "$since" ] && options+=(--since "$since")
+  [ -n "$timestamps" ] && options+=(--timestamps)
+
+  local compose_services=() others=() note=""
+  for name in "${services[@]}"; do
+    # 0.1.x's service names, which its docs and people's notes use (R4-10).
+    case "$name" in
+      platform | console | api) name=control ;;
+      traefik) name=router ;;
+      monitoring)
+        note="${note}The runner collects metrics now; see them with: sudo nearzero logs runner"$'\n'
+        continue
+        ;;
+      schedules)
+        note="${note}The control plane runs schedules now; see them with: sudo nearzero logs control"$'\n'
+        continue
+        ;;
+    esac
+    case " $NZC_SERVICES " in
+      *" $name "*) ;;
+      *) nzc_die "There's no Nearzero service called $name. Services: ${NZC_SERVICES// /, }." ;;
+    esac
+    case " ${compose_services[*]} ${others[*]} " in *" $name "*) continue ;; esac
+    if [ "$name" = router ] || { [ "$name" = dns ] && nzc_runner_dns; }; then
+      others+=("$name")
+    else
+      compose_services+=("$name")
+    fi
+  done
+  [ -n "$note" ] && printf '%s' "$note"
+  if [ "${#services[@]}" -gt 0 ] && [ "${#compose_services[@]}" -eq 0 ] && [ "${#others[@]}" -eq 0 ]; then
+    return 0
+  fi
+  if [ "${#services[@]}" -eq 0 ]; then
+    # Everything: compose's services, the router, and the DNS server when the runner made it.
+    others=(router)
+    nzc_runner_dns && others+=(dns)
+  fi
+  if [ "${#others[@]}" -eq 0 ]; then
+    exec docker compose --project-directory "$NZC_DIR" --file "$NZC_DIR/compose.yml" \
+      --env-file "$NZC_ENV" --profile '*' logs "${options[@]}" "${compose_services[@]}"
+  fi
+  if [ "${#others[@]}" -eq 1 ] && [ "${#compose_services[@]}" -eq 0 ] && [ "${#services[@]}" -gt 0 ]; then
+    exec docker logs "${options[@]}" "$(nzc_container_of "${others[0]}")"
+  fi
+  # Several sources at once: each in the background, its lines marked with its name like
+  # compose's, until Ctrl-C (which stops them all).
+  local pids=() container
+  trap 'kill "${pids[@]}" 2>/dev/null; exit 0' INT TERM
+  if [ "${#services[@]}" -eq 0 ] || [ "${#compose_services[@]}" -gt 0 ]; then
+    docker compose --project-directory "$NZC_DIR" --file "$NZC_DIR/compose.yml" \
+      --env-file "$NZC_ENV" --profile '*' logs "${options[@]}" "${compose_services[@]}" &
+    pids+=($!)
+  fi
+  for name in "${others[@]}"; do
+    container=$(nzc_container_of "$name")
+    docker inspect "$container" >/dev/null 2>&1 || continue
+    nzc_prefixed "$name" docker logs "${options[@]}" "$container" &
+    pids+=($!)
+  done
+  wait
+}
+
+# Runs a command, each line of its output marked with a name as compose marks its services'.
+nzc_prefixed() {
+  local label line
+  label=$(printf '%-9s|' "$1")
+  shift
+  "$@" 2>&1 | while IFS= read -r line; do printf '%s %s\n' "$label" "$line"; done
+}
+
+# The container a non-compose service runs as.
+nzc_container_of() {
+  case "$1" in
+    router) printf 'nearzero-router' ;;
+    dns) printf 'nearzero1-dns' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+nzc_start_all() {
+  # shellcheck disable=SC2046
+  nzc_compose up -d --no-build $(nzc_active_services) || return 1
+}
+
+nzc_restart() {
+  printf 'Restarting Nearzero...\n'
+  if nzc_running nearzero-control; then
+    nzc_compose restart control >/dev/null || nzc_die "Couldn't restart Nearzero."
+  fi
+  nzc_start_all >/dev/null || nzc_die "Couldn't start Nearzero's services. See: sudo nearzero status"
+  nzc_wait_healthy || exit 1
+  printf 'Nearzero is running at %s\n' "$(nzc_console_address)"
+}
+
+nzc_update() {
+  printf 'Downloading Nearzero %s again...\n' "$(nzc_value NEARZERO_VERSION)"
+  # shellcheck disable=SC2046
+  nzc_compose pull --quiet $(nzc_active_services) ||
+    nzc_die "Couldn't download the configured images. Check this server's connection to their registries."
+  # The runner uses the router image already on the server rather than fetching it itself.
+  if nzc_profile_on router && [ -n "$(nzc_value NEARZERO_ROUTER_IMAGE)" ]; then
+    docker pull --quiet "$(nzc_value NEARZERO_ROUTER_IMAGE)" >/dev/null ||
+      nzc_die "Couldn't download the router image. Check this server's connection to its registry."
+  fi
+  nzc_start_all >/dev/null || nzc_die "Couldn't start Nearzero's services. See: sudo nearzero status"
+  nzc_wait_healthy || exit 1
+  printf 'Nearzero %s is running at %s\n' "$(nzc_value NEARZERO_VERSION)" "$(nzc_console_address)"
+  printf 'This keeps the installed version. To move to a newer one, run: %s\n' "$NZC_INSTALL_COMMAND"
+}
+
+# Runs one of the control plane's account commands inside its container; credentials travel on
+# standard input only.
+nzc_control() {
+  nzc_compose exec -T control nearzero-control "$@"
+}
+
+# Replacing the runner link's certificate (C4-10): the control plane gives servers the next
+# fingerprint over their current link, and the switch takes effect when it restarts.
+nzc_runner_link() {
+  local action="${1:-status}"
+  case "$action" in
+    status | rotate | switch | cancel) ;;
+    *) nzc_die "Unknown runner-link command: $action. Use status, rotate, switch or cancel." ;;
+  esac
+  nzc_running nearzero-control || nzc_die "Nearzero isn't running. Start it with: sudo nearzero restart"
+  nzc_control runner-link "$@" </dev/null || return 1
+  if [ "$action" = switch ]; then
+    nzc_restart
+  fi
+}
+
+# Reads a password twice from the terminal into NZC_PASSWORD.
+nzc_prompt_password() {
+  local label="$1" first second saved
+  while :; do
+    saved=$(stty -g </dev/tty 2>/dev/null)
+    # Echo off before the prompt shows, so nothing typed at once is echoed.
+    stty -echo </dev/tty 2>/dev/null
+    printf '%s' "$label" >/dev/tty
+    IFS= read -r first </dev/tty || first=""
+    printf '\nConfirm password: ' >/dev/tty
+    IFS= read -r second </dev/tty || second=""
+    stty "$saved" </dev/tty 2>/dev/null
+    printf '\n' >/dev/tty
+    if [ "${#first}" -lt 8 ] || [ "${#first}" -gt 128 ]; then
+      printf 'Use 8 to 128 characters.\n' >/dev/tty
+      continue
+    fi
+    if [ "$first" != "$second" ]; then
+      printf "The passwords don't match. Try again.\n" >/dev/tty
+      continue
+    fi
+    NZC_PASSWORD="$first"
+    return 0
+  done
+}
+
+nzc_create_owner() {
+  nzc_require_running
+  local status
+  # owner-status --json answers {"owner":"exists",...} or {"owner":"missing"}; its sentence for
+  # people goes to standard error.
+  status=$(nzc_control owner-status --json </dev/null 2>/dev/null | grep '^{' | tail -n 1)
+  case "$status" in
+    *'"owner":"exists"'*)
+      # create-owner says who the owner is and what to do, and exits 1.
+      nzc_control create-owner </dev/null
+      return 1
+      ;;
+  esac
+  local email password suggested
+  # The installer's admin email, offered as the default (31a G1-14).
+  suggested=$(nzc_value NEARZERO_ADMIN_EMAIL)
+  if nzc_has_terminal; then
+    while :; do
+      if [ -n "$suggested" ]; then
+        printf 'Email [%s]: ' "$suggested" >/dev/tty
+      else
+        printf 'Email: ' >/dev/tty
+      fi
+      IFS= read -r email </dev/tty || nzc_die "No email was given, so no account was created."
+      email=$(printf '%s' "$email" | tr -d '[:space:]')
+      [ -z "$email" ] && email="$suggested"
+      case "$email" in
+        ?*@?*.?*) break ;;
+      esac
+      printf 'Enter a valid email address, like you@company.com.\n' >/dev/tty
+    done
+    nzc_prompt_password "Password (8+ characters): "
+    password="$NZC_PASSWORD"
+    NZC_PASSWORD=""
+  else
+    IFS= read -r email || true
+    IFS= read -r password || true
+    email="${email%$'\r'}"
+    password="${password%$'\r'}"
+    # An empty first line means the installer's admin email.
+    [ -z "$(printf '%s' "$email" | tr -d '[:space:]')" ] && email="$suggested"
+  fi
+  printf '%s\n%s\n' "$email" "$password" | nzc_control create-owner
+}
+
+# reset-password [email] (31a G1-01, spec 03 3.4). Without an email the account comes first: on a
+# terminal "Email [<owner>]:", where Enter keeps the owner; without one, the first of two lines
+# (0.1.x's form), where an empty line means the owner. So
+#   printf 'bob@example.com\nNewPass123\n' | sudo nearzero reset-password
+# resets Bob's password, never the owner's.
+nzc_reset_password() {
+  nzc_require_running
+  local email="$1" password owner status
+  if [ -z "$email" ]; then
+    if nzc_has_terminal; then
+      status=$(nzc_control owner-status --json </dev/null 2>/dev/null | grep '^{' | tail -n 1)
+      owner=$(printf '%s' "$status" | sed -n 's/.*"email":"\([^"]*\)".*/\1/p')
+      printf 'Email [%s]: ' "${owner:-the owner}" >/dev/tty
+      IFS= read -r email </dev/tty || nzc_die "No email was given, so no password was changed."
+    else
+      IFS= read -r email || [ -n "$email" ] || nzc_die "No email was given, so no password was changed."
+    fi
+    email=$(printf '%s' "${email%$'\r'}" | tr -d '[:space:]')
+    [ -z "$email" ] && email="$owner"
+  fi
+  if nzc_has_terminal; then
+    nzc_prompt_password "New password for ${email:-the owner} (8+ characters): "
+    password="$NZC_PASSWORD"
+    NZC_PASSWORD=""
+  else
+    IFS= read -r password || true
+    password="${password%$'\r'}"
+  fi
+  if [ -n "$email" ]; then
+    printf '%s\n' "$password" | nzc_control reset-password "$email"
+  else
+    # No email given and no owner found: the control plane's empty first line means the owner.
+    printf '\n%s\n' "$password" | nzc_control reset-password
+  fi
+}
+
+# set-email <old> <new> (31a G1-02): root vouches for the new address.
+nzc_set_email() {
+  [ "$#" -eq 2 ] || nzc_die "Usage: sudo nearzero set-email <current email> <new email>"
+  nzc_require_running
+  nzc_control set-email "$1" "$2" </dev/null
+}
+
+nzc_reset_2fa() {
+  local email="" yes=0 argument
+  for argument in "$@"; do
+    case "$argument" in
+      --yes | -y) yes=1 ;;
+      *) email="$argument" ;;
+    esac
+  done
+  nzc_require_running
+  local who="${email:-the owner}"
+  if [ "$yes" = 0 ]; then
+    nzc_has_terminal || nzc_die "No terminal to confirm on, so nothing was changed. To go ahead from a script, run: sudo nearzero reset-2fa ${email:+$email }--yes"
+    local answer
+    printf 'Turn off two-factor sign-in for %s? They sign in with their password alone until they set it up again. [y/N] ' "$who" >/dev/tty
+    IFS= read -r answer </dev/tty || answer=""
+    case "$answer" in
+      y | Y | yes | YES | Yes) ;;
+      *) printf 'Nothing was changed.\n'; return 1 ;;
+    esac
+  fi
+  # Confirmed here, so the control plane's own question is answered with --yes.
+  if [ -n "$email" ]; then
+    nzc_control reset-2fa "$email" --yes </dev/null
+  else
+    nzc_control reset-2fa --yes </dev/null
+  fi
+}
+
+nzc_require_bundled_database() {
+  if [ "$(nzc_value NEARZERO_DATA_MODE)" != local ]; then
+    nzc_die "This command works with the bundled database only, and this server uses an external one." \
+      "Back it up and restore it with your database's own tools."
+  fi
+  nzc_running nearzero1-postgres ||
+    nzc_die "The bundled database isn't running. Start Nearzero with: sudo nearzero restart"
+}
+
+nzc_backup_db() {
+  local file="$1"
+  nzc_require_bundled_database
+  [ -n "$file" ] || file="$NZC_DIR/nearzero-db-$(date -u +%Y%m%d-%H%M%S).sql"
+  local dir name
+  dir=$(dirname -- "$file")
+  name=$(basename -- "$file")
+  [ -d "$dir" ] || nzc_die "backup destination directory does not exist: $dir"
+  [ -w "$dir" ] || nzc_die "backup destination directory is not writable: $dir"
+  [ -d "$file" ] && nzc_die "$file is a directory; give a file name, like $file/nearzero.sql"
+  local partial="$dir/.$name.partial.$$" errors
+  errors=$(
+    umask 077
+    nzc_compose exec -T postgres pg_dump --username nearzero --dbname nearzero --clean --if-exists \
+      --no-owner --no-privileges 2>&1 >"$partial"
+  )
+  local status=$?
+  if [ "$status" != 0 ] || [ ! -s "$partial" ]; then
+    rm -f "$partial"
+    nzc_die "The database dump failed, so nothing was written${errors:+: $errors}"
+  fi
+  chmod 0600 "$partial" && mv -f "$partial" "$file" || {
+    rm -f "$partial"
+    nzc_die "Couldn't save the dump as $file."
+  }
+  printf '%s\n' "$file"
+}
+
+nzc_restore_db() {
+  local file="" yes=0 argument
+  for argument in "$@"; do
+    case "$argument" in
+      --yes | -y) yes=1 ;;
+      *) file="$argument" ;;
+    esac
+  done
+  [ -n "$file" ] || nzc_die "Name the file to restore: sudo nearzero restore-db <file>"
+  [ -f "$file" ] && [ -r "$file" ] || nzc_die "Can't read $file."
+  head -n 20 "$file" | grep -q 'PostgreSQL database dump' ||
+    nzc_die "$file isn't a database dump made by: sudo nearzero backup-db"
+  nzc_require_bundled_database
+  if [ "$yes" = 0 ]; then
+    nzc_has_terminal || nzc_die "No terminal to confirm on, so nothing was restored. To restore from a script, run: sudo nearzero restore-db $file --yes"
+    local answer
+    printf 'This replaces all of Nearzero'"'"'s current data (accounts, workspaces, projects and settings)\n' >/dev/tty
+    printf 'with the backup in %s. Apps and databases you deployed keep running.\n' "$file" >/dev/tty
+    printf 'Type "replace" to continue: ' >/dev/tty
+    IFS= read -r answer </dev/tty || answer=""
+    [ "$answer" = replace ] || {
+      printf 'Nothing was restored.\n'
+      return 1
+    }
+  fi
+  printf 'Stopping the console and API...\n'
+  nzc_compose stop control >/dev/null 2>&1
+  printf 'Restoring %s...\n' "$file"
+  local errors
+  # The dump drops only the objects it holds, so tables a later version added (and the rows
+  # that refer to the dump's own) would stay, or stop the restore. The whole schema goes first,
+  # in the same transaction, so the dump replaces the data exactly (spec 03 3.4, B2-09).
+  if ! errors=$(
+    {
+      printf 'DROP SCHEMA IF EXISTS public CASCADE;\nCREATE SCHEMA public;\n'
+      cat "$file"
+    } | nzc_compose exec -T postgres psql --username nearzero --dbname nearzero \
+      --quiet --single-transaction -v ON_ERROR_STOP=1 2>&1 >/dev/null
+  ); then
+    nzc_start_all >/dev/null 2>&1
+    nzc_die "The restore failed and the current data was kept (it runs as one transaction): $(printf '%s' "$errors" | tail -n 3)"
+  fi
+  nzc_start_all >/dev/null || nzc_die "Restored, but Nearzero couldn't start. See: sudo nearzero status"
+  nzc_wait_healthy || exit 1
+  printf 'Restored the database from %s. Nearzero is running at %s\n' "$file" "$(nzc_console_address)"
+}
+
+# --- Moving from 0.1.x (spec 29) ----------------------------------------------------------------
+#
+# The installer moves a 0.1.x install in place and keeps its data under $NZC_MIGRATION/0.1 until
+# `migrate finalize`. import reads an export made elsewhere (moving to a new machine). The
+# control plane does the work; this command adds what only the host can: stopping and starting
+# control planes, and deleting the old data after a typed confirmation.
+
+NZC_MIGRATION="$NZC_DIR/migration"
+
+# The export's passphrase into NZC_PASSPHRASE: from NEARZERO_MIGRATION_PASSPHRASE, or asked.
+nzc_passphrase() {
+  NZC_PASSPHRASE="${NEARZERO_MIGRATION_PASSPHRASE:-}"
+  [ -n "$NZC_PASSPHRASE" ] && return 0
+  nzc_has_terminal || nzc_die "Set NEARZERO_MIGRATION_PASSPHRASE to the export's passphrase, or run this on a terminal."
+  local saved
+  saved=$(stty -g </dev/tty 2>/dev/null)
+  stty -echo </dev/tty 2>/dev/null
+  printf 'Passphrase: ' >/dev/tty
+  IFS= read -r NZC_PASSPHRASE </dev/tty || NZC_PASSPHRASE=""
+  stty "$saved" </dev/tty 2>/dev/null
+  printf '\n' >/dev/tty
+  [ -n "$NZC_PASSPHRASE" ] || nzc_die "No passphrase was given, so nothing was imported."
+}
+
+nzc_import() {
+  local file="" dry="" argument
+  for argument in "$@"; do
+    case "$argument" in
+      --dry-run) dry="--dry-run" ;;
+      -*) nzc_die "Unknown option: $argument. Run: sudo nearzero import [--dry-run] <file>" ;;
+      *) file="$argument" ;;
+    esac
+  done
+  [ -n "$file" ] || nzc_die "Name the export file: sudo nearzero import [--dry-run] <file>"
+  [ -f "$file" ] && [ -r "$file" ] || nzc_die "Can't read $file."
+  nzc_require_running
+  nzc_passphrase
+  # The export goes in on standard input and the passphrase through the environment, so neither
+  # is ever an argument.
+  if [ -n "$dry" ]; then
+    NEARZERO_MIGRATION_PASSPHRASE="$NZC_PASSPHRASE" docker exec -i -e NEARZERO_MIGRATION_PASSPHRASE \
+      nearzero-control nearzero-control import --dry-run - <"$file"
+  else
+    NEARZERO_MIGRATION_PASSPHRASE="$NZC_PASSPHRASE" docker exec -i -e NEARZERO_MIGRATION_PASSPHRASE \
+      nearzero-control nearzero-control import --wait - <"$file"
+  fi
+}
+
+nzc_migration_state() {
+  cut -d' ' -f1 "$NZC_MIGRATION/state" 2>/dev/null
+}
+
+# Applies one action to a 0.1.x workload (the installer's nz_legacy_workload, same rules).
+# The lines of control-plane.txt that name a workload ("volume", "project", "folder" and "port"
+# lines are read on their own).
+nzc_is_workload_kind() {
+  case "$1" in container | swarm-service | swarm-stack | compose-project) return 0 ;; esac
+  return 1
+}
+
+# Starts a Swarm service the move stopped (spec 29.5): its replica count and the published ports
+# it let go of ("published:target:protocol:mode" words in dev.nearzero.migration.ports, which the
+# runner and the installer write), as they were.
+nzc_swarm_start() {
+  local name="$1" mode="$2" wanted kept word pub tgt proto pm args=()
+  wanted=$(docker service inspect --format '{{index .Spec.Labels "dev.nearzero.migration.replicas"}}' "$name")
+  case "$wanted" in '' | *[!0-9]*) wanted="" ;; esac
+  kept=$(docker service inspect --format '{{index .Spec.Labels "dev.nearzero.migration.ports"}}' "$name")
+  if [ -n "$wanted" ]; then
+    args+=(--label-rm dev.nearzero.migration.replicas --replicas "$wanted")
+  elif [ "$mode" = 0 ]; then
+    args+=(--replicas 1)
+  fi
+  if [ -n "$kept" ]; then
+    args+=(--label-rm dev.nearzero.migration.ports)
+    for word in $kept; do
+      case "$word" in *[!0-9a-z:]* | *:*:*:*:*) continue ;; esac
+      IFS=: read -r pub tgt proto pm <<<"$word"
+      args+=(--publish-add "published=$pub,target=$tgt,protocol=$proto,mode=$pm")
+    done
+  fi
+  [ "${#args[@]}" -gt 0 ] || return 0
+  docker service update --detach "${args[@]}" "$name" >/dev/null
+}
+
+# True when a container, Swarm service, network or volume carries 1.0's label: nothing done to
+# 0.1.x's workloads ever touches it (spec 29.5 "Finalize").
+nzc_is_ours() {
+  local kind="$1" name="$2" field=.Labels
+  case "$kind" in container) field=.Config.Labels ;; service) field=.Spec.Labels ;; esac
+  [ "$(docker "$kind" inspect --format "{{index $field \"dev.nearzero.edition\"}}" "$name" 2>/dev/null)" = 1 ]
+}
+
+# A Compose project's containers that aren't 1.0's: a moved stack keeps its project name, so its
+# 1.0 containers share the project label with 0.1.x's.
+nzc_project_containers() {
+  local id
+  for id in $(docker ps -aq --filter "label=com.docker.compose.project=$1" 2>/dev/null); do
+    nzc_is_ours container "$id" || printf '%s\n' "$id"
+  done
+}
+
+nzc_legacy_workload() {
+  local action="$1" kind="$2" name="$3" mode ids
+  case "$name" in *[!A-Za-z0-9_.-]* | "") return 1 ;; esac
+  case "$kind" in
+    swarm-stack)
+      for ids in $(docker service ls -q --filter "label=com.docker.stack.namespace=$name" 2>/dev/null); do
+        nzc_legacy_workload "$action" swarm-service "$ids" || return 1
+      done
+      ;;
+    swarm-service)
+      docker service inspect "$name" >/dev/null 2>&1 || return 0
+      nzc_is_ours service "$name" && return 0
+      mode=$(docker service inspect --format '{{if .Spec.Mode.Replicated}}{{.Spec.Mode.Replicated.Replicas}}{{else}}global{{end}}' "$name")
+      case "$action" in
+        start) nzc_swarm_start "$name" "$mode" ;;
+        remove) docker service rm "$name" >/dev/null ;;
+      esac
+      ;;
+    container)
+      docker inspect "$name" >/dev/null 2>&1 || return 0
+      nzc_is_ours container "$name" && return 0
+      case "$action" in
+        start) docker start "$name" >/dev/null ;;
+        # Its anonymous volumes go with it; named ones never do.
+        remove) docker rm -fv "$name" >/dev/null ;;
+      esac
+      ;;
+    compose-project)
+      # Only the project's own 0.1.x containers, one by one, never the project as a whole.
+      ids=$(nzc_project_containers "$name")
+      [ -n "$ids" ] || return 0
+      # shellcheck disable=SC2086
+      case "$action" in
+        start) docker start $ids >/dev/null ;;
+        remove) docker rm -fv $ids >/dev/null ;;
+      esac
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# The networks a 0.1.x workload's containers or Swarm services use, one name per line.
+nzc_workload_networks() {
+  local kind="$1" name="$2" id target
+  case "$kind" in
+    container)
+      nzc_is_ours container "$name" ||
+        docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$name" 2>/dev/null | tr ' ' '\n'
+      ;;
+    compose-project)
+      for id in $(nzc_project_containers "$name"); do
+        docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$id" 2>/dev/null | tr ' ' '\n'
+      done
+      ;;
+    swarm-service)
+      nzc_is_ours service "$name" && return 0
+      for target in $(docker service inspect --format '{{range .Spec.TaskTemplate.Networks}}{{.Target}} {{end}}' "$name" 2>/dev/null); do
+        docker network inspect --format '{{.Name}}' "$target" 2>/dev/null
+      done
+      ;;
+    swarm-stack)
+      for id in $(docker service ls -q --filter "label=com.docker.stack.namespace=$name" 2>/dev/null); do
+        nzc_workload_networks swarm-service "$id"
+      done
+      ;;
+  esac
+}
+
+# Removes each of these networks once no container is attached and it carries no 1.0 label;
+# Docker's own networks stay.
+nzc_remove_unused_networks() {
+  local network
+  for network in $(printf '%s\n' "$@" | sed '/^$/d' | sort -u); do
+    case "$network" in bridge | host | none | ingress | docker_gwbridge) continue ;; esac
+    docker network inspect "$network" >/dev/null 2>&1 || continue
+    nzc_is_ours network "$network" && continue
+    [ "$(docker network inspect --format '{{len .Containers}}' "$network" 2>/dev/null)" = 0 ] || continue
+    docker network rm "$network" >/dev/null 2>&1
+  done
+}
+
+nzc_rollback() {
+  local yes=0 argument
+  for argument in "$@"; do
+    case "$argument" in
+      --yes | -y) yes=1 ;;
+      *) nzc_die "Unknown option: $argument" ;;
+    esac
+  done
+  [ "$(nzc_migration_state)" = finalized ] &&
+    nzc_die "The move is finalized: the 0.1.x data is deleted, so it can't be rolled back."
+  [ -f "$NZC_MIGRATION/0.1/env" ] || nzc_die "This server has no 0.1.x install to go back to."
+  local version
+  version=$(cat "$NZC_MIGRATION/0.1/version" 2>/dev/null)
+  version="${version:-0.1.x}"
+  if [ "$yes" = 0 ]; then
+    nzc_has_terminal || nzc_die "No terminal to confirm on, so nothing was changed. To go back from a script, run: sudo nearzero migrate rollback --yes"
+    local answer
+    printf 'Go back to Nearzero %s? Nearzero 1.0 stops, and what was changed in 1.0 since the move is lost. Your apps restart once more. [y/N] ' "$version" >/dev/tty
+    IFS= read -r answer </dev/tty || answer=""
+    case "$answer" in
+      y | Y | yes | YES | Yes) ;;
+      *) printf 'Nothing was changed.\n'; return 1 ;;
+    esac
+  fi
+  local plan="" kind name status
+  if nzc_running nearzero-control; then
+    plan=$(nzc_control migrate rollback-plan </dev/null)
+    status=$?
+    [ "$status" = 4 ] && nzc_die "The move is finalized: the 0.1.x data is deleted, so it can't be rolled back."
+    # Remote servers go back first, while 1.0 can still sign in to them.
+    nzc_control migrate rollback-servers </dev/null
+  fi
+  local plane="$NZC_MIGRATION/control-plane.txt" attempt
+  attempt=$(cat "$NZC_MIGRATION/attempt" 2>/dev/null)
+
+  # 1. Only what carries 1.0's label goes (spec 29.5 "Rollback"): its control plane, router,
+  # runner and the moved services' containers, then the volumes and networks this attempt made.
+  # A volume the bundle names (keep lines) or without 1.0's label is never removed.
+  printf 'Stopping Nearzero 1.0...\n'
+  local ids volume network
+  # Its anonymous volumes go with each container; named ones never do.
+  ids=$(docker ps -aq --filter label=dev.nearzero.edition=1)
+  # shellcheck disable=SC2086
+  [ -n "$ids" ] && docker rm -fv $ids >/dev/null
+  [ -f "$NZC_ENV" ] && [ -f "$NZC_DIR/compose.yml" ] && nzc_compose --profile '*' down --timeout 30 >/dev/null 2>&1
+  for volume in $(nzc_attempt_objects volume "$attempt"); do
+    grep -Fqx "keep $volume" "$plane" 2>/dev/null && continue
+    grep -Fqx "volume $volume" "$plane" 2>/dev/null && continue
+    docker volume rm "$volume" >/dev/null 2>&1
+  done
+  for network in $(nzc_attempt_objects network "$attempt"); do
+    docker network rm "$network" >/dev/null 2>&1
+  done
+  local aside path
+  aside="$NZC_MIGRATION/1.0-$(date -u +%Y%m%dT%H%M%SZ)"
+  mkdir -p "$aside" && chmod 0700 "$aside"
+  for path in .env compose.yml router dns; do
+    [ -e "$NZC_DIR/$path" ] && mv -f "$NZC_DIR/$path" "$aside/"
+  done
+  mv -f "$NZC_MIGRATION/0.1/env" "$NZC_ENV" || nzc_die "Couldn't put the 0.1.x settings back in $NZC_ENV."
+  for path in "$NZC_MIGRATION/0.1/files/"* "$NZC_MIGRATION/0.1/files/".[!.]*; do
+    [ -e "$path" ] && mv -f "$path" "$NZC_DIR/"
+  done
+
+  # 2. The 0.1.x control plane: its Compose project from its folder, created and started whether
+  # or not any of its containers are left, then every workload the move stopped.
+  printf 'Starting Nearzero %s...\n' "$version"
+  local failed="" project folder
+  project=$(sed -n 's/^project //p' "$plane" 2>/dev/null | head -n 1)
+  folder=$(sed -n 's/^folder //p' "$plane" 2>/dev/null | head -n 1)
+  case "$project$folder" in *[!A-Za-z0-9_./-]*) project="" ;; esac
+  # Where an env file kept outside a project's folder may be (29a.9): the 0.1.x install's data
+  # folders, which are its install folder, its control plane's folder and its data volumes'.
+  NZC_DATA_ROOTS=$(nzc_data_roots "$plane" "$folder")
+  if [ -n "$project" ] && [ -d "$folder" ]; then
+    nzc_legacy_compose_up "$plane" "$project" "$folder" || failed="$failed $project"
+  fi
+  while read -r kind name; do
+    nzc_is_workload_kind "$kind" && [ -n "$name" ] || continue
+    nzc_legacy_workload start "$kind" "$name" || failed="$failed $name"
+  done <"$plane"
+  # 3. Each moved service's 0.1.x workload, as it was before the move. A stack whose files the
+  # bundle names comes back from them: its stopped containers may have been replaced by 1.0's
+  # deploy of the same project (spec 29.5).
+  while read -r kind name; do
+    nzc_is_workload_kind "$kind" && [ -n "$name" ] || continue
+    if [ "$kind" = compose-project ] && nzc_stack_from_plan "$plan" "$name"; then
+      continue
+    fi
+    nzc_legacy_workload start "$kind" "$name" || failed="$failed $name"
+  done <<<"$plan"
+  if [ -f "$NZC_MIGRATION/0.1/nearzero" ]; then
+    # Renamed into place: this script keeps running from the file it was started from.
+    cp -p "$NZC_MIGRATION/0.1/nearzero" "/usr/local/bin/nearzero.rollback" &&
+      mv -f /usr/local/bin/nearzero.rollback /usr/local/bin/nearzero
+  fi
+  rm -rf "$NZC_MIGRATION/0.1"
+  rm -f "$NZC_MIGRATION/attempt"
+  printf 'rolled-back\n' >"$NZC_MIGRATION/state"
+
+  # 4. Back when its console answers its sign-in page and its database takes connections.
+  local missing
+  missing=$(nzc_wait_legacy_back "$plane" "$project" "${NZC_ROLLBACK_WAIT_SECONDS:-300}")
+  [ -n "$failed" ] && missing="$missing$failed"
+  if [ -n "$missing" ]; then
+    nzc_err "Nearzero $version didn't come back within 5 minutes. Not back:$missing." \
+      "Check them with: docker ps -a; docker service ls. Nearzero 1.0's settings are in $aside."
+    exit 1
+  fi
+  printf 'Nearzero %s is back. The move to 1.0 was undone.\n' "$version"
+  printf "Nearzero 1.0 is stopped; its settings are in %s.\n" "$aside"
+  printf 'To move again later, run the 1.0 install command: %s\n' "$NZC_INSTALL_COMMAND"
+}
+
+# Creates and starts 0.1.x's Compose project from its folder with its own Compose files, in
+# order, and its env file (29a.9 controlPlaneDetails); without them, Compose's own file lookup.
+nzc_legacy_compose_up() {
+  local plane="$1" project="$2" folder="$3" env file files=()
+  while IFS= read -r file; do files+=("$file"); done < <(sed -n 's/^composefile //p' "$plane" 2>/dev/null)
+  env=$(sed -n 's/^envfile //p' "$plane" 2>/dev/null | head -n 1)
+  nzc_compose_files_up "$project" "$folder" "$env" "${files[@]}"
+}
+
+# Runs a Compose project from its own files in its folder (used exactly as the bundle gives it),
+# in order, with its env file; without named files, Compose's own lookup in the folder.
+nzc_compose_files_up() {
+  local project="$1" folder="$2" env="$3" file args=()
+  shift 3
+  for file in "$@"; do
+    case "$file" in "" | *..* | /*) continue ;; esac
+    args+=(-f "$folder/$file")
+  done
+  case "$env" in
+    *..*) env="" ;;
+    /*)
+      # Kept outside the folder: only a regular file under the install's data folders, never
+      # written to. Otherwise the project isn't started without its variables.
+      if ! nzc_env_allowed "$env"; then
+        nzc_err "The env file $env isn't a regular file under the 0.1.x install's data folders, so $project wasn't started."
+        return 1
+      fi
+      args+=(--env-file "$env")
+      env=""
+      ;;
+  esac
+  [ -n "$env" ] && args+=(--env-file "$folder/$env")
+  if [ "${#args[@]}" -gt 0 ]; then
+    (cd "$folder" && docker compose --project-directory "$folder" -p "$project" "${args[@]}" up -d >/dev/null 2>&1)
+  else
+    (cd "$folder" && docker compose -p "$project" up -d >/dev/null 2>&1)
+  fi
+}
+
+# The 0.1.x install's data folders, resolved: its install folder, its control plane's folder and
+# the folders of its data volumes (the plane's volume lines).
+nzc_data_roots() {
+  local plane="$1" folder="$2" kind name root
+  # On every server 0.1.x keeps data in /opt/nearzero and /etc/nearzero (29a.9).
+  for root in "$NZC_DIR" /opt/nearzero /etc/nearzero "$folder"; do
+    [ -n "$root" ] && readlink -f "$root" 2>/dev/null
+  done
+  while read -r kind name; do
+    [ "$kind" = volume ] && [ -n "$name" ] || continue
+    root=$(docker volume inspect --format '{{.Mountpoint}}' "$name" 2>/dev/null)
+    [ -n "$root" ] && readlink -f "$root" 2>/dev/null
+  done <"$plane"
+}
+
+# True for a regular file, reached by no link, under one of NZC_DATA_ROOTS.
+nzc_env_allowed() {
+  local file="$1" root
+  case "$file" in /* ) ;; *) return 1 ;; esac
+  case "$file" in *..* | *[!A-Za-z0-9_./-]*) return 1 ;; esac
+  [ -f "$file" ] && [ ! -L "$file" ] || return 1
+  [ "$(readlink -f "$file" 2>/dev/null)" = "$file" ] || return 1
+  for root in $NZC_DATA_ROOTS; do
+    root="${root%/}"
+    [ -n "$root" ] || continue
+    case "$file" in "$root"/*) return 0 ;; esac
+  done
+  return 1
+}
+
+# A moved stack's 0.1.x copy from its own files, when the rollback plan names its folder: 1.0's
+# labelled containers in the project go first, with their anonymous volumes. False when the plan
+# names no folder (it is then started as before, from its stopped containers).
+nzc_stack_from_plan() {
+  local plan="$1" name="$2" folder env ids file files=()
+  folder=$(printf '%s\n' "$plan" | awk -v n="$name" '$1 == "stackfolder" && $2 == n { print $3; exit }')
+  case "$folder" in /*) ;; *) return 1 ;; esac
+  case "$folder" in *[!A-Za-z0-9_./-]* | *..*) return 1 ;; esac
+  while IFS= read -r file; do
+    [ -n "$file" ] && files+=("$file")
+  done < <(printf '%s\n' "$plan" | awk -v n="$name" '$1 == "stackfile" && $2 == n { print $3 }')
+  env=$(printf '%s\n' "$plan" | awk -v n="$name" '$1 == "stackenv" && $2 == n { print $3; exit }')
+  ids=$(docker ps -aq --filter "label=com.docker.compose.project=$name" --filter label=dev.nearzero.edition=1 2>/dev/null)
+  # shellcheck disable=SC2086
+  [ -z "$ids" ] || docker rm -fv $ids >/dev/null
+  nzc_compose_files_up "$name" "$folder" "$env" "${files[@]}" || failed="$failed $name"
+  return 0
+}
+
+# The volumes or networks of one move attempt that carry 1.0's label. Without a known attempt,
+# only 1.0's own database volume (a fresh one, made for the move) counts.
+nzc_attempt_objects() {
+  local kind="$1" attempt="$2"
+  if [ -n "$attempt" ]; then
+    docker "$kind" ls -q --filter label=dev.nearzero.edition=1 \
+      --filter "label=dev.nearzero.migration-attempt=$attempt" 2>/dev/null
+  elif [ "$kind" = volume ]; then
+    case " $(docker volume inspect --format '{{range $k, $v := .Labels}}{{$k}}={{$v}} {{end}}' nearzero-postgres-data 2>/dev/null) " in
+      *" dev.nearzero.edition=1 "*) printf 'nearzero-postgres-data\n' ;;
+    esac
+  fi
+}
+
+# Waits until the 0.1.x console answers (its sign-in page, or the page it sends there) on one of
+# its ports and every PostgreSQL of its control plane takes connections. Prints what isn't back.
+nzc_wait_legacy_back() {
+  local plane="$1" project="$2" seconds="$3" until ports port path code console db ids id image missing
+  ports=$(sed -n 's/^port //p' "$plane" 2>/dev/null | tr '\n' ' ')
+  [ -n "${ports// /}" ] || ports="4321 3000"
+  until=$(($(date +%s) + seconds))
+  while :; do
+    console=0
+    for port in $ports; do
+      for path in /login /sign-in /signin /; do
+        code=$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://127.0.0.1:$port$path" 2>/dev/null)
+        case "$code" in 2?? | 3??) console=1; break 2 ;; esac
+      done
+    done
+    db=1
+    ids=""
+    [ -n "$project" ] && ids=$(docker ps -q --filter "label=com.docker.compose.project=$project" 2>/dev/null)
+    while read -r kind name; do
+      case "$kind" in
+        container) nzc_running "$name" && ids="$ids $(docker inspect --format '{{.Id}}' "$name" 2>/dev/null)" ;;
+        swarm-service) ids="$ids $(docker ps -q --filter "label=com.docker.swarm.service.name=$name" 2>/dev/null)" ;;
+      esac
+    done < <(grep -E '^(container|swarm-service) ' "$plane" 2>/dev/null)
+    for id in $ids; do
+      image=$(docker inspect --format '{{.Config.Image}}' "$id" 2>/dev/null)
+      case "$image" in *postgres*) docker exec "$id" pg_isready -q >/dev/null 2>&1 || db=0 ;; esac
+    done
+    [ "$console" = 1 ] && [ "$db" = 1 ] && return 0
+    if [ "$(date +%s)" -ge "$until" ]; then
+      missing=""
+      [ "$console" = 1 ] || missing="$missing its console (ports $ports)"
+      [ "$db" = 1 ] || missing="$missing its database"
+      printf '%s' "$missing"
+      return 0
+    fi
+    sleep 3
+  done
+}
+
+nzc_finalize() {
+  local yes=0 argument
+  for argument in "$@"; do
+    case "$argument" in
+      --yes | -y) yes=1 ;;
+      *) nzc_die "Unknown option: $argument" ;;
+    esac
+  done
+  [ "$(nzc_migration_state)" = finalized ] && { printf 'The move is already finalized.\n'; return 0; }
+  [ -d "$NZC_MIGRATION/0.1" ] || nzc_die "There is no 0.1.x data on this server to delete."
+  nzc_require_running
+  if [ "$yes" = 0 ]; then
+    nzc_has_terminal || nzc_die "No terminal to confirm on, so nothing was deleted. To finalize from a script, run: sudo nearzero migrate finalize --yes"
+    local answer
+    printf 'This deletes the 0.1.x data on this server: its control plane, its database and its settings.\n' >/dev/tty
+    printf 'Services that failed to move stop too. After this, sudo nearzero migrate rollback is no longer possible.\n' >/dev/tty
+    printf 'Type "delete" to continue: ' >/dev/tty
+    IFS= read -r answer </dev/tty || answer=""
+    [ "$answer" = delete ] || { printf 'Nothing was deleted.\n'; return 1; }
+  fi
+  # The host's stopped 0.1.x workloads, asked before the move is marked final.
+  local plan
+  plan=$(nzc_control migrate rollback-plan </dev/null)
+  nzc_control migrate finalize --yes </dev/null || exit 1
+  local kind name failed="" workloads="" networks=""
+  # The networks they use, read before anything goes (removed at the end once unused).
+  while read -r kind name; do
+    nzc_is_workload_kind "$kind" && [ -n "$name" ] || continue
+    networks="$networks $(nzc_workload_networks "$kind" "$name" | tr '\n' ' ')"
+  done < <(cat "$NZC_MIGRATION/control-plane.txt" 2>/dev/null; printf '%s\n' "$plan")
+  while read -r kind name; do
+    [ -n "$name" ] || continue
+    if [ "$kind" = volume ]; then
+      docker volume rm "$name" >/dev/null 2>&1 || failed="$failed $name"
+    elif nzc_is_workload_kind "$kind"; then
+      nzc_legacy_workload remove "$kind" "$name" || failed="$failed $name"
+      workloads="$workloads $kind:$name"
+    fi
+  done <"$NZC_MIGRATION/control-plane.txt"
+  # The moved services' 0.1.x workloads on this server go now too (the control plane removes the
+  # ones on other servers through their runners).
+  while read -r kind name; do
+    nzc_is_workload_kind "$kind" && [ -n "$name" ] || continue
+    nzc_legacy_workload remove "$kind" "$name" >/dev/null 2>&1
+    workloads="$workloads $kind:$name"
+  done <<<"$plan"
+  rm -rf "$NZC_MIGRATION/0.1"
+  printf 'finalized\n' >"$NZC_MIGRATION/state"
+  [ -n "$failed" ] && nzc_err "These couldn't be removed:$failed. Remove them by hand."
+  # Up to 2 minutes for them to be gone (spec 29.5 "Finalize").
+  local left until
+  until=$(($(date +%s) + ${NZC_FINALIZE_WAIT_SECONDS:-120}))
+  while :; do
+    left=$(nzc_still_there "$workloads")
+    [ -z "$left" ] && break
+    [ "$(date +%s)" -ge "$until" ] && break
+    sleep 3
+  done
+  # Then 0.1.x's networks: its shared and router networks, its Compose default network and each
+  # moved stack's old default network, once nothing uses them and they aren't 1.0's.
+  # shellcheck disable=SC2086
+  nzc_remove_unused_networks $networks
+  if [ -n "$left" ]; then
+    printf 'Finalized: the 0.1.x data is deleted and Nearzero 1.0 keeps running. Still being removed:%s.\n' "$left"
+    printf 'Check them with: docker service ls; docker ps -a\n'
+    return 0
+  fi
+  printf 'Finalized: the 0.1.x data is deleted. Nearzero 1.0 keeps running.\n'
+}
+
+# Which of these kind:name workloads still exist.
+nzc_still_there() {
+  local item kind name left=""
+  for item in $1; do
+    kind="${item%%:*}" name="${item#*:}"
+    case "$kind" in
+      swarm-service) docker service inspect "$name" >/dev/null 2>&1 && left="$left $name" ;;
+      swarm-stack) [ -n "$(docker service ls -q --filter "label=com.docker.stack.namespace=$name" 2>/dev/null)" ] && left="$left $name" ;;
+      container) docker inspect "$name" >/dev/null 2>&1 && left="$left $name" ;;
+      compose-project) [ -n "$(nzc_project_containers "$name")" ] && left="$left $name" ;;
+    esac
+  done
+  printf '%s' "$left"
+}
+
+nzc_migrate() {
+  local sub="${1:-status}"
+  [ "$#" -gt 0 ] && shift
+  case "$sub" in
+    status | retry)
+      nzc_require_running
+      nzc_control migrate "$sub" "$@" </dev/null
+      ;;
+    rollback) nzc_rollback "$@" ;;
+    finalize) nzc_finalize "$@" ;;
+    *)
+      nzc_err "Unknown migrate command: $sub" "Use: sudo nearzero migrate status | retry | rollback | finalize"
+      return 1
+      ;;
+  esac
+}
+
+
+# --- Main --------------------------------------------------------------------------------------
+
+nzc_main() {
+  local command="${1:-status}"
+  [ "$#" -gt 0 ] && shift
+  case "$command" in
+    help | -h | --help)
+      nzc_usage
+      return 0
+      ;;
+    export)
+      nzc_die "This server runs Nearzero 1.0, so there is nothing to export. To move a 0.1.x server here," \
+        "run sudo nearzero export on it, copy the file here, then run: sudo nearzero import <file>"
+      ;;
+    status | logs | audit | restart | update | create-owner | reset-password | set-email | reset-2fa | backup-db | restore-db | import | migrate | runner-link) ;;
+    *)
+      nzc_err "Unknown command: $command" ""
+      nzc_usage >&2
+      return 1
+      ;;
+  esac
+  if [ "$(id -u)" != 0 ]; then
+    nzc_die "This command needs root. Run: sudo nearzero $command"
+  fi
+  # Going back to 0.1.x works even when 1.0's settings are half written.
+  if [ "$command" = migrate ] && [ "${1:-}" = rollback ]; then
+    nzc_require_docker
+    [ -f "$NZC_ENV" ] && (nzc_read_config) >/dev/null 2>&1 && nzc_read_config
+    shift
+    nzc_rollback "$@"
+    return $?
+  fi
+  nzc_read_config
+  nzc_require_docker
+  case "$command" in
+    status) nzc_status ;;
+    logs) nzc_logs "$@" ;;
+    # The audit record, from the control plane's database (spec 22.4 rule 8).
+    audit) nzc_control audit "$@" ;;
+    restart) nzc_restart ;;
+    update) nzc_update ;;
+    create-owner) nzc_create_owner ;;
+    reset-password) nzc_reset_password "$1" ;;
+    set-email) nzc_set_email "$@" ;;
+    reset-2fa) nzc_reset_2fa "$@" ;;
+    backup-db) nzc_backup_db "$1" ;;
+    restore-db) nzc_restore_db "$@" ;;
+    import) nzc_import "$@" ;;
+    migrate) nzc_migrate "$@" ;;
+    runner-link) nzc_runner_link "$@" ;;
+  esac
+}
+
+nzc_main "$@"

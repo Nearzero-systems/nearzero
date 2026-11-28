@@ -1,0 +1,113 @@
+---
+import { ONBOARDING_INVITE_MAX } from "@nearzero/shared";
+import AuthFrame from "../../components/auth/AuthFrame.astro";
+import Button from "../../components/ui/Button.astro";
+import CopyButton from "../../components/ui/CopyButton.astro";
+import Field from "../../components/ui/Field.astro";
+import FocusLayout from "../../layouts/FocusLayout.astro";
+import { isApiError } from "../../lib/api-error.ts";
+import type { InviteResult } from "../../lib/data/index.ts";
+import { setFlash } from "../../lib/flash.ts";
+import { formText, onboardingContext } from "../../lib/page.ts";
+
+// Owner onboarding, step 2 of 2 (spec 4.3): invite up to 10 teammates, or skip. Invitations
+// that couldn't be emailed show their links to share.
+const ctx = await onboardingContext(Astro, "invite");
+if (ctx instanceof Response) return ctx;
+const { data } = ctx;
+
+let value = "";
+let error: string | null = null;
+let results: InviteResult[] | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  try {
+    if (formText(form, "intent") === "skip") {
+      await data.skipOnboardingInvites();
+      return Astro.redirect("/", 303);
+    }
+    value = formText(form, "emails", 10_000);
+    if (!value.trim()) {
+      error = "Enter at least one email address, or skip for now.";
+    } else {
+      results = await data.sendOnboardingInvites(value);
+      if (results.every((result) => result.emailed)) {
+        setFlash(
+          Astro,
+          `Invitations sent to ${results.length} ${results.length === 1 ? "person" : "people"}.`,
+        );
+        return Astro.redirect("/", 303);
+      }
+    }
+  } catch (problem) {
+    if (!isApiError(problem)) throw problem;
+    if (problem.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    error = problem.field("emails") ?? problem.message;
+  }
+}
+---
+
+<FocusLayout
+  title="Invite your team"
+  description="Invite the people you work with to your Nearzero workspace."
+>
+  <AuthFrame heading={results ? "Your team is invited" : "Invite your team"}>
+    {
+      results ? (
+        <p slot="note">Invitations that couldn't be emailed have a link to send yourself.</p>
+      ) : (
+        <div slot="note" class="nz-steps-note">
+          <div class="nz-steps" aria-hidden="true"><span data-done="true"></span><span data-done="true"></span></div>
+          <p>Step 2 of 2</p>
+        </div>
+      )
+    }
+    {
+      results ? (
+        <>
+          <ul class="nz-results">
+            {results.map((result) => (
+              <li class="nz-result">
+                <p class="font-medium nz-truncate">{result.email}</p>
+                <p class="nz-dim">{result.emailed ? "Emailed." : (result.message ?? "Not emailed.")}</p>
+                {result.link && (
+                  <div class="nz-url">
+                    <span class="nz-url-text" title={result.link}>{result.link}</span>
+                    <CopyButton text={result.link} what={`invitation link for ${result.email}`} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+          <div class="nz-gate-actions nz-gate-actions--block">
+            <Button variant="primary" href="/">Continue</Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <form method="post" class="nz-form" data-validate novalidate data-astro-reload>
+            <Field
+              id="nz-onboarding-emails"
+              name="emails"
+              as="textarea"
+              rows={4}
+              label="Teammate emails"
+              placeholder="sam@example.com, lee@example.com"
+              hint={`Separate addresses with commas, semicolons or new lines. Up to ${ONBOARDING_INVITE_MAX}.`}
+              value={value}
+              error={error}
+              data-email-list={String(ONBOARDING_INVITE_MAX)}
+              autofocus
+            />
+            <Button variant="primary" type="submit" name="intent" value="send" block>
+              Send invites and finish
+            </Button>
+            <Button variant="ghost" type="submit" name="intent" value="skip" formnovalidate block>
+              Skip for now
+            </Button>
+          </form>
+        </>
+      )
+    }
+  </AuthFrame>
+</FocusLayout>

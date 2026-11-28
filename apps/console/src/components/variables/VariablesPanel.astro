@@ -1,0 +1,192 @@
+---
+import type { MaskedVariables } from "../../lib/data/index.ts";
+import { variableCount } from "../../lib/variables-editor.ts";
+import Button from "../ui/Button.astro";
+import EmptyState from "../ui/EmptyState.astro";
+
+/**
+ * One set of variables (spec 05 5.5): an environment's shared variables or a service's own.
+ * Values stay masked ("empty" for empty ones) until "Show values"; Edit opens the editor in
+ * place (client/variables.ts) with rows or .env text, comments kept exactly, paste merging,
+ * every blocking problem with its line, and the 256 KB limit.
+ */
+interface Props {
+  id: string;
+  title: string;
+  /** Where values are revealed and saved: /environments/:id/variables or /services/:id/variables. */
+  apiPath: string;
+  variables: MaskedVariables;
+  canEdit: boolean;
+  emptyTitle: string;
+  emptyText?: string;
+  /** Names the service overrides with its own, marked "(its own wins)" (read-only lists only). */
+  overridden?: string[];
+  /** A read-only list: no Edit, no Show values (shared variables on a service's tab). */
+  readOnly?: boolean;
+  /**
+   * `inline`: a part of a service's Variables card (spec 21.10): the title with its count on one
+   * line, Edit (or `editHref`'s "Edit shared") at the right, `note` under it, then a two-column
+   * table; Show values sits on the card.
+   */
+  variant?: "card" | "inline";
+  editHref?: string;
+  note?: string;
+}
+
+const {
+  id,
+  title,
+  apiPath,
+  variables,
+  canEdit,
+  emptyTitle,
+  emptyText,
+  overridden = [],
+  readOnly = false,
+  variant = "card",
+  editHref,
+  note,
+} = Astro.props;
+const count = variables.count;
+const editable = canEdit && !readOnly && !variables.unreadable;
+---
+
+{
+  variant === "inline" ? (
+    <section
+      class="nz-vars nz-vars--inline"
+      id={id}
+      data-vars
+      data-api-path={apiPath}
+      data-version={variables.version}
+      aria-labelledby={`${id}-title`}
+    >
+      <div class="nz-vars-head">
+        <h3 class="nz-vars-title" id={`${id}-title`}>{title}</h3>
+        <span class="nz-dim">{variableCount(count)}</span>
+        <div class="nz-vars-tools" data-vars-actions>
+          {editable && (
+            <Button variant="outline" data-vars-edit>
+              Edit
+            </Button>
+          )}
+          {editHref && (
+            <Button variant="outline" href={editHref}>
+              Edit shared
+            </Button>
+          )}
+        </div>
+      </div>
+      {note && <p class="nz-vars-note">{note}</p>}
+      {variables.unreadable && <p class="nz-inline-error">{variables.unreadable}</p>}
+      <div data-vars-view>
+        {count === 0 ? (
+          <div class="nz-var-empty">
+            <span class="nz-dim">{emptyTitle}</span>
+            {editable && (
+              <Button variant="primary" data-vars-edit data-vars-add>
+                Add variable
+              </Button>
+            )}
+          </div>
+        ) : (
+          <ul class="nz-var-list nz-var-list--table" aria-label={title}>
+            {variables.variables.map((variable) => (
+              <li class="nz-var-row" data-var-name={variable.name}>
+                <code class="nz-var-name">
+                  {variable.name}
+                  {overridden.includes(variable.name) && <span class="nz-var-mark"> (its own wins)</span>}
+                </code>
+                <span class="nz-var-value" data-var-value data-empty={variable.empty ? "true" : "false"}>
+                  {variable.empty ? "empty" : "••••••••"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {variables.warnings.length > 0 && (
+          <ul class="nz-stack-sm mt-3">
+            {variables.warnings.map((warning) => (
+              <li class="nz-inline-note nz-warn-note">{warning.message}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div class="nz-vars-editor" data-vars-editor hidden></div>
+    </section>
+  ) : (
+
+<section
+  class="nz-card nz-section nz-vars"
+  id={id}
+  data-vars
+  data-api-path={apiPath}
+  data-version={variables.version}
+  aria-labelledby={`${id}-title`}
+>
+  <div class="nz-section-head">
+    <div class="min-w-0">
+      <h2 class="nz-subtitle" id={`${id}-title`}>{title}</h2>
+      <p class="nz-dim nz-small">{variableCount(count)}</p>
+    </div>
+    <div class="nz-section-actions" data-vars-actions>
+      {
+        !readOnly && count > 0 && !variables.unreadable && (
+          <Button variant="outline" icon="eye" data-vars-reveal aria-pressed="false">
+            <span data-vars-reveal-label>Show values</span>
+          </Button>
+        )
+      }
+      {
+        editable && count > 0 && (
+          <Button variant="outline" icon="edit" data-vars-edit>
+            Edit
+          </Button>
+        )
+      }
+    </div>
+  </div>
+
+  {variables.unreadable && <p class="nz-inline-error mb-3">{variables.unreadable}</p>}
+
+  <div data-vars-view>
+    {
+      count === 0 ? (
+        <EmptyState icon="key" title={emptyTitle} text={emptyText} class="nz-empty--compact">
+          {editable && (
+            <Button variant="outline" icon="plus" data-vars-edit data-vars-add>
+              Add variable
+            </Button>
+          )}
+        </EmptyState>
+      ) : (
+        <ul class="nz-var-list" aria-label={title}>
+          {variables.variables.map((variable) => (
+            <li class="nz-var-row" data-var-name={variable.name}>
+              <code class="nz-var-name">
+                {variable.name}
+                {overridden.includes(variable.name) && <span class="nz-var-mark"> (its own wins)</span>}
+              </code>
+              <span class="nz-var-value" data-var-value data-empty={variable.empty ? "true" : "false"}>
+                {variable.empty ? "empty" : "••••••••"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+    {
+      variables.warnings.length > 0 && (
+        <ul class="nz-stack-sm mt-3">
+          {variables.warnings.map((warning) => (
+            <li class="nz-inline-note nz-warn-note">{warning.message}</li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+
+  <div class="nz-vars-editor" data-vars-editor hidden></div>
+</section>
+  )
+}

@@ -1,0 +1,151 @@
+---
+import type { PendingInvitation, RecentDeployments } from "../../lib/data/index.ts";
+import { bellDeployments, bellStatus, bellTime } from "../../lib/deploys.ts";
+import { dashboardPath, settingsPath } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Menu from "../ui/Menu.astro";
+import Time from "../ui/Time.astro";
+
+/**
+ * The notifications bell (spec 11.5, 21.10): pending invitations and the latest deployments the
+ * person can see, each deployment a grey card with its status in colored text and the full date.
+ * The blue badge counts invitations plus failures since the bell was last opened in this browser,
+ * and those failures carry a blue dot (client/bell.ts), which also reloads the list while the page
+ * stays open (every 60 seconds while the tab shows and the panel is closed, 30a R1-06). Cards are
+ * ordered by the time they show (B3-20).
+ */
+interface Props {
+  workspace: string;
+  invitations: PendingInvitation[];
+  deployments: RecentDeployments | null;
+  /** Whether the person can open Settings → Channels. */
+  channels: boolean;
+}
+
+const { workspace, invitations, deployments, channels } = Astro.props;
+const list = bellDeployments(deployments?.deployments ?? []);
+// Failures the badge may count (spec 11.5): their finish times, for the browser's "seen" mark.
+const failures = list
+  .filter((item) => item.status === "failed")
+  .map((item) => bellTime(item).getTime())
+  .join(",");
+const roleLabel = { owner: "Owner", admin: "Admin", member: "Member" } as const;
+---
+
+<div
+  class="nz-bell"
+  data-bell
+  data-workspace={workspace}
+  data-invitations={invitations.length}
+  data-failures={failures}
+  data-failed-day={deployments?.failedSince ?? 0}
+>
+  <Button
+    variant="icon"
+    icon="bell"
+    label="Notifications"
+    popovertarget="nz-bell-panel"
+    aria-haspopup="dialog"
+    aria-expanded="false"
+    data-bell-button
+  />
+  <span class="nz-count-badge" data-bell-count hidden aria-hidden="true"></span>
+  <Menu
+    id="nz-bell-panel"
+    label="Notifications"
+    placement="bottom-end"
+    role="dialog"
+    class="nz-bell-panel"
+    data-bell-panel
+    data-gap="8"
+  >
+    <div class="nz-bell-head">
+      <div class="min-w-0">
+        <p class="nz-bell-title">Notifications</p>
+        <p class="nz-dim">Invitations and recent deployments.</p>
+      </div>
+      {channels && <a href={settingsPath(workspace, "channels")} class="nz-btn nz-btn--ghost">Channels</a>}
+    </div>
+    {
+      invitations.length > 0 && (
+        <div class="nz-bell-list">
+          <p class="nz-bell-eyebrow">Invitations</p>
+          {invitations.map((invitation) => (
+            <div class="nz-bell-card">
+              <p class="font-medium">{invitation.workspaceName}</p>
+              <p class="nz-dim">
+                {/* The full date and time, as the deployment cards show it (31a G1-09). */}
+                Role: {roleLabel[invitation.role]} · Expires: <Time date={invitation.expiresAt} format="full" />
+              </p>
+              <div>
+                <Button
+                  variant="outline"
+                  data-dialog-open="nz-accept-invitation"
+                  data-dialog-fill={JSON.stringify({
+                    workspace: invitation.workspaceName,
+                    invitationId: invitation.id,
+                  })}
+                >
+                  Accept invitation
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
+    <div data-bell-deployments class="contents">
+    {
+      deployments === null ? (
+        <p class="nz-inline-error m-1">Recent deployments are not available right now.</p>
+      ) : list.length === 0 ? (
+        invitations.length === 0 ? (
+          <div class="px-2 py-3 text-center">
+            <p class="font-medium">You're all caught up.</p>
+            <p class="nz-dim">Deployments will show up here.</p>
+          </div>
+        ) : (
+          <p class="nz-dim px-2 py-3 text-center">No recent deployments.</p>
+        )
+      ) : (
+        <div class="nz-bell-list">
+          <p class="nz-bell-eyebrow">Recent deployments</p>
+          {list.map((item) => {
+            const at = bellTime(item);
+            const status = bellStatus(item.status);
+            return (
+              <a
+                href={dashboardPath(workspace, `deployments/${item.id}`)}
+                class="nz-bell-card"
+                data-bell-failure={item.status === "failed" ? at.getTime() : undefined}
+                title={`${item.service.name} in ${item.project.name} / ${item.environment.name}`}
+              >
+                <span class="nz-bell-card-name nz-truncate">{item.service.name}</span>
+                <span class="nz-bell-card-title nz-truncate">{item.title}</span>
+                <span class="nz-bell-card-status">
+                  <span data-status={status.pill}>{status.label}</span>
+                  <Time date={at} format="full" class="nz-dim" />
+                </span>
+                <span class="nz-bell-unread" aria-label="Unread" hidden></span>
+              </a>
+            );
+          })}
+        </div>
+      )
+    }
+    </div>
+  </Menu>
+</div>
+<Dialog id="nz-accept-invitation" title="Join this organization?">
+  <p class="nz-dim">
+    You'll join <strong data-fill-text="workspace" style="color: var(--nz-text)"></strong> with the
+    role it was offered.
+  </p>
+  <form method="post" action="/session/invitation" class="nz-dialog-foot" data-astro-reload>
+    <input type="hidden" name="invitationId" value="" />
+    <input type="hidden" name="back" value={Astro.url.pathname} />
+    <Button variant="outline" data-dialog-close>Cancel</Button>
+    <Button variant="primary" type="submit">Accept invitation</Button>
+  </form>
+</Dialog>

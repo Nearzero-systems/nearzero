@@ -1,0 +1,68 @@
+---
+import { usesGitAccounts } from "../lib/git-providers.ts";
+import type { DashboardContext } from "../lib/page.ts";
+import {
+  SETTINGS_ENTRIES,
+  type SettingsKey,
+  settingsPath,
+  settingsVisibility,
+} from "../lib/routes.ts";
+import AppShell from "./AppShell.astro";
+
+/**
+ * The settings hub (spec 18.1, 21.10): a 216px column headed "Settings" in its own 65px strip,
+ * then the entries; beside it the current page's own 65px title strip and a body padded 32px.
+ * Profile shows in the same layout with no entry active. Below 1024px the links become one
+ * sideways-scrolling row with the current one centred (spec 21.8).
+ */
+interface Props {
+  ctx: DashboardContext;
+  /** The current entry, or null for a page shown inside the layout (Profile). */
+  current: SettingsKey | null;
+  /** A page title other than the entry's label (Backups is titled "Backup destinations"). */
+  title?: string;
+  /** The sidebar item to highlight (Settings, or nothing for Profile). */
+  active?: "settings" | "profile";
+}
+
+const { ctx, current, title, active = "settings" } = Astro.props;
+// Entries are hidden when the person can't use them (spec 18.1). Members who can't connect Git
+// accounts still see Git providers when one is shared with them (spec 16.1).
+const allowed = settingsVisibility({ ...ctx.access, usesGitAccounts: await usesGitAccounts(ctx) });
+const visible = SETTINGS_ENTRIES.filter((entry) => allowed[entry.key]);
+const entry = SETTINGS_ENTRIES.find((item) => item.key === current);
+const heading = title ?? entry?.label ?? "Settings";
+---
+
+<AppShell ctx={ctx} title={heading} active={active}>
+  <div class="nz-settings">
+    <nav class="nz-settings-nav" aria-label="Settings">
+      <div class="nz-strip nz-strip--settings">
+        <p class="nz-title nz-title--menu">Settings</p>
+      </div>
+      <div class="nz-settings-links" data-scroll-current>
+        {
+          visible.map((item) => (
+            <a
+              href={settingsPath(ctx.workspace.slug, item.key)}
+              class="nz-nav-item"
+              aria-current={item.key === current ? "page" : undefined}
+            >
+              {item.label}
+            </a>
+          ))
+        }
+      </div>
+    </nav>
+    <div class="nz-settings-main">
+      <div class="nz-strip nz-strip--settings nz-strip--title">
+        <h1 class="nz-title">{heading}</h1>
+        <slot name="actions" />
+      </div>
+      <div class="nz-settings-body">
+        <slot />
+      </div>
+    </div>
+  </div>
+  <Fragment slot="dialogs"><slot name="dialogs" /></Fragment>
+</AppShell>

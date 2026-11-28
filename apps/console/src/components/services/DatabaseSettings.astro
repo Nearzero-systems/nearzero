@@ -1,0 +1,104 @@
+---
+import type { ServerBrief, ServiceDetail } from "../../lib/data/index.ts";
+import { databaseSettings } from "../../lib/projects.ts";
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import Field from "../ui/Field.astro";
+import Fold from "../ui/Fold.astro";
+import FormError from "../ui/FormError.astro";
+import DangerZone from "./DangerZone.astro";
+
+/**
+ * A database's Settings tab (spec 08 8.2, 21.10), one box of folds: Runtime settings (open:
+ * container app name, external port, runtime server, data volume), Image ("Change image or
+ * version", closed) and the Danger zone (closed).
+ */
+interface Props {
+  service: ServiceDetail;
+  server: ServerBrief | null;
+  afterDelete: string;
+}
+
+const { service, server, afterDelete } = Astro.props;
+const settings = databaseSettings(service);
+// Which header action applies a saved image (spec 8.2): Redeploy while it runs (it stops first),
+// Deploy once it is stopped, failed or not deployed yet.
+const applies =
+  service.status === "running"
+    ? "Redeploy applies it: the database stops for a moment while the new container starts on the same data."
+    : "Deploy applies it.";
+---
+
+<div class="nz-folds">
+  <Fold
+    title="Runtime settings"
+    info="Where this database runs and how it can be reached."
+    id="nz-db-settings"
+    open
+  >
+    <div class="nz-fold-rows nz-fold-rows--stacked">
+      <div class="nz-fold-row">
+        <div class="nz-fold-row-text">
+          <span class="nz-fold-row-label">Container app name</span>
+          <span class="nz-fold-row-value nz-code">{service.appName}</span>
+        </div>
+        <CopyButton text={service.appName} what="app name" />
+      </div>
+      <div class="nz-fold-row">
+        <div class="nz-fold-row-text">
+          <span class="nz-fold-row-label">External port</span>
+          <span class="nz-fold-row-value">{service.publicPort ?? "Private"}</span>
+        </div>
+      </div>
+      <div class="nz-fold-row">
+        <div class="nz-fold-row-text">
+          <span class="nz-fold-row-label">Runtime server</span>
+          <span class="nz-fold-row-value">{server?.name ?? "Not assigned"}</span>
+        </div>
+      </div>
+      {
+        settings.dataVolume && (
+          <div class="nz-fold-row">
+            <div class="nz-fold-row-text">
+              <span class="nz-fold-row-label">Data volume</span>
+              <span class="nz-fold-row-value nz-code">{settings.dataVolume}</span>
+            </div>
+          </div>
+        )
+      }
+    </div>
+  </Fold>
+
+  <Fold title="Image" info="The image and version this database runs." id="nz-db-image">
+    <form
+      class="nz-form nz-form--flush"
+      data-api="PATCH /services/{serviceId}"
+      data-api-toast={`Image saved. ${service.status === "running" ? "Redeploy" : "Deploy"} to use it.`}
+      data-validate
+      novalidate
+    >
+      <input type="hidden" name="serviceId" value={service.id} />
+      <Field
+        id="nz-db-image-edit"
+        name="settings.image"
+        label="Change image or version"
+        value={settings.image}
+        autocomplete="off"
+        spellcheck="false"
+        data-required="Enter an image, like postgres:18."
+        disabled={!service.can.configure}
+        hint={`Saved now, used on the next deploy. ${applies} A new major version may need a manual upgrade of the data.`}
+      />
+      <FormError />
+      {
+        service.can.configure && (
+          <div class="nz-form-actions">
+            <Button variant="outline" type="submit">Save image</Button>
+          </div>
+        )
+      }
+    </form>
+  </Fold>
+
+  <DangerZone service={service} afterDelete={afterDelete} />
+</div>

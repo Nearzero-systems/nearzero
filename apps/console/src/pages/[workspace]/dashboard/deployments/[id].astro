@@ -1,0 +1,183 @@
+---
+import DeployLog from "../../../../components/deploys/DeployLog.astro";
+import ConfirmActionDialog from "../../../../components/services/ConfirmActionDialog.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import StatusPill from "../../../../components/ui/StatusPill.astro";
+import Time from "../../../../components/ui/Time.astro";
+import UrlRow from "../../../../components/ui/UrlRow.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import {
+  deploymentPill,
+  deploymentPillLabel,
+  durationLabel,
+  TRIGGER_LABELS,
+} from "../../../../lib/deploys.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { dashboardPath, servicePath } from "../../../../lib/routes.ts";
+
+// A deployment's detail (spec 11.2) at its own address: Open service, Redeploy (apps and
+// Compose, not while building), Cancel (queued and building), the fields, and the build log,
+// which streams while it runs (client/deploy-log.ts) and refreshes the page when it ends.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const slug = ctx.workspace.slug;
+const deployment = await ctx.data.deployment(Astro.params.id ?? "");
+if (!deployment) Astro.response.status = 404;
+const list = dashboardPath(slug, "deployments");
+const serviceHref =
+  deployment?.service.id && deployment.project.id && deployment.environment.id
+    ? servicePath(slug, deployment.project.id, deployment.environment.id, deployment.service.id)
+    : null;
+const open = deployment
+  ? deployment.status === "queued" || deployment.status === "building"
+  : false;
+const source = deployment?.source ?? {};
+const provider =
+  source.type === "image"
+    ? "Container image"
+    : source.type === "upload"
+      ? "Uploaded archive"
+      : (source.provider ?? (source.type === "git" ? "Git URL" : null));
+const fields: [string, string | null][] = deployment
+  ? [
+      ["Deployment", deployment.title],
+      ["Error", deployment.error],
+      ["Type", deployment.service.kindLabel],
+      ["Source provider", provider],
+      [
+        "Repository",
+        source.repository ?? (source.type === "image" ? deployment.image : null) ?? null,
+      ],
+      ["Branch", source.branch ?? null],
+      ["Path", source.path ?? null],
+      ["Commit", deployment.commit],
+      ["Trigger", triggerLabel(deployment.trigger)],
+      ["Project", deployment.project.name],
+      ["Environment", deployment.environment.name],
+      ["Server", deployment.server.name],
+    ]
+  : [];
+const now = new Date();
+function triggerLabel(trigger: string): string {
+  const label = TRIGGER_LABELS[trigger] ?? trigger;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+---
+
+<AppShell ctx={ctx} title={deployment ? `${deployment.service.name} deployment` : "Deployment"} active="deployments">
+  {
+    !deployment ? (
+      <div class="nz-body">
+        <EmptyState title="Deployment not found" text="This deployment may have been removed or filtered out.">
+          <Button variant="outline" href={list}>All deployments</Button>
+        </EmptyState>
+      </div>
+    ) : (
+      <div class="nz-fill nz-deployment-page" data-deployment-detail={deployment.id} data-deploy-watch={open ? "" : undefined}>
+        <div class="nz-strip nz-strip--service nz-service-head">
+          <div class="nz-service-title">
+            <a href={list} class="nz-back" aria-label="Back to deployments" title="Back to deployments">
+              <Icon name="chevron-left" />
+            </a>
+            <h1 class="nz-title nz-title--service" title={deployment.service.name}>{deployment.service.name}</h1>
+          </div>
+          <div class="nz-service-actions">
+            {serviceHref && <Button variant="outline" href={serviceHref}>Open service</Button>}
+            {deployment.can.redeploy && (
+              <Button
+                variant="outline"
+                data-service-action="redeploy-deployment"
+                data-deployment-id={deployment.id}
+                data-deployment-base={`${list}/`}
+                data-confirm-text={`Redeploy ${deployment.service.name} in ${deployment.environment.name}?`}
+                data-confirm-label="Redeploy"
+              >
+                Redeploy
+              </Button>
+            )}
+            {deployment.can.cancel && (
+              <Button
+                variant="outline"
+                data-service-action="cancel"
+                data-deployment-id={deployment.id}
+                data-confirm-text="Cancel this deployment? The running version keeps serving."
+                data-confirm-label="Cancel deployment"
+                data-confirm-danger="true"
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div class="nz-body">
+          <div class="nz-acc-box">
+            <details class="nz-acc" open>
+              <summary class="nz-acc-head">
+                <Icon name="chevron-right" />
+                <h2 class="nz-acc-title">Deployment</h2>
+              </summary>
+              <dl class="nz-acc-body nz-deployment-facts" aria-label="Deployment details">
+                <div>
+                  <dt>Status</dt>
+                  <dd><StatusPill status={deploymentPill(deployment.status)} label={deploymentPillLabel(deployment.status, deployment.statusLabel)} kind="deploy" /></dd>
+                </div>
+                <div>
+                  <dt>URL</dt>
+                  <dd>
+                    {deployment.servingNewer ? (
+                      <span class="nz-dim">
+                        {deployment.servingNewer}
+                        {deployment.newerDeploymentId && (
+                          <>
+                            {" · "}
+                            <a class="nz-text-link" href={`${list}/${encodeURIComponent(deployment.newerDeploymentId)}`}>Open it</a>
+                          </>
+                        )}
+                      </span>
+                    ) : deployment.urls.length > 0 ? (
+                      <span class="nz-stack-sm">{deployment.urls.map((url) => <UrlRow url={url} />)}</span>
+                    ) : (
+                      <span class="nz-dim">-</span>
+                    )}
+                  </dd>
+                </div>
+                {fields.filter(([, value]) => value).map(([label, value]) => (
+                  <div>
+                    <dt>{label}</dt>
+                    <dd class:list={[(label === "Commit" || label === "Repository") && "nz-code", label === "Error" && "nz-danger-text"]}>{value}</dd>
+                  </div>
+                ))}
+                <div>
+                  <dt>Deployed</dt>
+                  <dd><Time date={deployment.createdAt} now={now} /></dd>
+                </div>
+                <div>
+                  <dt>Duration</dt>
+                  <dd>{durationLabel(deployment.durationMs, deployment.running)}</dd>
+                </div>
+              </dl>
+            </details>
+            <details class="nz-acc" open>
+              <summary class="nz-acc-head">
+                <Icon name="chevron-right" />
+                <h2 class="nz-acc-title">
+                  Build logs
+                  {open && <span class="nz-dim"> · <span data-log-state>{deployment.statusLabel}</span></span>}
+                </h2>
+              </summary>
+              <div class="nz-acc-body">
+                <DeployLog deploymentId={deployment.id} autostart={!open} live={open} full label="Build logs" />
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">
+    <ConfirmActionDialog />
+  </Fragment>
+</AppShell>

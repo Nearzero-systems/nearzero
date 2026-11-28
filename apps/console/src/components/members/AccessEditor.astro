@@ -1,0 +1,177 @@
+---
+import {
+  CAPABILITIES,
+  CAPABILITIES_INTRO,
+  CAPABILITY_GROUPS,
+  CAPABILITY_KEYS,
+} from "@nearzero/shared";
+import type { ProjectTree, ScopeOption } from "../../lib/data/index.ts";
+
+/**
+ * What a policy or a member's direct grants allow (spec 04 4.7): capabilities by group, the
+ * project → environment → service tree, servers and Git accounts. Shared by the policy dialog
+ * and the member access dialog; client/access-editor.ts reads and fills it. Each item has a
+ * [data-from] slot for the member dialog's "From <policy>" marks.
+ */
+interface Props {
+  id: string;
+  projects: ProjectTree[];
+  servers: ScopeOption[];
+  gitAccounts: ScopeOption[];
+  /** "What it allows" for a policy, "What they can do" for a member. */
+  capabilitiesTitle: string;
+  /** Whose capabilities these are, for the intro above them (31a G1-05). */
+  holder: "policy" | "member";
+}
+
+const { id, projects, servers, gitAccounts, capabilitiesTitle, holder } = Astro.props;
+const groups = CAPABILITY_GROUPS.map((group) => ({
+  group,
+  keys: CAPABILITY_KEYS.filter((key) => CAPABILITIES[key].group === group),
+}));
+---
+
+<div class="nz-access" data-access-editor id={id}>
+  <fieldset class="nz-access-section">
+    <legend class="nz-subtitle">{capabilitiesTitle}</legend>
+    <p class="nz-dim">{CAPABILITIES_INTRO[holder]}</p>
+    <div class="nz-capability-groups">
+      {
+        groups.map(({ group, keys }) => (
+          <div class="nz-capability-group">
+            <p class="nz-eyebrow">{group}</p>
+            {keys.map((key) => (
+              <label class="nz-check nz-check--hinted">
+                <input type="checkbox" data-capability value={key} />
+                <span class="nz-check-body">
+                  <span>{CAPABILITIES[key].label}</span>
+                  <span class="nz-from" data-from={`capability:${key}`} hidden></span>
+                  <span class="nz-check-hint">{CAPABILITIES[key].hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+  </fieldset>
+
+  <fieldset class="nz-access-section">
+    <legend class="nz-subtitle">Projects and environments</legend>
+    <label class="nz-check">
+      <input type="checkbox" data-all="projects" />
+      <span>All projects, environments and services, including new ones</span>
+      <span class="nz-from" data-from="all:projects" hidden></span>
+    </label>
+    {
+      projects.length === 0 ? (
+        <p class="nz-dim" data-tree-empty>No projects yet. Projects created later can be added here.</p>
+      ) : (
+        <ul class="nz-tree" data-tree>
+          {projects.map((project) => (
+            <li>
+              <label class="nz-check">
+                <input type="checkbox" data-tree-key={`project:${project.id}`} />
+                <span class="font-medium">{project.name}</span>
+                <span class="nz-from" data-from={`project:${project.id}`} hidden></span>
+              </label>
+              {project.environments.length > 0 && (
+                <ul>
+                  {project.environments.map((environment) => (
+                    <li>
+                      <label class="nz-check">
+                        <input
+                          type="checkbox"
+                          data-tree-key={`environment:${environment.id}`}
+                          data-tree-parent={`project:${project.id}`}
+                        />
+                        <span>{environment.name}</span>
+                        <span class="nz-from" data-from={`environment:${environment.id}`} hidden></span>
+                      </label>
+                      {environment.services.length > 0 && (
+                        <ul>
+                          {environment.services.map((service) => (
+                            <li>
+                              <label class="nz-check">
+                                <input
+                                  type="checkbox"
+                                  data-tree-key={`service:${service.id}`}
+                                  data-tree-parent={`environment:${environment.id}`}
+                                />
+                                <span>{service.name}</span>
+                                <span class="nz-from" data-from={`service:${service.id}`} hidden></span>
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )
+    }
+    <p class="nz-hint">A ticked project or environment with nothing ticked inside it covers everything in it, including what's added later.</p>
+  </fieldset>
+
+  <fieldset class="nz-access-section">
+    <legend class="nz-subtitle">Servers</legend>
+    <label class="nz-check">
+      <input type="checkbox" data-all="servers" />
+      <span>All servers, including new ones</span>
+      <span class="nz-from" data-from="all:servers" hidden></span>
+    </label>
+    {
+      servers.length === 0 ? (
+        <p class="nz-dim">No servers yet. Servers you add appear here.</p>
+      ) : (
+        <div class="nz-option-list" data-servers>
+          {servers.map((server) => (
+            <label class="nz-check">
+              <input type="checkbox" data-server value={server.id} />
+              <span>{server.name}</span>
+              {server.detail && <span class="nz-dim">{server.detail}</span>}
+              <span class="nz-from" data-from={`server:${server.id}`} hidden></span>
+            </label>
+          ))}
+        </div>
+      )
+    }
+  </fieldset>
+
+  <fieldset class="nz-access-section">
+    <legend class="nz-subtitle">Git accounts</legend>
+    <label class="nz-check">
+      <input type="checkbox" data-all="git" />
+      <span>All Git accounts, including other people's private ones</span>
+      <span class="nz-from" data-from="all:git" hidden></span>
+    </label>
+    {
+      gitAccounts.length === 0 ? (
+        <p class="nz-dim">No Git accounts yet. Accounts connected later appear here; ones shared with everyone are always included.</p>
+      ) : (
+        <div class="nz-option-list" data-git-accounts>
+          {gitAccounts.map((account) =>
+            account.shared ? (
+              <label class="nz-check">
+                <input type="checkbox" checked disabled />
+                <span>{account.name}</span>
+                <span class="nz-dim">Shared with everyone</span>
+              </label>
+            ) : (
+              <label class="nz-check">
+                <input type="checkbox" data-git value={account.id} />
+                <span>{account.name}</span>
+                {account.detail && <span class="nz-dim">{account.detail}</span>}
+                <span class="nz-from" data-from={`git:${account.id}`} hidden></span>
+              </label>
+            ),
+          )}
+        </div>
+      )
+    }
+  </fieldset>
+</div>

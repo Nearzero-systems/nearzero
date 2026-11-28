@@ -1,0 +1,129 @@
+---
+import "@fontsource-variable/geist/wght.css";
+import "@fontsource-variable/geist-mono/wght.css";
+import "@fontsource-variable/space-grotesk/wght.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/instrument-serif/400.css";
+import "@fontsource/instrument-serif/400-italic.css";
+import "../styles/global.css";
+import { ClientRouter } from "astro:transitions";
+import Sky from "../components/shell/Sky.astro";
+import {
+  absoluteUrl,
+  consoleOrigin,
+  DEFAULT_DESCRIPTION,
+  documentTitle,
+  PREVIEW_IMAGE,
+  SITE_NAME,
+} from "../lib/page-meta.ts";
+import { PAGE_COLORS, resolveTheme, THEME_COOKIE, themeBootScript } from "../lib/theme.ts";
+
+/**
+ * The HTML document every page renders in. The theme comes from the saved choice (a cookie), so
+ * the first paint is already right; a tiny inline script only corrects pages restored from the
+ * browser's cache. Public pages use it too (spec 21.2), so signing in never changes the theme.
+ * Every font is self-hosted and declared here; the browser downloads a face only when a page in
+ * the current theme uses it (Geist and Instrument Serif in Dusk, Space Grotesk and IBM Plex Mono
+ * in Light and Dark, spec 21.10).
+ *
+ * Its head carries what spec 21.9b asks of every page: the title "<Page> · Nearzero" ("Nearzero"
+ * alone on the home), a one-sentence description, noindex, the owner's mark as the tab icon
+ * (SVG, favicon.ico and the touch icon), the web manifest, and theme-color set to the theme's
+ * `page` token (client/theme.ts keeps it in step when the theme changes or a page is swapped
+ * in). Public pages add the link preview (`preview`): Open Graph and Twitter tags whose image
+ * address is absolute, built from the address the console was reached at.
+ */
+interface Props {
+  /** The page's own name; "Nearzero" on the home. */
+  title: string;
+  /** One sentence about the page. */
+  description?: string;
+  /** Open Graph and Twitter tags: sign-in, registration and invitation pages only. */
+  preview?: boolean;
+  /** In-app navigation without full reloads (spec 21.7). Off for public forms. */
+  router?: boolean;
+  /** The Light and Dark background grid: sign-in and registration pages only (spec 21.10). */
+  grid?: boolean;
+  bodyClass?: string;
+}
+
+const {
+  title,
+  description = DEFAULT_DESCRIPTION,
+  preview = false,
+  router = true,
+  grid = false,
+  bodyClass,
+} = Astro.props;
+const { theme, tone } = resolveTheme(Astro.cookies.get(THEME_COOKIE)?.value);
+const flash = Astro.locals.flash ?? [];
+const fullTitle = documentTitle(title);
+let origin = "";
+if (preview) {
+  let peer: string | undefined;
+  try {
+    peer = Astro.clientAddress;
+  } catch {
+    peer = undefined;
+  }
+  origin = consoleOrigin(Astro.request, peer, Astro.url);
+}
+---
+
+<!doctype html>
+<html
+  lang="en"
+  data-theme={theme}
+  data-tone={tone}
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content={PAGE_COLORS[theme]} />
+    <script is:inline set:html={themeBootScript()} />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" data-astro-transition-persist="nz-icon-ico" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" data-astro-transition-persist="nz-icon-svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" data-astro-transition-persist="nz-touch-icon" />
+    <link rel="manifest" href="/manifest.webmanifest" data-astro-transition-persist="nz-manifest" />
+    {
+      preview && (
+        <>
+          <meta property="og:type" content="website" />
+          <meta property="og:site_name" content={SITE_NAME} />
+          <meta property="og:title" content={fullTitle} />
+          <meta property="og:description" content={description} />
+          <meta property="og:url" content={absoluteUrl(origin, Astro.url.pathname)} />
+          <meta property="og:image" content={absoluteUrl(origin, PREVIEW_IMAGE.path)} />
+          <meta property="og:image:type" content="image/png" />
+          <meta property="og:image:width" content={String(PREVIEW_IMAGE.width)} />
+          <meta property="og:image:height" content={String(PREVIEW_IMAGE.height)} />
+          <meta property="og:image:alt" content={SITE_NAME} />
+          <meta name="twitter:card" content="summary_large_image" />
+          <meta name="twitter:title" content={fullTitle} />
+          <meta name="twitter:description" content={description} />
+          <meta name="twitter:image" content={absoluteUrl(origin, PREVIEW_IMAGE.path)} />
+        </>
+      )
+    }
+    <slot name="head" />
+    {router && <ClientRouter fallback="swap" />}
+  </head>
+  <body class:list={[grid && "nz-grid", bodyClass]}>
+    <Sky />
+    <slot />
+    {
+      flash.map((item) => (
+        <template data-toast data-tone={item.tone}>
+          {item.message}
+        </template>
+      ))
+    }
+    <script>
+      import "../client/boot.ts";
+    </script>
+  </body>
+</html>

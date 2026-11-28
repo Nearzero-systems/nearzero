@@ -1,0 +1,96 @@
+---
+import type { ServiceDetail, ServiceVariablesView } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import VariablesPanel from "../variables/VariablesPanel.astro";
+
+/**
+ * A service's Variables tab (spec 05 5.5, 21.10; a section on the Compose page): one card, at
+ * most about 890px wide, with Show values at the top; its own variables with Edit, a hairline,
+ * then the environment's shared ones, read-only, with "(its own wins)" where the service
+ * overrides one and "Edit shared" beside their title.
+ */
+interface Props {
+  service: ServiceDetail;
+  variables: ServiceVariablesView;
+  sharedHref: string;
+}
+
+const { service, variables, sharedHref } = Astro.props;
+const env = variables.environment.name;
+const ownNames = new Set(variables.own.variables.map((variable) => variable.name));
+const shared = variables.shared;
+const sharedMasked = shared
+  ? {
+      variables: shared.variables.map((variable) => ({
+        name: variable.name,
+        empty: variable.empty,
+      })),
+      count: shared.count,
+      sizeBytes: 0,
+      version: 0,
+      updatedAt: null,
+      updatedBy: null,
+      unreadable: null,
+      warnings: [],
+    }
+  : null;
+const ownId = `nz-own-variables-${service.id}`;
+const sharedId = `nz-shared-of-${service.id}`;
+// "Show values" on the card reveals its own values, and the shared ones for people who may
+// edit them.
+const revealIds = [
+  ...(variables.own.unreadable ? [] : [ownId]),
+  ...(sharedMasked && variables.can.editShared ? [sharedId] : []),
+];
+const overridden = shared
+  ? shared.variables
+      .filter((variable) => variable.overridden || ownNames.has(variable.name))
+      .map((variable) => variable.name)
+  : [];
+---
+
+<section class="nz-card nz-vars-card" aria-labelledby={`nz-vars-card-${service.id}`}>
+  <div class="nz-vars-card-head">
+    <div class="min-w-0">
+      <h2 class="nz-subtitle" id={`nz-vars-card-${service.id}`}>Variables</h2>
+      <p class="nz-dim">
+        Only for {service.name} in {env}. The same service in another environment has its own.
+      </p>
+    </div>
+    {
+      revealIds.length > 0 && (
+        <Button variant="outline" data-vars-reveal data-vars-for={revealIds.join(" ")} aria-pressed="false">
+          <span data-vars-reveal-label>Show values</span>
+        </Button>
+      )
+    }
+  </div>
+  <VariablesPanel
+    id={ownId}
+    title="Its own"
+    apiPath={`/services/${service.id}/variables`}
+    variables={variables.own}
+    canEdit={variables.can.edit}
+    emptyTitle="No variables of its own yet."
+    variant="inline"
+  />
+  {
+    sharedMasked ? (
+      <VariablesPanel
+        id={sharedId}
+        title={`Shared in ${env}`}
+        apiPath={`/environments/${variables.environment.id}/variables`}
+        variables={sharedMasked}
+        canEdit={false}
+        readOnly
+        overridden={overridden}
+        emptyTitle="No shared variables yet."
+        variant="inline"
+        editHref={variables.can.editShared ? sharedHref : undefined}
+        note={`Every service in ${env} gets these. One of its own with the same name wins.`}
+      />
+    ) : (
+      <p class="nz-inline-note nz-vars-note">You can't see this environment's variables. Ask an owner or admin for access.</p>
+    )
+  }
+</section>

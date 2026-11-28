@@ -1,0 +1,247 @@
+# Nearzero on this server (spec 03 3.1). The installer writes this file to /opt/nearzero/compose.yml
+# and every setting it reads to /opt/nearzero/.env beside it. Don't edit either by hand: run the
+# install command again to change settings, and use `sudo nearzero` to operate it.
+#
+# Services, each started only when its profile is listed in COMPOSE_PROFILES in .env:
+#   control   the console (4321), the API (3000) and the runner link (3443, TLS)   always
+#   runner    this server's runner: deploys here, keeps the router running         always
+#   postgres  the bundled database, never published                                profile "database" (local data mode)
+#   dns       the built-in DNS server on TCP and UDP 53, only with a managed zone  profile "dns"
+#             (for a zone connected later in the console, the runner starts the same server)
+#
+# The router (Traefik on 80 and 443, container nearzero-router) isn't defined here: the runner owns
+# it, as on every other server (spec 25 D1, 23.2). The runner creates it, recreates it only when its
+# settings change, and restarts it when it stops. The "router" profile in COMPOSE_PROFILES still
+# makes the installer download the router's image.
+#
+# The project, container, network and volume names are 1.0's own and never 0.1.x's (spec 29.5 "No
+# shared names with 0.1.x"): the project is nearzero1, the database and DNS containers are
+# nearzero1-postgres and nearzero1-dns. The networks and volumes are created by the installer
+# (external here), so no compose run ever adopts, recreates or deletes them.
+#
+# Every container carries dev.nearzero.managed=true and dev.nearzero.edition=1, the label naming
+# 1.0, plus the move attempt while a move from 0.1.x runs: rollback and the uninstaller remove
+# only what carries it (spec 03 3.3, 29.5).
+
+name: nearzero1
+
+x-managed: &managed
+  dev.nearzero.managed: "true"
+  dev.nearzero.edition: "1"
+  dev.nearzero.migration-attempt: ${NEARZERO_MIGRATION_ATTEMPT:-}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  control:
+    image: ${NEARZERO_IMAGE:?NEARZERO_IMAGE is missing from /opt/nearzero/.env; rerun the installer}
+    container_name: nearzero-control
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    # Every setting in .env reaches the control plane, including optional ones like
+    # NEARZERO_CONSOLE_URL, NEARZERO_TRUSTED_PROXIES and the instance email settings.
+    env_file:
+      - path: .env
+    environment:
+      NEARZERO_ENV: production
+      # A one-time join token for the runner below is left here at every start.
+      NEARZERO_RUNNER_HANDOFF_DIR: /var/lib/nearzero/handoff
+      # The runner link's certificate, made at the first start and kept in its own volume, so
+      # every server that pins its fingerprint keeps connecting after restarts, upgrades and
+      # reruns (spec 31 "Remote runners are always encrypted").
+      NEARZERO_RUNNER_TLS_DIR: /var/lib/nearzero/runner-link
+      NEARZERO_RUNNER_LINK_LISTEN_PORT: "3443"
+    volumes:
+      - runner-handoff:/var/lib/nearzero/handoff
+      - runner-link:/var/lib/nearzero/runner-link
+    ports:
+      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_CONSOLE_PORT:-4321}:4321"
+      - "${NEARZERO_MANAGEMENT_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_API_PORT:-3000}:3000"
+      # Only runners connect here, over TLS with the certificate above, so it listens on every
+      # address even when the console is kept on this server.
+      - "${NEARZERO_RUNNER_LINK_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_RUNNER_LINK_PORT:-3443}:3443"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    networks:
+      - internal
+      - edge
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+    labels:
+      <<: *managed
+      dev.nearzero.component: control
+
+  postgres:
+    image: ${NEARZERO_POSTGRES_IMAGE:-postgres:18.6-alpine}
+    container_name: nearzero1-postgres
+    profiles:
+      - database
+    restart: unless-stopped
+    shm_size: 128m
+    environment:
+      POSTGRES_USER: nearzero
+      POSTGRES_DB: nearzero
+      POSTGRES_PASSWORD: ${NEARZERO_DATABASE_PASSWORD:-}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nearzero -d nearzero"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    logging: *logging
+    labels:
+      <<: *managed
+      dev.nearzero.component: database
+
+  # The Nearzero host's runner (spec 25 D1): the same runner every server runs. It enrolls itself
+  # with the token the control plane leaves in the shared handoff folder, talks to Docker through
+  # its socket (root-equivalent, as on every server), writes the router's files in ./router and
+  # keeps the router container running. Every capability is dropped; it reads the handoff token
+  # through the control plane's group.
+  runner:
+    image: ${NEARZERO_IMAGE:?NEARZERO_IMAGE is missing from /opt/nearzero/.env; rerun the installer}
+    container_name: nearzero-runner
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    entrypoint: ["bun", "--no-install", "/app/runner/main.js"]
+    command: ["run"]
+    user: "0:0"
+    group_add:
+      - "10001"
+    environment:
+      NEARZERO_CONTROL_URL: http://nearzero-control:3000
+      NEARZERO_RUNNER_CONTAINERIZED: "true"
+      # The host's time zone name (the installer reads it from the host), so the runner reports a
+      # zone that follows daylight saving rather than its container's fixed clock offset.
+      TZ: ${NEARZERO_TIME_ZONE:-}
+      NEARZERO_RUNNER_STATE_DIR: /var/lib/nearzero-runner
+      NEARZERO_RUNNER_HANDOFF_DIR: /var/lib/nearzero/handoff
+      NEARZERO_ROUTER_DIR: /etc/nearzero/router
+      NEARZERO_ROUTER_IMAGE: ${NEARZERO_ROUTER_IMAGE:-traefik:v3.7.18}
+      NEARZERO_ACME_EMAIL: ${NEARZERO_ACME_EMAIL:-}
+      NEARZERO_HTTP_PORT: ${NEARZERO_HTTP_PORT:-80}
+      NEARZERO_HTTPS_PORT: ${NEARZERO_HTTPS_PORT:-443}
+      # The built-in DNS server's files: the runner publishes managed zones there and starts the
+      # server when a zone is connected in the console (spec 10.8).
+      NEARZERO_DNS_DIR: /etc/nearzero/dns
+      NEARZERO_DNS_IMAGE: ${NEARZERO_DNS_IMAGE:-coredns/coredns:1.15.0}
+      NEARZERO_DNS_BIND_ADDRESS: ${NEARZERO_DNS_BIND_ADDRESS:-0.0.0.0}
+      NEARZERO_DNS_PORT: ${NEARZERO_DNS_PORT:-53}
+      NEARZERO_DNS_NETWORK: nearzero-internal
+      # While a move from 0.1.x runs, what the runner creates carries the attempt too.
+      NEARZERO_MIGRATION_ATTEMPT: ${NEARZERO_MIGRATION_ATTEMPT:-}
+      # Builder image overrides, each pinned by digest, and the metrics sample interval (spec 03
+      # 3.5); empty means the release's own.
+      NEARZERO_HEROKU_BUILDER_IMAGE: ${NEARZERO_HEROKU_BUILDER_IMAGE:-}
+      NEARZERO_PAKETO_BUILDER_IMAGE: ${NEARZERO_PAKETO_BUILDER_IMAGE:-}
+      NEARZERO_RAILPACK_FRONTEND_IMAGE: ${NEARZERO_RAILPACK_FRONTEND_IMAGE:-}
+      NEARZERO_STATIC_NGINX_IMAGE: ${NEARZERO_STATIC_NGINX_IMAGE:-}
+      NEARZERO_METRICS_REFRESH_SECONDS: ${NEARZERO_METRICS_REFRESH_SECONDS:-}
+      # Storage usage is the host's root filesystem, not this container's (30c R3-34): the
+      # runner measures the filesystem of the file mounted below.
+      NEARZERO_HOST_ROOT_PATH: /run/nearzero-host-root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./router:/etc/nearzero/router
+      - ./dns:/etc/nearzero/dns
+      - runner-state:/var/lib/nearzero-runner
+      - runner-handoff:/var/lib/nearzero/handoff:ro
+      # One file of the host's root filesystem (every Linux has /etc/passwd there, and it holds
+      # nothing secret), read-only: the runner reads that filesystem's size and free space and
+      # gains nothing it could write, and no folder of the host (30c R3-34).
+      - /etc/passwd:/run/nearzero-host-root:ro
+    networks:
+      - internal
+    cap_drop:
+      - ALL
+    # label=disable: under SELinux (Fedora's moby-engine runs dockerd with --selinux-enabled) a
+    # confined container may neither use the Docker socket nor write ./router (C2-08). The runner
+    # holds the socket, which is root on this server anyway, so SELinux confinement adds nothing;
+    # the containers it starts (the router, the DNS server) stay confined, with their folders
+    # relabelled. Where SELinux is off, the option does nothing.
+    security_opt:
+      - no-new-privileges:true
+      - label=disable
+    read_only: true
+    tmpfs:
+      - /tmp
+    # The image's health check is the console's and the API's; the runner reports to the control
+    # plane instead.
+    healthcheck:
+      disable: true
+    logging: *logging
+    labels:
+      <<: *managed
+      dev.nearzero.component: runner
+
+  dns:
+    image: ${NEARZERO_DNS_IMAGE:-coredns/coredns:1.15.0}
+    container_name: nearzero1-dns
+    profiles:
+      - dns
+    restart: unless-stopped
+    command: ["-conf", "/etc/nearzero/dns/Corefile"]
+    ports:
+      - "${NEARZERO_DNS_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_DNS_PORT:-53}:1053/udp"
+      - "${NEARZERO_DNS_BIND_ADDRESS:-0.0.0.0}:${NEARZERO_DNS_PORT:-53}:1053/tcp"
+    volumes:
+      # z relabels the folder under SELinux so this confined server may read it (C2-08); without
+      # SELinux it does nothing.
+      - ./dns:/etc/nearzero/dns:ro,z
+    networks:
+      - internal
+    # The CoreDNS binary carries the bind-service file capability and won't start without it;
+    # every other capability is dropped.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    logging: *logging
+    labels:
+      <<: *managed
+      dev.nearzero.component: dns
+
+# Created by the installer with 1.0's labels before anything starts.
+networks:
+  # The control plane and its database. Apps never join it.
+  internal:
+    name: nearzero-internal
+    external: true
+  # The private network the router and what it serves share: the console and every app.
+  edge:
+    name: nearzero-edge
+    external: true
+
+volumes:
+  postgres-data:
+    name: nearzero-postgres-data
+    external: true
+  # The router's certificates live in nearzero-router-certificates, which the runner creates
+  # beside the router (with 1.0's labels, so rollback and uninstall find it).
+  runner-state:
+    name: nearzero-runner-state
+    external: true
+  runner-handoff:
+    name: nearzero-runner-handoff
+    external: true
+  runner-link:
+    name: nearzero-runner-link
+    external: true

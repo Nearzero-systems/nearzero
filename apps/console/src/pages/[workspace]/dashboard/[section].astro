@@ -1,0 +1,34 @@
+---
+import Button from "../../../components/ui/Button.astro";
+import EmptyState from "../../../components/ui/EmptyState.astro";
+import PageHead from "../../../components/ui/PageHead.astro";
+import AppShell from "../../../layouts/AppShell.astro";
+import { movedDashboardPage } from "../../../lib/legacy-paths.ts";
+import { dashboardContext } from "../../../lib/page.ts";
+import { projectsPath } from "../../../lib/routes.ts";
+
+// A dashboard address that matches no page: "Page not found", inside the shell, with the way
+// back spec 21.9b asks of every 404. No sidebar item is current: the page is none of them.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+// 0.1.79's own addresses for pages that moved (31a G1-03).
+const moved = movedDashboardPage(ctx.workspace.slug, Astro.params.section ?? "", Astro.url.search);
+if (moved) return Astro.redirect(moved, 301);
+Astro.response.status = 404;
+---
+
+<AppShell
+  ctx={ctx}
+  title="Page not found"
+  description="This address doesn't match a page in this Nearzero console."
+>
+  <PageHead title="Page not found" />
+  <div class="nz-body">
+    <EmptyState
+      title="Nothing here"
+      text="This address doesn't match a page. Check the link, or go back to your projects."
+    >
+      <Button variant="outline" href={projectsPath(ctx.workspace.slug)}>Go to your projects</Button>
+    </EmptyState>
+  </div>
+</AppShell>

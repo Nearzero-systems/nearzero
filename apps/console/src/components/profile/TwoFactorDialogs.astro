@@ -1,0 +1,153 @@
+---
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Two-factor sign-in (spec 4.6, G12). Enable: password (and an optional issuer label) → the QR
+ * code, the secret and 10 backup codes with Download and Copy → a 6-digit code → "Enable 2FA".
+ * Manage: password → "Regenerate backup codes" (shows the new ones) or "Disable 2FA" (confirm).
+ * Checking the password never changes the codes. client/two-factor.ts drives the steps.
+ */
+interface Props {
+  email: string;
+}
+
+const { email } = Astro.props;
+---
+
+<Dialog id="nz-2fa-enable" title="Enable two-factor sign-in" wide>
+  <div data-2fa-enable data-email={email}>
+    <form method="post" class="nz-form" data-2fa-step="password" data-api="POST /me/two-factor/setup" data-api-manual data-validate novalidate>
+      <FormError />
+      <p class="nz-dim">Confirm it's you. Nothing changes until you enter a code from your app.</p>
+      <Field
+        id="nz-2fa-setup-password"
+        name="password"
+        type="password"
+        label="Password"
+        autocomplete="current-password"
+        data-required="Enter your current password."
+        autofocus
+      />
+      <Field
+        id="nz-2fa-setup-issuer"
+        name="issuer"
+        label="Issuer label"
+        placeholder="Nearzero"
+        hint="Optional. The name your authenticator app shows for this account."
+        maxlength={60}
+        data-omit-empty
+      />
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-dialog-close>Cancel</Button>
+        <Button variant="primary" type="submit">Continue</Button>
+      </div>
+    </form>
+    <div data-2fa-step="setup" hidden>
+      <div class="nz-2fa-setup">
+        <div class="nz-qr">
+          <img data-2fa-qr alt="QR code to scan with your authenticator app" width="180" height="180" />
+        </div>
+        <div class="flex min-w-0 flex-col gap-3">
+          <div>
+            <p class="nz-label">Scan the QR code with your authenticator app</p>
+            <p class="nz-dim">Or enter this secret by hand:</p>
+            <div class="nz-url mt-1">
+              <code class="nz-url-text" data-2fa-secret></code>
+              <Button variant="icon" icon="copy" label="Copy secret" data-copy="" data-2fa-copy-secret />
+            </div>
+          </div>
+          <div>
+            <p class="nz-label">Backup codes</p>
+            <p class="nz-dim">
+              Each works once if you lose your app. Keep them somewhere safe: they aren't shown again.
+            </p>
+            <ol class="nz-codes" data-2fa-codes></ol>
+            <div class="flex flex-wrap gap-2">
+              <Button variant="outline" icon="download" data-2fa-download>Download</Button>
+              <Button variant="outline" icon="copy" data-copy="" data-2fa-copy-codes>Copy</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <form method="post" class="nz-form mt-3" data-2fa-step-form="enable" data-api="POST /me/two-factor/enable" data-api-manual data-validate novalidate>
+        <FormError />
+        <Field
+          id="nz-2fa-enable-code"
+          name="code"
+          label="6-digit code"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength={6}
+          placeholder="123456"
+          data-required="Enter the 6-digit code from your authenticator app."
+        />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Enable 2FA</Button>
+        </div>
+      </form>
+    </div>
+  </div>
+</Dialog>
+
+<Dialog id="nz-2fa-manage" title="Manage two-factor sign-in">
+  <div data-2fa-manage data-email={email}>
+    <form method="post" class="nz-form" data-2fa-step="password" data-api="POST /me/two-factor/verify-password" data-api-manual data-validate novalidate>
+      <FormError />
+      <p class="nz-dim">Confirm it's you. Your backup codes stay as they are.</p>
+      <Field
+        id="nz-2fa-manage-password"
+        name="password"
+        type="password"
+        label="Password"
+        autocomplete="current-password"
+        data-required="Enter your current password."
+        autofocus
+      />
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-dialog-close>Cancel</Button>
+        <Button variant="primary" type="submit">Continue</Button>
+      </div>
+    </form>
+    <div data-2fa-step="choose" hidden>
+      <FormError />
+      <div class="nz-rows">
+        <div class="nz-row">
+          <div class="nz-row-label">
+            <p class="font-medium">Backup codes</p>
+            <p class="nz-dim">New codes replace the old ones, which stop working.</p>
+          </div>
+          <Button variant="outline" data-2fa-regenerate>Regenerate backup codes</Button>
+        </div>
+        <div class="nz-row">
+          <div class="nz-row-label">
+            <p class="font-medium">Two-factor sign-in</p>
+            <p class="nz-dim">Sign in with your password alone.</p>
+          </div>
+          <Button variant="danger" data-2fa-disable-ask>Disable 2FA</Button>
+        </div>
+      </div>
+      <div class="nz-confirm mt-3" data-2fa-disable-confirm hidden>
+        <p class="font-medium">Are you absolutely sure?</p>
+        <p class="nz-dim">Two-factor sign-in turns off for your account, which makes it less secure. Signing in will ask only for your password.</p>
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-2fa-disable-cancel>Keep it on</Button>
+          <Button variant="danger" data-2fa-disable>Disable 2FA</Button>
+        </div>
+      </div>
+    </div>
+    <div data-2fa-step="codes" hidden>
+      <p class="nz-label">Your new backup codes</p>
+      <p class="nz-dim">The old codes no longer work. Keep these somewhere safe: they aren't shown again.</p>
+      <ol class="nz-codes" data-2fa-codes></ol>
+      <div class="nz-dialog-foot">
+        <Button variant="outline" icon="download" data-2fa-download>Download</Button>
+        <Button variant="outline" icon="copy" data-copy="" data-2fa-copy-codes>Copy</Button>
+        <Button variant="primary" data-dialog-close>Done</Button>
+      </div>
+    </div>
+  </div>
+</Dialog>

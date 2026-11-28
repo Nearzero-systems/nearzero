@@ -1,0 +1,41 @@
+---
+import Icon from "./Icon.astro";
+
+/**
+ * One collapsible row of a service page's body (spec 21.10): a 28px header with a 14px chevron,
+ * the bold 12px label and an ⓘ with what the section holds, then its content. Folds stack inside
+ * one bordered box (`.nz-folds`), split by hairlines. `danger` draws the label in red (Danger
+ * zone). Anything in the `actions` slot sits at the right of the header.
+ */
+interface Props {
+  title: string;
+  /** What the section holds, shown on the ⓘ. */
+  info?: string;
+  open?: boolean;
+  danger?: boolean;
+  id?: string;
+  class?: string;
+  [attribute: `data-${string}`]: string | boolean | undefined;
+}
+
+const { title, info, open = false, danger = false, id, class: className, ...rest } = Astro.props;
+const headingId = id ? `${id}-title` : undefined;
+---
+
+<details class:list={["nz-fold", danger && "nz-fold--danger", className]} open={open} id={id} {...rest}>
+  <summary class="nz-fold-head">
+    <Icon name="chevron-right" class="nz-fold-chevron" size={14} />
+    <h2 class="nz-fold-title" id={headingId}>{title}</h2>
+    {
+      info && (
+        <span class="nz-fold-info" title={info} aria-label={info} role="img">
+          <Icon name="info" size={12} />
+        </span>
+      )
+    }
+    {Astro.slots.has("actions") && <span class="nz-fold-actions"><slot name="actions" /></span>}
+  </summary>
+  <div class="nz-fold-body">
+    <slot />
+  </div>
+</details>

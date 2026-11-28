@@ -1,0 +1,122 @@
+---
+import { BACKUP_MESSAGES } from "@nearzero/shared/browser";
+import type { BackupsPanelView } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Restore (spec 08 8.3 steps 1–4, 17.3): pick a destination and folder (and the volume), "Find
+ * backups" lists only this service's own files (G1), choose one, "Restore into database" /
+ * "Restore into volume", type the service name, then follow the live log until it ends as
+ * "Restored" or "Restore failed". client/backups.ts moves through the steps.
+ */
+interface Props {
+  panel: BackupsPanelView;
+}
+
+const { panel } = Astro.props;
+const database = panel.kind === "database";
+const destinations = panel.destinations.map((item, index) => ({
+  value: item.id,
+  label: `${item.name} (${item.bucket})`,
+  selected: index === 0,
+}));
+const volumes = (panel.volumes?.volumes ?? []).map((volume, index) => ({
+  value: volume.name,
+  label: volume.name,
+  selected: index === 0,
+}));
+const folder = panel.schedules[0]?.folder ?? "nightly";
+const intoLabel = database ? "Restore into database" : "Restore into volume";
+const warning = database
+  ? BACKUP_MESSAGES.restoreDatabaseWarning
+  : BACKUP_MESSAGES.restoreVolumeWarning;
+// Which database the backup goes into (R3-45); libSQL has one database per service.
+const named = database && panel.service.kind !== "libsql";
+---
+
+<Dialog id="nz-restore" title={`Restore ${panel.service.name}`} wide>
+  <div
+    data-restore
+    data-service-id={panel.service.id}
+    data-service-name={panel.service.name}
+    data-default-database={panel.defaultDatabase ?? ""}
+  >
+    <form class="nz-form" data-restore-find data-scripted novalidate>
+      <FormError />
+      <div class="nz-form-grid-2">
+        <Field id="nz-restore-destination" name="destinationId" label="Destination" as="select" options={destinations} />
+        <Field
+          id="nz-restore-folder"
+          name="folder"
+          label="Folder"
+          value={folder}
+          hint={`Backups of ${panel.service.appName} in this folder.`}
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      {!database && <Field id="nz-restore-volume" name="volume" label="Volume" as="select" options={volumes} />}
+      <div class="nz-form-actions">
+        <Button variant="outline" type="submit" icon="search" data-restore-find-button>Find backups</Button>
+      </div>
+    </form>
+
+    <div class="nz-stack-sm mt-3" data-restore-files hidden>
+      <p class="font-medium">Pick a backup</p>
+      <p class="nz-dim" data-restore-empty hidden>{BACKUP_MESSAGES.noFiles}</p>
+      <fieldset class="nz-choice-list nz-restore-files" data-restore-list>
+        <legend class="nz-visually-hidden">Backups</legend>
+      </fieldset>
+      <div class="nz-form-actions">
+        <Button variant="primary" data-restore-next disabled>{intoLabel}</Button>
+      </div>
+    </div>
+
+    <form class="nz-form mt-3" data-restore-confirm data-scripted hidden novalidate>
+      <FormError />
+      <p class="nz-inline-note" data-restore-warning>{warning}</p>
+      {
+        named && (
+          <Field
+            id="nz-restore-database"
+            name="database"
+            label="Restore into database"
+            hint="The database the backup was dumped from. Type another to load it there instead; one that doesn't exist yet is made."
+            autocomplete="off"
+            spellcheck="false"
+            data-restore-database
+          />
+        )
+      }
+      {
+        panel.service.kind === "libsql" && (
+          <p class="nz-dim">{BACKUP_MESSAGES.libsqlRestoreLimit}</p>
+        )
+      }
+      <p>
+        Restore <code class="nz-code" data-restore-chosen></code> into
+        {named ? <strong data-restore-into /> : panel.service.name}.
+      </p>
+      <div data-field>
+        <label for="nz-restore-confirm" class="nz-label">Type the service name to confirm</label>
+        <input id="nz-restore-confirm" name="confirm" class="nz-input" autocomplete="off" spellcheck="false" />
+        <p class="nz-field-error" data-field-error hidden></p>
+      </div>
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-restore-back>Back</Button>
+        <Button variant="danger" type="submit" data-restore-go disabled>{intoLabel}</Button>
+      </div>
+    </form>
+
+    <div class="nz-stack-sm mt-3" data-restore-progress hidden>
+      <p class="font-medium" data-restore-state aria-live="polite">Restoring…</p>
+      <pre class="nz-run-log" data-restore-log tabindex="0" aria-label="Restore log"></pre>
+      <div class="nz-dialog-foot">
+        <Button variant="primary" data-dialog-close>Close</Button>
+      </div>
+    </div>
+  </div>
+</Dialog>

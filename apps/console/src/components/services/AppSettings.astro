@@ -1,0 +1,239 @@
+---
+import type { ServiceDetail, ServiceHostnames, WebhookView } from "../../lib/data/index.ts";
+import { servicePort } from "../../lib/projects.ts";
+import { dashboardPath } from "../../lib/routes.ts";
+import { appSource, deploySettings } from "../../lib/runtime-rules.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Fold from "../ui/Fold.astro";
+import FormError from "../ui/FormError.astro";
+import Switch from "../ui/Switch.astro";
+import DangerZone from "./DangerZone.astro";
+import HostnameRows from "./HostnameRows.astro";
+
+/**
+ * An application's Settings tab (spec 06 6.6, 6.9, 21.10), one box of folds: Deployment settings
+ * (closed: Autodeploy and the deploy webhook for Git and image sources, Clean cache; upload
+ * sources have no webhook, 30b R2-03), Domains (open: the
+ * service port, each hostname with Copy, Visit and Manage, Add domain, the workspace's Domains),
+ * and the Danger zone (closed). Switches save at once (PATCH …/deploy-settings); the webhook is
+ * shown, copied and replaced by client/service-page.ts.
+ */
+interface Props {
+  service: ServiceDetail;
+  afterDelete: string;
+  workspace: string;
+  hostnames: ServiceHostnames | null;
+  webhook: WebhookView | null;
+}
+
+const { service, afterDelete, workspace, hostnames, webhook } = Astro.props;
+const source = appSource(service.settings);
+const git = source.type === "git" || source.type === "provider";
+// Image apps redeploy when their registry calls the webhook (30b R2-03).
+const image = source.type === "image";
+const hooks = git || image;
+const settings = deploySettings(service.settings);
+const port = servicePort(service);
+/** No port was typed: deploys use the one the image declares (30b R2-01). */
+const detected = service.settings.servicePortAuto === true;
+const configure = service.can.configure;
+const list = hostnames?.hostnames ?? [];
+const domainsHref = dashboardPath(workspace, "domains");
+---
+
+<div class="nz-folds">
+  <Fold
+    title="Deployment settings"
+    info="Autodeploy, the deploy webhook and the build cache."
+    id="nz-deploy-settings"
+  >
+    <div class="nz-stack-sm nz-switch-list">
+      {
+        hooks && (
+          <Switch
+            id="nz-autodeploy"
+            label="Autodeploy"
+            description={
+              image
+                ? "Redeploy when the registry calls the deploy webhook for this image and tag."
+                : "Deploy on every push to the branch (or new tag, with the On tag trigger)."
+            }
+            checked={settings.autodeploy}
+            disabled={!configure}
+            data-deploy-setting="autodeploy"
+            data-service-id={service.id}
+          />
+        )
+      }
+      <Switch
+        id="nz-clean-cache"
+        label="Clean cache"
+        description="Builds start without cached layers until you turn this off."
+        checked={settings.cleanCache}
+        disabled={!configure}
+        data-deploy-setting="cleanCache"
+        data-service-id={service.id}
+      />
+    </div>
+    {
+      hooks && webhook && (
+        <div class="nz-webhook" data-webhook data-service-id={service.id}>
+          <p class="font-medium">Deploy webhook</p>
+          {webhook.visible ? (
+            <>
+              {webhook.url ? (
+                <div class="nz-secret-row">
+                  <code class="nz-url-text" data-webhook-url data-url={webhook.url}>
+                    {"•".repeat(24)}
+                  </code>
+                  <Button variant="outline" icon="eye" data-webhook-show aria-pressed="false">Show URL</Button>
+                  <Button variant="icon" icon="copy" label="Copy webhook URL" data-copy={webhook.url} />
+                </div>
+              ) : (
+                <p class="nz-dim">{webhook.message}</p>
+              )}
+              {webhook.warnings.map((warning) => (
+                <p class="nz-inline-note nz-warn-note">{warning}</p>
+              ))}
+              {configure && (
+                <div>
+                  <Button
+                    variant="outline"
+                    data-webhook-replace
+                    data-replacing={webhook.url ? "true" : "false"}
+                  >
+                    {webhook.url ? "Replace URL" : "Create URL"}
+                  </Button>
+                </div>
+              )}
+              {image ? (
+                <p class="nz-hint">
+                  Add this URL as a webhook at your registry (a Docker Hub repository's webhooks, or a GitHub package's
+                  "Registry packages" event) to redeploy when the image is pushed. Calls for another image or tag deploy nothing.
+                </p>
+              ) : (
+                <p class="nz-hint">
+                  GitHub repositories connected through the GitHub App deploy on push without this. For GitLab, Bitbucket and
+                  Gitea, add this URL as a push webhook at your Git host.
+                </p>
+              )}
+            </>
+          ) : (
+            <p class="nz-dim">{webhook.message}</p>
+          )}
+        </div>
+      )
+    }
+  </Fold>
+
+  <Fold
+    title="Domains"
+    info="The port traffic goes to, this service's hostnames and the workspace's domains."
+    id="nz-domains-settings"
+    open
+  >
+    <div class="nz-fold-rows">
+      <form
+        class="nz-fold-row nz-port-form"
+        data-api="PATCH /services/{serviceId}"
+        data-api-toast="Service port saved"
+        data-validate
+        data-field
+        novalidate
+      >
+        <input type="hidden" name="serviceId" value={service.id} />
+        <div class="nz-fold-row-text">
+          <label class="nz-fold-row-label" for="nz-service-port">Service port</label>
+          <span class="nz-fold-row-value">
+            Traffic is routed to container port {port}.{
+              detected && " Nobody set one, so each deploy uses the port the image declares."
+            }
+          </span>
+          <p class="nz-field-error" data-field-error hidden></p>
+          <FormError />
+        </div>
+        <span class="nz-port-edit">
+          {
+            configure && (
+              <Button variant="outline" type="submit" class="nz-port-save">
+                Save port
+              </Button>
+            )
+          }
+          <input
+            id="nz-service-port"
+            name="settings.servicePort"
+            class="nz-input nz-port-input"
+            value={String(port)}
+            inputmode="numeric"
+            data-json="number"
+            data-required="Enter a valid service port (1–65535)."
+            aria-describedby="nz-service-port-hint"
+            disabled={!configure}
+          />
+        </span>
+        <span id="nz-service-port-hint" class="nz-visually-hidden">
+          Traffic is routed to container port {port}.
+        </span>
+      </form>
+      {
+        list.length === 0 ? (
+          <div class="nz-fold-row">
+            <div class="nz-fold-row-text">
+              <span class="nz-fold-row-label">No hostname yet</span>
+              <span class="nz-fold-row-value">
+                Add a DNS domain under Domains and this service gets a hostname on it.
+              </span>
+            </div>
+            <span class="nz-fold-row-tools">
+              {hostnames?.canAdd && (
+                <Button
+                  variant="outline"
+                  data-dialog-open="nz-add-domain"
+                  data-dialog-fill={JSON.stringify({ serviceId: service.id, mode: "generate" })}
+                >
+                  Add domain
+                </Button>
+              )}
+              <Button variant="outline" href={domainsHref}>Open Domains</Button>
+            </span>
+          </div>
+        ) : (
+          <div class="nz-fold-row nz-fold-row--block">
+            <div class="nz-fold-row-head">
+              <span class="nz-fold-row-label">Hostnames</span>
+              {hostnames?.canAdd && (
+                <Button
+                  variant="outline"
+                  data-dialog-open="nz-add-domain"
+                  data-dialog-fill={JSON.stringify({ serviceId: service.id, mode: "generate" })}
+                >
+                  Add domain
+                </Button>
+              )}
+            </div>
+            <HostnameRows hostnames={list} domainsHref={domainsHref} serviceName={service.name} />
+          </div>
+        )
+      }
+      <div class="nz-fold-row">
+        <div class="nz-fold-row-text">
+          <span class="nz-fold-row-label">Organization domains</span>
+          <span class="nz-fold-row-value">Hostnames, DNS zones, environment bindings, and certificates.</span>
+        </div>
+        <Button variant="outline" href={domainsHref}>Open Domains hub</Button>
+      </div>
+    </div>
+  </Fold>
+
+  <DangerZone service={service} afterDelete={afterDelete} />
+</div>
+
+<Dialog id="nz-replace-webhook" title="Replace the webhook URL?">
+  <p class="nz-dim">The old URL stops working at once. Update it everywhere it is used, like {image ? "your registry's webhook settings" : "your Git host's webhook settings"}.</p>
+  <div class="nz-dialog-foot">
+    <Button variant="outline" data-dialog-close>Cancel</Button>
+    <Button variant="danger" data-replace-webhook-go>Replace URL</Button>
+  </div>
+</Dialog>

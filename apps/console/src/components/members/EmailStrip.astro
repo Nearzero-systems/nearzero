@@ -1,0 +1,195 @@
+---
+import { SENDER_MAX } from "@nearzero/shared";
+import type { EmailSettings } from "../../lib/data/index.ts";
+import { fullDate, relativeTime } from "../../lib/time.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The invitation emails strip at the top of Members & access (spec 04 4.7), with its dialog:
+ * a Resend key or SMTP settings (decision D4) and the sender, saved with a test email, and
+ * Remove (falls back to links).
+ */
+interface Props {
+  settings: EmailSettings;
+}
+
+const { settings } = Astro.props;
+const saved = settings.workspace;
+const provider = saved?.provider ?? "resend";
+const manageLabel =
+  settings.source === "workspace"
+    ? "Change"
+    : settings.source === "instance"
+      ? "Use your own Resend key"
+      : "Set up email";
+const unreadable = saved !== null && !saved.secretReadable;
+const detail = /[.!?]$/.test(settings.detail) ? settings.detail : `${settings.detail}.`;
+const now = new Date();
+---
+
+<section class="nz-card nz-email-strip" aria-labelledby="nz-email-strip-title" data-email-strip>
+  <span class="nz-email-dot" data-on={settings.on ? "true" : "false"} aria-hidden="true"></span>
+  <div class="min-w-0 flex-1">
+    <p id="nz-email-strip-title" class="font-medium">
+      {settings.on ? "Invitation emails are on" : "Invitation emails are off"}
+    </p>
+    <p class="nz-dim">
+      {detail}{!settings.on && settings.canAddWithPassword && " You can also add people with a password."}
+    </p>
+    {
+      settings.serverProblem && settings.source !== "workspace" && (
+        <p class="nz-small text-danger" data-server-email-problem>
+          This server's email settings can't be used: {settings.serverProblem}
+        </p>
+      )
+    }
+    {
+      saved && (
+        <p class="nz-small nz-dim" title={fullDate(new Date(saved.savedAt))}>
+          Saved {relativeTime(new Date(saved.savedAt), now)}{saved.savedBy && ` by ${saved.savedBy.name}`}
+        </p>
+      )
+    }
+  </div>
+  <div class="nz-email-strip-actions">
+    {
+      settings.canManage ? (
+        <>
+          {saved && (
+            <Button variant="ghost" data-dialog-open="nz-email-remove">
+              Remove
+            </Button>
+          )}
+          <Button variant="outline" data-dialog-open="nz-email-dialog">
+            {manageLabel}
+          </Button>
+        </>
+      ) : (
+        <p class="nz-dim">An owner or admin can set this up.</p>
+      )
+    }
+  </div>
+</section>
+
+{
+  settings.canManage && (
+    <Dialog id="nz-email-dialog" title="Invitation emails" description="Invitations go out from this workspace's own email settings. Saving sends you a test." wide>
+      <form method="post" class="nz-form" data-api="PUT /workspace/email" data-api-then="email" data-email-form data-validate novalidate>
+        <FormError message={unreadable ? "The saved key can't be read on this server anymore. Paste it again." : null} />
+        <div class="nz-segmented" role="radiogroup" aria-label="Send with">
+          <label>
+            <input type="radio" name="provider" value="resend" checked={provider === "resend"} data-email-provider />
+            <span>Resend</span>
+          </label>
+          <label>
+            <input type="radio" name="provider" value="smtp" checked={provider === "smtp"} data-email-provider />
+            <span>SMTP</span>
+          </label>
+        </div>
+        <div class="nz-form" data-provider-fields="resend" hidden={provider !== "resend"}>
+          <Field
+            id="nz-email-api-key"
+            name="apiKey"
+            type="password"
+            label="Resend API key"
+            autocomplete="off"
+            placeholder="re_…"
+            hint={
+              saved?.provider === "resend" && saved.maskedSecret && saved.secretReadable
+                ? `Saved (${saved.maskedSecret}). Leave empty to keep it.`
+                : "Stored encrypted and never shown again."
+            }
+            data-omit-empty
+            data-required={saved?.provider === "resend" && saved.secretReadable ? undefined : "Paste your Resend API key."}
+          />
+        </div>
+        <div class="nz-form nz-form--grid" data-provider-fields="smtp" hidden={provider !== "smtp"}>
+          <Field
+            id="nz-email-smtp-host"
+            name="host"
+            label="SMTP server"
+            placeholder="smtp.example.com"
+            value={saved?.smtp?.host ?? ""}
+            data-required="Enter the SMTP server's host name."
+          />
+          <Field
+            id="nz-email-smtp-port"
+            name="port"
+            type="number"
+            label="Port"
+            value={String(saved?.smtp?.port ?? 587)}
+            min="1"
+            max="65535"
+            data-json="number"
+            data-required="Use a port from 1 to 65535."
+          />
+          <Field
+            id="nz-email-smtp-security"
+            name="security"
+            as="select"
+            label="Security"
+            options={[
+              { value: "starttls", label: "STARTTLS (usually port 587)", selected: (saved?.smtp?.security ?? "starttls") === "starttls" },
+              { value: "tls", label: "TLS (usually port 465)", selected: saved?.smtp?.security === "tls" },
+              { value: "none", label: "None", selected: saved?.smtp?.security === "none" },
+            ]}
+          />
+          <Field
+            id="nz-email-smtp-user"
+            name="username"
+            label="Username"
+            autocomplete="off"
+            value={saved?.smtp?.username ?? ""}
+          />
+          <Field
+            id="nz-email-smtp-password"
+            name="password"
+            type="password"
+            label="Password"
+            autocomplete="off"
+            hint={
+              saved?.provider === "smtp" && saved.maskedSecret && saved.secretReadable
+                ? "Saved. Leave empty to keep it; a new server, port, security or username needs it again."
+                : "Stored encrypted and never shown again."
+            }
+            data-omit-empty
+          />
+        </div>
+        <Field
+          id="nz-email-from"
+          name="from"
+          label="Send from"
+          placeholder="Your Team <team@yourdomain.com>"
+          value={saved?.sender ?? ""}
+          maxlength={SENDER_MAX}
+          hint="team@yourdomain.com or Your Team <team@yourdomain.com>."
+          data-required="Enter the sender as team@yourdomain.com or Your Team <team@yourdomain.com>."
+        />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Save and send a test</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+{
+  settings.canManage && saved && (
+    <Dialog id="nz-email-remove" title="Turn off invitation emails">
+      <form method="post" class="nz-form" data-api="DELETE /workspace/email" data-api-toast="Invitation emails are off. New invitations give you a link to send yourself.">
+        <FormError />
+        <p class="nz-dim">
+          This workspace's email settings are deleted.
+          {settings.source === "workspace" ? " New invitations fall back to this server's email settings, or to a link you send yourself." : ""}
+        </p>
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="danger" type="submit">Turn off invitation emails</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}

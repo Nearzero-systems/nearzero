@@ -1,0 +1,40 @@
+---
+/**
+ * A menu or popover panel (spec 21.5). It opens from any button with `popovertarget` set to its
+ * id; client/menus.ts places it beside that button and keeps it inside the screen.
+ */
+interface Props {
+  [attribute: `data-${string}`]: string | boolean | undefined;
+  id: string;
+  label: string;
+  placement?: "bottom-start" | "bottom-end" | "top-start" | "top-end" | "right-end";
+  role?: "menu" | "dialog";
+  wide?: boolean;
+  moonlit?: boolean;
+  class?: string;
+}
+
+const {
+  id,
+  label,
+  placement = "bottom-start",
+  role = "menu",
+  wide = false,
+  moonlit = false,
+  class: className,
+  ...rest
+} = Astro.props;
+---
+
+<div
+  id={id}
+  popover="auto"
+  role={role}
+  aria-label={label}
+  class:list={["nz-pop", wide && "nz-pop--wide", moonlit && "nz-moonlit", className]}
+  data-placement={placement}
+  data-menu
+  {...rest}
+>
+  <slot />
+</div>

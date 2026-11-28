@@ -1,0 +1,15 @@
+---
+/** Wide tables scroll inside their own box and never widen the page (spec 21.5). */
+interface Props {
+  label: string;
+  class?: string;
+}
+
+const { label, class: className } = Astro.props;
+---
+
+<div class:list={["nz-table-wrap", className]} role="region" aria-label={label} tabindex="0">
+  <table class="nz-table">
+    <slot />
+  </table>
+</div>

@@ -1,0 +1,36 @@
+---
+/**
+ * An on/off switch: a checkbox with the switch role, so it is announced as on or off and works
+ * with Space like any checkbox. Styled in components.css (.nz-switch).
+ */
+interface Props {
+  [attribute: `data-${string}`]: string | boolean | undefined;
+  id: string;
+  label: string;
+  description?: string;
+  checked?: boolean;
+  name?: string;
+  value?: string;
+  disabled?: boolean;
+}
+
+const { id, label, description, checked = false, name, value, disabled, ...rest } = Astro.props;
+---
+
+<label class="nz-switch-row" for={id}>
+  <span class="min-w-0">
+    <span class="nz-switch-label">{label}</span>
+    {description && <span class="nz-switch-desc nz-dim">{description}</span>}
+  </span>
+  <input
+    id={id}
+    type="checkbox"
+    role="switch"
+    class="nz-switch"
+    name={name}
+    value={value}
+    checked={checked}
+    disabled={disabled}
+    {...rest}
+  />
+</label>

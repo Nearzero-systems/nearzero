@@ -1,0 +1,19 @@
+---
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+
+/**
+ * A backup or restore run's log (spec 17.2: every run is recorded with a log), followed live
+ * while the run goes on. Opened by any element with data-run-log="<run id>".
+ */
+---
+
+<Dialog id="nz-run-log" title="Run log" wide>
+  <div class="nz-stack-sm" data-run-log-view>
+    <p class="nz-dim" data-run-log-state aria-live="polite"></p>
+    <pre class="nz-run-log" data-run-log-text tabindex="0" aria-label="Run log"></pre>
+    <div class="nz-dialog-foot">
+      <Button variant="primary" data-dialog-close>Close</Button>
+    </div>
+  </div>
+</Dialog>

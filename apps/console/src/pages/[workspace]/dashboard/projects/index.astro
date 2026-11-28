@@ -1,0 +1,229 @@
+---
+import { DESCRIPTION_MAX, PROJECT_NAME_MAX } from "@nearzero/shared/browser";
+import ProjectCard from "../../../../components/projects/ProjectCard.astro";
+import TeardownDialog from "../../../../components/projects/TeardownDialog.astro";
+import Button from "../../../../components/ui/Button.astro";
+import Dialog from "../../../../components/ui/Dialog.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Field from "../../../../components/ui/Field.astro";
+import FormError from "../../../../components/ui/FormError.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import PageHead from "../../../../components/ui/PageHead.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import { setFlash } from "../../../../lib/flash.ts";
+import { dashboardContext, formText } from "../../../../lib/page.ts";
+import {
+  countLabel,
+  matchesSearch,
+  PROJECT_SORT_COOKIE,
+  PROJECT_SORTS,
+  parseProjectSort,
+} from "../../../../lib/projects.ts";
+import { projectPath, projectsPath } from "../../../../lib/routes.ts";
+
+// Projects (spec 5.1): title with Create project beside it, search, sort, cards, empty states,
+// Update and Delete from each card's menu. The API sorts; the browser filters and re-sorts in
+// place (client/projects.ts) so search stays instant.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const { data, workspace } = ctx;
+
+let createError: { name?: string; general?: string } | null = null;
+let createValues = { name: "", description: "" };
+let updateError: { projectId: string; name: string; description: string; message: string } | null =
+  null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = formText(form, "intent");
+  const name = formText(form, "name", PROJECT_NAME_MAX + 50);
+  const description = formText(form, "description", DESCRIPTION_MAX + 50);
+  if (intent === "create") {
+    createValues = { name, description };
+    if (!name) {
+      createError = { name: "Project name is required" };
+    } else {
+      try {
+        const created = await data.createProject({ name, description });
+        setFlash(Astro, created.message);
+        return Astro.redirect(
+          projectPath(workspace.slug, created.project.id, created.environmentId),
+          303,
+        );
+      } catch (error) {
+        if (!isApiError(error)) throw error;
+        createError = error.fields.name ? { name: error.fields.name } : { general: error.message };
+      }
+    }
+  } else if (intent === "update") {
+    const projectId = formText(form, "projectId", 100);
+    try {
+      await data.updateProject(projectId, { name, description });
+      setFlash(Astro, "Project updated");
+      return Astro.redirect(`${projectsPath(workspace.slug)}${Astro.url.search}`, 303);
+    } catch (error) {
+      if (!isApiError(error)) throw error;
+      updateError = { projectId, name, description, message: error.message };
+    }
+  }
+}
+
+const query = (Astro.url.searchParams.get("q") ?? "").slice(0, 200);
+const sort = parseProjectSort(Astro.cookies.get(PROJECT_SORT_COOKIE)?.value);
+const [list, targets] = await Promise.all([data.projects(sort), data.targets()]);
+const all = list.projects;
+const canCreate = list.can.create;
+const shown = all.filter((project) => matchesSearch(project, query));
+const now = new Date();
+const servers = Object.fromEntries(targets.map((target) => [target.id, target.name]));
+---
+
+<AppShell ctx={ctx} title="Projects" active="projects">
+  <div class="nz-fill" data-projects>
+    <PageHead title="Projects">
+      {
+        canCreate && (
+          <Button variant="primary" data-dialog-open="nz-create-project">
+            Create project
+          </Button>
+        )
+      }
+    </PageHead>
+    <div class="nz-strip nz-toolbar">
+      <label class="nz-toolbar-search">
+        <span class="nz-visually-hidden">Search projects</span>
+        <input
+          type="search"
+          class="nz-input nz-input--search"
+          placeholder="Search by name or description..."
+          value={query}
+          data-project-search
+          autocomplete="off"
+        />
+      </label>
+      <label class="nz-select-wrap nz-toolbar-filter">
+        <span class="nz-visually-hidden">Sort projects</span>
+        <select class="nz-select nz-select--toolbar" data-project-sort>
+          {
+            PROJECT_SORTS.map((option) => (
+              <option value={option.value} selected={option.value === sort}>
+                {option.label}
+              </option>
+            ))
+          }
+        </select>
+        <Icon name="chevron-down" />
+      </label>
+    </div>
+
+    <div class="nz-body">
+      {
+        all.length === 0 ? (
+          <EmptyState title="No projects found" text="Create a project to start deploying services.">
+            {canCreate && (
+              <Button variant="primary" data-dialog-open="nz-create-project">
+                Create project
+              </Button>
+            )}
+          </EmptyState>
+        ) : (
+          <>
+            <div class="nz-project-grid" data-project-grid hidden={shown.length === 0}>
+              {all.map((project) => (
+                <ProjectCard
+                  workspace={workspace.slug}
+                  project={project}
+                  now={now}
+                  hidden={!matchesSearch(project, query)}
+                />
+              ))}
+            </div>
+            <div data-project-no-match hidden={shown.length > 0}>
+              <EmptyState title="No projects found" text="Try adjusting your search." />
+            </div>
+          </>
+        )
+      }
+    </div>
+    {
+      all.length > 0 && (
+        <div class="nz-strip nz-strip--foot">
+          <span data-project-count>{countLabel(shown.length, all.length)}</span>
+        </div>
+      )
+    }
+  </div>
+
+  <Fragment slot="dialogs">
+    {
+      canCreate && (
+        <Dialog id="nz-create-project" title="Add a project" openOnLoad={createError !== null}>
+          <form method="post" class="nz-form" data-validate novalidate>
+            <input type="hidden" name="intent" value="create" />
+            <Field
+              id="nz-project-name"
+              name="name"
+              label="Name"
+              placeholder="Name of your project"
+              value={createValues.name}
+              error={createError?.name ?? null}
+              data-required="Project name is required"
+              autocomplete="off"
+              maxlength={PROJECT_NAME_MAX}
+            />
+            <Field
+              id="nz-project-description"
+              name="description"
+              label="Description"
+              placeholder="Description about your project..."
+              as="textarea"
+              rows={4}
+              value={createValues.description}
+              maxlength={DESCRIPTION_MAX}
+            />
+            <FormError message={createError?.general ?? null} />
+            <div class="nz-dialog-foot">
+              <Button variant="outline" data-dialog-close>Cancel</Button>
+              <Button variant="primary" type="submit" label="Create project">Create</Button>
+            </div>
+          </form>
+        </Dialog>
+      )
+    }
+    <Dialog
+      id="nz-update-project"
+      title="Update project"
+      description="Change the project name or description."
+      openOnLoad={updateError !== null}
+    >
+      <form method="post" class="nz-form" data-validate novalidate>
+        <input type="hidden" name="intent" value="update" />
+        <input type="hidden" name="projectId" value={updateError?.projectId} />
+        <Field
+          id="nz-update-name"
+          name="name"
+          label="Name"
+          value={updateError?.name}
+          data-required="Project name is required"
+          autocomplete="off"
+          maxlength={PROJECT_NAME_MAX}
+        />
+        <Field
+          id="nz-update-description"
+          name="description"
+          label="Description"
+          as="textarea"
+          rows={3}
+          value={updateError?.description}
+          maxlength={DESCRIPTION_MAX}
+        />
+        <FormError message={updateError?.message ?? null} />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Update project</Button>
+        </div>
+      </form>
+    </Dialog>
+    <TeardownDialog servers={servers} />
+  </Fragment>
+</AppShell>

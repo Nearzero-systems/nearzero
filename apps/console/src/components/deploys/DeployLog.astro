@@ -1,0 +1,60 @@
+---
+import Button from "../ui/Button.astro";
+import Icon from "../ui/Icon.astro";
+
+/**
+ * A deployment's log viewer (spec 6.1, 11.2): Copy ("Logs copied"), "Find in logs", "Load all"
+ * when only the last 500 lines are shown, and the failure note. client/deploy-log.ts fills and
+ * follows it; `autostart` starts it as the page loads.
+ */
+interface Props {
+  deploymentId?: string;
+  autostart?: boolean;
+  /** Shows "Find in logs" and "Load all" (the Deployments detail). */
+  full?: boolean;
+  /** The deployment is queued or building: follow its stream until it ends. */
+  live?: boolean;
+  label?: string;
+  class?: string;
+}
+
+const {
+  deploymentId = "",
+  autostart = false,
+  full = false,
+  live = false,
+  label = "Deployment log",
+  class: className,
+} = Astro.props;
+---
+
+<div
+  class:list={["nz-deploy-log", className]}
+  data-deploy-log={deploymentId}
+  data-autostart={autostart ? "" : undefined}
+  data-live={live ? "true" : undefined}
+  data-log-empty
+>
+  <div class="nz-log-tools">
+    {
+      full && (
+        <label class="nz-input-icon nz-log-find">
+          <span class="nz-visually-hidden">Find in logs</span>
+          <Icon name="search" />
+          <input type="search" class="nz-input" placeholder="Find in logs" data-log-find autocomplete="off" />
+        </label>
+      )
+    }
+    {full && <span class="nz-small nz-dim" data-log-find-count aria-live="polite"></span>}
+    <span class="flex-1"></span>
+    {full && <Button variant="ghost" data-log-all hidden>Load all</Button>}
+    <Button variant="outline" icon="copy" data-log-copy>Copy</Button>
+  </div>
+  <button type="button" class="nz-log-failure" data-log-failure hidden>
+    <Icon name="alert" />
+    <span data-log-failure-text></span>
+  </button>
+  <div class="nz-log" role="log" aria-label={label} tabindex="0" data-log-lines>
+    <div class="nz-log-line nz-dim">Waiting for logs…</div>
+  </div>
+</div>

@@ -1,0 +1,227 @@
+---
+import { GIT_PROVIDER_LABELS, type GitProviderKind } from "@nearzero/shared/browser";
+import GitProviderDialogs from "../../../../components/settings/GitProviderDialogs.astro";
+import LoadFailed from "../../../../components/settings/LoadFailed.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import ProviderLogo from "../../../../components/settings/ProviderLogo.astro";
+import Button from "../../../../components/ui/Button.astro";
+import Menu from "../../../../components/ui/Menu.astro";
+import MenuItem from "../../../../components/ui/MenuItem.astro";
+import TableWrap from "../../../../components/ui/TableWrap.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { GitProvidersPage, GitProviderView } from "../../../../lib/data/index.ts";
+import {
+  authorizeLabel,
+  connectRequest,
+  PROVIDER_ORDER,
+  providerBadges,
+  usesGitAccounts,
+} from "../../../../lib/git-providers.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { fullDate, relativeTime } from "../../../../lib/time.ts";
+
+// Settings → Git providers (spec 16.1): Add provider chips for people who may connect, the
+// providers the person can see with their row actions, and the dialogs. Opening it with
+// ?connect=<kind>&return=<path> opens that connect dialog and comes back to <path> afterwards.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const allowed = await usesGitAccounts(ctx);
+if (!allowed) Astro.response.status = 403;
+
+let page: GitProvidersPage | null = null;
+let failure: string | null = null;
+if (allowed) {
+  try {
+    page = await ctx.data.gitProviders();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+const request = connectRequest(Astro.url);
+const openKind: GitProviderKind | null = page?.can.connect ? request.kind : null;
+// ?install=<id> opens that GitHub provider's app install page at once (C3-01), only for one the
+// person may install; client/git-providers.ts starts it.
+const installNow =
+  request.install && page?.providers.some((item) => item.id === request.install && item.can.install)
+    ? request.install
+    : null;
+const now = new Date();
+
+function editFill(provider: GitProviderView): string {
+  return JSON.stringify({
+    providerId: provider.id,
+    name: provider.name,
+    kind: provider.kind,
+    deprecated: provider.deprecated,
+    configured: provider.configured,
+    ...provider.details,
+  });
+}
+---
+
+<SettingsLayout ctx={ctx} current="git-providers">
+  {
+    !allowed ? (
+      <NoAccess workspace={ctx.workspace.slug} />
+    ) : !page ? (
+      <LoadFailed detail={failure} />
+    ) : (
+      <div
+        class="nz-git-page"
+        data-git-providers-page
+        data-return={request.returnTo ?? ""}
+        data-install-now={installNow ?? undefined}
+        data-install-missing={request.install && !installNow ? "" : undefined}
+      >
+        <section class="nz-git-add" aria-labelledby="nz-git-add">
+          <h2 id="nz-git-add" class="nz-eyebrow">Add provider</h2>
+          {page.can.connect ? (
+            <div class="nz-git-providers-row">
+              {PROVIDER_ORDER.map((kind) => (
+                <button type="button" class="nz-btn nz-btn--outline nz-git-provider-button" data-dialog-open={`nz-git-connect-${kind}`}>
+                  <ProviderLogo kind={kind} />
+                  {GIT_PROVIDER_LABELS[kind]}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p class="nz-inline-note">{page.noConnectMessage}</p>
+          )}
+        </section>
+
+        {page.providers.length === 0 ? (
+          <p class="nz-git-empty">
+            {page.can.connect
+              ? "Create your first Git provider to connect repositories for deployments."
+              : "No Git account is shared with this workspace yet."}
+          </p>
+        ) : (
+          <TableWrap label="Git providers">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Provider</th>
+                <th class="nz-git-created">Created</th>
+                <th>
+                  <span class="nz-visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {page.providers.map((provider) => {
+                const menuId = `nz-git-menu-${provider.id}`;
+                const created = new Date(provider.createdAt);
+                const any =
+                  provider.can.share ||
+                  provider.can.install ||
+                  provider.can.authorize ||
+                  provider.openUrl ||
+                  provider.can.edit ||
+                  provider.can.delete;
+                return (
+                  <tr data-git-row={provider.id}>
+                    <td>
+                      <div class="nz-git-name">
+                        <span class="font-medium">{provider.name}</span>
+                        {providerBadges(provider).map((badge) => (
+                          <span class:list={["nz-badge", badge.tone === "warn" && "nz-badge--warn"]}>
+                            {badge.label}
+                          </span>
+                        ))}
+                      </div>
+                      <p class="nz-small nz-dim nz-truncate">
+                        {provider.account ? `Connected as ${provider.account}` : provider.statusMessage}
+                        {!provider.mine && provider.owner && ` · ${provider.owner.name}'s`}
+                      </p>
+                      {provider.status === "action_required" && provider.account && (
+                        <p class="nz-small nz-dim">{provider.statusMessage}</p>
+                      )}
+                      {provider.lastError && <p class="nz-small nz-inline-error">{provider.lastError}</p>}
+                    </td>
+                    <td>{provider.kindLabel}</td>
+                    <td class="nz-git-created">
+                      <span class="nz-dim" title={fullDate(created)}>
+                        {relativeTime(created, now)}
+                      </span>
+                    </td>
+                    <td class="nz-cell-actions">
+                      {any && (
+                        <>
+                          <Button
+                            variant="icon"
+                            icon="more"
+                            label={`Actions for ${provider.name}`}
+                            popovertarget={menuId}
+                            aria-haspopup="menu"
+                            aria-expanded="false"
+                          />
+                          <Menu id={menuId} label={`Actions for ${provider.name}`} placement="bottom-end">
+                            {provider.can.share && (
+                              <MenuItem
+                                icon="users"
+                                data-git-share={provider.id}
+                                data-git-shared={provider.shared ? "true" : "false"}
+                              >
+                                {provider.shared ? "Stop sharing with workspace" : "Share with entire workspace"}
+                              </MenuItem>
+                            )}
+                            {provider.can.install && (
+                              <MenuItem icon="download" data-git-install={provider.id}>
+                                Install
+                              </MenuItem>
+                            )}
+                            {provider.can.authorize && (
+                              <MenuItem icon="key" data-git-authorize={provider.id}>
+                                {authorizeLabel(provider)}
+                              </MenuItem>
+                            )}
+                            {provider.openUrl && (
+                              <MenuItem icon="external" href={provider.openUrl} target="_blank">
+                                Open
+                              </MenuItem>
+                            )}
+                            {provider.can.edit && (
+                              <MenuItem icon="edit" data-git-edit={provider.kind} data-git-fill={editFill(provider)}>
+                                Edit
+                              </MenuItem>
+                            )}
+                            {provider.can.delete && (
+                              <>
+                                <hr class="nz-menu-sep" />
+                                <MenuItem
+                                  icon="trash"
+                                  danger
+                                  data-git-delete={provider.id}
+                                  data-git-name={provider.name}
+                                >
+                                  Delete
+                                </MenuItem>
+                              </>
+                            )}
+                          </Menu>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+        )}
+        {page.providers.length > 0 && (
+          <p class="nz-hint">Tokens and keys are stored encrypted and never shown again, to people or to the Agent.</p>
+        )}
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">
+    {
+      page && (
+        <GitProviderDialogs page={page} workspace={ctx.workspace.slug} openKind={openKind} returnTo={request.returnTo} />
+      )
+    }
+  </Fragment>
+</SettingsLayout>

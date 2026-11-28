@@ -1,0 +1,203 @@
+/*
+ * Git providers (spec 16, 6.1, 6.3, 7.1): Settings → Git providers, its dialogs, the
+ * new-application page's Provider and Repository steps, and the Source panel's provider tabs.
+ * Flat, 1px lines, 6px corners (spec 21.1); every theme comes from the tokens.
+ */
+
+@layer components {
+  /* Settings → Git providers (spec 21.10): an ADD PROVIDER eyebrow over four equal outlined
+     buttons with the providers' coloured marks, then plain centred text while there are none. */
+  .nz-git-page {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nz-git-add {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .nz-git-providers-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .nz-btn.nz-git-provider-button {
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .nz-git-provider-button .nz-provider-logo {
+    flex: none;
+  }
+
+  .nz-provider-logo--github {
+    color: #111827;
+  }
+
+  :root[data-tone="dark"] .nz-provider-logo--github {
+    --nz-provider-logo-cut: #111827;
+    color: #fafafa;
+  }
+
+  .nz-git-empty {
+    padding: 222px 16px 80px;
+    color: var(--nz-text-dim);
+    text-align: center;
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-git-providers-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .nz-git-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .nz-git-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-badge--warn {
+    color: var(--nz-warn);
+    border-color: color-mix(in srgb, var(--nz-warn-dot) 40%, transparent);
+  }
+
+  .nz-git-callback {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-git-callback .nz-code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-git-repo-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 22rem;
+    overflow-y: auto;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+  }
+
+  .nz-git-repo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 0;
+    border-bottom: 1px solid var(--nz-line);
+    background: transparent;
+    color: var(--nz-text);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .nz-git-repo:last-child {
+    border-bottom: 0;
+  }
+
+  .nz-git-repo:hover,
+  .nz-git-repo:focus-visible {
+    background: var(--nz-hover);
+  }
+
+  .nz-git-repo-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-weight: 500;
+  }
+
+  .nz-git-repo-meta {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    color: var(--nz-text-dim);
+    font-size: 12px;
+  }
+
+  .nz-git-accounts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-git-chiplist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .nz-git-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 1px 4px 1px 8px;
+    border: 1px solid var(--nz-line-strong);
+    border-radius: 6px;
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-git-chip button {
+    display: inline-flex;
+    border: 0;
+    background: transparent;
+    color: var(--nz-text-dim);
+    cursor: pointer;
+  }
+
+  .nz-git-steps {
+    margin: 0;
+    padding-left: 1.2rem;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-git-steps li + li {
+    margin-top: 2px;
+  }
+
+  .nz-git-secret {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-git-secret .nz-code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* On phones the table keeps Name, Provider and the row menu in view; Created waits for room. */
+  @media (max-width: 639px) {
+    .nz-git-created {
+      display: none;
+    }
+  }
+}

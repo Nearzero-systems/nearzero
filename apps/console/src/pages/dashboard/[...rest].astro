@@ -1,0 +1,36 @@
+---
+import { consoleData } from "../../lib/data/index.ts";
+import { controlLegacyLookup } from "../../lib/legacy-lookup.ts";
+import { legacyDashboardTarget, legacyObjectTarget } from "../../lib/legacy-paths.ts";
+import { signInPath } from "../../lib/next-step.ts";
+import { sessionOrUnavailable } from "../../lib/page.ts";
+import { servicePath } from "../../lib/routes.ts";
+
+// Addresses from before workspaces were part of the path (spec 29.5): /dashboard/… goes to the
+// same page under the active workspace, moved settings pages go where spec 18.1 says, and a
+// link naming a service or deployment by id opens its page. Signed out: sign in first, then
+// come back here.
+const data = consoleData(Astro);
+const session = await sessionOrUnavailable(Astro);
+if (session instanceof Response) return session;
+if (!session.signedIn) return Astro.redirect(signInPath(Astro.url.pathname + Astro.url.search));
+const slug = session.workspace?.slug;
+if (!slug) return Astro.redirect("/");
+// An address the move from 0.1.x kept for a project, service, deployment or server (29a.9.1).
+const kept = await legacyObjectTarget(Astro.url.pathname, controlLegacyLookup(Astro));
+if (kept?.kind === "redirect") return Astro.redirect(kept.to, 301);
+const target = legacyDashboardTarget(Astro.params.rest ?? "", Astro.url.search, slug);
+if (target.kind === "redirect") return Astro.redirect(target.to, 301);
+const service = target.deployment ? null : await data.service(target.id).catch(() => null);
+if (service) {
+  return Astro.redirect(
+    servicePath(slug, service.projectId, service.environmentId, service.id),
+    301,
+  );
+}
+const deployment = await data.deployment(target.id).catch(() => null);
+if (deployment) {
+  return Astro.redirect(`/${encodeURIComponent(slug)}/dashboard/deployments/${deployment.id}`, 301);
+}
+return Astro.redirect(target.fallback, 301);
+---

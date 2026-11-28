@@ -1,0 +1,116 @@
+---
+import type { HostnameView, ServiceView } from "../../lib/data/index.ts";
+import { inServiceOrder, isDatabase } from "../../lib/projects.ts";
+import type { ServiceTab } from "../../lib/routes.ts";
+import DomainNode from "./DomainNode.astro";
+import NoDomainNode from "./NoDomainNode.astro";
+import ServiceNode from "./ServiceNode.astro";
+
+/**
+ * The Overview canvas (spec 5.2, 21.10): a dotted panel that reaches the bottom of the window,
+ * with 304px cards placed freely. Apps and Compose services sit in a left column, each with its
+ * domain cards to the right joined by a thin dashed line; databases sit in a column between the
+ * two, below them. On desktop a card (with the domains that hang off it) can be dragged to tidy
+ * the view (client/canvas.ts); positions are not saved. At 640px and below the cards stack:
+ * each app, its domain cards indented, then the databases.
+ */
+interface Props {
+  services: ServiceView[];
+  /** Hostnames per service id; empty until the domains API exists. */
+  hostnames: Record<string, HostnameView[]>;
+  hrefFor: (service: ServiceView, tab?: ServiceTab) => string;
+}
+
+const { services, hostnames, hrefFor } = Astro.props;
+const ordered = inServiceOrder(services);
+const databases = ordered.filter(isDatabase);
+const apps = ordered.filter((service) => !isDatabase(service));
+
+// Card geometry (px): a service card is 304 by 100, a domain card 110 ("No domain yet", which may
+// hang 10px below its row) or 92; rows are 64px apart; the domain column starts 131px after the
+// app column, and databases sit half way between the two.
+const CARD = 304;
+const DOMAIN_X = CARD + 131;
+const DATABASE_X = Math.round((DOMAIN_X + CARD) / 2 - CARD / 2);
+const SERVICE_H = 100;
+const NO_DOMAIN_H = 110;
+const DOMAIN_H = 92;
+const DOMAIN_GAP = 12;
+const ROW_GAP = 64;
+
+let y = 0;
+const appRows = apps.map((service) => {
+  const own = hostnames[service.id] ?? [];
+  const heights = own.length === 0 ? [NO_DOMAIN_H] : own.map(() => DOMAIN_H);
+  const centres: number[] = [];
+  let top = 0;
+  for (const height of heights) {
+    centres.push(top + height / 2);
+    top += height + DOMAIN_GAP;
+  }
+  const height = own.length === 0 ? SERVICE_H : Math.max(SERVICE_H, top - DOMAIN_GAP);
+  const row = { service, own, y, height, centres };
+  y += height + ROW_GAP;
+  return row;
+});
+const databaseRows = databases.map((service) => {
+  const row = { service, y };
+  y += SERVICE_H + ROW_GAP;
+  return row;
+});
+const stageHeight = Math.max(0, y - ROW_GAP);
+const link = (centre: number) =>
+  `M ${CARD} ${SERVICE_H / 2} C ${CARD + 60} ${SERVICE_H / 2}, ${DOMAIN_X - 60} ${centre}, ${DOMAIN_X} ${centre}`;
+---
+
+<div class="nz-canvas" aria-label="Active services" role="region" data-canvas>
+  <div
+    class="nz-canvas-stage"
+    style={`--nz-stage-h: ${stageHeight}px; --nz-stage-w: ${DOMAIN_X + CARD}px`}
+  >
+    {
+      appRows.map((row) => (
+        <div
+          class="nz-canvas-group"
+          data-draggable
+          style={`--nz-x: 0px; --nz-y: ${row.y}px; --nz-h: ${row.height}px`}
+        >
+          <svg
+            class="nz-canvas-links"
+            width={DOMAIN_X + CARD}
+            height={row.height}
+            viewBox={`0 0 ${DOMAIN_X + CARD} ${row.height}`}
+            aria-hidden="true"
+          >
+            {row.centres.map((centre) => (
+              <path d={link(centre)} />
+            ))}
+          </svg>
+          <div class="nz-canvas-card">
+            <ServiceNode service={row.service} href={hrefFor(row.service)} />
+          </div>
+          <div class="nz-canvas-domains" style={`--nz-x: ${DOMAIN_X}px`}>
+            {row.own.length > 0 ? (
+              row.own.map((hostname) => <DomainNode hostname={hostname} />)
+            ) : (
+              <NoDomainNode service={row.service} canAdd={row.service.can.deploy} />
+            )}
+          </div>
+        </div>
+      ))
+    }
+    {
+      databaseRows.map((row) => (
+        <div
+          class="nz-canvas-group nz-canvas-group--single"
+          data-draggable
+          style={`--nz-x: ${DATABASE_X}px; --nz-y: ${row.y}px; --nz-h: ${SERVICE_H}px`}
+        >
+          <div class="nz-canvas-card">
+            <ServiceNode service={row.service} href={hrefFor(row.service)} />
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</div>

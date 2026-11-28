@@ -1,0 +1,48 @@
+---
+import type { ServiceDetail } from "../../lib/data/index.ts";
+import { COMPOSE_VOLUMES_NOTE } from "../../lib/teardown.ts";
+import Button from "../ui/Button.astro";
+import Fold from "../ui/Fold.astro";
+
+/**
+ * Delete service (spec 05 5.2, 21.10): the last fold of a service's settings, closed, with its
+ * label in red. `open` starts it open (the Compose page, which has no folds above it).
+ */
+interface Props {
+  service: ServiceDetail;
+  afterDelete: string;
+  open?: boolean;
+}
+
+const { service, afterDelete, open = false } = Astro.props;
+---
+
+{
+  service.can.delete && (
+    <Fold
+      title="Danger zone"
+      info={`Delete ${service.name} and everything it keeps on its server.`}
+      danger
+      open={open}
+      id="nz-danger"
+    >
+      <div class="nz-fold-row">
+        <div class="nz-fold-row-text">
+          <span class="nz-fold-row-label">Delete service</span>
+          <span class="nz-fold-row-value">
+            Removes {service.name} and everything it keeps on its server.
+            {service.kind === "compose" && ` ${COMPOSE_VOLUMES_NOTE}`}
+          </span>
+        </div>
+        <Button
+          variant="danger"
+          data-service-delete-open
+          data-service-id={service.id}
+          data-after-delete={afterDelete}
+        >
+          Delete service
+        </Button>
+      </div>
+    </Fold>
+  )
+}

@@ -1,0 +1,269 @@
+---
+import { MONITORING_MESSAGES, VERSION } from "@nearzero/shared";
+import MonitoringPanel from "../../../../components/monitoring/MonitoringPanel.astro";
+import Button from "../../../../components/ui/Button.astro";
+import CopyButton from "../../../../components/ui/CopyButton.astro";
+import Dialog from "../../../../components/ui/Dialog.astro";
+import Field from "../../../../components/ui/Field.astro";
+import FormError from "../../../../components/ui/FormError.astro";
+import StatusPill from "../../../../components/ui/StatusPill.astro";
+import Switch from "../../../../components/ui/Switch.astro";
+import UrlRow from "../../../../components/ui/UrlRow.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import type { AboutAddress } from "../../../../lib/data/index.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { dashboardPath, projectsPath } from "../../../../lib/routes.ts";
+
+// About Nearzero (spec 18.2, 10.9): the first-time setup checklist, the version, the server IP
+// (instance administrators can correct it), the console's public URL with Configure public
+// domain, which workspaces may deploy to the Nearzero host, the host's daily Docker cleanup
+// (spec 9.4), and a place for the host's monitoring ([data-host-monitoring-mount]).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const slug = ctx.workspace.slug;
+const admin = ctx.viewer.isInstanceAdmin;
+const [about, health, deployed, workspaces, cleanup] = await Promise.all([
+  ctx.data.about().catch((): AboutAddress | null => null),
+  ctx.data.health(),
+  ctx.data
+    .deployments({ status: "active", pageSize: 10 })
+    .then((page) => page.total > 0)
+    .catch(() => false),
+  admin ? ctx.data.allowedWorkspaces() : Promise.resolve(null),
+  admin ? ctx.data.dockerCleanup("host").catch(() => null) : Promise.resolve(null),
+]);
+const lastCleanup = cleanup?.last
+  ? cleanup.last.error
+    ? `Last run ${new Date(cleanup.last.at).toISOString().slice(0, 16).replace("T", " ")} UTC failed: ${cleanup.last.error}`
+    : `Last run ${new Date(cleanup.last.at).toISOString().slice(0, 16).replace("T", " ")} UTC${cleanup.last.freedText ? `, freed ${cleanup.last.freedText}` : ""}.`
+  : null;
+const pill = {
+  ready: "ok",
+  dns: "warn",
+  https_pending: "run",
+  needs_setup: "idle",
+} as const;
+const consoleState = about?.checklist.consoleAddress ?? null;
+const zone = about?.checklist.managedZone ?? null;
+const serverIp = about?.serverIp.address ?? null;
+const record = about?.publicDomain.record ?? null;
+// The setup card counts the host's own checks (the console address, and the managed zone when
+// there is one); deploying the first application is the next step, not a check.
+const checks = [consoleState?.state === "ready", ...(zone ? [zone.state === "live"] : [])];
+const ready = checks.filter(Boolean).length;
+const configure = about?.publicDomain.canConfigure
+  ? {
+      "data-dialog-open": "nz-public-domain",
+      "data-dialog-fill": JSON.stringify({
+        hostname: about.publicDomain.hostname ?? "",
+        email: about.publicDomain.email ?? "",
+      }),
+    }
+  : null;
+---
+
+<SettingsLayout ctx={ctx} current="about">
+  <section class="nz-card nz-about-card" aria-labelledby="nz-about-setup">
+    <div class="nz-about-setup-head">
+      <div class="min-w-0">
+        <p class="nz-eyebrow">First-time setup</p>
+        <h2 class="nz-about-heading" id="nz-about-setup">Finish connecting this Nearzero host</h2>
+        <p class="nz-dim nz-about-lead">
+          The installer stores the management hostname separately from the authoritative application zone. Complete the
+          checks below before relying on generated application URLs.
+        </p>
+      </div>
+      <span class="nz-pill">{ready}/{checks.length} ready</span>
+    </div>
+    <ol class="nz-about-steps">
+      <li class="nz-about-step">
+        <span class="nz-step-number" aria-hidden="true">1</span>
+        <div class="nz-about-step-main">
+          <div class="nz-about-step-head">
+            <p class="nz-about-step-title">Nearzero management URL</p>
+            {consoleState ? <StatusPill status={pill[consoleState.state] ?? "idle"} label={consoleState.label} /> : <StatusPill status="idle" label="Unknown" />}
+          </div>
+          <p class="nz-dim">{consoleState?.message || "Choose a hostname for the Nearzero console and point its A record to this server."}</p>
+          {configure ? (
+            <Button variant="outline" {...configure}>Configure</Button>
+          ) : consoleState?.link ? (
+            <Button variant="outline" href={consoleState.link}>Configure</Button>
+          ) : null}
+        </div>
+      </li>
+      {
+        zone && (
+          <li class="nz-about-step">
+            <span class="nz-step-number" aria-hidden="true">2</span>
+            <div class="nz-about-step-main">
+              <div class="nz-about-step-head">
+                <p class="nz-about-step-title">Managed DNS zone</p>
+                {zone.label && <StatusPill status={zone.state === "live" ? "ok" : "warn"} label={zone.label} />}
+              </div>
+              <p class="nz-dim"><span class="nz-code">{zone.name}</span>{zone.message && <> · {zone.message}</>}</p>
+              <Button variant="outline" href={`${dashboardPath(slug, "domains")}?tab=dns-zones`}>Open DNS zones</Button>
+            </div>
+          </li>
+        )
+      }
+      <li class="nz-about-step">
+        <span class="nz-step-number" aria-hidden="true">{zone ? 3 : 2}</span>
+        <div class="nz-about-step-main">
+          <div class="nz-about-step-head">
+            <p class="nz-about-step-title">Deploy the first application</p>
+            {deployed ? <StatusPill status="ok" label="Done" /> : <StatusPill status="idle" label="Next" />}
+          </div>
+          <p class="nz-dim">
+            Start with a public Git repository on the local Nearzero host. Advanced Git OAuth and remote servers can be
+            connected later.
+          </p>
+          <Button variant={deployed ? "outline" : "primary"} href={projectsPath(slug)}>Open projects</Button>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="nz-card nz-about-card nz-about-facts" id="nz-about-address" aria-label="This install">
+    <div class="nz-about-fact">
+      <p class="nz-eyebrow">Version</p>
+      <p>{health?.version ?? VERSION}</p>
+    </div>
+    <div class="nz-about-fact">
+      <p class="nz-eyebrow">Server IP</p>
+      <div class="nz-about-fact-value">
+        {serverIp ? (
+          <>
+            <span class="nz-code">{serverIp}</span>
+            <CopyButton text={serverIp} what="server IP" />
+          </>
+        ) : (
+          <span class="nz-dim">Not detected</span>
+        )}
+        {about?.serverIp.canCorrect && (
+          <Button variant="ghost" data-dialog-open="nz-server-ip" data-dialog-fill={JSON.stringify({ ip: serverIp ?? "" })}>
+            Correct
+          </Button>
+        )}
+      </div>
+      {about?.serverIp.corrected && <p class="nz-small nz-dim">Corrected by an administrator{about.serverIp.detected ? ` (detected ${about.serverIp.detected})` : ""}</p>}
+    </div>
+    <div class="nz-about-fact nz-about-fact--wide">
+      <p class="nz-eyebrow">Public URL</p>
+      <div class="nz-about-fact-value">
+        {about?.publicDomain.hostname ? (
+          <span class="nz-code">{about.publicDomain.hostname}</span>
+        ) : about?.consoleUrl ? (
+          <UrlRow url={about.consoleUrl} />
+        ) : (
+          <span>Not configured</span>
+        )}
+        {configure && <Button variant="outline" {...configure}>Configure domain</Button>}
+      </div>
+    </div>
+    {
+      about?.platformDomain && (
+        <div class="nz-about-fact">
+          <p class="nz-eyebrow">Platform domain</p>
+          <p class="nz-code">{about.platformDomain}</p>
+        </div>
+      )
+    }
+  </section>
+
+  <hr class="nz-about-rule" />
+
+  {
+    admin && workspaces && (
+      <section class="nz-card nz-about-card" aria-labelledby="nz-about-host">
+        <div class="nz-section-head">
+          <div class="min-w-0">
+            <h2 class="nz-about-heading" id="nz-about-host">Deploying to the Nearzero host</h2>
+            <p class="nz-dim">Which workspaces besides the first may place services on the host. Its containers, logs and router files stay with instance administrators.</p>
+          </div>
+        </div>
+        <div class="nz-stack-sm nz-switch-list">
+          {workspaces.map((workspace) => (
+            <Switch
+              id={`nz-host-allow-${workspace.workspaceId}`}
+              label={workspace.name}
+              description={`${workspace.owner ? `Owned by ${workspace.owner}` : "No owner"} · /${workspace.slug}. ${workspace.first ? "The first workspace always may." : workspace.allowed ? "May deploy to the host." : "Can't deploy to the host."}`}
+              checked={workspace.first || workspace.allowed}
+              disabled={workspace.first}
+              data-host-allow={workspace.workspaceId}
+            />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
+  {
+    admin && cleanup && (
+      <section class="nz-card nz-about-card" aria-labelledby="nz-about-cleanup">
+        <div class="nz-section-head">
+          <h2 class="nz-about-heading" id="nz-about-cleanup">The Nearzero host</h2>
+        </div>
+        <div class="nz-stack-sm nz-switch-list">
+          <Switch
+            id="nz-host-cleanup"
+            label="Daily Docker cleanup"
+            description={cleanup.description}
+            checked={cleanup.enabled}
+            data-docker-cleanup="host"
+          />
+          {lastCleanup && <p class="nz-small nz-dim">{lastCleanup}</p>}
+        </div>
+      </section>
+    )
+  }
+
+  {
+    admin && (
+      <section class="nz-card nz-about-card" aria-labelledby="nz-about-monitoring" data-host-monitoring-mount>
+        <div class="nz-section-head">
+          <h2 class="nz-about-heading" id="nz-about-monitoring">Monitoring</h2>
+        </div>
+        <MonitoringPanel target="host" intro={MONITORING_MESSAGES.hostIntro} idPrefix="nz-about-monitoring" />
+      </section>
+    )
+  }
+
+  <Fragment slot="dialogs">
+    {
+      about?.serverIp.canCorrect && (
+        <Dialog id="nz-server-ip" title="Correct the server IP" description="Use it when detection was wrong. Managed DNS records follow the new address.">
+          <form class="nz-form" data-api="PUT /about/server-ip" novalidate>
+            <Field id="nz-server-ip-value" name="ip" label="Public IPv4" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="203.0.113.10" />
+            <FormError />
+            <div class="nz-dialog-foot">
+              <Button variant="outline" data-dialog-close>Cancel</Button>
+              <Button variant="primary" type="submit">Save</Button>
+            </div>
+          </form>
+        </Dialog>
+      )
+    }
+    {
+      about?.publicDomain.canConfigure && (
+        <Dialog id="nz-public-domain" title="Configure public domain" description="The console's own address, with HTTPS.">
+          <form class="nz-form" data-api="PUT /about/public-domain" novalidate>
+            <Field id="nz-public-host" name="hostname" label="Hostname" placeholder="nearzero.example.com" autocomplete="off" spellcheck="false" />
+            <Field id="nz-public-email" name="email" label="Certificate email" type="email" autocomplete="off" hint="Let's Encrypt writes here about certificates." />
+            {record && (
+              <p class="nz-small">
+                Add <span class="nz-code">{record.type} {record.name} {record.value ?? serverIp ?? ""}</span> at your DNS provider.
+              </p>
+            )}
+            <p class="nz-hint">{about.publicDomain.note}</p>
+            {about.publicDomain.changeNote && <p class="nz-inline-note nz-warn-note">{about.publicDomain.changeNote}</p>}
+            <FormError />
+            <div class="nz-dialog-foot">
+              <Button variant="outline" data-dialog-close>Cancel</Button>
+              <Button variant="primary" type="submit">Save and request HTTPS</Button>
+            </div>
+          </form>
+        </Dialog>
+      )
+    }
+  </Fragment>
+</SettingsLayout>

@@ -1,0 +1,571 @@
+---
+import SessionsPreview from "../components/agent/SessionsPreview.tsx";
+import SignInCard from "../components/auth/SignInCard.astro";
+import DomainNode from "../components/projects/DomainNode.astro";
+import NoDomainNode from "../components/projects/NoDomainNode.astro";
+import ProjectCard from "../components/projects/ProjectCard.astro";
+import ServiceNode from "../components/projects/ServiceNode.astro";
+import Button from "../components/ui/Button.astro";
+import CopyButton from "../components/ui/CopyButton.astro";
+import Dialog from "../components/ui/Dialog.astro";
+import EmptyState from "../components/ui/EmptyState.astro";
+import Field from "../components/ui/Field.astro";
+import Icon from "../components/ui/Icon.astro";
+import LinkTabs from "../components/ui/LinkTabs.astro";
+import Menu from "../components/ui/Menu.astro";
+import MenuItem from "../components/ui/MenuItem.astro";
+import StatusPill from "../components/ui/StatusPill.astro";
+import TableWrap from "../components/ui/TableWrap.astro";
+import Tabs from "../components/ui/Tabs.astro";
+import UrlRow from "../components/ui/UrlRow.astro";
+import VisitButton from "../components/ui/VisitButton.astro";
+import AppShell from "../layouts/AppShell.astro";
+import type { ProjectView, ServiceView } from "../lib/data/index.ts";
+import { dashboardContext } from "../lib/page.ts";
+
+/*
+ * The living style guide: every component in every state, in the current theme. Routed only by
+ * `astro dev` (see astro.config.ts), so production builds never include it.
+ */
+const ctx = await dashboardContext(Astro, { checkSlug: false });
+if (ctx instanceof Response) return ctx;
+const { workspace } = ctx;
+const now = new Date();
+const hour = 3_600_000;
+
+const tokens = [
+  "page",
+  "raised",
+  "muted",
+  "hover",
+  "line",
+  "line-strong",
+  "card-line",
+  "grid-line",
+  "surface",
+  "text",
+  "text-dim",
+  "text-faint",
+  "primary",
+  "primary-text",
+  "primary-hover",
+  "composer",
+  "code",
+  "danger",
+];
+const duskTokens = [
+  "accent",
+  "accent-deep",
+  "accent-light",
+  "accent-soft",
+  "accent-tint",
+  "glass",
+  "cell",
+  "focus",
+  "selection",
+];
+// Style-guide cards only: the ids lead nowhere.
+const sampleProject: ProjectView = {
+  id: "prj_guide",
+  name: "guide-project",
+  description:
+    "A project card with a description long enough to be clamped to two lines when the card is narrow.",
+  createdAt: new Date(now.getTime() - 5 * hour),
+  updatedAt: new Date(now.getTime() - 5 * hour),
+  serviceCount: 3,
+  environments: [{ id: "env_guide", name: "development", isDefault: true, isProduction: false }],
+  openEnvironmentId: "env_guide",
+  can: { update: true, delete: false, createEnvironment: false },
+};
+const lockedProject: ProjectView = {
+  ...sampleProject,
+  id: "prj_locked",
+  name: "locked-project",
+  environments: [],
+  openEnvironmentId: null,
+  can: { update: false, delete: false, createEnvironment: false },
+};
+const guideService = (
+  id: string,
+  name: string,
+  kind: ServiceView["kind"],
+  status: ServiceView["status"],
+  settings: Record<string, unknown>,
+): ServiceView => ({
+  id,
+  projectId: "prj_guide",
+  environmentId: "env_guide",
+  kind,
+  kindLabel: { application: "Application", postgres: "Postgres", compose: "Compose" }[
+    kind as "application"
+  ],
+  name,
+  appName: `guide-${name}-abc123`,
+  description: "",
+  status,
+  serverId: "host",
+  onHost: true,
+  settings,
+  publicPort: null,
+  publicPortNote: null,
+  copyGroupId: null,
+  deleting: false,
+  createdAt: now,
+  can: { configure: false, delete: false, deploy: false, variables: false },
+});
+const guideServices: ServiceView[] = [
+  guideService("s1", "web", "application", "running", {
+    source: { type: "image", image: "nginx:alpine" },
+  }),
+  guideService("s2", "db", "postgres", "deploying", { image: "postgres:18" }),
+  guideService("s3", "stack", "compose", "failed", { format: "compose" }),
+];
+---
+
+<AppShell ctx={ctx} title="Components">
+  <div class="nz-page-head">
+    <div class="min-w-0">
+      <p class="nz-eyebrow">Development only</p>
+      <h1 class="nz-title">Components</h1>
+    </div>
+    <div class="nz-page-actions">
+      <Button variant="outline" icon="plus" data-dialog-open="guide-dialog">Open dialog</Button>
+    </div>
+  </div>
+
+  <div class="flex flex-col gap-6">
+    <section class="nz-card nz-section" aria-labelledby="guide-type">
+      <h2 id="guide-type" class="nz-subtitle mb-3">Typography</h2>
+      <p class="nz-title">Page title</p>
+      <p class="nz-subtitle mt-2">Section title</p>
+      <p class="mt-2">
+        Body text is 12px on a 16px line. <span class="nz-dim">Dim text.</span>
+        <span class="nz-faint">Faint text.</span>
+      </p>
+      <p class="nz-small nz-dim mt-2">Small print: 3 minutes ago · Enter to send</p>
+      <p class="nz-eyebrow mt-2">Eyebrow · Status</p>
+      <p class="mt-2">
+        <code class="rounded-md px-1" style="background: var(--nz-code)">sudo nearzero status</code>
+      </p>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-tokens">
+      <h2 id="guide-tokens" class="nz-subtitle mb-3">Color tokens</h2>
+      <div class="nz-guide-grid">
+        {
+          tokens.map((token) => (
+            <div class="flex items-center gap-2">
+              <span
+                class="h-6 w-6 flex-none rounded-md border"
+                style={`background: var(--nz-${token}); border-color: var(--nz-line-strong)`}
+              />
+              <span class="nz-small">{token}</span>
+            </div>
+          ))
+        }
+      </div>
+      <p class="nz-eyebrow mt-4 mb-2">Dusk only</p>
+      <div class="nz-guide-grid">
+        {
+          duskTokens.map((token) => (
+            <div class="flex items-center gap-2">
+              <span
+                class="h-6 w-6 flex-none rounded-md border"
+                style={`background: var(--nz-${token}, transparent); border-color: var(--nz-line-strong)`}
+              />
+              <span class="nz-small">{token}</span>
+            </div>
+          ))
+        }
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-buttons">
+      <h2 id="guide-buttons" class="nz-subtitle mb-3">Buttons</h2>
+      <div class="nz-guide-row">
+        <Button variant="primary">Primary</Button>
+        <Button variant="primary" icon="plus">With icon</Button>
+        <Button variant="outline">Outlined</Button>
+        <Button variant="ghost">Ghost</Button>
+        <Button variant="danger" icon="trash">Delete</Button>
+        <Button variant="icon" icon="more" label="More actions" />
+        <Button variant="icon" outlined icon="refresh" label="Refresh" />
+        <Button variant="outline" href="#guide-buttons">Link button</Button>
+      </div>
+      <p class="nz-eyebrow mt-4 mb-2">Disabled</p>
+      <div class="nz-guide-row">
+        <Button variant="primary" disabled>Primary</Button>
+        <Button variant="outline" disabled>Outlined</Button>
+        <Button variant="ghost" disabled>Ghost</Button>
+        <Button variant="danger" disabled>Delete</Button>
+        <Button variant="icon" icon="more" label="More actions" disabled />
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-fields">
+      <h2 id="guide-fields" class="nz-subtitle mb-3">Fields</h2>
+      <div class="nz-guide-grid">
+        <Field id="guide-input" label="Name" placeholder="staging" />
+        <Field
+          id="guide-hint"
+          label="With a hint"
+          hint="Use letters, numbers and dashes, like staging or qa-2."
+          value="qa-2"
+        />
+        <Field
+          id="guide-error"
+          label="With an error"
+          value="prod"
+          error={'Name it "production" instead.'}
+        />
+        <Field id="guide-disabled" label="Disabled" value="development" disabled />
+        <Field id="guide-readonly" label="Read-only" value="owner@example.com" readonly />
+        <Field
+          id="guide-select"
+          as="select"
+          label="Sort"
+          options={[
+            { value: "newest", label: "Newest first", selected: true },
+            { value: "oldest", label: "Oldest first" },
+          ]}
+        />
+        <Field
+          id="guide-textarea"
+          as="textarea"
+          label="Description"
+          rows={3}
+          placeholder="What this project runs"
+        />
+        <div>
+          <span class="nz-label">Search</span>
+          <label class="nz-input-icon">
+            <span class="nz-visually-hidden">Search</span>
+            <Icon name="search" />
+            <input class="nz-input" type="search" placeholder="Search by name or description..." />
+          </label>
+          <label class="nz-check mt-3">
+            <input type="checkbox" checked /> Also copy the values
+          </label>
+        </div>
+      </div>
+      <div class="mt-4 flex flex-col gap-2">
+        <p class="nz-inline-error"><Icon name="alert" /><span>Invalid email or password.</span></p>
+        <p class="nz-inline-note">
+          This is production. Saved changes reach services when they next deploy.
+        </p>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-status">
+      <h2 id="guide-status" class="nz-subtitle mb-3">Status pills and badges</h2>
+      <div class="nz-guide-row">
+        <StatusPill status="ok" label="Active" />
+        <StatusPill status="run" label="Building" />
+        <StatusPill status="warn" label="Needs DNS record" />
+        <StatusPill status="fail" label="Failed" />
+        <StatusPill status="idle" label="Cancelled" />
+        <span class="nz-badge nz-badge--prod">PRODUCTION</span>
+        <span class="nz-badge">Shared</span>
+        <span class="relative inline-block h-6 w-6"><span class="nz-count-badge">9+</span></span>
+        <span class="nz-kbd">Ctrl K</span>
+        <span class="nz-avatar">MA</span>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-tabs">
+      <h2 id="guide-tabs" class="nz-subtitle mb-3">Tabs</h2>
+      <Tabs
+        id="guide-tablist"
+        label="Members"
+        tabs={[
+          { id: "people", label: "People", count: 4 },
+          { id: "policies", label: "Access policies", count: 2 },
+          { id: "empty", label: "Empty" },
+        ]}
+      >
+        <p slot="people">People tab panel.</p>
+        <p slot="policies">Access policies tab panel.</p>
+        <p slot="empty" class="nz-dim">Nothing here.</p>
+      </Tabs>
+      <p class="nz-eyebrow mt-4 mb-2">Link tabs</p>
+      <LinkTabs
+        label="Sections"
+        lined
+        items={[
+          { label: "Overview", href: "/dev/components", current: true },
+          { label: "Services", href: "#guide-tabs" },
+          { label: "Variables", href: "#guide-tabs" },
+        ]}
+      />
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-toolbar">
+      <h2 id="guide-toolbar" class="nz-subtitle mb-3">Toolbar with tabs and actions</h2>
+      <p class="nz-dim mb-3">Below 640px the tabs keep one line and the buttons move to the next.</p>
+      <div class="nz-toolbar nz-toolbar--tabs">
+        <LinkTabs
+          label="Service sections"
+          items={[
+            { label: "General", href: "/dev/components", current: true },
+            { label: "Deployments", href: "#guide-toolbar" },
+            { label: "Logs", href: "#guide-toolbar" },
+            { label: "Variables", href: "#guide-toolbar" },
+            { label: "Domains", href: "#guide-toolbar" },
+          ]}
+        />
+        <div class="nz-page-actions">
+          <Button variant="outline" icon="refresh">Redeploy</Button>
+          <Button variant="primary">Deploy</Button>
+        </div>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-menus">
+      <h2 id="guide-menus" class="nz-subtitle mb-3">Menus and toasts</h2>
+      <div class="nz-guide-row">
+        <Button
+          variant="outline"
+          iconEnd="chevron-down"
+          popovertarget="guide-menu"
+          aria-haspopup="menu"
+          aria-expanded="false"
+        >
+          Menu
+        </Button>
+        <Menu id="guide-menu" label="Example menu">
+          <p class="nz-menu-heading nz-eyebrow">Environments</p>
+          <MenuItem checked={true}>development</MenuItem>
+          <MenuItem checked={false}>staging</MenuItem>
+          <hr class="nz-menu-sep" />
+          <MenuItem icon="edit">Rename</MenuItem>
+          <MenuItem icon="plus" aria-disabled="true">Disabled item</MenuItem>
+          <MenuItem icon="trash" danger>Delete</MenuItem>
+        </Menu>
+        <Button variant="outline" data-guide-toast="info">Info toast</Button>
+        <Button variant="outline" data-guide-toast="success">Success toast</Button>
+        <Button variant="outline" data-guide-toast="error">Error toast</Button>
+        <Button variant="outline" data-guide-toast="action">Toast with action</Button>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-urls">
+      <h2 id="guide-urls" class="nz-subtitle mb-3">Addresses: Copy and Visit</h2>
+      <div class="flex max-w-md flex-col gap-2">
+        <UrlRow url="https://shop.example.com" />
+        <UrlRow
+          url="https://a-very-long-generated-hostname-for-a-service.server-1.apps.example.com/path"
+        />
+        <UrlRow url="https://docs.example.com" withLabels />
+        <div class="nz-guide-row">
+          <CopyButton text="203.0.113.10" what="server IP" withLabel />
+          <VisitButton href="https://example.com" withLabel />
+        </div>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-table">
+      <h2 id="guide-table" class="nz-subtitle mb-3">Table</h2>
+      <TableWrap label="Example deployments">
+        <thead>
+          <tr>
+            <th>Service</th><th>Project</th><th>Environment</th><th>Status</th><th>Commit</th><th
+              >Trigger</th
+            ><th>Started</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>web</td><td>storefront</td><td>production</td><td
+              ><StatusPill status="ok" label="Active" /></td
+            ><td class="nz-code">4f2a9c1</td><td>Push to main</td><td>3 minutes ago</td>
+          </tr>
+          <tr>
+            <td>api</td><td>storefront</td><td>development</td><td
+              ><StatusPill status="run" label="Building" /></td
+            ><td class="nz-code">a17be03</td><td>Agent</td><td>just now</td>
+          </tr>
+          <tr>
+            <td>worker</td><td>storefront</td><td>staging</td><td
+              ><StatusPill status="fail" label="Failed" /></td
+            ><td class="nz-code">9d0c2f4</td><td>Manual</td><td>2 hours ago</td>
+          </tr>
+        </tbody>
+      </TableWrap>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-empty">
+      <h2 id="guide-empty" class="nz-subtitle mb-3">Empty state and loading</h2>
+      <EmptyState
+        icon="projects"
+        title="No projects found"
+        text="Create a project to start deploying services."
+      >
+        <Button variant="primary" icon="plus">Create project</Button>
+      </EmptyState>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <span class="nz-spinner" role="status" aria-label="Loading"></span>
+        <span class="nz-placeholder block h-4 w-40"></span>
+        <span class="nz-placeholder block h-4 w-24"></span>
+        <span class="nz-small nz-dim">Placeholders stay invisible for their first 150ms.</span>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-projects">
+      <h2 id="guide-projects" class="nz-subtitle mb-3">Projects and canvas cards</h2>
+      <div class="nz-project-grid">
+        <ProjectCard workspace={workspace.slug} project={sampleProject} now={now} />
+        <ProjectCard workspace={workspace.slug} project={lockedProject} now={now} />
+      </div>
+      <div class="nz-guide-grid mt-4">
+        {
+          guideServices.map((service) => <ServiceNode service={service} href="#guide-projects" />)
+        }
+        <DomainNode hostname={{ host: "shop.example.com", state: "live" }} />
+        <DomainNode
+          hostname={{
+            host: "api.shop.example.com",
+            state: "needs-dns",
+            record: { name: "api.shop", value: "203.0.113.10" },
+          }}
+        />
+        <DomainNode hostname={{ host: "www.example.com", state: "checking" }} />
+        <NoDomainNode service={{ id: "s4", name: "worker" }} canAdd />
+        <NoDomainNode service={{ id: "s4", name: "worker" }} canAdd={false} />
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-sessions">
+      <h2 id="guide-sessions" class="nz-subtitle mb-3">Agent sessions</h2>
+      <div class="nz-guide-grid">
+        <div class="nz-card"><SessionsPreview workspace={workspace.slug} sessions={[]} /></div>
+        <div class="nz-card">
+          <SessionsPreview
+            workspace={workspace.slug}
+            currentId="ses_2"
+            sessions={[
+              {
+                id: "ses_1",
+                title: "Deploy acme/web",
+                lastMessageAt: new Date(now.getTime() - 60_000).toISOString(),
+                working: true,
+              },
+              {
+                id: "ses_2",
+                title: "Why the last deploy failed",
+                lastMessageAt: new Date(now.getTime() - 3 * hour).toISOString(),
+                working: false,
+              },
+              {
+                id: "ses_3",
+                title: "",
+                lastMessageAt: new Date(now.getTime() - 50 * hour).toISOString(),
+                working: false,
+              },
+            ]}
+          />
+        </div>
+      </div>
+    </section>
+
+    <section class="nz-card nz-section" aria-labelledby="guide-sign-in">
+      <h2 id="guide-sign-in" class="nz-subtitle mb-3">Sign-in variants (Light on the real page)</h2>
+      <div class="nz-guide-grid">
+        <div class="flex flex-col items-center gap-3">
+          <SignInCard compact focus={false} idPrefix="g1" footer={{ kind: "invite-only" }} action="/sign-in" />
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <SignInCard
+            compact
+            focus={false}
+            idPrefix="g2"
+            footer={{ kind: "no-owner" }}
+            action="/sign-in"
+            error="Invalid email or password."
+          />
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <SignInCard
+            compact
+            focus={false}
+            idPrefix="g3"
+            footer={{ kind: "sign-up", workspace: "Acme", href: "/sign-up" }}
+            action="/sign-in"
+          />
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <SignInCard
+            compact
+            focus={false}
+            idPrefix="g4"
+            footer={{ kind: "existing", workspace: "Side projects", email: "lee@example.com" }}
+            action="/sign-in"
+          />
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <SignInCard
+            compact
+            focus={false}
+            idPrefix="g5"
+            step="code"
+            footer={{ kind: "invite-only" }}
+            action="/sign-in"
+          />
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <Fragment slot="dialogs">
+    <Dialog
+      id="guide-dialog"
+      title="Dialog"
+      description="Escape or a click on the backdrop closes it; focus stays inside."
+    >
+      <form class="nz-form" data-guide-form>
+        <Field id="guide-dialog-name" name="name" label="Name" />
+        <UrlRow url="https://shop.example.com" />
+        <p class="nz-dim" data-guide-rerender>Hover the buttons below in Dusk to see the pixel glow.</p>
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="outline" data-guide-rerender-button>Re-render content</Button>
+          <Button variant="primary" type="submit">Save</Button>
+        </div>
+      </form>
+    </Dialog>
+  </Fragment>
+</AppShell>
+
+<script>
+  import { showToast } from "../client/toasts.ts";
+
+  document.addEventListener("submit", (event) => {
+    if ((event.target as Element | null)?.matches("[data-guide-form]")) {
+      event.preventDefault();
+      showToast("Saved", { tone: "success" });
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target as Element | null;
+    const toastButton = target?.closest<HTMLElement>("[data-guide-toast]");
+    if (toastButton) {
+      const kind = toastButton.dataset.guideToast;
+      if (kind === "action") {
+        showToast("This page is taking too long to load.", {
+          tone: "error",
+          action: { label: "Retry", run: () => showToast("Retried", { tone: "success" }) },
+        });
+      } else if (kind === "error") showToast("The browser refused to copy.", { tone: "error" });
+      else if (kind === "success") showToast("Project created", { tone: "success" });
+      else showToast("Copied to clipboard");
+      return;
+    }
+    // Replaces the button under the pointer with a copy: the dialog must stay open.
+    const rerender = target?.closest<HTMLElement>("[data-guide-rerender-button]");
+    if (rerender) {
+      const line = document.querySelector("[data-guide-rerender]");
+      if (line) line.textContent = `Re-rendered at ${new Date().toLocaleTimeString()}.`;
+      rerender.replaceWith(rerender.cloneNode(true));
+    }
+  });
+</script>

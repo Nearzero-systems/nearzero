@@ -1,0 +1,104 @@
+---
+import { deleteChannelText, NOTIFICATION_MESSAGES } from "@nearzero/shared/browser";
+import ChannelDialogs from "../../../../components/notifications/ChannelDialogs.astro";
+import LoadFailed from "../../../../components/settings/LoadFailed.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import TableWrap from "../../../../components/ui/TableWrap.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { ChannelList } from "../../../../lib/data/index.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { settingsVisibility } from "../../../../lib/routes.ts";
+
+// Settings → Channels, titled "Notifications" (spec 15.1): the workspace's notification
+// channels, for owners and admins or people with "Manage notification channels". Secrets are
+// never shown; client/channels.ts runs the dialogs and Test notification.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const visible = settingsVisibility(ctx.access).channels;
+let list: ChannelList | null = null;
+let failure: string | null = null;
+if (visible) {
+  try {
+    list = await ctx.data.channels();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+const allowed = visible && (list !== null || failure !== null);
+if (!allowed) Astro.response.status = 403;
+const can = list?.can ?? { create: false, update: false, delete: false };
+---
+
+<SettingsLayout ctx={ctx} current="channels" title={NOTIFICATION_MESSAGES.pageTitle}>
+  {
+    !allowed ? (
+      <NoAccess workspace={ctx.workspace.slug} />
+    ) : !list ? (
+      <LoadFailed detail={failure} />
+    ) : (
+      <div class="nz-channels-page" data-channels>
+        <div class="nz-settings-intro nz-settings-intro--end">
+          {can.create && (
+            <Button variant="primary" data-channel-open="add">
+              Add Notification
+            </Button>
+          )}
+        </div>
+        {list.channels.length === 0 ? (
+          <EmptyState title="No channels yet" text={NOTIFICATION_MESSAGES.empty} />
+        ) : (
+          <>
+            <TableWrap label="Notification channels" class="nz-settings-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Events</th>
+                  <th class="nz-col-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.channels.map((channel) => (
+                  <tr data-channel-row={channel.id}>
+                    <td>
+                      <p class="font-medium nz-truncate">{channel.name}</p>
+                      {channel.lastFailure && <p class="nz-small nz-inline-error" title={channel.lastFailureAt ?? undefined}>{channel.lastFailure}</p>}
+                      {!channel.readable && <p class="nz-small nz-inline-error">{NOTIFICATION_MESSAGES.keysUnreadable}</p>}
+                    </td>
+                    <td class="nz-dim">{channel.typeLabel}</td>
+                    <td class="nz-channel-events-cell">{channel.eventsText}</td>
+                    <td class="nz-cell-actions">
+                      <div class="nz-backup-actions">
+                        {can.update && (
+                          <Button variant="ghost" data-channel-open="edit" data-channel={JSON.stringify(channel)}>
+                            Edit
+                          </Button>
+                        )}
+                        {can.delete && (
+                          <Button
+                            variant="ghost"
+                            data-dialog-open="nz-channel-delete"
+                            data-dialog-fill={JSON.stringify({ id: channel.id, title: deleteChannelText(channel.name) })}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            <p class="nz-settings-total">{list.total} total</p>
+          </>
+        )}
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">{allowed && list && <ChannelDialogs events={list.events} />}</Fragment>
+</SettingsLayout>

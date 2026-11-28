@@ -1,0 +1,21 @@
+---
+import Document from "./Document.astro";
+
+/**
+ * Onboarding steps and other full-page notes: the hairline frame (components/auth/AuthFrame.astro)
+ * in the person's theme (Light by default).
+ */
+interface Props {
+  title: string;
+  /** One sentence about the page (spec 21.9b). */
+  description: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<Document title={title} description={description} router={false}>
+  <main class="nz-auth" data-page-content>
+    <slot />
+  </main>
+</Document>

@@ -1,0 +1,63 @@
+---
+import type { ServiceDetail } from "../../lib/data/index.ts";
+import { appSource, sizeLabel } from "../../lib/runtime-rules.ts";
+import Button from "../ui/Button.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The Source panel's Upload tab (spec 6.3): a build path and a .zip archive of up to 200 MB,
+ * then "Deploy". The archive streams to the API with progress (client/upload.ts); a newer upload
+ * replaces the older one.
+ */
+interface Props {
+  service: ServiceDetail;
+}
+
+const { service } = Astro.props;
+const source = appSource(service.settings);
+const upload = source.type === "upload" ? source : null;
+---
+
+<form class="nz-form" data-upload-source data-service-id={service.id} data-can-deploy={service.can.deploy ? "true" : "false"} data-scripted novalidate>
+  {
+    upload?.upload && (
+      <p class="nz-dim">
+        Current archive: <span class="nz-code">{upload.upload.fileName}</span> ({sizeLabel(upload.upload.sizeBytes)})
+      </p>
+    )
+  }
+  <div class="nz-form-grid-2">
+    <Field
+      id="nz-src-upload-path"
+      name="buildPath"
+      label="Build path"
+      value={upload?.buildPath ?? ""}
+      placeholder="Empty for the archive's root"
+      autocomplete="off"
+      spellcheck="false"
+      disabled={!service.can.configure}
+    />
+    <Field
+      id="nz-src-upload-file"
+      name="archive"
+      label="Archive (.zip)"
+      type="file"
+      accept=".zip,application/zip"
+      hint="At most 200 MB. One top folder, as Download ZIP makes, becomes the root."
+      disabled={!service.can.configure}
+    />
+  </div>
+  <div class="nz-upload-bar" data-upload-progress hidden>
+    <div class="nz-upload-fill" data-upload-bar style="width: 0%"></div>
+  </div>
+  <p class="nz-small nz-dim" data-upload-status aria-live="polite"></p>
+  <FormError />
+  {
+    service.can.configure && (
+      <div class="nz-form-actions">
+        <Button variant="primary" type="submit">{service.can.deploy ? "Deploy" : "Upload"}</Button>
+      </div>
+    )
+  }
+</form>

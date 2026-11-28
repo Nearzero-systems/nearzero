@@ -1,0 +1,69 @@
+---
+import { POLICY_LIMITS } from "@nearzero/shared";
+import type { ProjectTree, ScopeOption } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import AccessEditor from "./AccessEditor.astro";
+
+/** The access policy dialog and its delete confirmation (spec 04 4.7). */
+interface Props {
+  projects: ProjectTree[];
+  servers: ScopeOption[];
+  gitAccounts: ScopeOption[];
+}
+
+const { projects, servers, gitAccounts } = Astro.props;
+---
+
+<Dialog id="nz-policy" title="New policy" wide>
+  <form method="post" class="nz-form" data-policy-form data-api="POST /workspace/policies" data-api-manual data-validate novalidate>
+    <FormError />
+    <input type="hidden" name="policyId" value="" />
+    <Field
+      id="nz-policy-name"
+      name="name"
+      label="Name"
+      placeholder="Developers"
+      maxlength={POLICY_LIMITS.nameMax}
+      hint={`Up to ${POLICY_LIMITS.nameMax} characters.`}
+      data-required="Enter a name for the policy."
+      autofocus
+    />
+    <Field
+      id="nz-policy-description"
+      name="description"
+      as="textarea"
+      rows={2}
+      label="Description"
+      placeholder="Builds and deploys the team's apps."
+      maxlength={POLICY_LIMITS.descriptionMax}
+      hint={`Optional, up to ${POLICY_LIMITS.descriptionMax} characters.`}
+    />
+    <AccessEditor
+      id="nz-policy-editor"
+      projects={projects}
+      servers={servers}
+      gitAccounts={gitAccounts}
+      capabilitiesTitle="What it allows"
+      holder="policy"
+    />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Save policy</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-policy-delete" title="Delete policy">
+  <form method="post" class="nz-form" data-api="DELETE /workspace/policies/{policyId}" data-api-toast="Policy deleted">
+    <FormError />
+    <input type="hidden" name="policyId" value="" />
+    <p data-fill-text="consequence"></p>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete policy</Button>
+    </div>
+  </form>
+</Dialog>

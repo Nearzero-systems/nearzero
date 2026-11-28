@@ -1,0 +1,55 @@
+---
+import type { HostnameEntry } from "../../lib/data/index.ts";
+import { dnsPill, httpsPill } from "../../lib/domains.ts";
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import VisitButton from "../ui/VisitButton.astro";
+
+/**
+ * A service's hostnames (spec 6.9, 7.2): each with its path and port, Copy, Visit and Manage
+ * (opens it in Domains), its DNS and HTTPS state, and the record to add while DNS isn't ready.
+ */
+interface Props {
+  hostnames: HostnameEntry[];
+  domainsHref: string;
+  serviceName: string;
+}
+
+const { hostnames, domainsHref, serviceName } = Astro.props;
+---
+
+{
+  hostnames.length === 0 ? (
+    <p class="nz-dim mt-3">No hostnames yet. Add one to reach {serviceName} over HTTPS.</p>
+  ) : (
+    <ul class="nz-host-rows mt-3">
+      {hostnames.map((item) => (
+        <li class="nz-host-row">
+          <div class="nz-host-main">
+            <span class="nz-url-text font-medium" title={item.url}>{item.hostname}</span>
+            <span class="nz-small nz-dim">
+              {item.service?.path && item.service.path !== "/" ? `Path ${item.service.path} · ` : ""}
+              {item.service?.composeService ? `${item.service.composeService} · ` : ""}
+              Port {item.service?.port ?? "—"} · {item.sourceLabel}
+            </span>
+          </div>
+          <span class="nz-host-pills">
+            <StatusPill status={dnsPill(item.dns.status)} label={item.dns.label} />
+            <StatusPill status={httpsPill(item.https.state)} label={item.https.label} />
+          </span>
+          <span class="nz-host-tools">
+            <CopyButton text={item.url} what="URL" />
+            <VisitButton href={item.url} />
+            <Button variant="ghost" href={`${domainsHref}?q=${encodeURIComponent(item.hostname)}`}>Manage</Button>
+          </span>
+          {item.dns.record && item.dns.status !== "points_here" && (
+            <p class="nz-hint nz-host-hint">
+              {item.dns.note} Add <span class="nz-code">{item.dns.record.type} {item.dns.record.name} {item.dns.record.value ?? "?"}</span> (DNS only).
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}

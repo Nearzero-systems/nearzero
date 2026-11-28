@@ -1,0 +1,102 @@
+---
+import { BACKUP_PROVIDERS, DESTINATION_MESSAGES, PROVIDER_PRESETS } from "@nearzero/shared/browser";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The destination dialogs of Settings → Backups (spec 17.1): Add / Edit (one dialog; editing
+ * leaves the keys blank to keep the saved ones), with Test connection on the typed values before
+ * saving, and Delete. client/backups.ts switches the
+ * dialog between adding and editing and fills the provider's sample endpoint.
+ */
+const presets = JSON.stringify(PROVIDER_PRESETS);
+const providers = BACKUP_PROVIDERS.map((key) => ({
+  value: key,
+  label: PROVIDER_PRESETS[key].label,
+}));
+---
+
+<Dialog id="nz-destination" title="Add destination" description="An S3-compatible bucket that backups go to.">
+  <form
+    method="post"
+    class="nz-form"
+    data-destination-form
+    data-api="POST /backup-destinations"
+    data-api-toast="Destination added"
+    data-presets={presets}
+    data-validate
+    novalidate
+  >
+    <FormError />
+    <input type="hidden" name="id" value="" data-destination-id />
+    <Field id="nz-destination-name" name="name" label="Name" placeholder="Offsite backups" maxlength={100} data-required="Enter a name for this destination." autocomplete="off" autofocus />
+    <Field id="nz-destination-provider" name="provider" label="Provider" as="select" options={providers} data-destination-provider />
+    <Field
+      id="nz-destination-endpoint"
+      name="endpoint"
+      label="Endpoint (URL)"
+      inputmode="url"
+      autocomplete="off"
+      spellcheck="false"
+      value={PROVIDER_PRESETS.aws.endpoint}
+      data-required="Enter the endpoint URL, like https://s3.us-east-1.amazonaws.com."
+      data-destination-endpoint
+    />
+    <div class="nz-form-grid-2">
+      <Field id="nz-destination-bucket" name="bucket" label="Bucket" autocomplete="off" spellcheck="false" data-required="Enter the bucket's name." />
+      <Field
+        id="nz-destination-region"
+        name="region"
+        label="Region"
+        hint={DESTINATION_MESSAGES.regionHint}
+        autocomplete="off"
+        spellcheck="false"
+        value={PROVIDER_PRESETS.aws.region}
+        data-destination-region
+      />
+    </div>
+    <Field
+      id="nz-destination-access"
+      name="accessKeyId"
+      label="Access key ID"
+      type="password"
+      autocomplete="off"
+      spellcheck="false"
+      data-destination-key
+      data-required="Paste the access key ID."
+    />
+    <Field
+      id="nz-destination-secret"
+      name="secretAccessKey"
+      label="Secret access key"
+      type="password"
+      autocomplete="new-password"
+      spellcheck="false"
+      data-destination-key
+      data-required="Paste the secret access key."
+    />
+    <p class="nz-hint">{DESTINATION_MESSAGES.keysHint}</p>
+    <p class="nz-inline-note nz-wrap-any" data-destination-check aria-live="polite" hidden></p>
+    <div class="nz-dialog-foot">
+      <Button variant="ghost" class="mr-auto" data-destination-check-run>Test connection</Button>
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" data-destination-submit>Add destination</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-destination-delete" title="Delete destination">
+  <form method="post" class="nz-form" data-api="DELETE /backup-destinations/{id}" novalidate>
+    <FormError />
+    <input type="hidden" name="id" value="" />
+    <p>Delete <strong data-fill-text="name"></strong>?</p>
+    <p class="nz-dim">{DESTINATION_MESSAGES.deleteText}</p>
+    <p class="nz-inline-note" data-destination-delete-count hidden></p>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete destination</Button>
+    </div>
+  </form>
+</Dialog>

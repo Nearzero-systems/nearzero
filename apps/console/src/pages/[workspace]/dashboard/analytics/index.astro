@@ -1,0 +1,285 @@
+---
+import {
+  ANALYTICS_MESSAGES,
+  ANALYTICS_RANGE_LABELS,
+  ANALYTICS_RANGES,
+  durationText,
+  STATUS_CLASSES,
+} from "@nearzero/shared/browser";
+import AnalyticsDialogs from "../../../../components/analytics/AnalyticsDialogs.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import Menu from "../../../../components/ui/Menu.astro";
+import PageHead from "../../../../components/ui/PageHead.astro";
+import StatusPill from "../../../../components/ui/StatusPill.astro";
+import TableWrap from "../../../../components/ui/TableWrap.astro";
+import AppShell from "../../../../layouts/AppShell.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { AnalyticsPageView } from "../../../../lib/data/index.ts";
+import { chartHtml } from "../../../../lib/line-chart.ts";
+import { localTime, statusPill, utcOfLocalInput } from "../../../../lib/m10.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { dashboardPath } from "../../../../lib/routes.ts";
+
+// Analytics (spec 13): the requests the Nearzero host's router handled, for every workspace, so
+// for instance administrators only; the sidebar item is hidden for everyone else (G8). One page
+// scroll: the table is never trapped in an inner scroll area. client/analytics.ts runs the
+// drawer and the settings; client/charts.ts the crosshair.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const admin = ctx.viewer.isInstanceAdmin;
+const params = new URLSearchParams(Astro.url.searchParams);
+const statuses = params
+  .getAll("status")
+  .flatMap((value) => value.split(","))
+  .filter((value) => (STATUS_CLASSES as readonly string[]).includes(value));
+params.delete("status");
+if (statuses.length > 0) params.set("status", statuses.join(","));
+const range = (ANALYTICS_RANGES as readonly string[]).includes(params.get("range") ?? "")
+  ? (params.get("range") as string)
+  : "24h";
+// Custom ranges come from datetime-local inputs, in the browser's own time.
+for (const key of ["from", "to"]) {
+  const value = params.get(key);
+  if (value) {
+    const utc = utcOfLocalInput(value, Number(params.get("tz") ?? "0"));
+    if (utc) params.set(key, utc);
+    else params.delete(key);
+  }
+}
+let page: AnalyticsPageView | null = null;
+let failure: string | null = null;
+if (admin) {
+  try {
+    page = await ctx.data.analytics(params);
+  } catch (error) {
+    if (!isApiError(error) || error.code === "control_unreachable") throw error;
+    failure = error.message;
+  }
+} else {
+  Astro.response.status = 403;
+}
+const base = dashboardPath(ctx.workspace.slug, "analytics");
+const search = params.get("q") ?? "";
+const href = (changes: Record<string, string | null>) => {
+  const next = new URLSearchParams(Astro.url.searchParams);
+  next.delete("status");
+  if (statuses.length > 0) for (const status of statuses) next.append("status", status);
+  for (const [key, value] of Object.entries(changes)) {
+    if (key === "status") continue;
+    if (value === null || value === "") next.delete(key);
+    else next.set(key, value);
+  }
+  if (!("page" in changes)) next.delete("page");
+  const text = next.toString();
+  return text ? `${base}?${text}` : base;
+};
+const filtered = Boolean(search) || statuses.length > 0 || range !== "24h";
+const stats = page?.stats;
+const percent = stats && stats.requests > 0 ? `${Math.round(stats.errorRate * 1000) / 10}%` : "0%";
+const chart = page
+  ? chartHtml(
+      {
+        xs: page.chart.buckets.map((bucket) => bucket.start),
+        unit: "count",
+        xLabel: page.chart.bucketMs >= 24 * 3_600_000 ? "day" : "hour",
+        series: [
+          {
+            label: "Requests",
+            values: page.chart.buckets.map((bucket) => bucket.requests),
+            tone: "accent",
+          },
+          {
+            label: "Errors",
+            values: page.chart.buckets.map((bucket) => bucket.errors),
+            tone: "danger",
+          },
+        ],
+      },
+      page.chart.label,
+    )
+  : "";
+const topHost = page?.hosts[0]?.requests ?? 1;
+// The two date fields always show the window's days (redrawn in the browser's own zone).
+const dayOf = (iso: string | undefined) => (iso ? iso.slice(0, 10) : "");
+---
+
+<AppShell ctx={ctx} title="Analytics" active="analytics">
+  {
+    !admin ? (
+      <>
+        <PageHead title="Analytics" />
+        <div class="nz-body"><NoAccess workspace={ctx.workspace.slug} reason={ANALYTICS_MESSAGES.adminsOnly} /></div>
+      </>
+    ) : !page ? (
+      <>
+        <PageHead title="Analytics" />
+        <div class="nz-body"><EmptyState title="Could not load Analytics" text={failure ?? "Try refreshing."} /></div>
+      </>
+    ) : (
+      <div class="nz-fill nz-analytics-page" data-analytics-page>
+        <div class="nz-analytics">
+        <div class="nz-analytics-head">
+          <div class="nz-analytics-title">
+            <h1 class="nz-title">Analytics</h1>
+            <span class="nz-analytics-state" data-on={page.recording.enabled ? "true" : "false"}>
+              {page.recording.enabled ? ANALYTICS_MESSAGES.recording : ANALYTICS_MESSAGES.off}
+            </span>
+          </div>
+          <Button variant="outline" popovertarget="nz-analytics-settings">Settings</Button>
+          <Menu id="nz-analytics-settings" label="Analytics settings" role="dialog" placement="bottom-end" wide moonlit>
+            <form class="nz-form nz-analytics-settings" data-api="PATCH /analytics/settings" novalidate>
+              <div data-field>
+                <label class="nz-label" for="nz-analytics-cron">Log cleanup schedule</label>
+                <input id="nz-analytics-cron" class="nz-input nz-code" name="cleanupCron" value={page.settings.cleanupCron} autocomplete="off" spellcheck="false" />
+                <p class="nz-hint">{page.settings.cleanupText} ({page.settings.timeZone}). {ANALYTICS_MESSAGES.cleanupHint}</p>
+                <p class="nz-field-error" data-field-error hidden></p>
+              </div>
+              {page.settings.lastCleanupError && <p class="nz-small nz-inline-error">Last cleanup failed: {page.settings.lastCleanupError}</p>}
+              <Button variant="outline" type="submit">Save schedule</Button>
+            </form>
+            <div class="nz-analytics-settings-actions">
+              <Button variant="ghost" data-dialog-open="nz-analytics-logging">
+                {page.recording.enabled ? "Turn off request logging" : "Turn on request logging"}
+              </Button>
+              <Button variant="ghost" class="nz-danger-text" data-dialog-open="nz-analytics-delete">Delete all request logs</Button>
+            </div>
+          </Menu>
+        </div>
+        <form class="nz-analytics-filters" method="get" action={base} data-analytics-filters>
+          <div class="nz-segmented nz-range-group" role="group" aria-label="Range">
+            {ANALYTICS_RANGES.map((value) => (
+              <label class="nz-segment" data-active={value === range ? "true" : undefined} hidden={value === "custom" ? true : undefined}>
+                <input type="radio" name="range" value={value} checked={value === range} class="nz-visually-hidden" data-analytics-auto />
+                {ANALYTICS_RANGE_LABELS[value]}
+              </label>
+            ))}
+          </div>
+          <div class="nz-analytics-dates" data-analytics-custom>
+            <label class="nz-visually-hidden" for="nz-analytics-from-day">From</label>
+            <input id="nz-analytics-from-day" type="date" class="nz-input nz-input--filled nz-analytics-date" value={dayOf(page.window.from)} data-analytics-day="from" data-day-utc={page.window.from} />
+            <span class="nz-dim" aria-hidden="true">–</span>
+            <label class="nz-visually-hidden" for="nz-analytics-to-day">To</label>
+            <input id="nz-analytics-to-day" type="date" class="nz-input nz-input--filled nz-analytics-date" value={dayOf(page.window.to)} data-analytics-day="to" data-day-utc={page.window.to} />
+            <input type="hidden" name="from" value="" data-utc={page.window.range === "custom" ? page.window.from : ""} data-local-time />
+            <input type="hidden" name="to" value="" data-utc={page.window.range === "custom" ? page.window.to : ""} data-local-time />
+            <input type="hidden" name="tz" value="0" data-analytics-tz />
+          </div>
+          <label class="nz-analytics-search">
+            <span class="nz-visually-hidden">Filter by host or path</span>
+            <input type="search" name="q" class="nz-input nz-input--filled" placeholder={ANALYTICS_MESSAGES.searchPlaceholder} value={search} autocomplete="off" />
+          </label>
+          <div class="nz-status-toggles" role="group" aria-label="Status">
+            {STATUS_CLASSES.map((value) => (
+              <label class="nz-status-chip" data-active={statuses.includes(value) ? "true" : undefined}>
+                <input type="checkbox" name="status" value={value} checked={statuses.includes(value)} class="nz-visually-hidden" data-analytics-auto />
+                {value}
+              </label>
+            ))}
+          </div>
+          {filtered && <a class="nz-text-link nz-small" href={base}>Clear filters</a>}
+        </form>
+        {!page.recording.enabled && (
+          <div class="nz-analytics-notice">
+            <p>{ANALYTICS_MESSAGES.off}, so new requests are not recorded.</p>
+            <Button variant="outline" data-dialog-open="nz-analytics-logging">{ANALYTICS_MESSAGES.turnOn}</Button>
+          </div>
+        )}
+        {page.source.error && <p class="nz-inline-note nz-warn-note">{page.source.error}</p>}
+        {page.settings.applyError && <p class="nz-inline-note nz-warn-note">The router hasn't taken the setting yet: {page.settings.applyError}</p>}
+
+        <div class="nz-stat-strip">
+          <section class="nz-stat" aria-label="Requests">
+            <p class="nz-stat-label">Requests</p>
+            <p class="nz-stat-value">{stats?.requests.toLocaleString("en-US")}</p>
+          </section>
+          <section class="nz-stat" aria-label="Errors">
+            <p class="nz-stat-label">Errors</p>
+            <p class="nz-stat-value">{stats?.errors.toLocaleString("en-US")}</p>
+            <p class="nz-stat-note">{stats?.clientErrors} 4xx · {stats?.serverErrors} 5xx{stats && stats.errors > 0 ? ` · ${percent}` : ""}</p>
+          </section>
+          <section class="nz-stat" aria-label="Median response">
+            <p class="nz-stat-label">Median response</p>
+            <p class="nz-stat-value">{durationText(stats?.medianMs ?? null)}</p>
+          </section>
+          <section class="nz-stat" aria-label="95th percentile">
+            <p class="nz-stat-label">95th percentile</p>
+            <p class="nz-stat-value">{durationText(stats?.p95Ms ?? null)}</p>
+          </section>
+        </div>
+
+        <div class="nz-analytics-grid">
+          <section class="nz-card nz-analytics-chart" aria-labelledby="nz-analytics-chart-title">
+            <h2 class="nz-analytics-card-title" id="nz-analytics-chart-title">{page.chart.label}</h2>
+            <Fragment set:html={chart} />
+          </section>
+          <section class="nz-card nz-analytics-hosts" aria-labelledby="nz-analytics-hosts-title">
+            <h2 class="nz-analytics-card-title" id="nz-analytics-hosts-title">Busiest hosts</h2>
+            {page.hosts.length === 0 ? (
+              <p class="nz-dim">No hosts yet</p>
+            ) : (
+              <ol class="nz-busy-hosts">
+                {page.hosts.map((host) => (
+                  <li>
+                    <a class="nz-busy-host" href={href({ q: host.host })} title={`Filter by ${host.host}`}>
+                      <span class="nz-truncate">{host.host}</span>
+                      <span class="nz-dim">
+                        {host.requests.toLocaleString("en-US")}
+                        {host.errors > 0 && <span class="nz-danger-text" data-host-errors> · {host.errors.toLocaleString("en-US")} err</span>}
+                      </span>
+                      <span class="nz-busy-host-bar" style={`--share:${Math.max(2, Math.round((host.requests / topHost) * 100))}%`} aria-hidden="true"></span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </div>
+
+        <div class="nz-card nz-requests-card">
+          <TableWrap label="Requests" class="nz-requests-table nz-table-wrap--flush">
+            <thead>
+              <tr>
+                <th aria-sort={page.table.sort === "time-asc" ? "ascending" : "descending"}>
+                  <a class="nz-sort-link" href={href({ sort: page.table.sort === "time-asc" ? null : "time-asc" })}>Time <Icon name={page.table.sort === "time-asc" ? "arrow-up" : "arrow-down"} /></a>
+                </th>
+                <th>Method</th>
+                <th class="nz-requests-wide">Request</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Client</th>
+              </tr>
+            </thead>
+            <tbody>
+              {page.table.entries.map((entry) => (
+                  <tr class="nz-request-row" tabindex="0" data-request={JSON.stringify(entry)} aria-label={`${entry.method} ${entry.host}${entry.path}, ${entry.status}`}>
+                    <td class="nz-nowrap" data-local-iso={entry.at}>{localTime(entry.at, true)}</td>
+                    <td class="nz-code">{entry.method}</td>
+                    <td class="nz-request-cell"><span class="nz-truncate"><span class="nz-dim">{entry.host}</span>{entry.path}</span></td>
+                    <td><StatusPill status={statusPill(entry.status)} label={String(entry.status)} /></td>
+                    <td class="nz-nowrap">{durationText(entry.durationMs)}</td>
+                    <td class="nz-code nz-truncate">{entry.client}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </TableWrap>
+          {page.table.entries.length === 0 && <p class="nz-requests-empty">No requests recorded in this range.</p>}
+          <div class="nz-requests-foot">
+            <span>{page.table.total === 0 ? "0 requests" : page.table.rangeText}</span>
+            <span class="flex gap-2">
+              <Button variant="outline" href={href({ page: String(page.table.page - 1) })} disabled={page.table.page <= 1}>Previous</Button>
+              <Button variant="outline" href={href({ page: String(page.table.page + 1) })} disabled={page.table.page >= page.table.pages}>Next</Button>
+            </span>
+          </div>
+        </div>
+        <p class="nz-analytics-note">{page.note}</p>
+        </div>
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">
+    {admin && page && <AnalyticsDialogs enabled={page.recording.enabled} />}
+  </Fragment>
+</AppShell>

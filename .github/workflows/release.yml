@@ -1,0 +1,260 @@
+name: Release
+
+# Builds and publishes one release from a tag like v1.0.0 (spec 23.3, 26.1 M0):
+#   1. the production image for amd64 and arm64, merged into one multi-architecture tag; each
+#      image compiles the runner for every server (x64 and arm64, glibc and musl) with its
+#      SHA256SUMS into /app/runner-binaries, where server setup reads it;
+#   2. the runner binaries (glibc and musl, x64 and arm64) with SHA256SUMS;
+#   3. the install suite against the image just built;
+#   4. the installer files (latest and versioned, each with a .sha256), made only after every
+#      image the installer references is confirmed for both architectures;
+#   5. publishing, behind the "release" environment's approval.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      repository: ${{ steps.version.outputs.repository }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        name: The tag matches the product version
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          product=$(sed -n 's/^export const VERSION = "\(.*\)";$/\1/p' packages/shared/src/version.ts)
+          if [ "$version" != "$product" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match VERSION \"$product\" in packages/shared/src/version.ts."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # GHCR names are lowercase: Nearzero-systems/nearzero publishes
+          # ghcr.io/nearzero-systems/nearzero, the installer's default (NZ_IMAGE_REPOSITORY in
+          # installer/install.sh).
+          echo "repository=ghcr.io/$(echo "$REPOSITORY" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: Image (${{ matrix.platform }})
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            VERSION=${{ needs.version.outputs.version }}
+            REVISION=${{ github.sha }}
+            SOURCE=${{ github.server_url }}/${{ github.repository }}
+          outputs: type=image,name=${{ needs.version.outputs.repository }},push-by-digest=true,name-canonical=true,push=true
+      - name: Keep the digest
+        run: |
+          mkdir -p digests
+          touch "digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/*
+          retention-days: 1
+
+  image-tag:
+    name: Image tag (both architectures)
+    needs: [version, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag both architectures as one image
+        env:
+          REPOSITORY: ${{ needs.version.outputs.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cd digests
+          docker buildx imagetools create --tag "$REPOSITORY:$VERSION" $(printf "$REPOSITORY@sha256:%s " *)
+          docker buildx imagetools inspect "$REPOSITORY:$VERSION"
+
+  runner:
+    name: Runner binaries
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd runner build
+      - name: Checksums match and the binaries run (glibc and Alpine)
+        run: |
+          cd runner/dist
+          sha256sum --check SHA256SUMS
+          ./nearzero-runner-linux-x64 --version
+          docker run --rm -v "$PWD:/runner:ro" alpine:3.20 \
+            sh -c 'apk add --no-cache -q libstdc++ libgcc && /runner/nearzero-runner-linux-x64-musl --version'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runner
+          path: runner/dist/*
+          retention-days: 7
+
+  install-suite:
+    name: Install suite
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Interactive and unattended installs, rerun and uninstall in a Docker-in-Docker host
+        # Also checks that the image carries every runner server setup sends, matching SHA256SUMS.
+        run: bun run --cwd e2e test:install
+
+  installer:
+    name: Installer files
+    needs: [version, image-tag, install-suite]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: Every image the installer uses exists for amd64 and arm64
+        env:
+          IMAGE: ${{ needs.version.outputs.repository }}:${{ needs.version.outputs.version }}
+        run: |
+          status=0
+          for image in "$IMAGE" $(sed -n 's/^NZ_DEFAULT_[A-Z]*_IMAGE="\(.*\)"$/\1/p' installer/install.sh); do
+            manifest=$(docker buildx imagetools inspect "$image")
+            for platform in 'linux/amd64' 'linux/arm64(/v8)?'; do
+              if ! grep -Eq "Platform:[[:space:]]+$platform\$" <<<"$manifest"; then
+                echo "::error::$image has no $platform image."
+                status=1
+              fi
+            done
+          done
+          exit $status
+      - name: The pinned Compose plugin's checksums match its release
+        run: |
+          version=$(sed -n 's/^NZ_COMPOSE_VERSION="\(.*\)"$/\1/p' installer/install.sh)
+          sums=$(curl -fsSL "https://github.com/docker/compose/releases/download/$version/checksums.txt")
+          for pair in x86_64:NZ_COMPOSE_SHA256_X86_64 aarch64:NZ_COMPOSE_SHA256_AARCH64; do
+            expected=$(sed -n "s/^${pair#*:}=\"\(.*\)\"$/\1/p" installer/install.sh)
+            grep -q "^$expected \*docker-compose-linux-${pair%%:*}$" <<<"$sums" || {
+              echo "::error::The pinned checksum for docker-compose-linux-${pair%%:*} doesn't match $version."
+              exit 1
+            }
+          done
+      - name: The installer carries the current compose file and nearzero command
+        run: bun installer/scripts/embed.ts --check
+      - name: Lay out the latest and versioned installer files
+        run: |
+          bun installer/scripts/release.ts --version "${{ needs.version.outputs.version }}" \
+            --image-repository "${{ needs.version.outputs.repository }}" --out release
+          (cd release && sha256sum --check install.sh.sha256 uninstall.sh.sha256)
+          (cd "release/v${{ needs.version.outputs.version }}" && sha256sum --check install.sh.sha256 uninstall.sh.sha256)
+          bash -n release/install.sh && bash -n release/uninstall.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: release
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: [version, installer, runner]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: runner
+          path: runner
+      - name: GitHub release with the installer and runner binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Nearzero ${TAG#v}" \
+            --notes "Install: curl -fsSL https://cdn.nearzero.dev/install.sh | sudo bash" \
+            release/install.sh release/install.sh.sha256 release/uninstall.sh release/uninstall.sh.sha256 \
+            runner/*
+      # The CDN that serves cdn.nearzero.dev is configured per deployment. The versioned folder
+      # goes first and the latest installer last, so "latest" never points at missing files.
+      - name: Installer files to the CDN
+        if: ${{ vars.NEARZERO_CDN_BUCKET != '' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.NEARZERO_CDN_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.NEARZERO_CDN_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ vars.NEARZERO_CDN_BUCKET }}
+          ENDPOINT: ${{ vars.NEARZERO_CDN_ENDPOINT }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          aws s3 cp --recursive --endpoint-url "$ENDPOINT" "release/v$VERSION" "s3://$BUCKET/v$VERSION"
+          for file in uninstall.sh.sha256 uninstall.sh install.sh.sha256 install.sh; do
+            aws s3 cp --endpoint-url "$ENDPOINT" --cache-control "max-age=300" "release/$file" "s3://$BUCKET/$file"
+          done

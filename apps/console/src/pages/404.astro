@@ -1,0 +1,20 @@
+---
+import AuthFrame from "../components/auth/AuthFrame.astro";
+import Button from "../components/ui/Button.astro";
+import FocusLayout from "../layouts/FocusLayout.astro";
+import { wayBack } from "../lib/error-page.ts";
+
+// An address no page takes (spec 21.9b): in this browser's theme, with the owner's mark, and a
+// way back: the person's projects, or sign-in when signed out. Dashboard addresses that match no
+// page show their own "Page not found" inside the shell ([workspace]/dashboard/[section].astro).
+const back = await wayBack(Astro, { lookup: true });
+---
+
+<FocusLayout title="Page not found" description="This address doesn't match a page in this Nearzero console.">
+  <AuthFrame heading="Page not found" mark>
+    <p slot="note">This address doesn't match a page. Check the link, or start again from here.</p>
+    <div class="nz-gate-actions nz-gate-actions--block">
+      <Button variant="primary" href={back.href} data-astro-reload>{back.label}</Button>
+    </div>
+  </AuthFrame>
+</FocusLayout>

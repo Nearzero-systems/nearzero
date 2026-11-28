@@ -1,0 +1,15 @@
+#!/bin/sh
+# Runs one of the control plane's server-side commands inside the Nearzero container, for the
+# `nearzero` command on the host (spec 03 3.4): create-owner, reset-password, reset-2fa.
+#
+#   docker compose exec -T control nearzero-control create-owner   (email and password on stdin)
+#
+# Credentials always arrive on standard input, never as arguments, so they never show up in a
+# process list or a log.
+set -eu
+app_dir="${NEARZERO_APP_DIR:-/app}"
+if [ -f "$app_dir/control/cli.js" ]; then
+  exec bun --no-install "$app_dir/control/cli.js" "$@"
+fi
+echo "This Nearzero image has no account commands (create-owner, reset-password, reset-2fa)." >&2
+exit 2

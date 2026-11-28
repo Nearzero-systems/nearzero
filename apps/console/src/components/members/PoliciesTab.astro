@@ -1,0 +1,99 @@
+---
+import {
+  capabilitySummary,
+  gitScopeSummary,
+  holdersSummary,
+  projectScopeSummary,
+  serverScopeSummary,
+} from "../../lib/access-text.ts";
+import type { AccessPolicy } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import EmptyState from "../ui/EmptyState.astro";
+
+/**
+ * Members & access → Access policies (spec 04 4.7): what policies are, New policy, and one card
+ * per policy with what it allows, what it reaches and who has it.
+ */
+interface Props {
+  policies: AccessPolicy[];
+  canManage: boolean;
+}
+
+const { policies, canManage } = Astro.props;
+const deleteText = (policy: AccessPolicy) => {
+  const count = policy.holders.length;
+  return count === 0
+    ? `Nobody has ${policy.name} yet, so nobody loses anything.`
+    : `${policy.name} is given to ${count} ${count === 1 ? "person" : "people"}. They lose what it grants; anything given to them directly stays.`;
+};
+---
+
+<div data-policies>
+  <div class="nz-policies-intro">
+    <p class="nz-dim">
+      A policy is a set of permissions you define once and give to as many members as you like. A
+      member gets everything their policies grant, plus anything you give them directly. Owners and
+      admins don't need policies; they reach everything.
+    </p>
+    {
+      canManage && policies.length > 0 && (
+        <Button variant="primary" data-policy-new>New policy</Button>
+      )
+    }
+  </div>
+  {
+    policies.length === 0 ? (
+      <EmptyState
+        title="No access policies yet"
+        text={`Start with one like "Developers": they can create projects and services and reach every server, and you give it to each developer you invite.`}
+      >
+        {canManage && (
+          <div class="flex flex-wrap justify-center gap-2">
+            <Button variant="outline" data-policy-new>New policy</Button>
+            <Button variant="primary" data-policy-example>Start with Developers</Button>
+          </div>
+        )}
+      </EmptyState>
+    ) : (
+      <div class="nz-policy-grid">
+        {policies.map((policy) => (
+          <article class="nz-card nz-policy-card" aria-labelledby={`nz-policy-${policy.id}`}>
+            <div class="nz-policy-head">
+              <div class="min-w-0">
+                <h3 id={`nz-policy-${policy.id}`} class="nz-policy-name nz-truncate">{policy.name}</h3>
+                {policy.description && <p class="nz-dim nz-policy-desc">{policy.description}</p>}
+              </div>
+              {canManage && (
+                <div class="flex gap-1">
+                  <Button variant="outline" data-policy-edit={policy.id}>Edit</Button>
+                  <Button
+                    variant="ghost"
+                    data-dialog-open="nz-policy-delete"
+                    data-dialog-fill={JSON.stringify({
+                      policyId: policy.id,
+                      name: policy.name,
+                      consequence: deleteText(policy),
+                    })}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              )}
+            </div>
+            <dl class="nz-policy-facts">
+              <dt>Can</dt>
+              <dd>{capabilitySummary(policy.capabilities)}</dd>
+              <dt>Projects</dt>
+              <dd>{projectScopeSummary(policy.scope)}</dd>
+              <dt>Servers</dt>
+              <dd>{serverScopeSummary(policy.scope)}</dd>
+              <dt>Git</dt>
+              <dd>{gitScopeSummary(policy.scope)}</dd>
+            </dl>
+            <p class="nz-dim nz-policy-holders">{holdersSummary(policy.holders)}</p>
+          </article>
+        ))}
+      </div>
+    )
+  }
+</div>

@@ -1,0 +1,144 @@
+---
+import { DEFAULT_COMPOSE_PATH } from "@nearzero/shared/browser";
+import type { ServiceDetail } from "../../lib/data/index.ts";
+import { appSource } from "../../lib/runtime-rules.ts";
+import Button from "../ui/Button.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * The Source panel's Git URL tab (spec 6.3): repository URL (HTTPS or SSH; credentials inside the
+ * URL are refused), branch, build path, an SSH key for SSH URLs, watch paths and submodules.
+ * Saved with PUT …/source, then deployed when the person may deploy. On the Compose page
+ * (`compose`, the "Git" tab of spec 07 7.2 and 21.10) the build path becomes the Compose file
+ * path, and trigger and watch paths stay with the provider tabs.
+ */
+interface Props {
+  service: ServiceDetail;
+  sshKeys: { id: string; name: string }[] | null;
+  compose?: boolean;
+}
+
+const { service, sshKeys, compose = false } = Astro.props;
+const source = appSource(service.settings);
+const git = source.type === "git" ? source : null;
+const savedComposePath = (service.settings.source as { composePath?: unknown } | null)?.composePath;
+const composePath =
+  git && typeof savedComposePath === "string" && savedComposePath
+    ? savedComposePath
+    : DEFAULT_COMPOSE_PATH;
+const prefix = compose ? "nz-src-compose-url" : "nz-src-url";
+const keyOptions = [
+  { value: "", label: "None", selected: !git?.sshKeyId },
+  ...(sshKeys ?? []).map((key) => ({
+    value: key.id,
+    label: key.name,
+    selected: key.id === git?.sshKeyId,
+  })),
+];
+---
+
+<form
+  class="nz-form"
+  data-api="PUT /services/{serviceId}/source"
+  data-api-toast="Source saved"
+  data-deploy-on-save={service.can.deploy ? service.id : undefined}
+  data-git-url-source
+  data-api-manual
+  data-validate
+  novalidate
+>
+  <input type="hidden" name="serviceId" value={service.id} />
+  <input type="hidden" name="type" value="git" />
+  <div class="nz-form-grid-2">
+    <Field
+      id={prefix}
+      name="url"
+      label="Repository URL"
+      value={git?.url ?? ""}
+      placeholder="https://host/owner/repo.git or git@host:owner/repo.git"
+      autocomplete="off"
+      spellcheck="false"
+      data-required="Enter a valid public Git URL (HTTPS or git@host:owner/repo)."
+      disabled={!service.can.configure}
+    />
+    <Field id={`${prefix}-branch`} name="branch" label="Branch" value={git?.branch ?? "main"} autocomplete="off" spellcheck="false" disabled={!service.can.configure} />
+    {
+      compose ? (
+        <Field
+          id={`${prefix}-compose`}
+          name="composePath"
+          label="Compose file path"
+          value={composePath}
+          autocomplete="off"
+          spellcheck="false"
+          data-required="Enter the Compose file's path, like ./docker-compose.yml."
+          disabled={!service.can.configure}
+        />
+      ) : (
+        <Field
+          id={`${prefix}-path`}
+          name="buildPath"
+          label="Build path"
+          value={git?.buildPath ?? ""}
+          placeholder="apps/web (empty for the repository root)"
+          autocomplete="off"
+          spellcheck="false"
+          disabled={!service.can.configure}
+        />
+      )
+    }
+    <Field
+      id={`${prefix}-key`}
+      name="sshKeyId"
+      label="SSH key"
+      as="select"
+      options={keyOptions}
+      hint={sshKeys === null ? "You can't use the workspace's SSH keys." : "For git@ and ssh:// URLs: a deploy key saved under Servers → SSH keys."}
+      disabled={!service.can.configure || sshKeys === null}
+    />
+    {
+      !compose && (
+        <Field
+          id={`${prefix}-trigger`}
+          name="trigger"
+          label="Trigger"
+          as="select"
+          options={[
+            { value: "push", label: "On push", selected: git?.trigger !== "tag" },
+            { value: "tag", label: "On tag", selected: git?.trigger === "tag" },
+          ]}
+          disabled={!service.can.configure}
+        />
+      )
+    }
+    {
+      !compose && (
+        <Field
+          id={`${prefix}-watch`}
+          name="watchPaths"
+          label="Watch paths"
+          value={(git?.watchPaths ?? []).join(", ")}
+          placeholder="src/**, package.json"
+          hint="Optional. A push deploys only when a changed file matches one of them. Globs like src/**, {apps/web,packages/ui}/** and *.[jt]s work; start one with ! to leave files out."
+          autocomplete="off"
+          spellcheck="false"
+          data-list-field
+          disabled={!service.can.configure}
+        />
+      )
+    }
+  </div>
+  <label class="nz-check">
+    <input type="checkbox" name="submodules" checked={git?.submodules ?? false} disabled={!service.can.configure} />
+    <span>Fetch submodules</span>
+  </label>
+  <FormError />
+  {
+    service.can.configure && (
+      <div class="nz-form-actions">
+        <Button variant="primary" type="submit">{service.can.deploy ? "Save & deploy" : "Save"}</Button>
+      </div>
+    )
+  }
+</form>

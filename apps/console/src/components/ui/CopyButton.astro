@@ -1,0 +1,24 @@
+---
+import Button from "./Button.astro";
+
+/** Copies `text` from a real click, with the plain-HTTP fallback (spec 21.9). */
+interface Props {
+  text: string;
+  /** What is being copied, for the accessible name ("Copy URL"). */
+  what?: string;
+  withLabel?: boolean;
+}
+
+const { text, what = "", withLabel = false } = Astro.props;
+const name = what ? `Copy ${what}` : "Copy";
+---
+
+{
+  withLabel ? (
+    <Button variant="outline" icon="copy" data-copy={text} aria-label={name}>
+      Copy
+    </Button>
+  ) : (
+    <Button variant="icon" icon="copy" label={name} data-copy={text} />
+  )
+}

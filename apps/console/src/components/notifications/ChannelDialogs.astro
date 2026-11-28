@@ -1,0 +1,126 @@
+---
+import {
+  CHANNEL_TYPE_INFO,
+  CHANNEL_TYPES,
+  NOTIFICATION_EVENT_INFO,
+  type NotificationEvent,
+} from "@nearzero/shared/browser";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Icon from "../ui/Icon.astro";
+import Switch from "../ui/Switch.astro";
+
+/**
+ * The channel dialog (spec 15.2): a type, its own fields (rendered from the shared definitions,
+ * so the console and the control plane agree on them), the events it gets, Test notification,
+ * and Save. Secrets are blank on edit and keep the saved values unless typed again. Plus the
+ * delete confirmation. client/channels.ts drives them.
+ */
+interface Props {
+  events: NotificationEvent[];
+}
+const { events } = Astro.props;
+---
+
+<Dialog id="nz-channel" title="Add notification" wide class="nz-channel-dialog">
+  <form class="nz-form" novalidate data-scripted data-channel-form>
+    <input type="hidden" name="id" value="" />
+    <Field id="nz-channel-name" name="name" label="Name" maxlength={100} autocomplete="off" required />
+    <div data-field>
+      <label class="nz-label" for="nz-channel-type">Type</label>
+      <span class="nz-select-wrap">
+        <select id="nz-channel-type" class="nz-select" name="type" data-channel-type>
+          {CHANNEL_TYPES.map((type) => <option value={type}>{CHANNEL_TYPE_INFO[type].label}</option>)}
+        </select>
+        <Icon name="chevron-down" />
+      </span>
+      <p class="nz-field-error" data-field-error hidden></p>
+    </div>
+    {CHANNEL_TYPES.map((type, index) => (
+      <fieldset class="nz-channel-fields" data-channel-fields={type} hidden={index !== 0}>
+        <legend class="nz-visually-hidden">{CHANNEL_TYPE_INFO[type].label} settings</legend>
+        {CHANNEL_TYPE_INFO[type].fields.map((field) => {
+          const id = `nz-ch-${type}-${field.key}`;
+          const name = `fields.${field.key}`;
+          if (field.kind === "boolean") {
+            return <Switch id={id} name={name} label={field.label} description={field.hint} checked={field.defaultValue === true} data-json="bool" />;
+          }
+          if (field.kind === "headers") {
+            return (
+              <div class="nz-header-rows" data-field data-header-rows={name}>
+                <p class="nz-label">{field.label}</p>
+                <div class="nz-header-list" data-header-list></div>
+                <Button variant="ghost" icon="plus" data-header-add>Add header</Button>
+                {field.hint && <p class="nz-hint">{field.hint}</p>}
+                <p class="nz-hint" data-secret-hint={field.key} hidden></p>
+                <p class="nz-field-error" data-field-error hidden></p>
+              </div>
+            );
+          }
+          return (
+            <Field
+              id={id}
+              name={name}
+              label={`${field.label}${field.required ? "" : " (optional)"}`}
+              type={field.secret ? "password" : field.kind === "number" ? "number" : field.kind === "email" ? "email" : "text"}
+              inputmode={field.kind === "number" ? "numeric" : undefined}
+              min={field.min}
+              max={field.max}
+              placeholder={field.placeholder ?? (field.defaultValue !== undefined && field.kind !== "number" ? String(field.defaultValue) : undefined)}
+              value={field.kind !== "number" && field.defaultValue !== undefined && !field.secret ? String(field.defaultValue) : field.kind === "number" && field.defaultValue !== undefined ? String(field.defaultValue) : undefined}
+              hint={field.hint}
+              autocomplete="off"
+              spellcheck="false"
+              data-json={field.kind === "number" ? "number" : undefined}
+              data-secret={field.secret ? field.key : undefined}
+              data-default={field.defaultValue !== undefined ? String(field.defaultValue) : undefined}
+            />
+          );
+        })}
+      </fieldset>
+    ))}
+    <fieldset class="nz-channel-events" data-field>
+      <legend class="nz-label">Events</legend>
+      {events.map((event) => (
+        <label class="nz-check-row">
+          <input type="checkbox" name="events" value={event} data-json="list" />
+          <span>
+            <span class="nz-switch-label">{NOTIFICATION_EVENT_INFO[event].label}</span>
+            <span class="nz-switch-desc nz-dim">{NOTIFICATION_EVENT_INFO[event].hint}</span>
+          </span>
+        </label>
+      ))}
+      <p class="nz-field-error" data-field-error hidden></p>
+    </fieldset>
+    <p class="nz-small nz-channel-test" role="status" data-channel-test-result hidden></p>
+    <FormError />
+    <div class="nz-dialog-foot nz-channel-foot">
+      <Button variant="outline" icon="bell" data-channel-test>Test notification</Button>
+      <span class="flex-1"></span>
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Save</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-channel-delete" title="Delete channel">
+  <form class="nz-form" data-api="DELETE /notification-channels/{id}" novalidate>
+    <input type="hidden" name="id" value="" />
+    <p data-fill-text="title"></p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete</Button>
+    </div>
+  </form>
+</Dialog>
+
+<template id="nz-header-row">
+  <div class="nz-header-row">
+    <input class="nz-input" data-header-name placeholder="Header" aria-label="Header name" autocomplete="off" spellcheck="false" />
+    <input class="nz-input" data-header-value type="password" placeholder="Value" aria-label="Header value" autocomplete="off" />
+    <button type="button" class="nz-btn nz-btn--icon" data-header-remove aria-label="Remove header" title="Remove header">×</button>
+  </div>
+</template>

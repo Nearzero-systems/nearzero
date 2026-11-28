@@ -1,0 +1,213 @@
+---
+import { sshKeyInUseMessage } from "@nearzero/shared";
+import type { SshKeyRecord } from "../../lib/data/index.ts";
+import { fullDate, relativeTime } from "../../lib/time.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import EmptyState from "../ui/EmptyState.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import TableWrap from "../ui/TableWrap.astro";
+
+/**
+ * The SSH keys tab and its dialogs (spec 9.7): Name, Description, Created and a menu (Edit,
+ * Delete). Add: "Generate RSA key" or "Generate ED25519 key" fill both fields (the server makes
+ * them), Download private / public key, and the API's checks shown inline. Edit: name and
+ * description only. Delete is refused while a server uses the key, and the item says so; the
+ * delete dialog lists the apps and Compose services that clone with the key. People who may only
+ * use keys get View instead: the key read-only, with its public half to copy and download, and
+ * no Save or Delete (R3-03).
+ */
+interface Props {
+  keys: SshKeyRecord[];
+  canManage: boolean;
+}
+
+const { keys, canManage } = Astro.props;
+const now = new Date();
+
+/** The apps and Compose services that clone with a key (spec 9.7), for its delete dialog. */
+const gitUsersText = (key: SshKeyRecord): string =>
+  [
+    ...key.gitUsers.map(
+      (service) => `${service.name} (${service.project} / ${service.environment})`,
+    ),
+    ...(key.hiddenGitUsers > 0 ? [`${key.hiddenGitUsers} more you can't see`] : []),
+  ].join(", ");
+---
+
+{
+  keys.length === 0 ? (
+    <div class="nz-body">
+      <EmptyState title="No SSH keys yet" text="Add an SSH key to connect servers for remote deployments.">
+        {canManage && <Button variant="primary" data-dialog-open="nz-ssh-key-add">Add SSH Key</Button>}
+      </EmptyState>
+    </div>
+  ) : (
+    <TableWrap label="SSH keys" class="nz-table-wrap--flush nz-ssh-keys-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Description</th>
+          <th>Created</th>
+          <th class="nz-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {keys.map((key) => {
+          const menuId = `nz-key-menu-${key.id}`;
+          const hiddenServers = key.hiddenServers ?? 0;
+          const blocked =
+            key.usedBy.length + hiddenServers > 0
+              ? sshKeyInUseMessage(
+                  key.usedBy.map((server) => server.name),
+                  hiddenServers,
+                )
+              : null;
+          return (
+            <tr data-ssh-key={key.id}>
+              <td>
+                <span class="font-medium nz-block nz-truncate" title={`${key.type === "rsa" ? "RSA" : "ED25519"} · ${key.fingerprint}`}>{key.name}</span>
+              </td>
+              <td class="nz-dim"><span class="nz-block nz-truncate">{key.description}</span></td>
+              <td class="nz-dim" title={fullDate(new Date(key.createdAt))}>{relativeTime(new Date(key.createdAt), now)}</td>
+              <td class="nz-col-actions">
+                {!canManage && (
+                  <>
+                    <Button variant="icon" icon="more" label={`Actions for ${key.name}`} popovertarget={menuId} aria-haspopup="menu" aria-expanded="false" />
+                    <Menu id={menuId} label={`Actions for ${key.name}`} placement="bottom-end">
+                      <MenuItem
+                        icon="key"
+                        data-dialog-open="nz-ssh-key-view"
+                        data-dialog-fill={JSON.stringify({ name: key.name, description: key.description, publicKey: key.publicKey })}
+                      >
+                        View
+                      </MenuItem>
+                    </Menu>
+                  </>
+                )}
+                {canManage && (
+                  <>
+                    <Button variant="icon" icon="more" label={`Actions for ${key.name}`} popovertarget={menuId} aria-haspopup="menu" aria-expanded="false" />
+                    <Menu id={menuId} label={`Actions for ${key.name}`} placement="bottom-end">
+                      <MenuItem
+                        icon="edit"
+                        data-dialog-open="nz-ssh-key-edit"
+                        data-dialog-fill={JSON.stringify({ keyId: key.id, name: key.name, description: key.description, publicKey: key.publicKey })}
+                      >
+                        Edit
+                      </MenuItem>
+                      <MenuItem
+                        icon="trash"
+                        danger
+                        aria-disabled={blocked ? "true" : undefined}
+                        title={blocked ?? undefined}
+                        data-dialog-open={blocked ? undefined : "nz-ssh-key-delete"}
+                        data-dialog-fill={JSON.stringify({ keyId: key.id, name: key.name, gitUsers: gitUsersText(key) })}
+                      >
+                        Delete
+                      </MenuItem>
+                      {blocked && <p class="nz-menu-heading nz-key-blocked">{blocked}</p>}
+                    </Menu>
+                  </>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </TableWrap>
+  )
+}
+
+<Dialog id="nz-ssh-key-add" title="Add SSH key" description="Add one of your keys or generate a new one." wide>
+  <form class="nz-form" data-api="POST /ssh-keys" data-api-toast="SSH key added" data-ssh-key-form novalidate>
+    <div class="flex flex-wrap gap-2">
+      <Button variant="outline" icon="key" data-ssh-generate="rsa">Generate RSA key</Button>
+      <Button variant="outline" icon="key" data-ssh-generate="ed25519">Generate ED25519 key</Button>
+    </div>
+    <div class="nz-form-grid-2">
+      <Field id="nz-ssh-name" name="name" label="Name" autocomplete="off" maxlength={100} />
+      <Field id="nz-ssh-description" name="description" label="Description" autocomplete="off" maxlength={1000} />
+    </div>
+    <Field id="nz-ssh-private" name="privateKey" label="Private key" as="textarea" rows={5} class="nz-code-input" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" data-1p-ignore />
+    <Field id="nz-ssh-public" name="publicKey" label="Public key" as="textarea" rows={2} class="nz-code-input" spellcheck="false" placeholder="ssh-ed25519 AAAA…" />
+    <div class="flex flex-wrap gap-2">
+      <Button variant="ghost" icon="download" data-ssh-download="private">Download private key</Button>
+      <Button variant="ghost" icon="download" data-ssh-download="public">Download public key</Button>
+    </div>
+    <p class="nz-hint">Private keys never leave Nearzero and are never shown again after saving.</p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Add SSH key</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-ssh-key-edit" title="Edit SSH key">
+  <form class="nz-form" data-api="PATCH /ssh-keys/{keyId}" data-api-toast="SSH key updated" novalidate>
+    <input type="hidden" name="keyId" value="" />
+    <Field id="nz-ssh-edit-name" name="name" label="Name" autocomplete="off" maxlength={100} />
+    <Field id="nz-ssh-edit-description" name="description" label="Description" autocomplete="off" maxlength={1000} />
+    <div data-field>
+      <label for="nz-ssh-edit-public" class="nz-label">Public key</label>
+      <textarea id="nz-ssh-edit-public" name="publicKey" class="nz-textarea nz-code-input" rows="3" readonly spellcheck="false" aria-describedby="nz-ssh-edit-public-hint"></textarea>
+      <p class="nz-hint" id="nz-ssh-edit-public-hint">Add it to another server's authorized keys to use this key there too.</p>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="ghost" icon="copy" data-ssh-copy-public>Copy</Button>
+        <Button variant="ghost" icon="download" data-ssh-download="public">Download public key</Button>
+      </div>
+    </div>
+    <div data-field>
+      <span class="nz-label">Private key</span>
+      <p class="nz-inline-note">Stored private keys cannot be displayed</p>
+    </div>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Save</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-ssh-key-view" title="SSH key" description="Use this key's public half on your servers. Only people who add and remove SSH keys can change it.">
+  <form class="nz-form" data-scripted data-ssh-key-view novalidate>
+    <Field id="nz-ssh-view-name" name="name" label="Name" autocomplete="off" readonly />
+    <Field id="nz-ssh-view-description" name="description" label="Description" autocomplete="off" readonly />
+    <div data-field>
+      <label for="nz-ssh-view-public" class="nz-label">Public key</label>
+      <textarea id="nz-ssh-view-public" name="publicKey" class="nz-textarea nz-code-input" rows="3" readonly spellcheck="false" aria-describedby="nz-ssh-view-public-hint"></textarea>
+      <p class="nz-hint" id="nz-ssh-view-public-hint">Add it to another server's authorized keys to use this key there too.</p>
+      <div class="flex flex-wrap gap-2">
+        <Button variant="ghost" icon="copy" data-ssh-copy-public>Copy</Button>
+        <Button variant="ghost" icon="download" data-ssh-download="public">Download public key</Button>
+      </div>
+    </div>
+    <div data-field>
+      <span class="nz-label">Private key</span>
+      <p class="nz-inline-note">Stored private keys cannot be displayed</p>
+    </div>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Close</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-ssh-key-delete" title="Delete this SSH key?">
+  <form class="nz-form" data-api="DELETE /ssh-keys/{keyId}" data-api-toast="SSH key deleted" novalidate>
+    <input type="hidden" name="keyId" value="" />
+    <p class="nz-dim"><span class="font-medium" data-fill-text="name"></span> is deleted for good.</p>
+    <div class="nz-form" data-fill-shown="gitUsers" hidden>
+      <p>These apps and Compose services clone from Git with this key. They will stop deploying from Git until another key is chosen:</p>
+      <p class="nz-inline-note nz-warn-note nz-wrap-any" data-fill-text="gitUsers"></p>
+    </div>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Delete SSH key</Button>
+    </div>
+  </form>
+</Dialog>

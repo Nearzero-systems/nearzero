@@ -1,0 +1,79 @@
+---
+import type { ServerRecord } from "../../lib/data/index.ts";
+import { READINESS } from "../../lib/domains.ts";
+import Button from "../ui/Button.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+
+/**
+ * A server's card (spec 9.1, 21.10): one line with the name, a small filled readiness label and
+ * the menu (the address, description and key show on hover); a failed setup's error follows in
+ * red. The card menu: View (when ready) or Run setup again, Terminal (an SSH shell on
+ * the server), Edit, Router files and Delete. View and Run setup again open the setup and details dialogs through the
+ * `nz:server-details` and `nz:server-setup` events (client/servers.ts).
+ */
+interface Props {
+  server: ServerRecord;
+  canManage: boolean;
+  canSeeRouterFiles: boolean;
+}
+
+const { server, canManage, canSeeRouterFiles } = Astro.props;
+const readiness = READINESS[server.readiness];
+const menuId = `nz-server-menu-${server.id}`;
+const fill = JSON.stringify({
+  serverId: server.id,
+  name: server.name,
+  description: server.description,
+  sshKeyId: server.sshKey?.id ?? "",
+  address: server.address,
+  port: String(server.port),
+  publicIPv4: server.publicIPv4 ?? "",
+  sshUser: server.sshUser,
+});
+---
+
+<article class="nz-card nz-server-card" data-server-card={server.id} data-server={JSON.stringify(server)}>
+  <div class="nz-server-card-head">
+    <p
+      class="nz-server-name nz-truncate"
+      title={[
+        `${server.sshUser}@${server.address}:${server.port}`,
+        server.description,
+        `${server.services} ${server.services === 1 ? "service" : "services"}${server.sshKey ? ` · Key ${server.sshKey.name}` : ""}`,
+      ].filter(Boolean).join("\n")}
+    >
+      {server.name}
+    </p>
+    <span class="nz-server-state" data-status={readiness.pill}>{readiness.label}</span>
+    <Button variant="icon" icon="more" label={`Actions for ${server.name}`} popovertarget={menuId} aria-haspopup="menu" aria-expanded="false" />
+    <Menu id={menuId} label={`Actions for ${server.name}`} placement="bottom-end">
+      {
+        server.readiness === "ready" ? (
+          <MenuItem icon="info" data-server-details={server.id}>View</MenuItem>
+        ) : canManage ? (
+          <MenuItem icon="refresh" data-server-setup={server.id}>Run setup again</MenuItem>
+        ) : (
+          <MenuItem icon="info" data-server-details={server.id}>View</MenuItem>
+        )
+      }
+      {canManage && <MenuItem icon="terminal" data-terminal-ssh={server.id} data-terminal-name={server.name}>Terminal</MenuItem>}
+      {canManage && <MenuItem icon="edit" data-dialog-open="nz-server-edit" data-dialog-fill={fill}>Edit</MenuItem>}
+      {canSeeRouterFiles && <MenuItem icon="docs" data-router-files={server.id} data-server-name={server.name}>Router files</MenuItem>}
+      {
+        canManage && (
+          <MenuItem
+            icon="trash"
+            danger
+            data-dialog-open="nz-server-delete"
+            data-dialog-fill={JSON.stringify({ serverId: server.id, name: server.name, services: String(server.services) })}
+            data-server-delete={server.services}
+          >
+            Delete
+          </MenuItem>
+        )
+      }
+    </Menu>
+  </div>
+  {server.setup.error && <p class="nz-danger-text nz-clamp-2 nz-server-error">{server.setup.error}</p>}
+</article>

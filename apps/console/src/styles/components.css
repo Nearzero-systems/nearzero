@@ -1,0 +1,1208 @@
+/*
+ * Components (spec 21.1 and 21.5): flat, 1px lines, 6px corners, compact 4px by 8px controls
+ * with 12px text. No shadows anywhere.
+ */
+
+@layer components {
+  /* ---------- Buttons ---------- */
+  .nz-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: max-content;
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--nz-text);
+    background: transparent;
+    cursor: pointer;
+    user-select: none;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .nz-btn svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+  }
+
+  .nz-btn .nz-btn-chevron {
+    width: 12px;
+    height: 12px;
+    margin-right: -2px;
+  }
+
+  .nz-btn:disabled,
+  .nz-btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .nz-btn--primary {
+    background: var(--nz-primary);
+    border-color: transparent;
+    color: var(--nz-primary-text);
+  }
+
+  .nz-btn--primary:hover {
+    background: var(--nz-primary-hover);
+  }
+
+  /* Outlined buttons are transparent with a hairline border (spec 21.10). */
+  .nz-btn--outline {
+    background: transparent;
+    border-color: var(--nz-line);
+  }
+
+  /* In dialogs the outline uses the field border on the dialog's own fill. */
+  .nz-dialog .nz-btn--outline {
+    background-color: var(--nz-raised);
+    border-color: var(--nz-field-line);
+  }
+
+  .nz-dialog .nz-btn--outline:hover {
+    background-color: var(--nz-hover);
+  }
+
+  /* The filled grey button (a database's Deploy): the primary button drawn at half strength,
+     grey in Light and Dark and a dim purple pixel button in Dusk, as the original draws it. */
+  .nz-btn--secondary {
+    background: var(--nz-primary);
+    border-color: transparent;
+    color: var(--nz-primary-text);
+    opacity: 0.5;
+  }
+
+  .nz-btn--secondary:hover {
+    opacity: 0.65;
+  }
+
+  /* A touch stronger in Dusk so its white text keeps the contrast floor on purple. */
+  :root[data-theme="dusk"] .nz-btn--secondary {
+    opacity: 0.6;
+  }
+
+  :root[data-theme="dusk"] .nz-btn--secondary:hover {
+    opacity: 0.75;
+  }
+
+  /* A light grey filled button (Compose's Reload). */
+  .nz-btn--muted {
+    background: var(--nz-secondary);
+    border-color: transparent;
+    color: var(--nz-text);
+  }
+
+  .nz-btn--muted:hover {
+    background: var(--nz-secondary-hover);
+  }
+
+  .nz-btn--outline:hover,
+  .nz-btn--ghost:hover,
+  .nz-btn--icon:hover {
+    background: var(--nz-hover);
+  }
+
+  .nz-btn--ghost {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-btn--ghost:hover {
+    color: var(--nz-text);
+  }
+
+  .nz-btn--danger {
+    background: var(--nz-danger);
+    border-color: var(--nz-danger);
+    color: #ffffff;
+  }
+
+  .nz-btn--danger:hover {
+    background: var(--nz-danger-hover);
+    border-color: var(--nz-danger-hover);
+  }
+
+  .nz-btn--icon {
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    padding: 0;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-btn--icon:hover {
+    color: var(--nz-text);
+  }
+
+  .nz-btn--icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .nz-btn--icon.nz-btn--outline {
+    border-color: var(--nz-line-strong);
+  }
+
+  .nz-btn--block {
+    width: 100%;
+  }
+
+  /* Dusk: primary is a pixel button; outlined buttons get a faint purple dot texture. */
+  :root[data-theme="dusk"] .nz-btn--primary,
+  :root[data-theme="dusk"] .nz-btn--secondary {
+    background-color: var(--nz-accent);
+    background-image:
+      radial-gradient(circle, rgb(255 255 255 / 0.16) 0.75px, transparent 0.8px),
+      linear-gradient(180deg, var(--nz-accent-light), var(--nz-accent-deep));
+    background-size:
+      3px 3px,
+      100% 100%;
+    border-color: rgb(255 255 255 / 0.16);
+    color: #ffffff;
+  }
+
+  :root[data-theme="dusk"] .nz-btn--primary:hover {
+    background-image:
+      radial-gradient(circle, rgb(255 255 255 / 0.18) 0.75px, transparent 0.8px),
+      linear-gradient(180deg, #a78bfa, var(--nz-accent));
+  }
+
+  :root[data-theme="dusk"] .nz-btn--outline {
+    background-color: transparent;
+    background-image: radial-gradient(circle, rgb(167 139 250 / 0.14) 0.75px, transparent 0.8px);
+    background-size: 3px 3px;
+    border-color: var(--nz-line);
+  }
+
+  :root[data-theme="dusk"] .nz-btn--outline:hover {
+    background-color: rgb(255 255 255 / 0.07);
+    border-color: rgb(167 139 250 / 0.6);
+  }
+
+  /* ---------- Fields ---------- */
+  .nz-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    color: var(--nz-text);
+  }
+
+  .nz-hint {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-field-error {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--nz-danger-text);
+  }
+
+  .nz-input,
+  .nz-select,
+  .nz-textarea {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--nz-field-line);
+    border-radius: 6px;
+    background: var(--nz-field);
+    color: var(--nz-text);
+    font: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    transition:
+      border-color 120ms ease,
+      outline-color 120ms ease;
+  }
+
+  /* Grey-filled form fields (sign-in, profile, member filter, keys, YAML). */
+  .nz-input--filled,
+  .nz-textarea--filled,
+  .nz-select--filled {
+    background: var(--nz-field-filled);
+  }
+
+  /* Toolbar fields: transparent with a hairline border and no magnifier (spec 21.10). */
+  .nz-input--search,
+  .nz-select--toolbar {
+    background: transparent;
+    border-color: var(--nz-line);
+  }
+
+  .nz-input--search::-webkit-search-decoration {
+    appearance: none;
+  }
+
+  .nz-input::placeholder,
+  .nz-textarea::placeholder {
+    color: var(--nz-text-faint);
+  }
+
+  /* A quieter ring on fields, as the original draws it, still clearly visible. */
+  .nz-input:focus-visible:not([data-quiet-focus]),
+  .nz-select:focus-visible:not([data-quiet-focus]),
+  .nz-textarea:focus-visible:not([data-quiet-focus]) {
+    outline: 2px solid var(--nz-field-ring);
+    outline-offset: 0;
+    border-color: var(--nz-focus-border);
+  }
+
+  .nz-input[aria-invalid="true"],
+  .nz-textarea[aria-invalid="true"] {
+    border-color: var(--nz-danger);
+  }
+
+  .nz-input:disabled,
+  .nz-select:disabled,
+  .nz-textarea:disabled,
+  .nz-input[readonly] {
+    color: var(--nz-text-dim);
+    background: var(--nz-muted);
+  }
+
+  .nz-input:disabled,
+  .nz-select:disabled,
+  .nz-textarea:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .nz-textarea {
+    resize: vertical;
+    field-sizing: fixed;
+  }
+
+  .nz-select-wrap {
+    position: relative;
+    display: block;
+    min-width: 0;
+  }
+
+  .nz-select {
+    appearance: none;
+    padding-right: 26px;
+    cursor: pointer;
+  }
+
+  .nz-select option {
+    background: var(--nz-raised);
+    color: var(--nz-text);
+  }
+
+  .nz-select-wrap > svg {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--nz-text-dim);
+  }
+
+  /* Selects in dialogs (and the Compose page's container picker) are the browser's own, with its
+     bold chevron in the text colour, the text 12px in with its own inset (spec 21.10). */
+  .nz-dialog .nz-select-wrap > .nz-select,
+  .nz-select-wrap.nz-select-wrap--native > .nz-select {
+    appearance: auto;
+    padding: 4px 8px;
+  }
+
+  .nz-dialog .nz-select-wrap > svg,
+  .nz-select-wrap.nz-select-wrap--native > svg {
+    display: none;
+  }
+
+  .nz-input-icon {
+    position: relative;
+    display: block;
+    min-width: 0;
+  }
+
+  /* Search fields carry no magnifier (spec 21.10); the icon some callers pass is not drawn. */
+  .nz-input-icon > svg {
+    display: none;
+  }
+
+  .nz-input-icon > .nz-input:not(.nz-input--filled) {
+    background: transparent;
+    border-color: var(--nz-line);
+  }
+
+  .nz-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .nz-check input {
+    width: 14px;
+    height: 14px;
+    accent-color: var(--nz-primary);
+  }
+
+  .nz-inline-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--nz-danger) 35%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--nz-danger) 8%, transparent);
+    color: var(--nz-danger-text);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .nz-inline-error svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    margin-top: 1px;
+  }
+
+  .nz-inline-note {
+    padding: 4px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* ---------- Menus and popovers ---------- */
+  .nz-pop {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    padding: 4px;
+    min-width: 11rem;
+    max-width: min(22rem, calc(100vw - 16px));
+    max-height: min(28rem, calc(100dvh - 16px));
+    overflow: auto;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-raised);
+    color: var(--nz-text);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .nz-pop:popover-open {
+    animation: nz-pop-in 120ms ease-out;
+  }
+
+  .nz-pop--wide {
+    width: min(22rem, calc(100vw - 16px));
+  }
+
+  .nz-menu-heading {
+    padding: 4px 8px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--nz-text);
+    font: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .nz-menu-item svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-menu-item:hover,
+  .nz-menu-item:focus-visible {
+    background: var(--nz-hover);
+    outline: none;
+  }
+
+  .nz-menu-item[aria-disabled="true"],
+  .nz-menu-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .nz-menu-item--danger {
+    color: var(--nz-logout);
+  }
+
+  .nz-menu-item--muted {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-menu-item--muted:hover {
+    color: var(--nz-text);
+  }
+
+  /* A menu's uppercase heading (ORGANIZATIONS): 10px, tracked, light grey. */
+  .nz-menu-eyebrow {
+    padding: 6px 8px 4px;
+    color: var(--nz-text-faint);
+    font-family: var(--nz-font-small);
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 500;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+  }
+
+  :root[data-theme="dusk"] .nz-menu-eyebrow {
+    font-size: 10px;
+    letter-spacing: 1.1px;
+  }
+
+  .nz-pop.nz-workspace-menu {
+    width: 190px;
+    min-width: 0;
+  }
+
+  .nz-workspace-menu .nz-menu-item {
+    min-height: 28px;
+  }
+
+  .nz-menu-item .nz-menu-check {
+    margin-left: auto;
+    color: var(--nz-text);
+  }
+
+  .nz-menu-sep {
+    height: 1px;
+    margin: 4px -4px;
+    background: var(--nz-line);
+    border: 0;
+  }
+
+  /* Moonlight across the middle 72% of the top edge (Dusk dialogs and the user menu). */
+  :root[data-theme="dusk"] .nz-moonlit {
+    position: relative;
+  }
+
+  :root[data-theme="dusk"] .nz-moonlit::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 14%;
+    width: 72%;
+    height: 1px;
+    background: var(--nz-moonlight);
+    pointer-events: none;
+  }
+
+  :root[data-theme="dusk"] .nz-pop.nz-moonlit,
+  :root[data-theme="dusk"] .nz-dialog.nz-moonlit {
+    position: fixed;
+  }
+
+  /* ---------- Dialogs ---------- */
+  .nz-dialog {
+    width: min(28rem, calc(100vw - 2rem));
+    max-width: none;
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    overflow: visible;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-raised);
+    color: var(--nz-text);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .nz-dialog[open] {
+    animation: nz-fade-in 140ms ease-out;
+  }
+
+  /* The page behind a dialog is darkened and blurred (spec 21.10). */
+  .nz-dialog::backdrop {
+    background: var(--nz-backdrop);
+    -webkit-backdrop-filter: blur(var(--nz-backdrop-blur));
+    backdrop-filter: blur(var(--nz-backdrop-blur));
+  }
+
+  .nz-dialog--wide {
+    width: min(36rem, calc(100vw - 2rem));
+  }
+
+  .nz-dialog-body {
+    max-height: calc(100dvh - 2rem - 2px);
+    overflow: auto;
+    padding: 12px 16px 16px;
+    border-radius: 6px;
+  }
+
+  .nz-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .nz-dialog-title {
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+
+  .nz-dialog-desc {
+    margin-top: 2px;
+    color: var(--nz-text-dim);
+  }
+
+  /* The buttons sit in a footer band: a light grey fill and a hairline above, edge to edge. */
+  .nz-dialog-foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .nz-dialog-body > .nz-dialog-foot:last-child,
+  .nz-dialog-body > form:last-child > .nz-dialog-foot:last-child,
+  .nz-dialog-body > div:last-child > .nz-dialog-foot:last-child {
+    margin: 16px -16px -16px;
+    padding: 10px 16px 12px;
+    border-top: 1px solid var(--nz-line);
+    background: var(--nz-dialog-foot);
+  }
+
+  /* ---------- Toasts ---------- */
+  .nz-toasts {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    width: min(28rem, calc(100vw - 2rem));
+    pointer-events: none;
+  }
+
+  .nz-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: 100%;
+    padding: 4px 8px;
+    border: 1px solid var(--nz-line-strong);
+    border-radius: 6px;
+    background: var(--nz-raised);
+    color: var(--nz-text);
+    font-size: 12px;
+    line-height: 16px;
+    pointer-events: auto;
+    animation: nz-rise-in 180ms ease-out;
+  }
+
+  .nz-toast svg {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    margin-top: 1px;
+  }
+
+  .nz-toast[data-tone="error"] {
+    border-color: color-mix(in srgb, var(--nz-danger) 45%, transparent);
+  }
+
+  .nz-toast[data-tone="error"] > svg {
+    color: var(--nz-danger-text);
+  }
+
+  .nz-toast[data-tone="success"] > svg {
+    color: var(--nz-ok);
+  }
+
+  .nz-toast-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    padding-top: 1px;
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-toasts {
+      left: 1rem;
+      right: 1rem;
+      width: auto;
+      align-items: stretch;
+    }
+  }
+
+  /* ---------- Tabs ---------- */
+  .nz-tabs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nz-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nz-tabs--lined {
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  /* Pill tabs: 24px, 4px by 8px, 12px weight 500 (spec 21.10). */
+  .nz-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--nz-text-dim);
+    font: inherit;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .nz-tab:hover {
+    color: var(--nz-text);
+    background: var(--nz-hover);
+  }
+
+  .nz-tab[aria-selected="true"],
+  .nz-tab[aria-current="page"] {
+    background: var(--nz-active-fill);
+    color: var(--nz-active-text);
+  }
+
+  .nz-tab .nz-count {
+    color: var(--nz-text-faint);
+  }
+
+  /* Underline tabs (Members & access): no fill; the current one has a 2px line under it
+     running along a full-width hairline, and its count sits in a small grey box. */
+  .nz-tabs--underline {
+    gap: 4px;
+    border-bottom: 1px solid var(--nz-line);
+    padding: 0;
+    overflow-y: hidden;
+  }
+
+  .nz-tabs--underline .nz-tab {
+    margin-bottom: -1px;
+    padding: 4px 8px 6px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .nz-tabs--underline .nz-tab:hover {
+    background: transparent;
+  }
+
+  .nz-tabs--underline .nz-tab[aria-selected="true"],
+  .nz-tabs--underline .nz-tab[aria-current="page"] {
+    border-bottom-color: var(--nz-text);
+    background: transparent;
+    color: var(--nz-text);
+  }
+
+  .nz-tabs--underline .nz-count {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  /* ---------- Status pills and badges (spec 21.10) ---------- */
+  /* Labels: 18px, 6px corners, 0 6px, 12px weight 500, a 1px outline and no dot. */
+  .nz-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 18px;
+    padding: 0 6px;
+    border: 1px solid var(--nz-line-strong);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--nz-text-dim);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .nz-pill[data-status="ok"] {
+    color: var(--nz-ok);
+    border-color: color-mix(in srgb, var(--nz-ok-dot) 35%, transparent);
+    background: color-mix(in srgb, var(--nz-ok-dot) 8%, transparent);
+  }
+
+  .nz-pill[data-status="run"] {
+    color: var(--nz-run);
+    border-color: color-mix(in srgb, var(--nz-run-dot) 35%, transparent);
+    background: color-mix(in srgb, var(--nz-run-dot) 8%, transparent);
+  }
+
+  .nz-pill[data-status="warn"] {
+    color: var(--nz-pending-text);
+    border-color: var(--nz-pending-line);
+    background: var(--nz-pending-fill);
+  }
+
+  .nz-pill[data-status="fail"] {
+    color: var(--nz-fail);
+    border-color: color-mix(in srgb, var(--nz-fail-dot) 35%, transparent);
+    background: color-mix(in srgb, var(--nz-fail-dot) 8%, transparent);
+  }
+
+  /* Deployment states: fully round, no border, 2px by 8px, with a 6px dot. */
+  .nz-pill[data-kind="deploy"] {
+    height: auto;
+    padding: 2px 8px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--nz-hover);
+    color: var(--nz-text-dim);
+  }
+
+  .nz-pill[data-kind="deploy"]::before,
+  .nz-pill[data-kind="text"]::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 9999px;
+    background: var(--nz-idle-dot);
+  }
+
+  .nz-pill[data-kind="deploy"][data-status="ok"] {
+    background: var(--nz-active-pill);
+    color: var(--nz-active-pill-text);
+  }
+
+  .nz-pill[data-kind="deploy"][data-status="fail"] {
+    background: var(--nz-error-pill);
+    color: var(--nz-error-pill-text);
+  }
+
+  .nz-pill[data-kind="deploy"][data-status="run"] {
+    background: color-mix(in srgb, var(--nz-run-dot) 14%, transparent);
+  }
+
+  .nz-pill[data-kind="deploy"][data-status="warn"] {
+    background: var(--nz-pending-fill);
+  }
+
+  .nz-pill[data-kind="deploy"][data-status="ok"]::before {
+    background: var(--nz-active-pill-text);
+  }
+
+  .nz-pill[data-kind="deploy"][data-status="fail"]::before,
+  .nz-pill[data-kind="text"][data-status="fail"]::before {
+    background: var(--nz-fail-dot);
+  }
+
+  .nz-pill[data-status="run"]::before {
+    background: var(--nz-run-dot);
+    animation: nz-pulse 1.4s ease-in-out infinite;
+  }
+
+  .nz-pill[data-status="warn"]::before {
+    background: var(--nz-warn-dot);
+  }
+
+  /* Plain colored text: "● Running". */
+  .nz-pill[data-kind="text"] {
+    height: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .nz-pill[data-kind="text"][data-status="ok"] {
+    color: var(--nz-running-text);
+  }
+
+  .nz-pill[data-kind="text"][data-status="ok"]::before {
+    background: var(--nz-running-text);
+  }
+
+  .nz-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 4px;
+    border: 1px solid var(--nz-line-strong);
+    border-radius: 6px;
+    font-family: var(--nz-font-small);
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--nz-text-dim);
+    white-space: nowrap;
+  }
+
+  .nz-badge--prod {
+    color: var(--nz-warn);
+    border-color: color-mix(in srgb, var(--nz-warn-dot) 40%, transparent);
+  }
+
+  /* The unread badge: a 16px blue circle with 10px white digits at the bell's top-right. */
+  .nz-count-badge {
+    position: absolute;
+    pointer-events: none;
+    top: -3px;
+    right: -2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 9999px;
+    background: var(--nz-unread);
+    color: #ffffff;
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 500;
+    text-align: center;
+  }
+
+  /* ---------- Tables ---------- */
+  .nz-table-wrap {
+    /* Holds absolutely positioned text (visually hidden headers) inside its own scroll box. */
+    position: relative;
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  /* Tables that span the content edge to edge, with no card (Deployments, Tasks, SSH keys). */
+  .nz-table-wrap--flush {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .nz-table-wrap--flush .nz-table tr:last-child td {
+    border-bottom: 1px solid var(--nz-line);
+  }
+
+  .nz-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  /* A filled 32px header row; rows padded 8px by 12px (spec 21.10). */
+  .nz-table thead th {
+    height: 32px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--nz-line);
+    background: var(--nz-muted);
+    color: var(--nz-text);
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .nz-table th {
+    padding: 0 12px;
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .nz-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--nz-line);
+    white-space: nowrap;
+  }
+
+  /* The "Actions" header and its cells sit at the right. */
+  .nz-table .nz-col-actions {
+    text-align: right;
+  }
+
+  /* Secondary cells (project, environment, server, bucket, endpoint) are grey. */
+  .nz-table .nz-cell-dim {
+    color: var(--nz-text-dim);
+  }
+
+  /* A grey type pill in a table cell ("Compose", "Application"). */
+  .nz-type-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: var(--nz-hover);
+    color: var(--nz-text);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .nz-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  /* ---------- Cards, empty states, avatars ---------- */
+  .nz-card {
+    border: 1px solid var(--nz-card-line);
+    border-radius: 6px;
+    background: var(--nz-card);
+  }
+
+  /* Empty states are plain centred text: a small semibold title and one grey line. */
+  .nz-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 32px 16px;
+    text-align: center;
+  }
+
+  .nz-empty-title {
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .nz-empty-text {
+    max-width: 26rem;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-empty .nz-btn {
+    margin-top: 10px;
+  }
+
+  /* Initials avatars are 28px rounded squares on the neutral fill (spec 21.10). */
+  .nz-avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: 6px;
+    background: var(--nz-avatar-fill);
+    color: var(--nz-avatar-text);
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 400;
+  }
+
+  .nz-url {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .nz-url-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--nz-font-code);
+    font-size: 12px;
+  }
+
+  .nz-kbd {
+    display: inline-flex;
+    padding: 0 4px;
+    border: 1px solid var(--nz-line);
+    border-radius: 4px;
+    font-family: var(--nz-font-code);
+    font-size: 10px;
+    line-height: 14px;
+    color: var(--nz-text-dim);
+  }
+
+  /* Loading placeholders stay invisible for their first 150ms (spec 21.7). */
+  .nz-placeholder {
+    border-radius: 6px;
+    background: var(--nz-hover);
+    animation:
+      nz-appear 1ms linear 150ms both,
+      nz-pulse 1.6s ease-in-out 150ms infinite;
+  }
+
+  .nz-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--nz-line-strong);
+    border-top-color: var(--nz-text);
+    border-radius: 9999px;
+    animation:
+      nz-appear 1ms linear 150ms both,
+      nz-spin 800ms linear infinite;
+  }
+
+  /* ---------- Layout helpers ---------- */
+  /* A page wrapper that keeps the strips stacked and the footer pinned. */
+  .nz-fill {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ---------- The bell's panel (spec 21.10) ---------- */
+  .nz-pop.nz-bell-panel {
+    width: 280px;
+    max-width: calc(100vw - 16px);
+    padding: 0 0 12px;
+  }
+
+  .nz-bell-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 12px 8px;
+  }
+
+  .nz-bell-head .nz-btn--ghost {
+    margin: -4px -4px 0 0;
+    font-weight: 400;
+  }
+
+  .nz-bell-title {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+  }
+
+  .nz-bell-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 12px 0;
+  }
+
+  .nz-bell-eyebrow {
+    padding-top: 4px;
+    color: var(--nz-text-faint);
+    font-family: var(--nz-font-small);
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 500;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+  }
+
+  .nz-bell-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+    color: var(--nz-text);
+  }
+
+  a.nz-bell-card:hover {
+    border-color: var(--nz-line-strong);
+  }
+
+  .nz-bell-card-name {
+    padding-right: 12px;
+    font-weight: 500;
+  }
+
+  .nz-bell-card-title {
+    color: var(--nz-text-dim);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .nz-bell-card-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .nz-bell-card-status [data-status="ok"] {
+    color: var(--nz-ok-text);
+  }
+
+  .nz-bell-card-status [data-status="fail"] {
+    color: var(--nz-fail-text);
+  }
+
+  .nz-bell-card-status [data-status="run"] {
+    color: var(--nz-run);
+  }
+
+  .nz-bell-card-status [data-status="idle"] {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-bell-unread {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--nz-unread);
+  }
+}

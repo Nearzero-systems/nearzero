@@ -1,0 +1,60 @@
+---
+import type { Viewer, WorkspaceSummary } from "../../lib/data/index.ts";
+import { DOCS_URL, dashboardPath, SUPPORT_URL, settingsPath } from "../../lib/routes.ts";
+import Avatar from "../ui/Avatar.astro";
+import Icon from "../ui/Icon.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import ThemePicker from "./ThemePicker.astro";
+
+/**
+ * The user button at the bottom of the sidebar and its menu, opening upward (spec 21.6, 21.10):
+ * "My Account" with the email (it opens Profile), the theme picker, Settings, Documentation,
+ * Support and Log out in red. The menu is as wide as the sidebar's items.
+ */
+interface Props {
+  viewer: Viewer;
+  workspace: WorkspaceSummary;
+  /** The menu's id; the phone sheet renders its own copy inside its dialog. */
+  id: string;
+}
+
+const { viewer, workspace, id } = Astro.props;
+const realName = viewer.hasRealName;
+const displayName = realName ? viewer.name : viewer.email;
+---
+
+<button
+  type="button"
+  class="nz-user-trigger"
+  popovertarget={id}
+  aria-haspopup="menu"
+  aria-expanded="false"
+  title={displayName}
+>
+  <Avatar avatar={viewer.avatar} />
+  <span class="nz-user-text">
+    <span class="nz-user-name">{displayName}</span>
+    {realName && <span class="nz-user-email">{viewer.email}</span>}
+  </span>
+  <Icon name="chevron-down" class="nz-user-chevron" />
+</button>
+<Menu id={id} label="Account" placement="top-start" class="nz-user-menu" moonlit data-gap="8">
+  <a href={dashboardPath(workspace.slug, "profile")} class="nz-user-menu-head" role="menuitem">
+    <p class="nz-user-menu-title">My Account</p>
+    <p class="nz-user-menu-email nz-truncate">{viewer.email}</p>
+  </a>
+  <div class="nz-user-menu-theme">
+    <ThemePicker name={`${id}-theme`} />
+  </div>
+  <hr class="nz-menu-sep" />
+  <div class="nz-user-menu-items">
+    <MenuItem href={settingsPath(workspace.slug)}>Settings</MenuItem>
+    <MenuItem href={DOCS_URL} target="_blank">Documentation</MenuItem>
+    <MenuItem href={SUPPORT_URL}>Support</MenuItem>
+  </div>
+  <hr class="nz-menu-sep" />
+  <form method="post" action="/sign-out" class="nz-user-menu-items" data-astro-reload>
+    <MenuItem type="submit" danger>Log out</MenuItem>
+  </form>
+</Menu>

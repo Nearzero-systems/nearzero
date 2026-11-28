@@ -1,0 +1,344 @@
+/*
+ * Sign-in, registration, invitation and onboarding (spec 4.1 to 4.5, 21.10): the hairline frame
+ * drawn by components/auth/AuthFrame.astro. Sign-in, sign-up and invitation pages are always
+ * Light; onboarding follows the person's theme.
+ */
+
+@layer components {
+  .nz-auth {
+    position: relative;
+    z-index: 1;
+    display: block;
+    min-height: 100dvh;
+    padding: 0;
+    background: var(--nz-surface);
+  }
+
+  /* Dusk onboarding keeps the night sky behind the frame. */
+  :root[data-theme="dusk"] .nz-auth {
+    background: transparent;
+  }
+
+  .nz-gate {
+    --nz-gate-line: var(--nz-line);
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+  }
+
+  :root[data-theme="dusk"] .nz-gate {
+    --nz-gate-line: var(--nz-grid-line);
+  }
+
+  .nz-gate--compact {
+    min-height: 0;
+    width: 100%;
+    border-top: 1px solid var(--nz-gate-line);
+    border-bottom: 1px solid var(--nz-gate-line);
+  }
+
+  /* Three columns: the 376px centre one (375px between its lines) and two sides of 31px or more. */
+  .nz-gate-row {
+    display: grid;
+    grid-template-columns: minmax(31px, 1fr) minmax(0, 376px) minmax(31px, 1fr);
+    flex: none;
+  }
+
+  .nz-gate-row + .nz-gate-row {
+    border-top: 1px solid var(--nz-gate-line);
+  }
+
+  .nz-gate-cell {
+    position: relative;
+    min-width: 0;
+  }
+
+  .nz-gate-cell--mid {
+    border-right: 1px solid var(--nz-gate-line);
+    border-left: 1px solid var(--nz-gate-line);
+  }
+
+  /* A small diamond where each row line meets a column line (and at the left edge). */
+  .nz-gate-row + .nz-gate-row > .nz-gate-cell::before {
+    content: "";
+    position: absolute;
+    top: -3.5px;
+    left: -3.5px;
+    width: 6px;
+    height: 6px;
+    transform: rotate(45deg);
+    background: var(--nz-gate-line);
+    pointer-events: none;
+  }
+
+  .nz-gate-row + .nz-gate-row > .nz-gate-cell:first-child::before {
+    left: -3px;
+  }
+
+  .nz-gate-row--top {
+    height: 90px;
+  }
+
+  .nz-gate-row--title {
+    min-height: 127px;
+  }
+
+  .nz-gate-row--title > .nz-gate-cell--mid {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 16px 16px 20px;
+  }
+
+  /* The owner's mark over the title (the 404 and 500 pages, spec 21.9b). */
+  .nz-gate-row--title > .nz-gate-cell--marked {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+  }
+
+  .nz-gate-mark {
+    display: block;
+    flex: none;
+    width: 40px;
+    height: 40px;
+  }
+
+  .nz-gate-title {
+    margin: 0;
+    font-family: var(--nz-font-grotesk);
+    font-size: 28px;
+    line-height: 36px;
+    font-weight: 600;
+    letter-spacing: -0.56px;
+    text-align: center;
+    color: var(--nz-text);
+    overflow-wrap: anywhere;
+  }
+
+  :root[data-theme="dusk"] .nz-gate-title {
+    font-family: var(--nz-font-title);
+    font-size: 34px;
+    line-height: 38px;
+    font-weight: 400;
+    letter-spacing: -0.34px;
+  }
+
+  .nz-gate-row--note {
+    min-height: 73px;
+  }
+
+  .nz-gate-row--note > .nz-gate-cell--mid {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 16px;
+  }
+
+  .nz-gate-note {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    line-height: 20px;
+    text-align: center;
+    color: var(--nz-text-dim);
+    overflow-wrap: anywhere;
+  }
+
+  .nz-gate-note p {
+    margin: 0;
+  }
+
+  .nz-gate-note a {
+    color: var(--nz-text);
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .nz-gate-note a:hover {
+    text-decoration: underline;
+  }
+
+  .nz-gate-note code {
+    padding: 0 4px;
+    border-radius: 4px;
+    background: var(--nz-code);
+    color: var(--nz-text);
+    font-size: 13px;
+  }
+
+  .nz-gate-row--body > .nz-gate-cell--mid {
+    padding: 48px 16px 46px;
+  }
+
+  .nz-gate-row--gap {
+    height: 113px;
+  }
+
+  .nz-gate-row--rest {
+    flex: 1;
+  }
+
+  /* The form inside the frame: 13px labels, grey-filled fields and buttons with 14px text, each
+     4px by 8px and as tall as their text (spec 21.9a). */
+  .nz-gate .nz-form {
+    gap: 14px;
+    margin-top: 0;
+  }
+
+  .nz-gate .nz-label {
+    margin-bottom: 6px;
+    font-size: 13px;
+    line-height: 16px;
+  }
+
+  .nz-gate .nz-input,
+  .nz-gate .nz-textarea {
+    border-color: var(--nz-line-strong);
+    background: var(--nz-field-filled);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+  }
+
+  .nz-gate .nz-input::placeholder,
+  .nz-gate .nz-textarea::placeholder {
+    font-weight: 400;
+  }
+
+  :root[data-tone="dark"] .nz-gate .nz-input,
+  :root[data-tone="dark"] .nz-gate .nz-textarea {
+    border-color: var(--nz-field-line);
+  }
+
+  .nz-gate .nz-form > .nz-btn,
+  .nz-gate-actions > .nz-btn,
+  .nz-gate-actions > form > .nz-btn {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .nz-gate .nz-form > .nz-btn--primary {
+    margin-top: 2px;
+  }
+
+  .nz-gate .nz-form > .nz-btn--ghost {
+    margin-top: -6px;
+  }
+
+  .nz-gate .nz-hint,
+  .nz-gate .nz-field-error {
+    margin-top: 6px;
+  }
+
+  .nz-gate .nz-inline-error {
+    font-size: 13px;
+  }
+
+  /* Buttons that end a frame's body (Decline / Accept, Go to sign in…). */
+  .nz-gate-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .nz-gate-actions:first-child {
+    margin-top: 0;
+  }
+
+  .nz-gate-actions--block {
+    flex-direction: column;
+  }
+
+  .nz-gate-actions--block > .nz-btn,
+  .nz-gate-actions--block > form,
+  .nz-gate-actions--block > form > .nz-btn {
+    width: 100%;
+  }
+
+  .nz-gate .nz-facts {
+    margin-top: 0;
+    gap: 8px 16px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  .nz-gate .nz-results {
+    margin: 0;
+  }
+
+  /* Onboarding's steps: two short bars over "Step 1 of 2" in the note row. */
+  .nz-steps-note {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .nz-steps {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .nz-steps span {
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--nz-line-strong);
+  }
+
+  .nz-steps span[data-done="true"] {
+    background: var(--nz-text);
+  }
+
+  :root[data-theme="dusk"] .nz-steps span[data-done="true"] {
+    background: var(--nz-accent-soft);
+  }
+}
+
+/* Phones: the same rows, a little shorter, and a 24px title. */
+@media (max-width: 639.98px) {
+  .nz-gate-row--top {
+    height: 84px;
+  }
+
+  .nz-gate-row--title {
+    min-height: 120px;
+  }
+
+  .nz-gate-title {
+    font-size: 24px;
+    line-height: 32px;
+    letter-spacing: -0.48px;
+  }
+
+  :root[data-theme="dusk"] .nz-gate-title {
+    font-size: 30px;
+    line-height: 34px;
+  }
+
+  .nz-gate-row--note {
+    min-height: 68px;
+  }
+
+  .nz-gate-row--body > .nz-gate-cell--mid {
+    padding: 40px 16px 37px;
+  }
+}
+
+@layer components {
+  /* Who is signed in, under every invitation state but the other-email one (31a G1-08). */
+  .nz-signed-in-as {
+    margin-top: 14px;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+}

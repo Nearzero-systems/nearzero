@@ -1,0 +1,136 @@
+---
+import {
+  AGENT_POLICIES,
+  AGENT_POLICY_DESCRIPTIONS,
+  AGENT_POLICY_GROUPS,
+  AGENT_POLICY_KEYS,
+  AGENT_POLICY_SSH_KEYS_INTRO,
+  PRODUCTION_CONFIRMATION_PHRASE,
+} from "@nearzero/shared";
+import LoadFailed from "../../../../components/settings/LoadFailed.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Button from "../../../../components/ui/Button.astro";
+import Dialog from "../../../../components/ui/Dialog.astro";
+import Field from "../../../../components/ui/Field.astro";
+import FormError from "../../../../components/ui/FormError.astro";
+import Switch from "../../../../components/ui/Switch.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { policyName } from "../../../../lib/agent-policy-rules.ts";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { AgentPolicySettings } from "../../../../lib/data/index.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+import { settingsPath } from "../../../../lib/routes.ts";
+import { fullDate, relativeTime } from "../../../../lib/time.ts";
+
+// Settings → Agent policies (spec 19.9, 21.10): what the Agent may change in this workspace, by
+// group, with Production on its own behind a typed phrase. One Save for the page. Rows show the
+// policy names without their bracketed notes; the descriptions say what each one covers.
+// Leaving with unsaved changes asks first (B3-17, client/navigation.ts).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const allowed = ctx.access.can.manageAgentPolicies;
+if (!allowed) Astro.response.status = 403;
+
+let settings: AgentPolicySettings | null = null;
+let failure: string | null = null;
+if (allowed) {
+  try {
+    settings = await ctx.data.agentPolicies();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+const groups = AGENT_POLICY_GROUPS.filter((group) => group !== "Production").map((group) => ({
+  group,
+  keys: AGENT_POLICY_KEYS.filter((key) => AGENT_POLICIES[key].group === group),
+}));
+const switches = settings?.switches;
+const now = new Date();
+---
+
+<SettingsLayout ctx={ctx} current="agent-policies">
+  {
+    !allowed ? (
+      <NoAccess workspace={ctx.workspace.slug} />
+    ) : !settings ? (
+      <LoadFailed detail={failure} />
+    ) : (
+      <form method="post" class="nz-agent-policies" data-agent-policies data-api="PUT /workspace/agent-policies" data-api-manual data-saved={JSON.stringify(settings.switches)} novalidate>
+        <p class="nz-dim nz-agent-intro">
+          What the Agent may change in this organization. Reading projects, servers, deployments and
+          logs is always allowed. Every change is checked on the server against these policies and
+          against the role of the person asking, so the Agent can never do more than that person could
+          in the console. Its keys are under <a class="nz-text-link" href={settingsPath(ctx.workspace.slug, "api-keys")}>API keys</a>.
+        </p>
+        {!settings.usingDefaults && settings.savedAt && (
+          <p class="nz-dim nz-agent-saved">
+            <span title={fullDate(new Date(settings.savedAt))}>
+              Saved {relativeTime(new Date(settings.savedAt), now)}
+              {settings.savedBy && ` by ${settings.savedBy.name}`}
+            </span>
+          </p>
+        )}
+        <FormError class="mt-3" />
+        {groups.map(({ group, keys }) => (
+          <section class="nz-card nz-agent-group" aria-label={group}>
+            <h2 class="nz-agent-group-title">{group}</h2>
+            {group === "SSH keys" && <p class="nz-dim nz-agent-group-intro">{AGENT_POLICY_SSH_KEYS_INTRO}</p>}
+            <div class="nz-switch-list">
+              {keys.map((key) => (
+                <Switch
+                  id={`nz-agent-${key.replace(/\W/g, "-")}`}
+                  label={policyName(key)}
+                  description={AGENT_POLICY_DESCRIPTIONS[key]}
+                  checked={switches?.[key] ?? false}
+                  data-agent-policy={key}
+                />
+              ))}
+            </div>
+            {group === "Apps and services" && (
+              <p class="nz-inline-note mt-2" data-agent-notice aria-live="polite" hidden></p>
+            )}
+          </section>
+        ))}
+        <section class="nz-card nz-agent-group nz-production" aria-label="Production">
+          <h2 class="nz-agent-group-title nz-agent-group-title--danger">Production</h2>
+          <Switch
+            id="nz-agent-production"
+            label={policyName("production")}
+            description={AGENT_POLICY_DESCRIPTIONS.production}
+            checked={settings.switches.production}
+            data-agent-policy="production"
+          />
+          <div class="mt-3" data-production-phrase hidden>
+            <Field
+              id="nz-agent-production-phrase"
+              name="productionConfirmation"
+              label={`Type ${PRODUCTION_CONFIRMATION_PHRASE} to allow it`}
+              autocomplete="off"
+              spellcheck="false"
+              placeholder={PRODUCTION_CONFIRMATION_PHRASE}
+            />
+          </div>
+        </section>
+        <div class="nz-save-bar nz-agent-save">
+          <Button variant="primary" type="submit" disabled data-agent-save>Save changes</Button>
+          <span class="nz-dim" data-agent-unsaved data-leave-guard hidden>You have unsaved changes.</span>
+        </div>
+      </form>
+    )
+  }
+  <Fragment slot="dialogs">
+    {
+      settings && (
+        <Dialog id="nz-leave-unsaved" title="Leave without saving?">
+          <p class="nz-dim">Your changes to the Agent policies aren't saved. If you leave now, they're lost.</p>
+          <div class="nz-dialog-foot">
+            <Button variant="outline" data-dialog-close autofocus>Stay</Button>
+            <Button variant="danger" data-leave-confirm>Leave without saving</Button>
+          </div>
+        </Dialog>
+      )
+    }
+  </Fragment>
+</SettingsLayout>

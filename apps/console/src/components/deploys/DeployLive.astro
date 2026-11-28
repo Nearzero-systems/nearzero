@@ -1,0 +1,33 @@
+---
+import type { ServiceDetail } from "../../lib/data/index.ts";
+import Icon from "../ui/Icon.astro";
+import DeployLog from "./DeployLog.astro";
+
+/**
+ * The live deploy panel on a service page (spec 6.2, 6.5, 8.2): while a deploy is queued or
+ * building, its log streams here and the page refreshes when it ends (client/deploys.ts).
+ */
+interface Props {
+  service: ServiceDetail;
+  open?: boolean;
+}
+
+const { service, open = true } = Astro.props;
+const inProgress = service.deploy?.inProgress ?? null;
+---
+
+{
+  inProgress && (
+    <details class="nz-card nz-section nz-collapsible nz-deploy-live" open={open} data-deploy-watch>
+      <summary>
+        <h2 class="nz-subtitle">
+          <span class="nz-spinner" aria-hidden="true"></span>
+          <span data-log-state>{inProgress.status === "queued" ? "Queued" : "Building"}</span>
+          <span class="nz-dim"> · Build log</span>
+        </h2>
+        <Icon name="chevron-down" />
+      </summary>
+      <DeployLog deploymentId={inProgress.id} live label={`Build log of ${service.name}`} />
+    </details>
+  )
+}

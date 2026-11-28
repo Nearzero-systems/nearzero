@@ -1,0 +1,31 @@
+---
+/**
+ * A page's title strip (spec 21.10): the title at the left, the main actions at the right,
+ * vertically centred, with a hairline below. `size="small"` is the 12px title a project's
+ * Overview and Services use; `description` adds a line under the title (Domains).
+ */
+interface Props {
+  title: string;
+  description?: string;
+  size?: "page" | "small";
+  class?: string;
+}
+
+const { title, description, size = "page", class: className } = Astro.props;
+const actions = Astro.slots.has("default");
+---
+
+<div class:list={["nz-strip nz-strip--title", size === "small" && "nz-strip--small", className]}>
+  <div class="min-w-0">
+    <h1 class:list={["nz-title", size === "small" && "nz-title--small"]} title={title}>{title}</h1>
+    {description && <p class="nz-strip-desc">{description}</p>}
+    <slot name="after-title" />
+  </div>
+  {
+    actions && (
+      <div class="nz-page-actions">
+        <slot />
+      </div>
+    )
+  }
+</div>

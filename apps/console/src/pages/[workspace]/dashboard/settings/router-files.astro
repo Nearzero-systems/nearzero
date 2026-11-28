@@ -1,0 +1,193 @@
+---
+import { ROUTER_FILE_MESSAGES, ROUTER_MAIN_SETTINGS } from "@nearzero/shared/browser";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EmptyState from "../../../../components/ui/EmptyState.astro";
+import Field from "../../../../components/ui/Field.astro";
+import FormError from "../../../../components/ui/FormError.astro";
+import Icon from "../../../../components/ui/Icon.astro";
+import Switch from "../../../../components/ui/Switch.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import type { RouterFileList } from "../../../../lib/data/index.ts";
+import { dashboardContext, isManager } from "../../../../lib/page.ts";
+import { settingsPath, settingsVisibility } from "../../../../lib/routes.ts";
+
+// Settings → Router files (spec 18.3): the router's configuration files on the Nearzero host
+// (instance administrators) or on a server the person may see router files of. A file opens
+// read-only; people who may manage that server turn on Edit mode and Save. The control plane
+// checks YAML and the router's schema first and answers with the line and reason; the runner's
+// own files stay read-only. client/router-files.ts runs Edit mode and Save. Beside the folder,
+// "Main settings" shows the router's entry points, certificate resolvers and global options,
+// read-only for everyone (R3-23).
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const visible = settingsVisibility(ctx.access)["router-files"];
+if (!visible) Astro.response.status = 403;
+const base = settingsPath(ctx.workspace.slug, "router-files");
+
+// The picker: the host for instance administrators, then the servers this person can see.
+const targets: { id: string; name: string }[] = [];
+if (visible && ctx.access.isInstanceAdmin) targets.push({ id: "host", name: "Nearzero host" });
+if (
+  visible &&
+  (isManager(ctx.access.role) || ctx.access.capabilities.includes("router-files.read"))
+) {
+  const servers = await ctx.data.servers({}).catch((error: unknown) => {
+    if (isApiError(error) && error.code !== "control_unreachable") return [];
+    throw error;
+  });
+  for (const server of servers) targets.push({ id: server.id, name: server.name });
+}
+const wanted = Astro.url.searchParams.get("server");
+const target = targets.find((item) => item.id === wanted) ?? targets[0] ?? null;
+
+let list: RouterFileList | null = null;
+let failure: string | null = null;
+if (target) {
+  try {
+    list = await ctx.data.routerFiles(target.id);
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+const files = list?.files ?? [];
+const main = list?.mainSettings ?? null;
+const picked = Astro.url.searchParams.get("file");
+// Nothing opens until a file is picked from the tree (spec 21.10).
+const isMain = main !== null && picked === ROUTER_MAIN_SETTINGS.name;
+const file = isMain ? main : (files.find((item) => item.name === picked) ?? null);
+const fileTitle = isMain && main ? main.title : (file?.name ?? "");
+const hrefFor = (name: string) =>
+  `${base}?${new URLSearchParams({ ...(target ? { server: target.id } : {}), file: name })}`;
+const isToml = (name: string) => name.endsWith(".toml");
+---
+
+<SettingsLayout ctx={ctx} current="router-files">
+  {
+    !visible ? (
+      <NoAccess workspace={ctx.workspace.slug} />
+    ) : (
+      <div class="nz-router-files" data-router-files-page>
+        <p class="nz-router-warning">
+          Adding invalid configuration to existing files can break your Traefik instance and block access to your
+          applications.
+        </p>
+        <div class="nz-file-browser nz-router-editor">
+          <nav class="nz-router-tree" aria-label="Router files">
+            <p class="nz-eyebrow nz-router-tree-head">Files</p>
+            {targets.length > 1 && (
+              <form class="nz-router-picker" method="get" action={base} data-filter-form>
+                <label class="nz-select-wrap">
+                  <span class="nz-visually-hidden">Server</span>
+                  <select class="nz-select nz-select--toolbar" name="server" aria-label="Server">
+                    {targets.map((item) => (
+                      <option value={item.id} selected={item.id === target?.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Icon name="chevron-down" />
+                </label>
+              </form>
+            )}
+            {targets.length > 0 && !failure && main && (
+              <ul class="nz-file-tree nz-router-main">
+                <li>
+                  <a
+                    class="nz-file-link"
+                    href={hrefFor(main.name)}
+                    aria-current={isMain ? "page" : undefined}
+                    data-astro-history="replace"
+                  >
+                    <span class="nz-truncate">{main.title}</span>
+                    <Icon name="lock" />
+                  </a>
+                </li>
+              </ul>
+            )}
+            {targets.length > 0 && !failure && (
+              <details class="nz-router-folder" open={file !== null || files.length === 0 ? true : undefined}>
+                <summary>
+                  <Icon name="folder" />
+                  <span>dynamic</span>
+                </summary>
+                {files.length === 0 ? (
+                  <p class="nz-router-folder-empty">{ROUTER_FILE_MESSAGES.empty}</p>
+                ) : (
+                  <ul class="nz-file-tree">
+                    {files.map((item) => (
+                      <li>
+                        <a
+                          class="nz-file-link"
+                          href={hrefFor(item.name)}
+                          aria-current={item.name === file?.name ? "page" : undefined}
+                          data-astro-history="replace"
+                        >
+                          <span class="nz-truncate">{item.name}</span>
+                          {item.managed && <Icon name="lock" />}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+            )}
+          </nav>
+          <div class="nz-router-pane">
+            {targets.length === 0 ? (
+              <EmptyState title="No servers yet" text="Router files open here once a server you manage is added." />
+            ) : failure ? (
+              <EmptyState title="Could not read the router's files" text={failure}>
+                <Button variant="outline" href={Astro.url.pathname + Astro.url.search}>Refresh</Button>
+              </EmptyState>
+            ) : !file ? (
+              <EmptyState title="No file selected" text="Choose a file from the tree to view or edit its configuration." />
+            ) : (
+              <form
+                class="nz-router-file"
+                data-api={`PUT /servers/${encodeURIComponent(target?.id ?? "")}/router-files/${encodeURIComponent(file.name)}`}
+                data-api-manual
+                data-router-file-form
+                novalidate
+              >
+                <div class="nz-router-file-head">
+                  <p class="font-medium nz-truncate min-w-0" title={fileTitle}>{fileTitle}</p>
+                  {file.editable && (
+                    <div class="nz-router-file-actions">
+                      <Switch id="nz-router-edit-mode" label="Edit mode" data-router-edit-mode />
+                      <Button variant="primary" type="submit" data-router-save disabled>Save</Button>
+                    </div>
+                  )}
+                </div>
+                {isMain ? (
+                  <p class="nz-inline-note">{ROUTER_MAIN_SETTINGS.note}</p>
+                ) : (
+                  file.managed && <p class="nz-inline-note">{ROUTER_FILE_MESSAGES.managed}</p>
+                )}
+                {isToml(file.name) && <p class="nz-inline-note">{ROUTER_FILE_MESSAGES.toml}</p>}
+                <Field
+                  id="nz-router-file-contents"
+                  as="textarea"
+                  name="contents"
+                  label={`Contents of ${fileTitle}`}
+                  hideLabel
+                  rows={22}
+                  class="nz-code-input nz-router-file-text"
+                  value={file.contents}
+                  readonly
+                  spellcheck="false"
+                  autocomplete="off"
+                  data-router-file-text
+                />
+                <FormError />
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+</SettingsLayout>

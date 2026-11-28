@@ -1,0 +1,56 @@
+---
+import type { ServiceView } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+
+/**
+ * The dashed "No domain yet" card for a service without a hostname (spec 5.2, 21.10): a grey
+ * header, a dashed hairline, the line saying what a domain gives, and Generate domain (dark) and
+ * Use my domain (outlined). Both open the Add domain dialog with the service chosen
+ * (AddDomainDialog.astro).
+ */
+interface Props {
+  service: Pick<ServiceView, "id" | "name">;
+  canAdd: boolean;
+}
+
+const { service, canAdd } = Astro.props;
+---
+
+<div class="nz-node nz-node--pending" data-node="no-domain">
+  <div class="nz-node-head">
+    <span class="nz-node-glyph" aria-hidden="true">
+      <svg viewBox="0 0 12 12" width="12" height="12">
+        <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" />
+        <circle cx="6" cy="6" r="2.5" fill="none" stroke="currentColor" />
+      </svg>
+    </span>
+    <span class="nz-node-name">No domain yet</span>
+  </div>
+  <div class="nz-node-body">
+    {
+      canAdd ? (
+        <>
+          <p class="nz-dim">Give {service.name} a public URL with HTTPS.</p>
+          <div class="nz-node-actions">
+            <Button
+              variant="primary"
+              data-dialog-open="nz-add-domain"
+              data-dialog-fill={JSON.stringify({ serviceId: service.id, mode: "generate" })}
+            >
+              Generate domain
+            </Button>
+            <Button
+              variant="outline"
+              data-dialog-open="nz-add-domain"
+              data-dialog-fill={JSON.stringify({ serviceId: service.id, mode: "own" })}
+            >
+              Use my domain
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p class="nz-dim">{service.name} isn't reachable from the internet yet.</p>
+      )
+    }
+  </div>
+</div>

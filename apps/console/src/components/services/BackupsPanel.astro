@@ -1,0 +1,350 @@
+---
+import { BACKUP_MESSAGES, DATABASE_DEFAULTS, type DatabaseKind } from "@nearzero/shared/browser";
+import { isApiError } from "../../lib/api-error.ts";
+import { pillOfRun } from "../../lib/backups.ts";
+import { type BackupsPanelView, consoleData, type ServiceDetail } from "../../lib/data/index.ts";
+import { settingsPath } from "../../lib/routes.ts";
+import { fullDate, relativeTime } from "../../lib/time.ts";
+import RestoreDialog from "../backups/RestoreDialog.astro";
+import RunLogDialog from "../backups/RunLogDialog.astro";
+import ScheduleDialog from "../backups/ScheduleDialog.astro";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import FormError from "../ui/FormError.astro";
+import Menu from "../ui/Menu.astro";
+import MenuItem from "../ui/MenuItem.astro";
+import StatusPill from "../ui/StatusPill.astro";
+import TableWrap from "../ui/TableWrap.astro";
+
+/**
+ * A service's backups (spec 08 8.3 for databases; 17.3 for apps, Compose and Redis): the
+ * schedules with their last run (which follows a running backup without a reload), Run now,
+ * Edit, Delete, the volumes found for volume backups, and Restore. client/backups.ts drives the
+ * dialogs and the live rows.
+ */
+interface Props {
+  service: ServiceDetail;
+  workspace: string;
+  /** May add destinations (owners, admins, "Add and remove backup destinations"). */
+  canManageDestinations: boolean;
+}
+
+const { service, workspace, canManageDestinations } = Astro.props;
+let panel: BackupsPanelView | null = null;
+let failure: string | null = null;
+try {
+  panel = await consoleData(Astro).backupsPanel(service.id);
+} catch (error) {
+  if (!isApiError(error)) throw error;
+  failure = error.message;
+}
+const volumeKinds = ["application", "compose", "redis"];
+const database = panel ? panel.kind === "database" : !volumeKinds.includes(service.kind);
+const title = database ? "Scheduled backups" : "Volume backups";
+// The original's sentences (spec 21.10): what a run does, and the empty box's line.
+const subject =
+  service.kind === "application"
+    ? "this app's"
+    : service.kind === "compose"
+      ? "this compose service's"
+      : "this database's";
+const databaseName =
+  typeof service.settings.databaseName === "string" && service.settings.databaseName
+    ? service.settings.databaseName
+    : (DATABASE_DEFAULTS[service.kind as DatabaseKind]?.databaseName ?? service.name);
+const emptyText = database
+  ? "No backups are scheduled for this database yet."
+  : `No volume backups are scheduled for ${
+      service.kind === "application"
+        ? "this app"
+        : service.kind === "compose"
+          ? "this compose service"
+          : "this database"
+    } yet.`;
+const headingId = `nz-backups-${service.id}`;
+const now = new Date();
+const volumeCount = panel?.volumes?.volumes.length ?? 0;
+const canAdd = Boolean(
+  panel?.can.manage && panel.destinations.length > 0 && (database || volumeCount > 0),
+);
+const scheduleFill = (schedule: BackupsPanelView["schedules"][number]) =>
+  JSON.stringify({
+    id: schedule.id,
+    destinationId: schedule.destination?.id ?? "",
+    database: schedule.database ?? "",
+    volume: schedule.volume ?? "",
+    stopService: schedule.stopService,
+    folder: schedule.folder,
+    cron: schedule.cron,
+    preset: schedule.preset ?? "custom",
+    keep: schedule.keep === null ? "" : String(schedule.keep),
+    enabled: schedule.enabled,
+  });
+const showAddLink =
+  panel?.notice?.action === "add-destination" ||
+  (panel?.notice?.action === "ask-admin" && canManageDestinations);
+---
+
+<section
+  class="nz-backups nz-backups-panel"
+  aria-labelledby={headingId}
+  data-backups-panel
+  data-live={panel ? "" : undefined}
+  data-service-id={service.id}
+  data-service-name={service.name}
+>
+  <div class="nz-backups-head">
+    <div class="min-w-0">
+      <h2 class="nz-backups-title" id={headingId}>{title}</h2>
+      <p class="nz-backups-desc">
+        {database ? (
+          <>
+            Each run dumps <code class="nz-code">{databaseName}</code>, compresses it and uploads it to the destination.
+            Times are in the server's time zone.
+          </>
+        ) : (
+          `Each run copies one of ${subject} volumes into a .tar file and uploads it to the destination. Times are in the server's time zone.`
+        )}
+      </p>
+    </div>
+    <div class="nz-backups-actions">
+      {
+        panel?.can.restore && panel.destinations.length > 0 && (
+          <Button variant="outline" data-restore-open>
+            Restore…
+          </Button>
+        )
+      }
+      {
+        panel?.can.manage && (
+          <Button variant="outline" data-schedule-open="add" disabled={!canAdd}>
+            Add backup
+          </Button>
+        )
+      }
+    </div>
+  </div>
+
+  {
+    !panel ? (
+      <p class="nz-inline-error nz-backups-error" role="alert">
+        {failure ?? "You can't manage this service's backups."}
+      </p>
+    ) : (
+      <div class="nz-stack nz-backups-body">
+        {panel.notice && (
+          <p class="nz-inline-note" data-backups-notice={panel.notice.action}>
+            {showAddLink ? (
+              <>
+                {BACKUP_MESSAGES.noDestination}.{" "}
+                <a class="nz-text-link" href={settingsPath(workspace, "backups")}>
+                  Add a backup destination
+                </a>
+              </>
+            ) : panel.notice.action === "ask-admin" ? (
+              `${BACKUP_MESSAGES.noDestination}. ${BACKUP_MESSAGES.askAdmin}`
+            ) : (
+              panel.notice.text
+            )}
+          </p>
+        )}
+
+        {!database && panel.volumes && volumeCount > 0 && (
+          <div class="nz-stack-sm" data-backups-volumes>
+            <p class="font-medium">
+              {volumeCount === 1 ? "Found 1 volume" : `Found ${volumeCount} volumes`}
+            </p>
+            {volumeCount > 0 && (
+              <ul class="nz-var-list">
+                {panel.volumes.volumes.map((volume) => (
+                  <li class="nz-var-row nz-backup-volume">
+                    <code class="nz-var-name">{volume.name}</code>
+                    <span class="nz-dim nz-small">
+                      {volume.sourceLabels.join(" · ")}
+                      {volume.innerServices.length > 0 && ` · used by ${volume.innerServices.join(", ")}`}
+                      {volume.paths.length > 0 && ` · ${volume.paths.join(", ")}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {panel.volumes.note && <p class="nz-dim">{panel.volumes.note}</p>}
+          </div>
+        )}
+
+        {!database && (panel.volumes?.excluded?.length ?? 0) > 0 && (
+          <div class="nz-stack-sm" data-backups-excluded>
+            <p class="font-medium">Not offered</p>
+            <ul class="nz-var-list">
+              {(panel.volumes?.excluded ?? []).map((volume) => (
+                <li class="nz-var-row nz-backup-volume">
+                  <code class="nz-var-name">{volume.name}</code>
+                  <span class="nz-dim nz-small">{volume.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {panel.schedules.length === 0 ? (
+          <div class="nz-backups-empty">
+            <p>{emptyText}</p>
+            {!database && volumeCount === 0 && panel.volumes?.note && <p class="nz-dim">{panel.volumes.note}</p>}
+          </div>
+        ) : (
+          <TableWrap label={title}>
+            <thead>
+              <tr>
+                <th>State</th>
+                <th>Schedule</th>
+                <th>Destination</th>
+                <th>Folder</th>
+                <th>Keep</th>
+                <th>Last run</th>
+                <th>
+                  <span class="nz-visually-hidden">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {panel.schedules.map((schedule) => {
+                const run = schedule.openRun ?? schedule.lastRun;
+                const menuId = `nz-schedule-menu-${schedule.id}`;
+                return (
+                  <tr data-schedule-row={schedule.id}>
+                    <td>
+                      <StatusPill status={schedule.enabled ? "ok" : "idle"} label={schedule.stateLabel} />
+                    </td>
+                    <td>
+                      <p class="nz-nowrap">{schedule.scheduleText}</p>
+                      {schedule.volume && <p class="nz-small nz-dim nz-truncate">{schedule.volume}</p>}
+                      {schedule.database && <p class="nz-small nz-dim">Database {schedule.database}</p>}
+                    </td>
+                    <td>{schedule.destination?.name ?? "—"}</td>
+                    <td>
+                      <code class="nz-code nz-small">{schedule.prefix}</code>
+                    </td>
+                    <td class="nz-nowrap">{schedule.keepText}</td>
+                    <td data-schedule-last data-run-id={run?.id ?? ""} data-run-open={String(Boolean(run?.open))}>
+                      <span data-run-pill>
+                        <StatusPill status={pillOfRun(run)} label={schedule.lastRunText} />
+                      </span>
+                      <p class="nz-small nz-dim" data-run-when>
+                        {run?.finishedAt ? (
+                          <span title={fullDate(new Date(run.finishedAt))}>{relativeTime(new Date(run.finishedAt), now)}</span>
+                        ) : run?.open ? (
+                          "In progress"
+                        ) : null}
+                      </p>
+                      <p class="nz-small nz-inline-error nz-backup-error" data-run-error hidden={!(run?.status === "failed" && run.error)}>
+                        {run?.status === "failed" ? run.error : ""}
+                      </p>
+                    </td>
+                    <td class="nz-cell-actions">
+                      <div class="nz-backup-actions">
+                        {panel.can.manage && (
+                          <Button variant="outline" data-backup-run={schedule.id} disabled={!schedule.destination}>
+                            Run now
+                          </Button>
+                        )}
+                        {panel.can.restore && schedule.destination && panel.destinations.some((item) => item.id === schedule.destination?.id) && (
+                          <Button
+                            variant="outline"
+                            data-restore-open
+                            data-restore-fill={JSON.stringify({
+                              destinationId: schedule.destination.id,
+                              folder: schedule.folder,
+                              database: schedule.database ?? "",
+                              volume: schedule.volume ?? "",
+                            })}
+                          >
+                            Restore
+                          </Button>
+                        )}
+                        <Button
+                          variant="icon"
+                          icon="more"
+                          label={`More for ${schedule.scheduleText}`}
+                          popovertarget={menuId}
+                          aria-haspopup="menu"
+                          aria-expanded="false"
+                        />
+                        <Menu id={menuId} label={`More for ${schedule.scheduleText}`} placement="bottom-end">
+                          <MenuItem icon="terminal" data-run-log={run?.id ?? ""} data-run-log-title={schedule.scheduleText}>
+                            Show last run's log
+                          </MenuItem>
+                          {panel.can.manage && (
+                            <>
+                              <MenuItem icon="edit" data-schedule-open="edit" data-dialog-fill={scheduleFill(schedule)}>
+                                Edit
+                              </MenuItem>
+                              <hr class="nz-menu-sep" />
+                              <MenuItem
+                                icon="trash"
+                                danger
+                                data-dialog-open="nz-schedule-delete"
+                                data-dialog-fill={JSON.stringify({ id: schedule.id, scheduleText: schedule.scheduleText })}
+                              >
+                                Delete
+                              </MenuItem>
+                            </>
+                          )}
+                        </Menu>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+        )}
+
+        {panel.recentRestores.length > 0 && (
+          <div class="nz-stack-sm">
+            <p class="font-medium">Recent restores</p>
+            <ul class="nz-var-list">
+              {panel.recentRestores.map((run) => (
+                <li class="nz-var-row nz-backup-volume">
+                  <StatusPill status={pillOfRun(run)} label={run.statusLabel} />
+                  <span class="nz-small nz-truncate">{run.file?.name ?? ""}</span>
+                  <span class="nz-small nz-dim">
+                    {run.finishedAt ? relativeTime(new Date(run.finishedAt), now) : "In progress"}
+                  </span>
+                  <Button variant="ghost" data-run-log={run.id} data-run-log-title="Restore">
+                    Log
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  {panel?.can.manage && <ScheduleDialog panel={panel} />}
+  {panel?.can.restore && <RestoreDialog panel={panel} />}
+  {panel && <RunLogDialog />}
+  {
+    panel?.can.manage && (
+      <Dialog id="nz-schedule-delete" title="Delete backup schedule">
+        <form method="post" class="nz-form" data-api="DELETE /backup-schedules/{id}" novalidate>
+          <FormError />
+          <input type="hidden" name="id" value="" />
+          <p>
+            Delete the schedule <strong data-fill-text="scheduleText" />?
+          </p>
+          <p class="nz-dim">{BACKUP_MESSAGES.deleteScheduleText}</p>
+          <div class="nz-dialog-foot">
+            <Button variant="outline" data-dialog-close>
+              Cancel
+            </Button>
+            <Button variant="danger" type="submit">
+              Delete schedule
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+    )
+  }
+</section>

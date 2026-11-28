@@ -1,0 +1,290 @@
+---
+import { PASSWORD_MAX, PASSWORD_MIN } from "@nearzero/shared";
+import type { AccessPolicy, ProjectTree, ScopeOption } from "../../lib/data/index.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import AccessEditor from "./AccessEditor.astro";
+
+/**
+ * The People tab's dialogs (spec 04 4.7): Add user (invite, or set a password where allowed),
+ * Change role, Remove from workspace, Cancel invitation, the invitation link, and a member's
+ * access with "From <policy>" marks. client/members.ts drives them.
+ */
+interface Props {
+  policies: AccessPolicy[];
+  projects: ProjectTree[];
+  servers: ScopeOption[];
+  gitAccounts: ScopeOption[];
+  emailOn: boolean;
+  canAddWithPassword: boolean;
+  /** An instance administrator on a server that can't send email sets addresses (31a G1-02). */
+  canSetEmail?: boolean;
+}
+
+const {
+  policies,
+  projects,
+  servers,
+  gitAccounts,
+  emailOn,
+  canAddWithPassword,
+  canSetEmail = false,
+} = Astro.props;
+const inviteLabel = emailOn ? "Send invitation" : "Create invitation";
+---
+
+<Dialog id="nz-add-user" title="Add user" wide>
+  <div data-add-user data-invite-label={inviteLabel}>
+    <form method="post" class="nz-form" data-add-user-form data-api="POST /workspace/invitations" data-api-manual data-validate novalidate>
+      <FormError />
+      {
+        canAddWithPassword && (
+          <div class="nz-segmented" role="radiogroup" aria-label="How to add them">
+            <label>
+              <input type="radio" name="mode" value="invite" checked data-add-mode />
+              <span>Send invitation</span>
+            </label>
+            <label>
+              <input type="radio" name="mode" value="password" data-add-mode />
+              <span>Set a password</span>
+            </label>
+          </div>
+        )
+      }
+      {
+        !emailOn && (
+          <p class="nz-inline-note" data-add-invite-only>
+            Email isn't set up, so you get a link to send them yourself.
+          </p>
+        )
+      }
+      <Field
+        id="nz-add-user-email"
+        name="email"
+        type="email"
+        label="Email"
+        autocomplete="off"
+        inputmode="email"
+        data-required="Enter your email address."
+        data-email="Use a valid email address."
+        autofocus
+      />
+      <fieldset class="nz-choice-list">
+        <legend class="nz-label">Role</legend>
+        <label class="nz-choice">
+          <input type="radio" name="role" value="member" checked data-add-role />
+          <span>
+            <span class="font-medium">Member</span>
+            <span class="nz-dim">Members reach only what you give them.</span>
+          </span>
+        </label>
+        <label class="nz-choice">
+          <input type="radio" name="role" value="admin" data-add-role />
+          <span>
+            <span class="font-medium">Admin</span>
+            <span class="nz-dim">Admins reach everything and can manage people.</span>
+          </span>
+        </label>
+      </fieldset>
+      <fieldset class="nz-choice-list" data-add-policies>
+        <legend class="nz-label">Access policies</legend>
+        {
+          policies.length === 0 ? (
+            <p class="nz-dim">No access policies yet. Create one in the Access policies tab, then give it here or later.</p>
+          ) : (
+            policies.map((policy) => (
+              <label class="nz-check">
+                <input type="checkbox" name="policyIds" value={policy.id} data-json="list" />
+                <span>{policy.name}</span>
+              </label>
+            ))
+          )
+        }
+      </fieldset>
+      {
+        canAddWithPassword && (
+          <div class="nz-form" data-add-password hidden>
+            <div data-field>
+              <label for="nz-add-user-password" class="nz-label">Password</label>
+              <div class="nz-input-row">
+                <input
+                  id="nz-add-user-password"
+                  name="password"
+                  type="password"
+                  class="nz-input"
+                  autocomplete="new-password"
+                  maxlength={PASSWORD_MAX}
+                  aria-describedby="nz-add-user-password-hint nz-add-user-password-error"
+                  data-required="New password is required"
+                  data-minlength={String(PASSWORD_MIN)}
+                  data-minlength-message={`Use ${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`}
+                />
+                <Button variant="outline" icon="eye" data-password-show aria-pressed="false">
+                  <span data-password-show-label>Show</span>
+                </Button>
+                <Button variant="outline" icon="key" data-password-generate>Generate</Button>
+              </div>
+              <p id="nz-add-user-password-hint" class="nz-hint">
+                {PASSWORD_MIN} to {PASSWORD_MAX} characters, no spaces at the start or end. They finish their profile when they first sign in.
+              </p>
+              <p id="nz-add-user-password-error" class="nz-field-error" data-field-error hidden></p>
+            </div>
+          </div>
+        )
+      }
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-dialog-close>Cancel</Button>
+        <Button variant="primary" type="submit" data-add-submit>{inviteLabel}</Button>
+      </div>
+    </form>
+    <div data-add-result hidden>
+      <p class="font-medium" data-add-result-title></p>
+      <p class="nz-dim mt-1" data-add-result-text></p>
+      <div class="nz-result-fields mt-3" data-add-result-fields></div>
+      <div class="nz-dialog-foot">
+        <Button variant="outline" data-add-another>Add another</Button>
+        <Button variant="primary" data-dialog-close>Done</Button>
+      </div>
+    </div>
+  </div>
+</Dialog>
+
+<Dialog id="nz-member-role" title="Change role">
+  <form method="post" class="nz-form" data-api="PATCH /workspace/members/{personId}" data-api-toast="Role updated" data-validate novalidate>
+    <FormError />
+    <input type="hidden" name="personId" value="" />
+    <p class="nz-dim">For <strong data-fill-text="name" style="color: var(--nz-text)"></strong>.</p>
+    <fieldset class="nz-choice-list">
+      <legend class="nz-visually-hidden">Role</legend>
+      <label class="nz-choice">
+        <input type="radio" name="role" value="admin" />
+        <span>
+          <span class="font-medium">Admin</span>
+          <span class="nz-dim">Reaches everything and can manage people. Their policies and direct grants are removed; they no longer need them.</span>
+        </span>
+      </label>
+      <label class="nz-choice">
+        <input type="radio" name="role" value="member" />
+        <span>
+          <span class="font-medium">Member</span>
+          <span class="nz-dim">Reaches only what you give them, starting with nothing.</span>
+        </span>
+      </label>
+    </fieldset>
+    <p class="nz-hint">The owner role can't be given away.</p>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Update role</Button>
+    </div>
+  </form>
+</Dialog>
+
+{
+  canSetEmail && (
+    <Dialog id="nz-member-email" title="Change email">
+      <form method="post" class="nz-form" data-api="PUT /workspace/members/{personId}/email" data-validate novalidate>
+        <FormError />
+        <input type="hidden" name="personId" value="" />
+        <p class="nz-dim">For <strong data-fill-text="name" style="color: var(--nz-text)"></strong>.</p>
+        <Field
+          id="nz-member-email-address"
+          name="email"
+          type="email"
+          label="Email"
+          autocomplete="off"
+          inputmode="email"
+          data-required="Enter your email address."
+          data-email="Use a valid email address."
+          hint="This server can't send email, so you vouch for the address: it counts as confirmed at once, and they're signed out everywhere. Keep the same address to confirm it."
+        />
+        <div class="nz-dialog-foot">
+          <Button variant="outline" data-dialog-close>Cancel</Button>
+          <Button variant="primary" type="submit">Save email</Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+<Dialog id="nz-member-remove" title="Remove from workspace">
+  <form method="post" class="nz-form" data-api="DELETE /workspace/members/{personId}" data-api-toast="Removed from the workspace">
+    <FormError />
+    <input type="hidden" name="personId" value="" />
+    <p>
+      <strong data-fill-text="name"></strong> will lose access to this workspace. Their account isn't deleted.
+    </p>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit">Remove</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-invitation-cancel" title="Cancel invitation">
+  <form method="post" class="nz-form" data-api="DELETE /workspace/invitations/{invitationId}" data-api-toast="Invitation cancelled">
+    <FormError />
+    <input type="hidden" name="invitationId" value="" />
+    <p>The invitation link for <strong data-fill-text="email"></strong> will stop working.</p>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Keep it</Button>
+      <Button variant="danger" type="submit">Cancel invitation</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-invitation-link" title="Invitation link">
+  <div data-invitation-link>
+    <p class="nz-dim" data-invitation-link-text></p>
+    <div class="nz-url nz-url--boxed mt-3">
+      <span class="nz-url-text" data-invitation-link-url></span>
+      <Button variant="outline" icon="copy" data-copy="" data-invitation-link-copy>Copy</Button>
+    </div>
+    <p class="nz-hint">It works only for that email address and lasts 7 days.</p>
+    <div class="nz-dialog-foot">
+      <Button variant="primary" data-dialog-close>Done</Button>
+    </div>
+  </div>
+</Dialog>
+
+<Dialog id="nz-member-access" title="Access" wide>
+  <form method="post" class="nz-form" data-member-access-form data-api="PUT /workspace/members/{personId}/access" data-api-manual>
+    <input type="hidden" name="personId" value="" />
+    <FormError />
+    <p class="nz-dim" data-access-loading>Loading their access…</p>
+    <div class="nz-form" data-access-body hidden>
+      <fieldset class="nz-access-section">
+        <legend class="nz-subtitle">Access policies</legend>
+        {
+          policies.length === 0 ? (
+            <p class="nz-dim">No access policies yet. You can give access directly below.</p>
+          ) : (
+            <div class="nz-option-list">
+              {policies.map((policy) => (
+                <label class="nz-check">
+                  <input type="checkbox" data-access-policy value={policy.id} />
+                  <span>{policy.name}</span>
+                  {policy.description && <span class="nz-dim nz-truncate">{policy.description}</span>}
+                </label>
+              ))}
+            </div>
+          )
+        }
+      </fieldset>
+      <AccessEditor
+        id="nz-member-access-editor"
+        projects={projects}
+        servers={servers}
+        gitAccounts={gitAccounts}
+        capabilitiesTitle="What they can do"
+        holder="member"
+      />
+      <p class="nz-hint">Their access is everything their policies give plus what you tick here. "From" marks what a policy already gives.</p>
+    </div>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" data-access-save disabled>Save access</Button>
+    </div>
+  </form>
+</Dialog>

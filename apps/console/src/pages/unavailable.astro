@@ -1,0 +1,28 @@
+---
+import AuthFrame from "../components/auth/AuthFrame.astro";
+import Button from "../components/ui/Button.astro";
+import Icon from "../components/ui/Icon.astro";
+import PublicLayout from "../layouts/PublicLayout.astro";
+import { UNREACHABLE_MESSAGE } from "../lib/api-error.ts";
+import { safeLocalPath } from "../lib/next-step.ts";
+
+// Shown in place of any page when the console can't reach the control plane.
+Astro.response.status = 503;
+const retry = safeLocalPath(Astro.originPathname) ?? "/";
+---
+
+<PublicLayout
+  title="Nearzero is not answering"
+  description="This Nearzero console can't reach its control plane right now."
+  preview={false}
+>
+  <AuthFrame heading="Nearzero is not answering">
+    <p class="nz-inline-error" role="alert">
+      <Icon name="alert" />
+      <span>{UNREACHABLE_MESSAGE}</span>
+    </p>
+    <div class="nz-gate-actions nz-gate-actions--block">
+      <Button variant="primary" href={retry} data-astro-reload>Try again</Button>
+    </div>
+  </AuthFrame>
+</PublicLayout>

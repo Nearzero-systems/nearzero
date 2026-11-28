@@ -1,0 +1,131 @@
+---
+import { PASSWORD_MAX, PASSWORD_MIN } from "@nearzero/shared";
+import AuthFrame from "../components/auth/AuthFrame.astro";
+import Button from "../components/ui/Button.astro";
+import Field from "../components/ui/Field.astro";
+import Icon from "../components/ui/Icon.astro";
+import PublicLayout from "../layouts/PublicLayout.astro";
+import { isApiError } from "../lib/api-error.ts";
+import { consoleData, type InvitationInspection } from "../lib/data/index.ts";
+import { setFlash } from "../lib/flash.ts";
+import { forgetInvitationLink, readInvitationLink } from "../lib/invitation-cookie.ts";
+import { destinationAfter } from "../lib/next-step.ts";
+import { formSecret, sessionOrUnavailable } from "../lib/page.ts";
+
+// Sign-up exists only through an invitation, with the email locked to the invited address
+// (spec 4.2). The link's token and proof come from the invitation page's cookie; a link that
+// brings its token here (/sign-up?token=…) goes through the invitation page first (G1-04).
+// The wording is 0.1.79's (31a G1-11): "Create an account", "At least 8 characters".
+const data = consoleData(Astro);
+const link = readInvitationLink(Astro.cookies);
+if (!link) return Astro.redirect("/sign-in");
+const session = await sessionOrUnavailable(Astro);
+if (session instanceof Response) return session;
+if (session.signedIn) return Astro.redirect("/invitation");
+
+let inspection: InvitationInspection | null = null;
+let problem: string | null = null;
+try {
+  inspection = await data.inspectInvitation(link.token);
+} catch (error) {
+  if (!isApiError(error)) throw error;
+  problem =
+    error.code === "invalid_request" ? "This link is incomplete" : "Couldn't load this invitation";
+}
+if (inspection) {
+  if (inspection.state === "not_found") problem = "Invitation not found";
+  else if (inspection.state === "expired") problem = "Invitation has expired";
+  else if (inspection.state === "accepted") problem = "Invitation has already been used";
+  else if (inspection.state === "cancelled") problem = "This invitation was cancelled";
+  else if (inspection.accountExists) {
+    problem = "An account already exists with this email. Log in instead.";
+  }
+}
+const pending = inspection && inspection.state === "pending" && !problem ? inspection : null;
+
+let formError: string | null = null;
+let passwordError: string | null = null;
+if (Astro.request.method === "POST" && pending) {
+  const form = await Astro.request.formData();
+  try {
+    const next = await data.register({
+      token: link.token,
+      proof: link.proof,
+      email: pending.email,
+      password: formSecret(form, "password"),
+    });
+    forgetInvitationLink(Astro.cookies);
+    setFlash(Astro, `You've joined ${pending.workspaceName}`);
+    const after = await data.session();
+    return Astro.redirect(
+      destinationAfter({
+        next,
+        workspaceSlug: after.signedIn ? (after.workspace?.slug ?? null) : null,
+      }),
+      303,
+    );
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    passwordError = error.field("password") ?? null;
+    formError = passwordError ? null : error.message;
+  }
+}
+const title = pending
+  ? `Join ${pending.workspaceName}`
+  : inspection && inspection.state !== "not_found"
+    ? `Join ${inspection.workspaceName}`
+    : "Sign up";
+---
+
+<PublicLayout title="Sign up" description="Create your account on this Nearzero console.">
+  <AuthFrame heading={title}>
+    <p slot="note">Already have an account? <a href="/sign-in">Sign in</a></p>
+    {
+      problem || !pending ? (
+        <div class="nz-form">
+          <p class="nz-inline-error" role="alert">
+            <Icon name="alert" />
+            <span>{problem ?? "Couldn't load this invitation"}</span>
+          </p>
+          <Button variant="outline" href="/sign-in" block>Go to sign in</Button>
+        </div>
+      ) : (
+        <form method="post" class="nz-form" data-validate novalidate data-astro-reload>
+          {formError && (
+            <p class="nz-inline-error" role="alert">
+              <Icon name="alert" />
+              <span>{formError}</span>
+            </p>
+          )}
+          <Field
+            id="nz-sign-up-email"
+            name="email"
+            type="email"
+            label="Email"
+            value={pending.email}
+            readonly
+            autocomplete="username"
+            hint="Your invitation is for this address."
+          />
+          <Field
+            id="nz-sign-up-password"
+            name="password"
+            type="password"
+            label="Password"
+            placeholder={`At least ${PASSWORD_MIN} characters`}
+            autocomplete="new-password"
+            hint={`${PASSWORD_MIN} to ${PASSWORD_MAX} characters.`}
+            error={passwordError}
+            maxlength={PASSWORD_MAX}
+            data-required="Enter your password."
+            data-minlength={String(PASSWORD_MIN)}
+            data-minlength-message={`Password must be at least ${PASSWORD_MIN} characters.`}
+            autofocus
+          />
+          <Button variant="primary" type="submit" block>Create an account</Button>
+        </form>
+      )
+    }
+  </AuthFrame>
+</PublicLayout>

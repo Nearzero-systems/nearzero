@@ -1,0 +1,181 @@
+---
+import { PORTS_NOTE } from "@nearzero/shared/browser";
+import type { ServiceDetail, ShareableVolume } from "../../lib/data/index.ts";
+import { mountRows, portRows } from "../../lib/runtime-rules.ts";
+import Button from "../ui/Button.astro";
+import Fold from "../ui/Fold.astro";
+import FormError from "../ui/FormError.astro";
+import Icon from "../ui/Icon.astro";
+
+/**
+ * The Advanced tab (spec 06 6.8, 21.10), drawn as the service page's folds: port mappings and
+ * mounts. Rows are added and removed in place
+ * and saved together (PUT …/ports, PUT …/mounts, client/service-page.ts); changes apply on the
+ * next deploy, which the page offers to start. Removing a volume mount asks whether to keep its
+ * data. File mount contents are never shown; a saved one keeps its content when left empty. A
+ * volume of another app in the same environment and server can be mounted too (31b G2-08):
+ * both apps see the same files, and removing that mount never deletes them.
+ */
+interface Props {
+  service: ServiceDetail;
+  /** Volumes of other apps in this environment and server it may mount (31b G2-08). */
+  shareable?: ShareableVolume[];
+}
+
+const { service, shareable = [] } = Astro.props;
+const ports = portRows(service.settings);
+const mounts = mountRows(service.settings);
+const appNames = new Map(shareable.map((item) => [item.serviceId, item.serviceName]));
+const edit = service.can.configure;
+const offerDeploy = service.can.deploy ? service.id : "";
+---
+
+<div class="nz-folds">
+  <Fold title="Ports" info="Container ports published on the server, for protocols other than web traffic." open>
+    <form class="nz-form nz-form--flush" data-ports-form data-service-id={service.id} data-offer-deploy={offerDeploy} data-scripted novalidate>
+      <div class="nz-fold-tools">
+        <p class="nz-dim">{PORTS_NOTE} Publish a port only for other protocols. Changes apply on the next deploy.</p>
+        {edit && <Button variant="outline" data-row-add="port">Add port</Button>}
+      </div>
+      <div class="nz-edit-head nz-edit-head--ports" aria-hidden="true">
+        <span>Container port</span><span>Published port</span><span>Protocol</span><span>Mode</span><span></span>
+      </div>
+      <div class="nz-edit-rows" data-rows="port">
+        {
+          ports.map((port) => (
+            <div class="nz-edit-row nz-edit-row--port" data-row="port">
+              <input class="nz-input" name="containerPort" value={String(port.containerPort)} inputmode="numeric" aria-label="Container port" disabled={!edit} />
+              <input class="nz-input" name="publishedPort" value={String(port.publishedPort)} inputmode="numeric" aria-label="Published port" disabled={!edit} />
+              <span class="nz-select-wrap">
+                <select class="nz-select" name="protocol" aria-label="Protocol" disabled={!edit}>
+                  <option value="tcp" selected={port.protocol === "tcp"}>TCP</option>
+                  <option value="udp" selected={port.protocol === "udp"}>UDP</option>
+                </select>
+                <Icon name="chevron-down" />
+              </span>
+              <span class="nz-select-wrap">
+                <select class="nz-select" name="mode" aria-label="Mode" disabled={!edit}>
+                  <option value="routed" selected={port.mode === "routed"}>Routed</option>
+                  <option value="host" selected={port.mode === "host"}>Host</option>
+                </select>
+                <Icon name="chevron-down" />
+              </span>
+              {edit && <Button variant="icon" icon="trash" label="Remove port" data-row-remove />}
+            </div>
+          ))
+        }
+      </div>
+      <p class="nz-dim" data-rows-empty="port" hidden={ports.length > 0}>No port mappings.</p>
+      <template data-row-template="port">
+        <div class="nz-edit-row nz-edit-row--port" data-row="port">
+          <input class="nz-input" name="containerPort" inputmode="numeric" placeholder="8080" aria-label="Container port" />
+          <input class="nz-input" name="publishedPort" inputmode="numeric" placeholder="8080" aria-label="Published port" />
+          <span class="nz-select-wrap">
+            <select class="nz-select" name="protocol" aria-label="Protocol">
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+            </select>
+            <Icon name="chevron-down" />
+          </span>
+          <span class="nz-select-wrap">
+            <select class="nz-select" name="mode" aria-label="Mode">
+              <option value="routed">Routed</option>
+              <option value="host">Host</option>
+            </select>
+            <Icon name="chevron-down" />
+          </span>
+          <Button variant="icon" icon="trash" label="Remove port" data-row-remove />
+        </div>
+      </template>
+      <FormError />
+      {edit && <div class="nz-form-actions"><Button variant="outline" type="submit">Save ports</Button></div>}
+    </form>
+  </Fold>
+
+  <Fold title="Mounts" info="Volumes, bind mounts and secret files the container sees." open>
+    <form class="nz-form nz-form--flush" data-mounts-form data-service-id={service.id} data-offer-deploy={offerDeploy} data-scripted novalidate>
+      <div class="nz-fold-tools">
+        <p class="nz-dim">
+          A named volume, a bind mount from the server, or a file whose content is kept as a secret. Changes apply on the
+          next deploy.
+        </p>
+        {edit && <Button variant="outline" data-row-add="mount">Add mount</Button>}
+      </div>
+      <div class="nz-edit-rows" data-rows="mount">
+        {
+          mounts.map((mount) => (
+            <div class="nz-edit-row nz-edit-row--mount" data-row="mount" data-mount-id={mount.id} data-mount-type={mount.type} data-mount-of={mount.type === "volume" ? mount.of : undefined} data-volume={mount.type === "volume" && !mount.of ? mount.name : undefined}>
+              <span class="nz-badge">{mount.type === "volume" ? (mount.of ? `Volume of ${appNames.get(mount.of) ?? "another app"}` : "Volume") : mount.type === "bind" ? "Bind mount" : "File"}</span>
+              <input type="hidden" name="type" value={mount.type} />
+              {mount.type === "volume" && (mount.of ? <input class="nz-input" name="name" value={mount.name} aria-label="Volume name" readonly /> : <input class="nz-input" name="name" value={mount.name} aria-label="Volume name" disabled={!edit} />)}
+              {mount.type === "bind" && <input class="nz-input" name="hostPath" value={mount.hostPath} aria-label="Host path" disabled={!edit} />}
+              {mount.type === "file" && <span class="nz-dim nz-small">Content stored, never shown</span>}
+              <input class="nz-input" name="containerPath" value={mount.containerPath} aria-label="Container path" disabled={!edit} />
+              {mount.type === "bind" ? (
+                <label class="nz-check"><input type="checkbox" name="readOnly" checked={mount.readOnly} disabled={!edit} /><span>Read-only</span></label>
+              ) : mount.type === "file" && edit ? (
+                <textarea class="nz-textarea nz-code-input" name="content" rows="2" placeholder="Leave empty to keep the stored content" aria-label="New file content"></textarea>
+              ) : (
+                <span></span>
+              )}
+              {edit && <Button variant="icon" icon="trash" label="Remove mount" data-row-remove />}
+            </div>
+          ))
+        }
+      </div>
+      <p class="nz-dim" data-rows-empty="mount" hidden={mounts.length > 0}>No mounts.</p>
+      <template data-row-template="mount">
+        <div class="nz-edit-row nz-edit-row--mount" data-row="mount" data-mount-type="volume">
+          <span class="nz-select-wrap">
+            <select class="nz-select" name="type" aria-label="Mount type" data-mount-kind>
+              <option value="volume">Volume</option>
+              {shareable.length > 0 && <option value="shared">Volume of another app</option>}
+              <option value="bind">Bind mount</option>
+              <option value="file">File</option>
+            </select>
+            <Icon name="chevron-down" />
+          </span>
+          <input class="nz-input" name="name" placeholder="data" aria-label="Volume name" data-mount-for="volume" />
+          {
+            shareable.length > 0 && (
+              <span class="nz-select-wrap" data-mount-for="shared" hidden>
+                <select class="nz-select" name="share" aria-label="Volume of another app">
+                  {shareable.map((item) => (
+                    <option value={`${item.serviceId}:${item.name}`}>{`${item.serviceName}: ${item.name} (${item.containerPath})`}</option>
+                  ))}
+                </select>
+                <Icon name="chevron-down" />
+              </span>
+            )
+          }
+          <input class="nz-input" name="hostPath" placeholder="/srv/files" aria-label="Host path" data-mount-for="bind" hidden />
+          <input class="nz-input" name="containerPath" placeholder="/data" aria-label="Container path" />
+          <label class="nz-check" data-mount-for="bind" hidden><input type="checkbox" name="readOnly" /><span>Read-only</span></label>
+          <textarea class="nz-textarea nz-code-input" name="content" rows="2" placeholder="File content" aria-label="File content" data-mount-for="file" hidden></textarea>
+          <Button variant="icon" icon="trash" label="Remove mount" data-row-remove />
+        </div>
+      </template>
+      <FormError />
+      {edit && <div class="nz-form-actions"><Button variant="outline" type="submit">Save mounts</Button></div>}
+    </form>
+  </Fold>
+</div>
+
+<dialog id="nz-remove-volume" class="nz-dialog nz-moonlit" aria-labelledby="nz-remove-volume-title" data-dialog data-remove-volume>
+  <div class="nz-dialog-body">
+    <div class="nz-dialog-head">
+      <h2 id="nz-remove-volume-title" class="nz-dialog-title">Remove this volume mount?</h2>
+      <Button variant="icon" icon="close" label="Close" data-dialog-close />
+    </div>
+    <p class="nz-dim">The container stops using <span class="nz-code" data-fill-text="volume"></span> on the next deploy.</p>
+    <label class="nz-check mt-2">
+      <input type="checkbox" data-remove-volume-data />
+      <span>Also delete the volume's data after the next successful deploy</span>
+    </label>
+    <p class="nz-hint">Leave it unticked to keep the data on the server.</p>
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" data-remove-volume-go>Remove mount</Button>
+    </div>
+  </div>
+</dialog>

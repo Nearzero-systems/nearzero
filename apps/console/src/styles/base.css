@@ -1,0 +1,223 @@
+/* Page base, typography (spec 21.4) and the backgrounds behind the shell (spec 21.6). */
+
+@layer base {
+  html {
+    background: var(--nz-page);
+    color: var(--nz-text);
+    font-family: var(--nz-font-ui);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  /* Grayscale smoothing in every theme, as the original draws its text. */
+  :root {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--nz-page);
+    color: var(--nz-text);
+    font-size: 12px;
+    line-height: 16px;
+    overflow-x: clip;
+  }
+
+  /* Light and Dark: a faint grid of grid-line lines behind the sign-in and registration pages
+     only; the dashboard's panels are opaque (spec 21.10). */
+  :root:not([data-theme="dusk"]) body.nz-grid {
+    background-image:
+      linear-gradient(to right, var(--nz-grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--nz-grid-line) 1px, transparent 1px);
+    background-size: clamp(160px, 13vw, 250px) clamp(104px, 9.2vw, 176px);
+    background-attachment: fixed;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp,
+  .nz-code {
+    font-family: var(--nz-font-code);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--nz-text) 18%, transparent);
+  }
+
+  :root[data-theme="dusk"] ::selection {
+    background: var(--nz-selection);
+    color: #ffffff;
+  }
+
+  /* No ring on what a page or dialog focused for the person until they use the keyboard there
+     (data-quiet-focus, client/dialogs.ts; spec 21.10). */
+  :focus-visible:not([data-quiet-focus]) {
+    outline: 2px solid var(--nz-focus-ring);
+    outline-offset: 2px;
+  }
+
+  [data-quiet-focus]:focus-visible {
+    outline: none;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+/* Unlayered, so it wins over any component's display without !important. */
+[hidden] {
+  display: none;
+}
+
+@layer components {
+  /* Page titles (spec 21.10): Space Grotesk 600 16px in Light and Dark; Instrument Serif 26px in
+     Dusk. Service names keep Space Grotesk in every theme (.nz-title--service). */
+  .nz-title {
+    font-family: var(--nz-font-title);
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 600;
+    letter-spacing: -0.4px;
+    color: var(--nz-text);
+  }
+
+  :root[data-theme="dusk"] .nz-title {
+    font-size: 26px;
+    line-height: 28.6px;
+    font-weight: 400;
+    letter-spacing: -0.26px;
+  }
+
+  .nz-title.nz-title--service,
+  :root[data-theme="dusk"] .nz-title.nz-title--service {
+    font-family: var(--nz-font-brand);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+
+  /* A small title inside a strip ("Overview", "Services" on a project's pages). */
+  .nz-title.nz-title--small,
+  :root[data-theme="dusk"] .nz-title.nz-title--small {
+    font-family: var(--nz-font-ui);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  .nz-subtitle {
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+  }
+
+  .nz-dim {
+    color: var(--nz-text-dim);
+  }
+
+  .nz-faint {
+    color: var(--nz-text-faint);
+  }
+
+  /* Small print: section labels, eyebrows, times, hints. Geist Mono 11px in Dusk. */
+  .nz-small {
+    font-family: var(--nz-font-small);
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  /* Uppercase labels (DOMAIN, STATUS, ORGANIZATIONS): 12px weight 500, 0.6px tracking; Geist
+     Mono in Dusk (spec 21.10). */
+  .nz-eyebrow {
+    font-family: var(--nz-font-small);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--nz-text-dim);
+  }
+
+  :root[data-theme="dusk"] .nz-eyebrow {
+    font-size: 11px;
+    letter-spacing: 1.1px;
+  }
+
+  .nz-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .nz-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .nz-skip {
+    position: fixed;
+    top: 6px;
+    left: 6px;
+    z-index: 80;
+    transform: translateY(-200%);
+  }
+
+  .nz-skip:focus-visible {
+    transform: none;
+  }
+}
+
+/* The Dusk sky: fixed stars behind everything, only in Dusk. */
+.nz-sky {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% 120%, rgb(76 29 149 / 0.18), transparent 60%), var(--nz-page);
+}
+
+:root[data-theme="dusk"] .nz-sky {
+  display: block;
+}
+
+.nz-star {
+  position: absolute;
+  border-radius: 9999px;
+  background: #ffffff;
+  opacity: 0.15;
+  animation: nz-twinkle 5s ease-in-out infinite both;
+}
+
+@keyframes nz-twinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nz-star {
+    animation: none;
+    opacity: 0.5;
+  }
+}

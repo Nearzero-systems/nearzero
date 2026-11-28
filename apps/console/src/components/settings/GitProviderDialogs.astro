@@ -1,0 +1,303 @@
+---
+import {
+  BITBUCKET_DEPRECATED_NOTE,
+  CONFIGURE_DOMAIN_FIRST,
+  DEFAULT_GITEA_URL,
+  DEFAULT_GITLAB_URL,
+  DELETE_PROVIDER_TITLE,
+  GITHUB_NEEDS_HTTPS,
+  type GitProviderKind,
+  SECRET_KEEP_PLACEHOLDER,
+} from "@nearzero/shared/browser";
+import type { GitProvidersPage } from "../../lib/data/index.ts";
+import { settingsPath } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import CopyButton from "../ui/CopyButton.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+import Switch from "../ui/Switch.astro";
+
+/**
+ * Settings → Git providers' dialogs (spec 16.1–16.5): Connect for each host, Edit with "Test
+ * connection" (saved secrets show "Configured - leave blank to keep"), and Delete with the shared
+ * note and the "I understand" tick when services use the provider. client/git-providers.ts
+ * sends them and handles the hosts' redirects.
+ */
+interface Props {
+  page: GitProvidersPage;
+  workspace: string;
+  /** Opens this connect dialog as the page loads (?connect=). */
+  openKind: GitProviderKind | null;
+  /** Where to come back to after connecting (?return=). */
+  returnTo: string | null;
+}
+
+const { page, workspace, openKind, returnTo } = Astro.props;
+const about = settingsPath(workspace, "about");
+const base = page.console.httpsBase;
+const returnValue = returnTo ?? "";
+---
+
+<Dialog
+  id="nz-git-connect-github"
+  title="Connect GitHub"
+  description="Nearzero creates a private GitHub App on your account or organization, then you install it."
+  openOnLoad={openKind === "github"}
+>
+  <form class="nz-form" data-git-github-connect data-scripted novalidate>
+    <input type="hidden" name="returnTo" value={returnValue} />
+    {
+      base ? (
+        <div class="nz-stack-sm">
+          <span class="nz-label">Callback address</span>
+          <div class="nz-git-callback">
+            <code class="nz-code">{base}</code>
+            <CopyButton text={base} what="callback address" />
+          </div>
+          <p class="nz-hint">GitHub sends people and push events back to the console here.</p>
+        </div>
+      ) : (
+        <p class="nz-inline-note nz-warn-note" data-git-no-https>
+          {GITHUB_NEEDS_HTTPS}{" "}
+          {page.isAdmin && (
+            <a class="nz-text-link" href={about}>
+              {CONFIGURE_DOMAIN_FIRST}
+            </a>
+          )}
+        </p>
+      )
+    }
+    <div class="nz-switch-list">
+      <Switch id="nz-git-github-org" label="Install for a GitHub organization" data-git-org-toggle />
+    </div>
+    <div data-git-org-field hidden>
+      <Field
+        id="nz-git-github-org-name"
+        name="organization"
+        label="Organization"
+        placeholder="acme-inc"
+        maxlength={39}
+        autocomplete="off"
+        spellcheck="false"
+        hint="The organization's name as in its GitHub address. You need to be one of its owners."
+      />
+    </div>
+    <p class="nz-hint">
+      <a class="nz-text-link" href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">
+        View installed GitHub Apps
+      </a>
+    </p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" iconEnd="external" disabled={!base}>Continue on GitHub</Button>
+    </div>
+  </form>
+</Dialog>
+
+{
+  (["gitlab", "gitea"] as const).map((kind) => {
+    const gitlab = kind === "gitlab";
+    const label = gitlab ? "GitLab" : "Gitea";
+    const redirect = page.console.redirectUris[kind];
+    const ids = gitlab
+      ? { id: "applicationId", secret: "applicationSecret", filter: "group" }
+      : { id: "clientId", secret: "clientSecret", filter: "organization" };
+    const labels = gitlab
+      ? { id: "Application ID", secret: "Application secret", filter: "Group names" }
+      : { id: "Client ID", secret: "Client secret", filter: "Organization name" };
+    // GitLab takes several groups, comma-separated, subgroups included (R3-40).
+    const filterHint = gitlab
+      ? "Limits the repository list to these groups and their subgroups, separated by commas."
+      : "Limits the repository list.";
+    return (
+      <>
+        <Dialog
+          id={`nz-git-connect-${kind}`}
+          title={`Connect ${label}`}
+          description={`Create an OAuth application in ${label} with the redirect URI below, then paste its ID and secret.`}
+          openOnLoad={openKind === kind}
+          wide
+        >
+          <form
+            class="nz-form"
+            data-api={`POST /git-providers/${kind}`}
+            data-api-then="none"
+            data-git-connect={kind}
+            data-validate
+            novalidate
+          >
+            <input type="hidden" name="returnTo" value={returnValue} />
+            <div class="nz-form-grid-2">
+              <Field id={`nz-git-${kind}-name`} name="name" label="Name" value={label} maxlength={100} data-required="Enter a name for this provider." />
+              <Field
+                id={`nz-git-${kind}-url`}
+                name="url"
+                label={`${label} URL`}
+                value={gitlab ? DEFAULT_GITLAB_URL : DEFAULT_GITEA_URL}
+                inputmode="url"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <Field
+                id={`nz-git-${kind}-internal`}
+                name="internalUrl"
+                label="Internal URL"
+                placeholder="Optional"
+                inputmode="url"
+                autocomplete="off"
+                spellcheck="false"
+                hint={`For a self-hosted ${label} that Nearzero reaches on a private address.`}
+              />
+              <Field id={`nz-git-${kind}-filter`} name={ids.filter} label={labels.filter} placeholder="Optional" autocomplete="off" spellcheck="false" hint={filterHint} />
+            </div>
+            <div class="nz-stack-sm" data-git-oauth-fields>
+              <span class="nz-label">Redirect URI</span>
+              {redirect ? (
+                <div class="nz-git-callback">
+                  <code class="nz-code">{redirect}</code>
+                  <CopyButton text={redirect} what="redirect URI" />
+                </div>
+              ) : (
+                <p class="nz-inline-note nz-warn-note">This server has no console address yet, so there is no redirect URI. Set it under About Nearzero, or connect with an access token.</p>
+              )}
+              <p class="nz-hint">Paste it into the application in {label}{gitlab ? " and give it the api and read_user scopes" : ""}.</p>
+              <div class="nz-form-grid-2">
+                <Field id={`nz-git-${kind}-id`} name={ids.id} label={labels.id} autocomplete="off" spellcheck="false" />
+                <Field id={`nz-git-${kind}-secret`} name={ids.secret} label={labels.secret} type="password" autocomplete="off" data-1p-ignore />
+              </div>
+            </div>
+            <div class="nz-switch-list">
+              <Switch id={`nz-git-${kind}-use-token`} label="Use an access token instead" description={`For a ${label} where you can't add an OAuth application.`} data-git-token-toggle />
+            </div>
+            <div data-git-token-fields hidden>
+              <Field id={`nz-git-${kind}-token`} name="accessToken" label="Access token" type="password" autocomplete="off" data-1p-ignore hint={gitlab ? "A personal, group or project access token with the api scope." : "A Gitea access token with repository and user read access, and webhook write access."} />
+            </div>
+            <FormError />
+            <div class="nz-dialog-foot">
+              <Button variant="outline" data-dialog-close>Cancel</Button>
+              <Button variant="primary" type="submit">Save and connect</Button>
+            </div>
+          </form>
+        </Dialog>
+
+        <Dialog id={`nz-git-edit-${kind}`} title={`Edit ${label} provider`} wide>
+          <form class="nz-form" data-api={`PATCH /git-providers/{providerId}`} data-api-then="none" data-git-edit-form={kind} data-validate novalidate>
+            <input type="hidden" name="providerId" />
+            <div class="nz-form-grid-2">
+              <Field id={`nz-git-edit-${kind}-name`} name="name" label="Name" maxlength={100} data-required="Enter a name for this provider." />
+              <Field id={`nz-git-edit-${kind}-url`} name="url" label={`${label} URL`} inputmode="url" autocomplete="off" spellcheck="false" />
+              <Field id={`nz-git-edit-${kind}-internal`} name="internalUrl" label="Internal URL" placeholder="Optional" inputmode="url" autocomplete="off" spellcheck="false" />
+              <Field id={`nz-git-edit-${kind}-filter`} name={ids.filter} label={labels.filter} placeholder="Optional" autocomplete="off" spellcheck="false" hint={filterHint} />
+            </div>
+            <div class="nz-stack-sm" data-git-oauth-fields>
+              {redirect && (
+                <>
+                  <span class="nz-label">Redirect URI</span>
+                  <div class="nz-git-callback">
+                    <code class="nz-code">{redirect}</code>
+                    <CopyButton text={redirect} what="redirect URI" />
+                  </div>
+                </>
+              )}
+              <div class="nz-form-grid-2">
+                <Field id={`nz-git-edit-${kind}-id`} name={ids.id} label={labels.id} autocomplete="off" spellcheck="false" />
+                <Field id={`nz-git-edit-${kind}-secret`} name={ids.secret} label={labels.secret} type="password" autocomplete="off" data-1p-ignore placeholder={SECRET_KEEP_PLACEHOLDER} data-secret-of={ids.secret} />
+              </div>
+            </div>
+            <div class="nz-switch-list">
+              <Switch id={`nz-git-edit-${kind}-use-token`} label="Use an access token instead" data-git-token-toggle />
+            </div>
+            <div data-git-token-fields hidden>
+              <Field id={`nz-git-edit-${kind}-token`} name="accessToken" label="Access token" type="password" autocomplete="off" data-1p-ignore placeholder={SECRET_KEEP_PLACEHOLDER} data-secret-of="accessToken" />
+            </div>
+            <p class="nz-inline-note" data-git-test-result hidden></p>
+            <FormError />
+            <div class="nz-dialog-foot">
+              <Button variant="outline" data-git-test>Test connection</Button>
+              <Button variant="primary" type="submit">Save</Button>
+            </div>
+          </form>
+        </Dialog>
+      </>
+    );
+  })
+}
+
+<Dialog
+  id="nz-git-connect-bitbucket"
+  title="Connect Bitbucket"
+  description="Connect with an Atlassian API token. It needs read access to repositories and, for automatic push deploys, webhook access."
+  openOnLoad={openKind === "bitbucket"}
+  wide
+>
+  <form class="nz-form" data-api="POST /git-providers/bitbucket" data-api-then="none" data-git-connect="bitbucket" data-validate novalidate>
+    <input type="hidden" name="returnTo" value={returnValue} />
+    <div class="nz-form-grid-2">
+      <Field id="nz-git-bitbucket-name" name="name" label="Name" value="Bitbucket" maxlength={100} data-required="Enter a name for this provider." />
+      <Field id="nz-git-bitbucket-user" name="username" label="Bitbucket user name" autocomplete="off" spellcheck="false" data-required="Enter your Bitbucket user name." />
+      <Field id="nz-git-bitbucket-email" name="email" label="Atlassian account email" type="email" autocomplete="off" spellcheck="false" data-required="Enter your Atlassian account email." />
+      <Field id="nz-git-bitbucket-token" name="apiToken" label="API token" type="password" autocomplete="off" data-1p-ignore data-required="Paste an API token." />
+      <Field id="nz-git-bitbucket-workspace" name="workspace" label="Workspace name" placeholder="Optional" autocomplete="off" spellcheck="false" hint="Limits the repository list to one workspace." />
+    </div>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit">Save connection</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-git-edit-bitbucket" title="Edit Bitbucket provider" wide>
+  <form class="nz-form" data-api="PATCH /git-providers/{providerId}" data-api-then="none" data-git-edit-form="bitbucket" data-validate novalidate>
+    <input type="hidden" name="providerId" />
+    <p class="nz-inline-note nz-warn-note" data-git-deprecated hidden>{BITBUCKET_DEPRECATED_NOTE}</p>
+    <div class="nz-form-grid-2">
+      <Field id="nz-git-edit-bitbucket-name" name="name" label="Name" maxlength={100} data-required="Enter a name for this provider." />
+      <Field id="nz-git-edit-bitbucket-user" name="username" label="Bitbucket user name" autocomplete="off" spellcheck="false" data-required="Enter your Bitbucket user name." />
+      <Field id="nz-git-edit-bitbucket-email" name="email" label="Atlassian account email" type="email" autocomplete="off" spellcheck="false" />
+      <Field id="nz-git-edit-bitbucket-token" name="apiToken" label="API token" type="password" autocomplete="off" data-1p-ignore placeholder={SECRET_KEEP_PLACEHOLDER} data-secret-of="apiToken" />
+      <Field id="nz-git-edit-bitbucket-workspace" name="workspace" label="Workspace name" placeholder="Optional" autocomplete="off" spellcheck="false" />
+    </div>
+    <p class="nz-inline-note" data-git-test-result hidden></p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-git-test>Test connection</Button>
+      <Button variant="primary" type="submit">Save</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-git-edit-github" title="Edit GitHub provider">
+  <form class="nz-form" data-api="PATCH /git-providers/{providerId}" data-api-then="none" data-git-edit-form="github" data-validate novalidate>
+    <input type="hidden" name="providerId" />
+    <Field id="nz-git-edit-github-name" name="name" label="Name" maxlength={100} data-required="Enter a name for this provider." hint="The app's name on GitHub doesn't change." />
+    <p class="nz-hint">Its key and webhook secret came from GitHub when the app was created: Configured.</p>
+    <p class="nz-inline-note" data-git-test-result hidden></p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-git-test>Test connection</Button>
+      <Button variant="primary" type="submit">Save</Button>
+    </div>
+  </form>
+</Dialog>
+
+<Dialog id="nz-git-delete" title={DELETE_PROVIDER_TITLE}>
+  <form class="nz-form" data-git-delete-form data-scripted novalidate>
+    <input type="hidden" name="providerId" />
+    <p>Delete <strong data-fill-text="name"></strong>? Nearzero stops using it right away.</p>
+    <p class="nz-inline-note nz-warn-note" data-git-delete-shared hidden></p>
+    <p class="nz-inline-note nz-warn-note" data-git-delete-usage hidden></p>
+    <label class="nz-check" data-git-delete-understood hidden>
+      <input type="checkbox" name="understood" />
+      <span>I understand</span>
+    </label>
+    <p class="nz-hint" data-git-delete-loading>Checking which services use it…</p>
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="danger" type="submit" data-git-delete-confirm disabled>Delete</Button>
+    </div>
+  </form>
+</Dialog>

@@ -1,0 +1,17 @@
+---
+import { skyStars } from "../../lib/sky.ts";
+
+// The same 110 stars on every page and every visit; kept across in-app navigation.
+const stars = skyStars();
+---
+
+<div class="nz-sky" aria-hidden="true" transition:persist="nz-sky">
+  {
+    stars.map((star) => (
+      <span
+        class="nz-star"
+        style={`left:${star.x}%;top:${star.y}%;width:${star.size}px;height:${star.size}px;animation-delay:${star.delay}s`}
+      />
+    ))
+  }
+</div>

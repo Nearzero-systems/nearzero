@@ -1,0 +1,432 @@
+/*
+ * The server setup and details dialogs (spec 09 9.3–9.5): the header with its state badge, the
+ * server's DNS card, the step progress, the failure with its next step, the live log, the
+ * validation grid, the security audit and the cleanup switch. Flat, 1px lines, 6px corners,
+ * tokens only, so Light, Dark and Dusk all follow; on phones every grid becomes one column and
+ * DNS records read as stacked lines (spec 21.8).
+ */
+
+@layer components {
+  .nz-setup-dialog .nz-dialog-body,
+  .nz-details-dialog .nz-dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .nz-setup-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+  }
+
+  .nz-setup-name {
+    margin: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-setup-head .nz-pill {
+    flex: none;
+  }
+
+  .nz-setup-heading {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .nz-setup-notice {
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, var(--nz-run-dot) 35%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--nz-run-dot) 8%, transparent);
+    color: var(--nz-run);
+    font-size: 12.5px;
+  }
+
+  .nz-setup-notice[data-tone="ok"] {
+    border-color: color-mix(in srgb, var(--nz-ok-dot) 35%, transparent);
+    background: color-mix(in srgb, var(--nz-ok-dot) 8%, transparent);
+    color: var(--nz-ok);
+  }
+
+  .nz-setup-notice[hidden],
+  .nz-setup-failure[hidden],
+  .nz-setup-fix[hidden],
+  .nz-dns-steps[hidden] {
+    display: none;
+  }
+
+  .nz-setup-state {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 10px;
+  }
+
+  .nz-setup-state-text {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .nz-setup-progress {
+    display: grid;
+    grid-template-columns: repeat(15, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .nz-setup-progress > span {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--nz-line);
+  }
+
+  .nz-setup-progress > span[data-state="running"] {
+    background: var(--nz-run-dot);
+  }
+
+  .nz-setup-progress > span[data-state="done"] {
+    background: var(--nz-ok-dot);
+  }
+
+  .nz-setup-progress > span[data-state="skipped"] {
+    background: color-mix(in srgb, var(--nz-ok-dot) 45%, var(--nz-line));
+  }
+
+  .nz-setup-progress > span[data-state="failed"] {
+    background: var(--nz-fail-dot);
+  }
+
+  .nz-setup-failure {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in srgb, var(--nz-fail-dot) 35%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--nz-fail-dot) 7%, transparent);
+    color: var(--nz-fail);
+    font-size: 12.5px;
+  }
+
+  .nz-setup-failure > svg {
+    flex: none;
+    margin-top: 2px;
+  }
+
+  .nz-setup-failure p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-setup-hints {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-setup-fix {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .nz-setup-fix-code {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 4px 6px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-code);
+    color: var(--nz-text);
+    overflow-wrap: anywhere;
+  }
+
+  .nz-setup-log-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nz-setup-log {
+    max-height: 18rem;
+    min-height: 9rem;
+  }
+
+  .nz-setup-log .nz-log-line[data-kind="step"] {
+    margin-top: 4px;
+    color: var(--nz-primary-text, var(--nz-text));
+    font-weight: 600;
+  }
+
+  .nz-setup-log .nz-log-line[data-kind="fail"] {
+    color: var(--nz-fail);
+  }
+
+  .nz-setup-log .nz-log-line[data-kind="ok"] {
+    color: var(--nz-ok);
+  }
+
+  .nz-setup-foot {
+    flex-wrap: wrap;
+  }
+
+  .nz-setup-foot [hidden] {
+    display: none;
+  }
+
+  /* ---------- The DNS card (spec 9.5) ---------- */
+  .nz-dns-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-raised);
+  }
+
+  .nz-dns-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .nz-dns-card-head p {
+    margin: 2px 0 0;
+  }
+
+  .nz-dns-table {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .nz-dns-row {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1.4fr) minmax(0, 1.2fr) 6.5rem;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+  }
+
+  .nz-dns-row + .nz-dns-row {
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-dns-row--head {
+    background: var(--nz-muted);
+    color: var(--nz-text-dim);
+    font-size: 11.5px;
+  }
+
+  .nz-dns-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .nz-dns-cell code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .nz-dns-copy {
+    flex: none;
+  }
+
+  .nz-dns-steps summary {
+    cursor: pointer;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-dns-steps ol {
+    margin: 6px 0 0;
+    padding-left: 1.2rem;
+  }
+
+  .nz-dns-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+
+  .nz-dns-foot p,
+  .nz-dns-card .nz-hint {
+    margin: 0;
+  }
+
+  /* ---------- Details ---------- */
+  .nz-details-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+    margin: 0;
+  }
+
+  .nz-details-fields > div {
+    min-width: 0;
+  }
+
+  .nz-details-fields dt {
+    color: var(--nz-text-dim);
+    font-size: 11.5px;
+  }
+
+  .nz-details-fields dd {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 1px 0 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+  }
+
+  .nz-details-fields .nz-details-wide {
+    grid-column: 1 / -1;
+  }
+
+  .nz-details-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--nz-line);
+  }
+
+  .nz-details-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+
+  .nz-details-verdict {
+    margin: 0;
+    font-size: 13px;
+  }
+
+  .nz-details-verdict[data-ok="true"] {
+    color: var(--nz-ok);
+  }
+
+  .nz-details-verdict[data-ok="false"] {
+    color: var(--nz-warn);
+  }
+
+  .nz-check-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .nz-check-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+    background: var(--nz-muted);
+  }
+
+  .nz-check-item p {
+    margin: 0;
+    min-width: 0;
+  }
+
+  .nz-check-item .nz-pill {
+    flex: none;
+  }
+
+  .nz-audit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nz-audit-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 10px;
+    padding: 6px 8px;
+    border: 1px solid var(--nz-line);
+    border-radius: 6px;
+  }
+
+  .nz-audit-item p {
+    margin: 0;
+  }
+
+  .nz-audit-item .nz-pill {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    align-self: start;
+  }
+
+  .nz-monitoring-placeholder {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    border: 1px dashed var(--nz-line-strong);
+    border-radius: 6px;
+    color: var(--nz-text-dim);
+  }
+
+  .nz-monitoring-placeholder p {
+    margin: 0;
+  }
+
+  @media (max-width: 639.98px) {
+    .nz-dns-row--head {
+      display: none;
+    }
+
+    .nz-dns-row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+    }
+
+    .nz-dns-cell::before {
+      content: attr(data-label);
+      flex: none;
+      width: 3.5rem;
+      color: var(--nz-text-dim);
+      font-size: 11.5px;
+    }
+
+    .nz-details-fields,
+    .nz-check-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .nz-setup-head {
+      flex-direction: column;
+    }
+
+    .nz-setup-foot > * {
+      flex: 1 1 100%;
+    }
+  }
+}

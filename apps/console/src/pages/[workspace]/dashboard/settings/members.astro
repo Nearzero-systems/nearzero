@@ -1,0 +1,113 @@
+---
+import EmailStrip from "../../../../components/members/EmailStrip.astro";
+import MemberDialogs from "../../../../components/members/MemberDialogs.astro";
+import PeopleTab from "../../../../components/members/PeopleTab.astro";
+import PoliciesTab from "../../../../components/members/PoliciesTab.astro";
+import PolicyDialogs from "../../../../components/members/PolicyDialogs.astro";
+import LoadFailed from "../../../../components/settings/LoadFailed.astro";
+import NoAccess from "../../../../components/settings/NoAccess.astro";
+import Tabs from "../../../../components/ui/Tabs.astro";
+import SettingsLayout from "../../../../layouts/SettingsLayout.astro";
+import { isApiError } from "../../../../lib/api-error.ts";
+import { dashboardContext } from "../../../../lib/page.ts";
+
+// Settings → Members & access (spec 04 4.7): the invitation emails strip, then People and
+// Access policies. For owners and admins; everyone else gets the hub's refusal.
+const ctx = await dashboardContext(Astro);
+if (ctx instanceof Response) return ctx;
+const { data, access, workspace } = ctx;
+const allowed = access.can.manageMembers;
+if (!allowed) Astro.response.status = 403;
+
+async function load() {
+  const [members, invitations, policies, email, projects, servers, gitAccounts] = await Promise.all(
+    [
+      data.members(),
+      data.workspaceInvitations(),
+      data.policies(),
+      data.emailSettings(),
+      data.scopeProjects(),
+      data.scopeServers(),
+      data.scopeGitAccounts(),
+    ],
+  );
+  return { members, invitations, policies, email, projects, servers, gitAccounts };
+}
+
+let loaded: Awaited<ReturnType<typeof load>> | null = null;
+let failure: string | null = null;
+if (allowed) {
+  try {
+    loaded = await load();
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+    if (error.code === "control_unreachable") return Astro.rewrite("/unavailable");
+    failure = error.message;
+  }
+}
+const tab = Astro.url.searchParams.get("tab") === "policies" ? "policies" : "people";
+// The policy and member access dialogs fill themselves from this (client/members.ts).
+const policyData = loaded
+  ? JSON.stringify(
+      loaded.policies.map((policy) => ({
+        id: policy.id,
+        name: policy.name,
+        description: policy.description,
+        capabilities: policy.capabilities,
+        scope: policy.scope,
+      })),
+    ).replace(/</g, "\\u003c")
+  : "[]";
+---
+
+<SettingsLayout ctx={ctx} current="members">
+  {
+    !allowed ? (
+      <NoAccess workspace={workspace.slug} />
+    ) : !loaded ? (
+      <LoadFailed detail={failure} />
+    ) : (
+      <div class="nz-members" data-members>
+        <EmailStrip settings={loaded.email} />
+        <Tabs
+          id="nz-members-tabs"
+          label="Members and access"
+          underline
+          selected={tab}
+          tabs={[
+            { id: "people", label: "People", count: loaded.members.list.length + loaded.invitations.length },
+            { id: "policies", label: "Access policies", count: loaded.policies.length },
+          ]}
+        >
+          <PeopleTab
+            slot="people"
+            members={loaded.members.list}
+            invitations={loaded.invitations}
+            viewerRole={access.role}
+            canSetEmail={loaded.members.canSetEmail}
+          />
+          <PoliciesTab slot="policies" policies={loaded.policies} canManage={access.can.managePolicies} />
+        </Tabs>
+        <script is:inline type="application/json" id="nz-policies-data" set:html={policyData} />
+      </div>
+    )
+  }
+  <Fragment slot="dialogs">
+    {
+      loaded && (
+        <>
+          <MemberDialogs
+            policies={loaded.policies}
+            projects={loaded.projects}
+            servers={loaded.servers}
+            gitAccounts={loaded.gitAccounts}
+            emailOn={loaded.email.on}
+            canAddWithPassword={access.can.addWithPassword && loaded.email.canAddWithPassword}
+            canSetEmail={loaded.members.canSetEmail}
+          />
+          <PolicyDialogs projects={loaded.projects} servers={loaded.servers} gitAccounts={loaded.gitAccounts} />
+        </>
+      )
+    }
+  </Fragment>
+</SettingsLayout>

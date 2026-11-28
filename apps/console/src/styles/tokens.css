@@ -1,0 +1,210 @@
+/*
+ * Theme tokens (spec 21.3). Values are exact; names are the spec's with an `--nz-` prefix.
+ * Light is the base. The dark tone (Dark and Dusk) overrides it, and Dusk refines Dark, so
+ * anything that renders in Dark renders in Dusk.
+ *
+ * Tokens marked "derived" are not in the spec's table: status colors, focus rings and backdrop
+ * tints that every theme needs. They stay within the spec's hues (21.1, rule 5).
+ */
+
+:root {
+  color-scheme: light;
+
+  --nz-page: #f3f4f6;
+  --nz-raised: #ffffff;
+  --nz-muted: #f7f7f8;
+  --nz-hover: #ececef;
+  --nz-line: #eceef3;
+  --nz-line-strong: #e5e7eb;
+  --nz-card-line: #eceef3;
+  --nz-grid-line: #eceef3;
+  --nz-surface: #ffffff;
+  --nz-text: #111827;
+  --nz-text-dim: #6b7280;
+  --nz-text-faint: #9ca3af;
+  --nz-primary: #111827;
+  --nz-primary-text: #ffffff;
+  --nz-primary-hover: #1f2937;
+  --nz-composer: #ffffff;
+  --nz-code: #f3f4f6;
+  --nz-danger: hsl(0 84% 50%);
+
+  /* derived (spec 21.10: the panels are opaque and the shell is drawn with hairlines) */
+  --nz-header: color-mix(in srgb, var(--nz-raised) 92%, transparent);
+  --nz-header-blur: 4px;
+  /* The header row and the first panel line: 42px plus the panels' 1px top hairline. */
+  --nz-header-h: 43px;
+  /* The primary sidebar and the rail, each with its 1px right hairline. */
+  --nz-nav-w: 273px;
+  --nz-rail-w: 53px;
+  --nz-panel: var(--nz-surface);
+  --nz-card: var(--nz-surface);
+  --nz-strip: var(--nz-surface);
+  --nz-field: var(--nz-surface);
+  --nz-field-filled: var(--nz-muted);
+  --nz-field-line: var(--nz-line-strong);
+  --nz-avatar-fill: var(--nz-hover);
+  --nz-avatar-text: var(--nz-text);
+  --nz-unread: #3b82f6;
+  --nz-logout: #dc2626;
+  /* Status as colored text (the bell, canvas and list statuses). */
+  --nz-ok-text: #059669;
+  --nz-fail-text: #dc2626;
+  --nz-running-text: #34d399;
+  --nz-active-pill: rgb(16 185 129 / 0.15);
+  --nz-active-pill-text: #047857;
+  --nz-error-pill: rgb(220 38 38 / 0.15);
+  --nz-error-pill-text: #b91c1c;
+  --nz-pending-fill: #fffbeb;
+  --nz-pending-line: #fde68a;
+  --nz-pending-text: #92400e;
+  --nz-secondary: #f4f4f5;
+  --nz-secondary-hover: #e4e4e7;
+  --nz-dialog-foot: color-mix(in srgb, var(--nz-muted) 55%, var(--nz-raised));
+  --nz-active-fill: var(--nz-hover);
+  --nz-active-text: var(--nz-text);
+  --nz-focus-ring: rgb(17 24 39 / 0.5);
+  --nz-field-ring: rgb(156 163 175 / 0.45);
+  --nz-focus-border: #9ca3af;
+  --nz-backdrop: rgb(0 0 0 / 0.5);
+  --nz-backdrop-blur: 4px;
+  --nz-sheet-backdrop: rgb(255 255 255 / 0.45);
+  --nz-danger-text: hsl(0 74% 42%);
+  --nz-danger-hover: hsl(0 84% 44%);
+  --nz-ok: #15803d;
+  --nz-ok-dot: #16a34a;
+  --nz-run: #1d4ed8;
+  --nz-run-dot: #3b82f6;
+  --nz-warn: #b45309;
+  --nz-warn-dot: #f59e0b;
+  --nz-fail: #b91c1c;
+  --nz-fail-dot: #dc2626;
+  --nz-idle: #4b5563;
+  --nz-idle-dot: #9ca3af;
+  --nz-pill-fill: var(--nz-muted);
+  --nz-progress: var(--nz-text);
+
+  /* Light and Dark: the system UI stack, Space Grotesk titles and IBM Plex Mono (spec 21.10). */
+  --nz-font-system:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --nz-font-ui: var(--nz-font-system);
+  --nz-font-code:
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --nz-font-small: var(--nz-font-ui);
+  --nz-font-grotesk: "Space Grotesk Variable", "Space Grotesk", var(--nz-font-system);
+  --nz-font-title: var(--nz-font-grotesk);
+  /* The brand word and service names stay Space Grotesk in every theme. */
+  --nz-font-brand: var(--nz-font-grotesk);
+}
+
+:root[data-tone="dark"] {
+  color-scheme: dark;
+
+  --nz-page: #050506;
+  --nz-raised: #0a0a0c;
+  --nz-muted: #141416;
+  --nz-hover: #1f1f23;
+  --nz-line: #1f1f23;
+  --nz-line-strong: #323238;
+  --nz-card-line: #1f1f23;
+  --nz-grid-line: #2a2a2e;
+  --nz-surface: #0a0a0c;
+  --nz-text: #fafafa;
+  --nz-text-dim: #a1a1aa;
+  --nz-text-faint: #71717a;
+  --nz-primary: #fafafa;
+  --nz-primary-text: #18181b;
+  --nz-primary-hover: #e4e4e7;
+  --nz-composer: #18181b;
+  --nz-code: #27272a;
+
+  --nz-strip: var(--nz-muted);
+  --nz-field-line: var(--nz-line);
+  --nz-secondary: #27272a;
+  --nz-secondary-hover: #323238;
+  --nz-active-pill: rgb(16 185 129 / 0.15);
+  --nz-active-pill-text: #34d399;
+  --nz-error-pill: rgb(220 38 38 / 0.16);
+  --nz-error-pill-text: #f87171;
+  --nz-pending-fill: rgb(245 158 11 / 0.1);
+  --nz-pending-line: rgb(245 158 11 / 0.35);
+  --nz-pending-text: #fbbf24;
+  --nz-sheet-backdrop: rgb(10 10 12 / 0.5);
+  --nz-focus-ring: rgb(250 250 250 / 0.55);
+  --nz-field-ring: rgb(161 161 170 / 0.35);
+  --nz-focus-border: #52525b;
+  --nz-backdrop: rgb(0 0 0 / 0.35);
+  --nz-danger-text: #f87171;
+  --nz-ok: #4ade80;
+  --nz-ok-dot: #22c55e;
+  --nz-run: #60a5fa;
+  --nz-run-dot: #3b82f6;
+  --nz-warn: #fbbf24;
+  --nz-warn-dot: #f59e0b;
+  --nz-fail: #f87171;
+  --nz-fail-dot: #ef4444;
+  --nz-idle: #a1a1aa;
+  --nz-idle-dot: #71717a;
+  --nz-pill-fill: var(--nz-muted);
+}
+
+:root[data-theme="dusk"] {
+  --nz-page: #050507;
+  --nz-raised: #0c0b11;
+  --nz-muted: #111017;
+  --nz-hover: rgb(250 250 249 / 0.06);
+  --nz-line: rgb(250 250 249 / 0.12);
+  --nz-line-strong: rgb(250 250 249 / 0.2);
+  --nz-card-line: rgb(250 250 249 / 0.12);
+  --nz-grid-line: rgb(250 250 249 / 0.08);
+  --nz-surface: #08080b;
+  --nz-text: #fafaf9;
+  --nz-text-dim: rgb(250 250 249 / 0.66);
+  --nz-text-faint: rgb(250 250 249 / 0.42);
+  --nz-primary: #7c3aed;
+  --nz-primary-text: #ffffff;
+  --nz-primary-hover: #8b5cf6;
+  --nz-composer: rgba(10, 10, 12, 0.82);
+  --nz-code: #13121a;
+
+  --nz-accent: #7c3aed;
+  --nz-accent-deep: #6d28d9;
+  --nz-accent-light: #8b5cf6;
+  --nz-accent-soft: #a78bfa;
+  --nz-accent-tint: rgba(124, 58, 237, 0.16);
+  --nz-glass: rgba(9, 9, 12, 0.62);
+  --nz-glass-blur: 12px;
+  --nz-cell: rgba(9, 9, 12, 0.88);
+  --nz-focus: rgba(167, 139, 250, 0.6);
+  --nz-selection: rgba(124, 58, 237, 0.4);
+  --nz-moonlight: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.75), transparent);
+
+  /* Dusk panels are opaque (spec 21.10): the sky shows only on the Agent home and through the
+     header, whose own hairline sits inside its 42px. */
+  --nz-header: rgb(12 11 17 / 0.92);
+  --nz-header-blur: 12px;
+  --nz-header-h: 42px;
+  --nz-nav-w: 272px;
+  --nz-rail-w: 52px;
+  --nz-panel: rgb(8 8 11 / 0.97);
+  --nz-card: var(--nz-raised);
+  --nz-strip: var(--nz-muted);
+  --nz-field: rgb(250 250 249 / 0.03);
+  --nz-field-line: var(--nz-line);
+  --nz-avatar-fill: rgb(250 250 249 / 0.06);
+  --nz-secondary: rgb(250 250 249 / 0.1);
+  --nz-secondary-hover: rgb(250 250 249 / 0.14);
+  --nz-sheet-backdrop: rgb(8 8 11 / 0.5);
+  --nz-active-fill: var(--nz-accent-tint);
+  --nz-active-text: var(--nz-accent-soft);
+  --nz-focus-ring: var(--nz-focus);
+  --nz-field-ring: var(--nz-focus);
+  --nz-focus-border: var(--nz-focus);
+  --nz-progress: linear-gradient(90deg, #6d28d9, #8b5cf6 60%, #c4b5fd);
+
+  --nz-font-ui: "Geist Variable", var(--nz-font-system);
+  --nz-font-code: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --nz-font-small: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --nz-font-title: "Instrument Serif", ui-serif, Georgia, "Times New Roman", serif;
+}

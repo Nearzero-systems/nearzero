@@ -1,0 +1,27 @@
+---
+import Document from "./Document.astro";
+
+/**
+ * Sign-in, sign-up and invitation pages: in this browser's theme like every page (spec 21.2,
+ * Light unless another was picked), full page loads for their POST forms, drawn in the hairline frame (components/auth/AuthFrame.astro, spec 21.10). On load
+ * the page removes any password or code from its own address, in case a form was submitted
+ * before scripts ran (spec 21.9). They carry the link preview (spec 21.9b), except the page
+ * shown in place of any other when the control plane can't be reached (`preview={false}`).
+ */
+interface Props {
+  title: string;
+  /** One sentence about the page; also the link preview's description. */
+  description: string;
+  preview?: boolean;
+}
+
+const { title, description, preview = true } = Astro.props;
+const scrub = `(function(){try{var u=new URL(location.href),c=false;["password","code"].forEach(function(k){if(u.searchParams.has(k)){u.searchParams.delete(k);c=true;}});if(c)history.replaceState(history.state,"",u.pathname+(u.search||"")+u.hash);}catch(e){}})();`;
+---
+
+<Document title={title} description={description} preview={preview} router={false}>
+  <script slot="head" is:inline set:html={scrub} />
+  <main class="nz-auth" data-page-content>
+    <slot />
+  </main>
+</Document>

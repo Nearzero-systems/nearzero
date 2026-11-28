@@ -1,0 +1,52 @@
+---
+import Icon from "../ui/Icon.astro";
+import { type NavKey, navGroups } from "./nav-items.ts";
+
+/**
+ * The primary navigation links, shared by the sidebar, the rail and the phone sheet: the main
+ * group, then "Infrastructure" (a hairline in the rail). Documentation and Support live in the
+ * user menu (spec 21.10).
+ */
+interface Props {
+  workspace: string;
+  active?: NavKey;
+  analytics: boolean;
+  /** Whether Tasks is for this person (R3-31). */
+  tasks?: boolean;
+}
+
+const { workspace, active, analytics, tasks = true } = Astro.props;
+const { main, infrastructure } = navGroups(workspace, { analytics, tasks });
+---
+
+<div class="nz-nav-list">
+  {
+    main.map((item) => (
+      <a
+        href={item.href}
+        class="nz-nav-item"
+        aria-current={item.key === active ? "page" : undefined}
+        title={item.label}
+      >
+        <Icon name={item.icon} box={22} />
+        <span class="nz-nav-label">{item.label}</span>
+      </a>
+    ))
+  }
+</div>
+<p class="nz-nav-group"><span class="nz-nav-label">Infrastructure</span></p>
+<div class="nz-nav-list">
+  {
+    infrastructure.map((item) => (
+      <a
+        href={item.href}
+        class="nz-nav-item"
+        aria-current={item.key === active ? "page" : undefined}
+        title={item.label}
+      >
+        <Icon name={item.icon} box={22} />
+        <span class="nz-nav-label">{item.label}</span>
+      </a>
+    ))
+  }
+</div>

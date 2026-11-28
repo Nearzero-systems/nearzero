@@ -1,0 +1,175 @@
+---
+import { DEFAULT_COMPOSE_PATH, DESCRIPTION_MAX, SERVICE_NAME_MAX } from "@nearzero/shared/browser";
+import { consoleData } from "../../lib/data/index.ts";
+import { NO_SERVER_MESSAGE, type ServerChoice } from "../../lib/projects.ts";
+import { settingsPath } from "../../lib/routes.ts";
+import Button from "../ui/Button.astro";
+import Dialog from "../ui/Dialog.astro";
+import Field from "../ui/Field.astro";
+import FormError from "../ui/FormError.astro";
+
+/**
+ * Add New → Compose (spec 07 7.1): Name, Server, Description, the source and the format. "From
+ * a repository" takes a connected provider's account, repository, branch and Compose file path
+ * (client/git-import.ts saves it after the service); Paste YAML takes the file. The format is
+ * fixed after creation.
+ */
+interface Props {
+  workspace: string;
+  environmentId: string;
+  servers: ServerChoice[];
+  serviceBase: string;
+}
+
+const { workspace, environmentId, servers, serviceBase } = Astro.props;
+// "From a repository" (spec 7.1): any ready account the person may use, of the four hosts.
+const usable = await consoleData(Astro)
+  .usableGitProviders()
+  .catch(() => ({ providers: [], canConnect: false }));
+const accounts = usable.providers.filter((provider) => provider.ready);
+const placeholder = `services:
+  web:
+    image: nginx:alpine
+    environment:
+      API_TOKEN: \${API_TOKEN}`;
+---
+
+<Dialog id="nz-compose-create" title="Add a Compose service" description="A multi-container stack from a Compose file, on one server." wide>
+  <form data-scripted
+    class="nz-form"
+    data-create-service="compose"
+    data-environment-id={environmentId}
+    data-service-base={serviceBase}
+    data-has-servers={servers.length > 0 ? "true" : "false"}
+    novalidate
+  >
+    <input type="hidden" name="kind" value="compose" />
+    <div class="nz-form-grid-2">
+      <Field
+        id="nz-compose-name"
+        name="name"
+        label="Name"
+        autocomplete="off"
+        maxlength={SERVICE_NAME_MAX}
+        data-required="Enter a name for the service."
+      />
+      {
+        servers.length > 0 ? (
+          <Field
+            id="nz-compose-server"
+            name="serverId"
+            label="Server"
+            as="select"
+            options={servers.map((server, index) => ({ value: server.id, label: server.label, selected: index === 0 }))}
+          />
+        ) : (
+          <div data-field>
+            <span class="nz-label">Server</span>
+            <p class="nz-inline-note">{NO_SERVER_MESSAGE}</p>
+          </div>
+        )
+      }
+    </div>
+    <Field
+      id="nz-compose-description"
+      name="description"
+      label="Description"
+      as="textarea"
+      rows={2}
+      maxlength={DESCRIPTION_MAX}
+      hint="Optional."
+    />
+
+    <fieldset class="nz-choice-list">
+      <legend class="nz-label">Source</legend>
+      <div class="nz-segmented" role="radiogroup" aria-label="Source">
+        <label><input type="radio" name="source" value="repository" />From a repository</label>
+        <label><input type="radio" name="source" value="raw" checked />Paste YAML</label>
+      </div>
+      <div class="nz-stack-sm" data-source-panel="repository" data-git-source-tab="compose" data-git-accounts-count={accounts.length}>
+        {accounts.length === 0 && (
+          <p class="nz-inline-note">
+            Connect a Git provider first. <a class="nz-text-link" href={settingsPath(workspace, "git-providers")}>Git providers</a>
+          </p>
+        )}
+        <div class="nz-form-grid-2">
+          <Field
+            id="nz-compose-account"
+            name="repository.account"
+            label="Provider account"
+            as="select"
+            options={
+              accounts.length > 0
+                ? accounts.map((account) => ({ value: account.id, label: `${account.kindLabel} · ${account.name}` }))
+                : [{ value: "", label: "No accounts connected" }]
+            }
+            disabled={accounts.length === 0}
+            data-git-source-account
+          />
+          <Field
+            id="nz-compose-repository"
+            name="repository.name"
+            label="Repository"
+            placeholder="owner/repository"
+            autocomplete="off"
+            spellcheck="false"
+            list="nz-compose-repositories"
+            disabled={accounts.length === 0}
+            data-git-source-repo
+          />
+          <Field
+            id="nz-compose-branch"
+            name="repository.branch"
+            label="Branch"
+            placeholder="The repository's default branch"
+            autocomplete="off"
+            spellcheck="false"
+            list="nz-compose-branches"
+            disabled={accounts.length === 0}
+            data-git-source-branch
+          />
+          <Field
+            id="nz-compose-path"
+            name="repository.path"
+            label="Compose file path"
+            value={DEFAULT_COMPOSE_PATH}
+            autocomplete="off"
+            spellcheck="false"
+            disabled={accounts.length === 0}
+          />
+        </div>
+        <datalist id="nz-compose-repositories" data-git-source-repos></datalist>
+        <datalist id="nz-compose-branches" data-git-source-branches></datalist>
+      </div>
+      <div class="nz-stack-sm" data-source-panel="raw">
+        <Field
+          id="nz-compose-file"
+          name="settings.composeFile"
+          label="Compose file (YAML)"
+          as="textarea"
+          rows={10}
+          class="nz-code-input"
+          placeholder={placeholder}
+          spellcheck="false"
+          data-required="Paste the Compose file."
+        />
+        <p class="nz-hint">Put values for <code>{"${VAR}"}</code> placeholders in the service's variables, never in the YAML.</p>
+      </div>
+    </fieldset>
+
+    <fieldset class="nz-choice-list">
+      <legend class="nz-label">Compose format</legend>
+      <div class="nz-segmented" role="radiogroup" aria-label="Compose format">
+        <label><input type="radio" name="settings.format" value="compose" checked />Compose</label>
+        <label><input type="radio" name="settings.format" value="stack" />Stack</label>
+      </div>
+      <p class="nz-hint">Fixed after creation.</p>
+    </fieldset>
+
+    <FormError />
+    <div class="nz-dialog-foot">
+      <Button variant="outline" data-dialog-close>Cancel</Button>
+      <Button variant="primary" type="submit" disabled={servers.length === 0} label="Create Compose service">Create</Button>
+    </div>
+  </form>
+</Dialog>
